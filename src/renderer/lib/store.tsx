@@ -12,6 +12,7 @@ interface AppState {
   selectedModel: string | null;
   activeView: LensView;
   discoveredViews: LensViewManifest[];
+  showLanding: boolean;
 }
 
 type AppAction =
@@ -23,6 +24,8 @@ type AppAction =
   | { type: 'SET_SELECTED_MODEL'; payload: string | null }
   | { type: 'SET_ACTIVE_VIEW'; payload: LensView }
   | { type: 'SET_DISCOVERED_VIEWS'; payload: LensViewManifest[] }
+  | { type: 'SHOW_LANDING' }
+  | { type: 'HIDE_LANDING' }
   | { type: 'CLEAR_MESSAGES' }
   | { type: 'NEW_CONVERSATION' };
 
@@ -43,6 +46,7 @@ const initialState: AppState = {
   selectedModel: localStorage.getItem('chamber:selectedModel'),
   activeView: 'chat',
   discoveredViews: [],
+  showLanding: false,
 };
 
 /** Extract plain text from content blocks (for search, accessibility, etc.) */
@@ -207,6 +211,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_DISCOVERED_VIEWS':
       return { ...state, discoveredViews: action.payload };
+
+    case 'SHOW_LANDING':
+      return { ...state, showLanding: true };
+
+    case 'HIDE_LANDING':
+      return { ...state, showLanding: false };
 
     case 'CLEAR_MESSAGES':
       return { ...state, messages: [] };

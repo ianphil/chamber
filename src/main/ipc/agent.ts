@@ -10,7 +10,7 @@ import type { AgentStatus, AppConfig } from '../../shared/types';
 const CONFIG_DIR = path.join(os.homedir(), '.chamber');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
-function loadConfig(): AppConfig {
+export function loadConfig(): AppConfig {
   try {
     const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
     return JSON.parse(data);
@@ -19,7 +19,7 @@ function loadConfig(): AppConfig {
   }
 }
 
-function saveConfig(config: AppConfig): void {
+export function saveConfig(config: AppConfig): void {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }

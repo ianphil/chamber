@@ -1,6 +1,5 @@
 import React from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
-import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { cn } from '../../lib/utils';
 
 function ChatSideContent() {
@@ -50,7 +49,7 @@ function LensViewSideContent() {
 
 export function SidePanel() {
   const { agentStatus, activeView } = useAppState();
-  const { selectMindDirectory } = useAgentStatus();
+  const dispatch = useAppDispatch();
 
   return (
     <aside className="w-56 border-r border-border flex flex-col bg-card shrink-0">
@@ -89,13 +88,13 @@ export function SidePanel() {
         {activeView === 'chat' ? <ChatSideContent /> : <LensViewSideContent />}
       </div>
 
-      {/* Footer: mind selector */}
+      {/* Footer: switch agent */}
       <div className="px-3 py-3 border-t border-border">
         <button
-          onClick={selectMindDirectory}
+          onClick={() => dispatch({ type: 'SHOW_LANDING' })}
           className="w-full px-3 py-2 rounded-md text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors text-left"
         >
-          {agentStatus.connected ? 'Change mind directory…' : 'Select mind directory…'}
+          Change your mind…
         </button>
       </div>
     </aside>

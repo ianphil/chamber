@@ -1,5 +1,4 @@
 import React from 'react';
-import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useAppSubscriptions } from '../../hooks/useAppSubscriptions';
 import { TooltipProvider } from '../ui/tooltip';
 import { ActivityBar } from './ActivityBar';
@@ -7,7 +6,6 @@ import { SidePanel } from './SidePanel';
 import { ViewRouter } from './ViewRouter';
 
 export function AppShell() {
-  useAgentStatus();
   useAppSubscriptions();
 
   return (

@@ -110,6 +110,12 @@ export interface ElectronAPI {
     sendAction: (viewId: string, action: string) => Promise<Record<string, unknown> | null>;
     onViewsChanged: (callback: (views: LensViewManifest[]) => void) => () => void;
   };
+  genesis: {
+    getDefaultPath: () => Promise<string>;
+    pickPath: () => Promise<string | null>;
+    create: (config: { name: string; role: string; voice: string; voiceDescription: string; basePath: string }) => Promise<{ success: boolean; mindPath?: string; error?: string }>;
+    onProgress: (callback: (progress: { step: string; detail: string }) => void) => () => void;
+  };
   config: {
     load: () => Promise<AppConfig>;
     save: (config: AppConfig) => Promise<void>;
