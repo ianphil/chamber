@@ -62,6 +62,7 @@ export function setupAgentIPC(chatService: ChatService, viewDiscovery: ViewDisco
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory'],
       title: 'Select Genesis Mind Directory',
+      defaultPath: path.join(os.homedir(), 'agents'),
     });
 
     if (result.canceled || result.filePaths.length === 0) return null;
