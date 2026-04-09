@@ -85,15 +85,18 @@ export class ChatService {
       if (this.mindPath) {
         config.workingDirectory = this.mindPath;
 
-        // Replace the SDK's identity section with the agent's SOUL + instructions.
-        // Keeps all other sections (tool_instructions, safety, environment, etc.) intact.
-        // custom_instructions remains available for per-repo .github/copilot-instructions.md.
+        // Replace the SDK's identity and tone with the agent's SOUL + instructions.
+        // Identity: "You are GitHub Copilot CLI" → agent's SOUL.md + agent file
+        // Tone: "100 words or less" → removed (agent's Vibe section covers this)
+        // Keeps: tool_instructions, safety, environment, code_change_rules, guidelines.
+        // custom_instructions stays open for per-repo .github/copilot-instructions.md.
         const identity = this.loadIdentity();
         if (identity) {
           config.systemMessage = {
             mode: 'customize',
             sections: {
               identity: { action: 'replace', content: identity },
+              tone: { action: 'remove' },
             },
           };
         }
