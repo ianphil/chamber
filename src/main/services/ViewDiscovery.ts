@@ -105,32 +105,58 @@ export class ViewDiscovery {
   }
 
   private seedDefaults(lensDir: string): void {
+    // Hello World
     const helloDir = path.join(lensDir, 'hello-world');
     const helloViewJson = path.join(helloDir, 'view.json');
-
-    if (fs.existsSync(helloViewJson)) return;
-
-    console.log('[ViewDiscovery] Seeding default hello-world view');
-    fs.mkdirSync(helloDir, { recursive: true });
-    fs.writeFileSync(helloViewJson, JSON.stringify({
-      name: 'Hello World',
-      icon: 'zap',
-      view: 'form',
-      source: 'data.json',
-      prompt: 'Report your current status including: your agent name, the mind directory name, how many files are in inbox/, how many initiatives exist, how many domains exist, and what extensions are loaded. Write the result as a flat JSON object to the path specified below.',
-      refreshOn: 'click',
-      schema: {
-        properties: {
-          agent: { type: 'string', title: 'Agent' },
-          mind: { type: 'string', title: 'Mind' },
-          inbox_count: { type: 'number', title: 'Inbox Items' },
-          initiatives: { type: 'number', title: 'Initiatives' },
-          domains: { type: 'number', title: 'Domains' },
-          extensions: { type: 'string', title: 'Extensions' },
-          status: { type: 'string', title: 'Status' },
+    if (!fs.existsSync(helloViewJson)) {
+      console.log('[ViewDiscovery] Seeding default hello-world view');
+      fs.mkdirSync(helloDir, { recursive: true });
+      fs.writeFileSync(helloViewJson, JSON.stringify({
+        name: 'Hello World',
+        icon: 'zap',
+        view: 'form',
+        source: 'data.json',
+        prompt: 'Report your current status including: your agent name, the mind directory name, how many files are in inbox/, how many initiatives exist, how many domains exist, and what extensions are loaded. Write the result as a flat JSON object to the path specified below.',
+        refreshOn: 'click',
+        schema: {
+          properties: {
+            agent: { type: 'string', title: 'Agent' },
+            mind: { type: 'string', title: 'Mind' },
+            inbox_count: { type: 'number', title: 'Inbox Items' },
+            initiatives: { type: 'number', title: 'Initiatives' },
+            domains: { type: 'number', title: 'Domains' },
+            extensions: { type: 'string', title: 'Extensions' },
+            status: { type: 'string', title: 'Status' },
+          },
         },
-      },
-    }, null, 2));
+      }, null, 2));
+    }
+
+    // Newspaper
+    const newsDir = path.join(lensDir, 'newspaper');
+    const newsViewJson = path.join(newsDir, 'view.json');
+    if (!fs.existsSync(newsViewJson)) {
+      console.log('[ViewDiscovery] Seeding default newspaper view');
+      fs.mkdirSync(newsDir, { recursive: true });
+      fs.writeFileSync(newsViewJson, JSON.stringify({
+        name: 'Newspaper',
+        icon: 'newspaper',
+        view: 'briefing',
+        source: 'briefing.json',
+        prompt: 'Generate a morning briefing for this mind. Count inbox/ items, list active initiatives with their status and next actions, count domains, and note any recent changes. Write the result as a flat JSON object to the path specified below.',
+        refreshOn: 'click',
+        schema: {
+          properties: {
+            inbox_items: { type: 'number', title: 'Inbox Items' },
+            active_initiatives: { type: 'number', title: 'Active Initiatives' },
+            domains: { type: 'number', title: 'Domains' },
+            top_priorities: { type: 'string', title: 'Top Priorities' },
+            recent_changes: { type: 'string', title: 'Recent Changes' },
+            status: { type: 'string', title: 'Overall Status' },
+          },
+        },
+      }, null, 2));
+    }
   }
 
   private installLensSkill(mindPath: string): void {

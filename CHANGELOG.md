@@ -1,10 +1,15 @@
 # Changelog
 
-## v1.0.0 (2026-04-09)
+## v0.10.1 (2026-04-09)
+
+- **Auto-seed Newspaper** alongside Hello World on mind connect
+
+## v0.10.0 (2026-04-09)
 
 - **Renamed to Chamber** — The Genesis Chamber
 - Repo renamed from blotter to chamber
 - Config dir now `~/.chamber/`
+- 1.0 reserved for New Mind onboarding + stability
 
 ## v0.8.1 (2026-04-09)
 
