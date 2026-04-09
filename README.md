@@ -1,6 +1,6 @@
 # Chamber
 
-The Genesis Chamber. Where AI agents are born and operate.
+Where AI agents are born and operate.
 
 Chamber is a desktop app for AI agents that act as your Chief of Staff — managing priorities, surfacing context, and keeping operations moving. Connect a mind (an agent with memory, skills, and personality) and the agent extends the UI itself: drop a `view.json` into the mind and a new panel appears. No code changes, no deploys.
 
@@ -8,9 +8,9 @@ Built with Electron, React, Tailwind CSS, and the GitHub Copilot SDK. Minds are 
 
 ## The Idea
 
-In Kryptonian mythology, the Genesis Chamber was where beings were created — each designed for a purpose. We broke tradition. Our agents aren't pre-programmed. The user chooses who they become.
+Our agents aren't pre-programmed. The user chooses who they become.
 
-Chamber is the place where that happens. Your agent wakes up, finds its voice, and prepares your world.
+Chamber is where that happens. Your agent wakes up, finds its voice, and prepares your world.
 
 | The old world | Chamber |
 |---------------|---------|

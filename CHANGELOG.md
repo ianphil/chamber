@@ -6,7 +6,7 @@
 
 ## v0.10.0 (2026-04-09)
 
-- **Renamed to Chamber** — The Genesis Chamber
+- **Renamed to Chamber**
 - Repo renamed from blotter to chamber
 - Config dir now `~/.chamber/`
 - 1.0 reserved for New Mind onboarding + stability
