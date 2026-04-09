@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.11.0 (2026-04-09)
+
+- **The Genesis Moment** — full cinematic new-mind onboarding
+- Void → Voice → Role → Boot → First Words
+- Agent writes its own SOUL.md, personality, and identity
+- MindScaffold: deterministic folders + agent-generated soul
+- Landing screen: ✨ New Agent / 📂 Open Existing
+- "Change your mind…" returns to landing
+- Default mind path: `~/agents/{slug}/`
+
+## v0.10.2 (2026-04-09)
+
+- Fix logo icons (B/G → C)
+- Remove "Genesis Chamber" branding — just Chamber
+
 ## v0.10.1 (2026-04-09)
 
 - **Auto-seed Newspaper** alongside Hello World on mind connect
@@ -7,9 +22,8 @@
 ## v0.10.0 (2026-04-09)
 
 - **Renamed to Chamber**
-- Repo renamed from blotter to chamber
+- Agent name from SOUL.md shown in chat
 - Config dir now `~/.chamber/`
-- 1.0 reserved for New Mind onboarding + stability
 
 ## v0.8.1 (2026-04-09)
 
