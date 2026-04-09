@@ -1,8 +1,9 @@
-// Chat session management — creates SDK sessions, streams deltas via callbacks.
+// Chat session management — creates SDK sessions, streams all events via single callback.
 // Adapted from cmux's CopilotService pattern.
 
 import { getSharedClient } from './SdkLoader';
 import type { ExtensionLoader } from './ExtensionLoader';
+import type { ChatEvent } from '../../shared/types';
 
 type CopilotSessionType = import('@github/copilot-sdk').CopilotSession;
 
@@ -35,12 +36,13 @@ export class ChatService {
       console.log('[ChatService] Mind path:', this.mindPath);
       const client = await getSharedClient();
       console.log('[ChatService] Got shared client');
-      const config: Record<string, unknown> = {};
+      const config: Record<string, unknown> = {
+        streaming: true,
+      };
 
       if (this.mindPath) {
         config.workingDirectory = this.mindPath;
 
-        // Load extension tools from the mind directory
         if (this.extensionLoader) {
           try {
             const tools = await this.extensionLoader.loadTools(this.mindPath);
@@ -54,7 +56,6 @@ export class ChatService {
         }
       }
 
-      // Auto-approve permissions so agent tools don't block
       config.onPermissionRequest = async (request: { kind: string }) => {
         return { kind: 'approved' };
       };
@@ -77,55 +78,130 @@ export class ChatService {
     conversationId: string,
     prompt: string,
     messageId: string,
-    onChunk: (messageId: string, content: string) => void,
-    onDone: (messageId: string, fullContent?: string) => void,
-    onError: (messageId: string, error: string) => void,
+    emit: (event: ChatEvent) => void,
   ): Promise<void> {
     const abortController = new AbortController();
     this.abortControllers.set(conversationId, abortController);
 
-    let unsubAll: (() => void) | null = null;
-    let unsubDelta: (() => void) | null = null;
+    const unsubs: (() => void)[] = [];
+    const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
 
     try {
       console.log('[ChatService] Creating/getting session for', conversationId);
       const session = await this.getOrCreateSession(conversationId);
       console.log('[ChatService] Session ready, sending prompt');
-      let receivedChunks = false;
 
-      // Log ALL events for debugging
-      unsubAll = session.on((event) => {
-        console.log('[ChatService] Event:', event.type, JSON.stringify(event.data ?? {}).slice(0, 300));
+      // Text streaming
+      unsubs.push(session.on('assistant.message_delta', (event) => {
+        guard(() => emit({
+          type: 'chunk',
+          sdkMessageId: event.data.messageId,
+          content: event.data.deltaContent,
+        }));
+      }));
+
+      // Final assistant message (reconciliation / no-delta fallback)
+      unsubs.push(session.on('assistant.message', (event) => {
+        guard(() => {
+          if (event.data.content) {
+            emit({
+              type: 'message_final',
+              sdkMessageId: event.data.messageId,
+              content: event.data.content,
+            });
+          }
+        });
+      }));
+
+      // Reasoning
+      unsubs.push(session.on('assistant.reasoning_delta', (event) => {
+        guard(() => emit({
+          type: 'reasoning',
+          reasoningId: event.data.reasoningId,
+          content: event.data.deltaContent,
+        }));
+      }));
+
+      // Tool execution
+      unsubs.push(session.on('tool.execution_start', (event) => {
+        guard(() => emit({
+          type: 'tool_start',
+          toolCallId: event.data.toolCallId,
+          toolName: event.data.toolName,
+          args: event.data.arguments as Record<string, unknown> | undefined,
+          parentToolCallId: event.data.parentToolCallId,
+        }));
+      }));
+
+      unsubs.push(session.on('tool.execution_progress', (event) => {
+        guard(() => emit({
+          type: 'tool_progress',
+          toolCallId: event.data.toolCallId,
+          message: event.data.progressMessage,
+        }));
+      }));
+
+      unsubs.push(session.on('tool.execution_partial_result', (event) => {
+        guard(() => emit({
+          type: 'tool_output',
+          toolCallId: event.data.toolCallId,
+          output: event.data.partialOutput,
+        }));
+      }));
+
+      unsubs.push(session.on('tool.execution_complete', (event) => {
+        guard(() => emit({
+          type: 'tool_done',
+          toolCallId: event.data.toolCallId,
+          success: event.data.success,
+          result: event.data.result?.content,
+          error: event.data.error?.message,
+        }));
+      }));
+
+      // Log all events for debugging
+      unsubs.push(session.on((event) => {
+        console.log('[ChatService] Event:', event.type, JSON.stringify(event.data ?? {}).slice(0, 200));
+      }));
+
+      console.log('[ChatService] Calling send...');
+      await session.send({ prompt });
+
+      // Wait for session.idle to signal completion
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          resolve(); // 5 min safety timeout
+        }, 300_000);
+
+        const unsubIdle = session.on('session.idle', () => {
+          clearTimeout(timeout);
+          unsubIdle();
+          resolve();
+        });
+        unsubs.push(unsubIdle);
+
+        const unsubError = session.on('session.error', (event) => {
+          clearTimeout(timeout);
+          unsubError();
+          reject(new Error(event.data.message));
+        });
+        unsubs.push(unsubError);
+
+        // If aborted externally, resolve immediately
+        abortController.signal.addEventListener('abort', () => {
+          clearTimeout(timeout);
+          resolve();
+        }, { once: true });
       });
-
-      unsubDelta = session.on('assistant.message_delta', (event) => {
-        if (abortController.signal.aborted) return;
-        receivedChunks = true;
-        onChunk(messageId, event.data.deltaContent);
-      });
-
-      console.log('[ChatService] Calling sendAndWait...');
-      const response = await session.sendAndWait(
-        { prompt },
-        300_000, // 5 min timeout
-      );
-      console.log('[ChatService] sendAndWait resolved');
 
       if (abortController.signal.aborted) return;
-
-      // Fallback: if no streaming chunks, send full response as one chunk
-      if (!receivedChunks && response?.data?.content) {
-        onChunk(messageId, response.data.content);
-      }
-
-      onDone(messageId);
+      emit({ type: 'done' });
     } catch (err) {
       if (abortController.signal.aborted) return;
       const message = err instanceof Error ? err.message : String(err);
-      onError(messageId, message);
+      emit({ type: 'error', message });
     } finally {
-      unsubDelta?.();
-      unsubAll?.();
+      for (const unsub of unsubs) unsub();
       this.abortControllers.delete(conversationId);
     }
   }
@@ -157,7 +233,6 @@ export class ChatService {
       await session.destroy().catch(() => {});
       this.sessions.delete(conversationId);
     }
-    // Clean up extension resources when session is destroyed
     if (this.extensionLoader) {
       await this.extensionLoader.cleanup();
     }

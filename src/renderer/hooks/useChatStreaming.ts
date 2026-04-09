@@ -8,25 +8,14 @@ export function useChatStreaming() {
   const currentMessageId = useRef<string | null>(null);
 
   useEffect(() => {
-    const unsubChunk = window.electronAPI.chat.onChunk((messageId, content) => {
-      dispatch({ type: 'APPEND_CHUNK', payload: { messageId, content } });
+    const unsub = window.electronAPI.chat.onEvent((messageId, event) => {
+      dispatch({ type: 'CHAT_EVENT', payload: { messageId, event } });
+      if (event.type === 'done' || event.type === 'error') {
+        currentMessageId.current = null;
+      }
     });
 
-    const unsubDone = window.electronAPI.chat.onDone((messageId) => {
-      dispatch({ type: 'FINISH_STREAMING', payload: { messageId } });
-      currentMessageId.current = null;
-    });
-
-    const unsubError = window.electronAPI.chat.onError((messageId, error) => {
-      dispatch({ type: 'SET_ERROR', payload: { messageId, error } });
-      currentMessageId.current = null;
-    });
-
-    return () => {
-      unsubChunk();
-      unsubDone();
-      unsubError();
-    };
+    return () => { unsub(); };
   }, [dispatch]);
 
   const sendMessage = useCallback(async (content: string) => {
@@ -34,7 +23,6 @@ export function useChatStreaming() {
 
     const userMessage = {
       id: generateId(),
-      role: 'user' as const,
       content: content.trim(),
       timestamp: Date.now(),
     };
@@ -44,13 +32,7 @@ export function useChatStreaming() {
     currentMessageId.current = assistantId;
     dispatch({
       type: 'ADD_ASSISTANT_MESSAGE',
-      payload: {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        isStreaming: true,
-      },
+      payload: { id: assistantId, timestamp: Date.now() },
     });
 
     await window.electronAPI.chat.send(conversationId, content.trim(), assistantId);

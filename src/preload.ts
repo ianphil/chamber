@@ -10,9 +10,7 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('chat:stop', conversationId, messageId),
     newConversation: (conversationId) =>
       ipcRenderer.invoke('chat:newConversation', conversationId),
-    onChunk: (callback) => createIpcListener(ipcRenderer, 'chat:chunk', callback),
-    onDone: (callback) => createIpcListener(ipcRenderer, 'chat:done', callback),
-    onError: (callback) => createIpcListener(ipcRenderer, 'chat:error', callback),
+    onEvent: (callback) => createIpcListener(ipcRenderer, 'chat:event', callback),
   },
   agent: {
     getStatus: () => ipcRenderer.invoke('agent:getStatus'),

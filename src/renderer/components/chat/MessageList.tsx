@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { useAppState } from '../../lib/store';
+import { useAppState, getPlainContent } from '../../lib/store';
 import { StreamingMessage } from './StreamingMessage';
 import { cn, formatTime } from '../../lib/utils';
 
@@ -53,12 +53,12 @@ export function MessageList() {
 
               {message.role === 'assistant' ? (
                 <StreamingMessage
-                  content={message.content}
+                  blocks={message.blocks}
                   isStreaming={message.isStreaming}
                 />
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {message.content}
+                  {getPlainContent(message)}
                 </p>
               )}
             </div>

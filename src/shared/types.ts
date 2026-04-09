@@ -1,9 +1,57 @@
 // Shared types across main, preload, and renderer processes
 
+// ---------------------------------------------------------------------------
+// Content blocks — ordered units within an assistant message
+// ---------------------------------------------------------------------------
+
+export interface TextBlock {
+  type: 'text';
+  sdkMessageId?: string;
+  content: string;
+}
+
+export interface ToolCallBlock {
+  type: 'tool_call';
+  toolCallId: string;
+  toolName: string;
+  status: 'running' | 'done' | 'error';
+  arguments?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+  parentToolCallId?: string;
+}
+
+export interface ReasoningBlock {
+  type: 'reasoning';
+  reasoningId: string;
+  content: string;
+}
+
+export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock;
+
+// ---------------------------------------------------------------------------
+// Chat events — single sequenced IPC channel
+// ---------------------------------------------------------------------------
+
+export type ChatEvent =
+  | { type: 'chunk'; sdkMessageId?: string; content: string }
+  | { type: 'tool_start'; toolCallId: string; toolName: string; args?: Record<string, unknown>; parentToolCallId?: string }
+  | { type: 'tool_progress'; toolCallId: string; message: string }
+  | { type: 'tool_output'; toolCallId: string; output: string }
+  | { type: 'tool_done'; toolCallId: string; success: boolean; result?: string; error?: string }
+  | { type: 'reasoning'; reasoningId: string; content: string }
+  | { type: 'message_final'; sdkMessageId: string; content: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string };
+
+// ---------------------------------------------------------------------------
+// Chat message
+// ---------------------------------------------------------------------------
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
-  content: string;
+  blocks: ContentBlock[];
   timestamp: number;
   isStreaming?: boolean;
 }
@@ -27,9 +75,7 @@ export interface ElectronAPI {
     send: (conversationId: string, message: string, messageId: string) => Promise<void>;
     stop: (conversationId: string, messageId: string) => Promise<void>;
     newConversation: (conversationId: string) => Promise<void>;
-    onChunk: (callback: (messageId: string, content: string) => void) => () => void;
-    onDone: (callback: (messageId: string, fullContent?: string) => void) => () => void;
-    onError: (callback: (messageId: string, error: string) => void) => () => void;
+    onEvent: (callback: (messageId: string, event: ChatEvent) => void) => () => void;
   };
   agent: {
     getStatus: () => Promise<AgentStatus>;
