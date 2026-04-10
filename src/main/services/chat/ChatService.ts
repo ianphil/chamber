@@ -1,10 +1,10 @@
 // Chat session management — creates SDK sessions, streams all events via single callback.
 // Adapted from cmux's CopilotService pattern.
 
-import { getSharedClient } from './SdkLoader';
-import type { ExtensionLoader } from './ExtensionLoader';
+import { getSharedClient } from '../sdk/SdkLoader';
+import type { ExtensionLoader } from '../extensions/ExtensionLoader';
 import { IdentityLoader } from './IdentityLoader';
-import type { ChatEvent, ModelInfo } from '../../shared/types';
+import type { ChatEvent, ModelInfo } from '../../../shared/types';
 
 type CopilotSessionType = import('@github/copilot-sdk').CopilotSession;
 

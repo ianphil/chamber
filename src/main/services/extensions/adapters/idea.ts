@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
 import type { LoadedExtension, ExtensionTool } from '../ExtensionLoader';
-import { requireSystemNode } from '../nodeResolver';
+import { requireSystemNode } from '../../sdk/nodeResolver';
 
 /**
  * Execute an IDEA tool handlerin a child process under system Node.js.

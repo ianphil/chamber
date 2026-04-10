@@ -8,7 +8,7 @@ vi.mock('fs', () => ({
 }));
 
 import * as fs from 'fs';
-import { ConfigService } from '../services/ConfigService';
+import { ConfigService } from '../services/config';
 
 const mockReadFileSync = vi.mocked(fs.readFileSync);
 const mockWriteFileSync = vi.mocked(fs.writeFileSync);

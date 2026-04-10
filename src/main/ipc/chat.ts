@@ -1,6 +1,6 @@
 // Chat IPC handlers — wire ChatService to renderer via ipcMain
 import { ipcMain, BrowserWindow } from 'electron';
-import { ChatService } from '../services/ChatService';
+import { ChatService } from '../services/chat';
 import type { ChatEvent } from '../../shared/types';
 
 export function setupChatIPC(chatService: ChatService): void {

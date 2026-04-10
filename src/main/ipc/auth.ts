@@ -1,6 +1,6 @@
 // Auth IPC handlers
 import { ipcMain, BrowserWindow, shell } from 'electron';
-import { AuthService } from '../services/AuthService';
+import { AuthService } from '../services/auth';
 
 export function setupAuthIPC(authService: AuthService): void {
 

@@ -3,10 +3,10 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ChatService } from '../services/ChatService';
-import { ViewDiscovery } from '../services/ViewDiscovery';
-import { ConfigService } from '../services/ConfigService';
-import { seedLensDefaults, installLensSkill } from '../services/MindBootstrap';
+import { ChatService } from '../services/chat';
+import { ViewDiscovery } from '../services/lens';
+import { ConfigService } from '../services/config';
+import { seedLensDefaults, installLensSkill } from '../services/lens';
 import type { AgentStatus, AppConfig } from '../../shared/types';
 
 export function setupAgentIPC(chatService: ChatService, viewDiscovery: ViewDiscovery, configService: ConfigService): void {

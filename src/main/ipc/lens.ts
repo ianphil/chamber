@@ -1,6 +1,6 @@
 // Lens IPC handlers — wire ViewDiscovery to renderer
 import { ipcMain } from 'electron';
-import type { ViewDiscovery } from '../services/ViewDiscovery';
+import type { ViewDiscovery } from '../services/lens';
 
 export function setupLensIPC(viewDiscovery: ViewDiscovery): void {
   ipcMain.handle('lens:getViews', async () => {

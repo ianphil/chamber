@@ -2,8 +2,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { LensViewManifest } from '../../shared/types';
-import type { ChatService } from './ChatService';
+import type { LensViewManifest } from '../../../shared/types';
+import type { ChatService } from '../chat/ChatService';
 
 export class ViewDiscovery {
   private views: LensViewManifest[] = [];
