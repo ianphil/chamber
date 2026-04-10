@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { formatTitle } from '../../lib/utils';
 
 interface Props {
   data: Record<string, unknown>;
@@ -23,10 +24,6 @@ function getStatusDot(status: string): string {
   if (s.includes('error') || s.includes('fail') || s.includes('down') || s.includes('critical')) return '🔴';
   if (s.includes('warn') || s.includes('pending') || s.includes('degraded')) return '🟡';
   return '⚪';
-}
-
-function formatTitle(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export function LensStatusBoard({ data, schema }: Props) {

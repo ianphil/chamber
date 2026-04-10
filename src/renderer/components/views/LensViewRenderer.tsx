@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { LensViewManifest } from '../../../shared/types';
 import { RefreshCw, Send } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, formatTitle, formatDisplayValue } from '../../lib/utils';
 import { LensBriefing } from './LensBriefing';
 import { LensTable } from './LensTable';
 import { LensDetail } from './LensDetail';
@@ -185,12 +185,8 @@ function LensFormContent({ data, schema }: { data: Record<string, unknown>; sche
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       {keys.map((key) => {
         const value = data[key];
-        const label = schemaProps?.[key]?.title ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const displayValue = Array.isArray(value)
-          ? value.join(', ')
-          : typeof value === 'object' && value !== null
-            ? JSON.stringify(value, null, 2)
-            : String(value ?? '—');
+        const label = schemaProps?.[key]?.title ?? formatTitle(key);
+        const displayValue = formatDisplayValue(value);
 
         return (
           <div key={key} className="flex justify-between items-start text-sm gap-4">

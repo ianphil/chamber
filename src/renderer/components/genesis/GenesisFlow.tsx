@@ -19,12 +19,7 @@ export function GenesisFlow({ onComplete }: Props) {
 
   const handleBegin = useCallback(() => setStage('voice'), []);
 
-  const handleVoice = useCallback((voiceName: string, desc: string) => {
-    setName(voiceName);
-    setTimeout(() => setStage('role'), 300);
-  }, []);
-
-  const handleRole = useCallback(async (r: string) => {
+  const handleRole= useCallback(async (r: string) => {
     setRole(r);
     setStage('boot');
 

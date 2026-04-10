@@ -5,10 +5,6 @@ interface Props {
   schema?: Record<string, unknown>;
 }
 
-function formatTitle(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
 export function LensTimeline({ data, schema }: Props) {
   const items = Array.isArray(data) ? data as Record<string, unknown>[] : [data];
 

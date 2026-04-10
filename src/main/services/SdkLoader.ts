@@ -290,6 +290,8 @@ function resolveNodeModulesDir(): string {
   return getGlobalNodeModules();
 }
 
+import { findSystemNode as findSystemNodeShared } from './nodeResolver';
+
 // ---------------------------------------------------------------------------
 // Node.js binary for spawning CLI
 // ---------------------------------------------------------------------------
@@ -297,35 +299,14 @@ function resolveNodeModulesDir(): string {
 function findSystemNode(): string | null {
   const bundled = getBundledNodePath();
   if (bundled) return bundled;
-
-  if (isWindows) {
-    const candidates = [
-      path.join(process.env.ProgramFiles || '', 'nodejs', 'node.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'fnm_multishells', 'node.exe'),
-    ];
-    try {
-      const result = execSync('where.exe node', { encoding: 'utf-8', timeout: 3000 }).trim();
-      const firstLine = result.split(/\r?\n/)[0];
-      if (firstLine && fs.existsSync(firstLine)) return firstLine;
-    } catch { /* not on PATH */ }
-
-    for (const c of candidates) {
-      if (fs.existsSync(c)) return c;
-    }
-  } else {
-    try {
-      const result = execSync('which node', { encoding: 'utf-8', timeout: 3000 }).trim();
-      if (result && fs.existsSync(result)) return result;
-    } catch { /* not found */ }
-  }
-  return null;
+  return findSystemNodeShared();
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function loadSdk(): Promise<typeof import('@github/copilot-sdk')> {
+async function loadSdk(): Promise<typeof import('@github/copilot-sdk')> {
   if (!sdkModule) {
     await ensureSdkInstalled();
     const modulesDir = resolveNodeModulesDir();

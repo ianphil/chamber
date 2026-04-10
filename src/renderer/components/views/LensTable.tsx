@@ -7,20 +7,11 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
+import { formatTitle, formatDisplayValue } from '../../lib/utils';
 
 interface Props {
   data: Record<string, unknown>;
   schema?: Record<string, unknown>;
-}
-
-function formatTitle(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function formatCell(value: unknown): string {
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
-  return String(value ?? '—');
 }
 
 export function LensTable({ data, schema }: Props) {
@@ -50,7 +41,7 @@ export function LensTable({ data, schema }: Props) {
           {rows.map((row, i) => (
             <TableRow key={i}>
               {columns.map((col) => (
-                <TableCell key={col}>{formatCell(row[col])}</TableCell>
+                <TableCell key={col}>{formatDisplayValue(row[col])}</TableCell>
               ))}
             </TableRow>
           ))}

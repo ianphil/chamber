@@ -1,14 +1,11 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { formatTitle, formatDisplayValue } from '../../lib/utils';
 
 interface Props {
   data: Record<string, unknown>;
   schema?: Record<string, unknown>;
-}
-
-function formatTitle(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export function LensDetail({ data, schema }: Props) {
@@ -40,9 +37,7 @@ export function LensDetail({ data, schema }: Props) {
           {metaKeys.map((key) => {
             const value = data[key];
             const label = schemaProps?.[key]?.title ?? formatTitle(key);
-            const display = Array.isArray(value) ? value.join(', ')
-              : typeof value === 'object' && value !== null ? JSON.stringify(value)
-              : String(value ?? '—');
+            const display = formatDisplayValue(value);
 
             return (
               <div key={key} className="flex justify-between items-start text-sm gap-4">

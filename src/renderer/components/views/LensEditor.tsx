@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
-import { cn } from '../../lib/utils';
+import { cn, formatTitle } from '../../lib/utils';
 import { Save } from 'lucide-react';
 
 interface Props {
   data: Record<string, unknown>;
   schema?: Record<string, unknown>;
   onSave?: (updates: Record<string, unknown>) => void;
-}
-
-function formatTitle(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export function LensEditor({ data, schema, onSave }: Props) {

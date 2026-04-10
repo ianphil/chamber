@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { formatTitle, formatDisplayValue } from '../../lib/utils';
 
 interface Props {
   data: Record<string, unknown>;
@@ -32,16 +33,7 @@ function getEmoji(key: string): string {
   return '📋';
 }
 
-function formatTitle(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function formatValue(value: unknown): string {
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
-  return String(value ?? '—');
-}
-
+ 
 export function LensBriefing({ data, schema }: Props) {
   const keys = Object.keys(data);
   const schemaProps = (schema as { properties?: Record<string, { title?: string }> })?.properties;
@@ -66,7 +58,7 @@ export function LensBriefing({ data, schema }: Props) {
               {isNumber ? (
                 <p className="text-2xl font-bold">{value}</p>
               ) : (
-                <p className="text-sm font-medium">{formatValue(value)}</p>
+                <p className="text-sm font-medium">{formatDisplayValue(value)}</p>
               )}
             </CardContent>
           </Card>

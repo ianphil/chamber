@@ -2,7 +2,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { BrowserWindow } from 'electron';
 import type { LensViewManifest } from '../../shared/types';
 import type { ChatService } from './ChatService';
 

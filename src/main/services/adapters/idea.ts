@@ -6,32 +6,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
 import type { LoadedExtension, ExtensionTool } from '../ExtensionLoader';
-
-function findSystemNode(): string {
-  const isWindows = process.platform === 'win32';
-  if (isWindows) {
-    try {
-      const result = execSync('where.exe node', { encoding: 'utf-8', timeout: 3000 }).trim();
-      const firstLine = result.split(/\r?\n/)[0];
-      if (firstLine && fs.existsSync(firstLine)) return firstLine;
-    } catch { /* not on PATH */ }
-    const candidates = [
-      path.join(process.env.ProgramFiles || '', 'nodejs', 'node.exe'),
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) return c;
-    }
-  } else {
-    try {
-      const result = execSync('which node', { encoding: 'utf-8', timeout: 3000 }).trim();
-      if (result && fs.existsSync(result)) return result;
-    } catch { /* not found */ }
-  }
-  throw new Error('System Node.js not found — required for IDEA extension native modules');
-}
+import { requireSystemNode } from '../nodeResolver';
 
 /**
- * Execute an IDEA tool handler in a child process under system Node.js.
+ * Execute an IDEA tool handlerin a child process under system Node.js.
  * Passes tool name and args as JSON, gets result back via stdout.
  */
 function execIdeaTool(nodePath: string, extDir: string, toolName: string, args: Record<string, unknown>): string {
@@ -166,7 +144,7 @@ export async function loadIdeaExtension(extDir: string): Promise<LoadedExtension
     throw new Error(`IDEA extension requires @tobilu/qmd. Run: cd ${extDir} && npm install`);
   }
 
-  const nodePath = findSystemNode();
+  const nodePath = requireSystemNode('IDEA extension native modules');
   console.log(`[IDEA] Using system Node: ${nodePath}`);
 
   const tools: ExtensionTool[] = [

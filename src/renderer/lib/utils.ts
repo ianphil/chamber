@@ -16,3 +16,15 @@ export function formatTime(timestamp: number): string {
     minute: '2-digit',
   });
 }
+
+/** Convert a snake_case key to Title Case (e.g. "inbox_count" → "Inbox Count") */
+export function formatTitle(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/** Format an unknown value for display — arrays joined, objects stringified, nulls → dash */
+export function formatDisplayValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return String(value ?? '—');
+}

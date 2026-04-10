@@ -1,5 +1,5 @@
 // Lens IPC handlers — wire ViewDiscovery to renderer
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 import type { ViewDiscovery } from '../services/ViewDiscovery';
 
 export function setupLensIPC(viewDiscovery: ViewDiscovery): void {
