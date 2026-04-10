@@ -37,17 +37,17 @@ function getUserAgent(): string {
   return `Chamber/${app.getVersion()}`;
 }
 
-function getCredentialAccount(login: string): string {
+export function getCredentialAccount(login: string): string {
   return `${GITHUB_ACCOUNT_PREFIX}${login}`;
 }
 
-function getLoginFromAccount(account: string): string | null {
+export function getLoginFromAccount(account: string): string | null {
   if (!account.startsWith(GITHUB_ACCOUNT_PREFIX)) return null;
   const login = account.slice(GITHUB_ACCOUNT_PREFIX.length).trim();
   return login || null;
 }
 
-function resolveStoredCredential(credentials: Array<{ account: string; password: string }>): StoredCredential | null {
+export function resolveStoredCredential(credentials: Array<{ account: string; password: string }>): StoredCredential | null {
   const matchingCredentials = credentials
     .map((credential) => {
       const login = getLoginFromAccount(credential.account);
