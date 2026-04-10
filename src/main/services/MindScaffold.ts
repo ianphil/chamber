@@ -6,6 +6,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { getSharedClient } from './SdkLoader';
 import { buildGenesisPrompt } from './genesisPrompt';
+import { GitHubRegistryClient } from './GitHubRegistryClient';
 
 type CopilotSessionType = import('@github/copilot-sdk').CopilotSession;
 
@@ -30,6 +31,11 @@ export interface GenesisProgress {
 
 export class MindScaffold {
   private onProgress?: (progress: GenesisProgress) => void;
+  private registryClient: GitHubRegistryClient;
+
+  constructor(registryClient = new GitHubRegistryClient()) {
+    this.registryClient = registryClient;
+  }
 
   setProgressHandler(handler: (progress: GenesisProgress) => void): void {
     this.onProgress = handler;
@@ -226,15 +232,11 @@ export class MindScaffold {
     const upgradePrefix = '.github/skills/upgrade/';
 
     // Fetch the genesis tree
-    const treeRaw = execSync(
-      `gh api /repos/${owner}/${repo}/git/trees/${GENESIS_CHANNEL}?recursive=1`,
-      { encoding: 'utf8', timeout: 30_000 }
-    );
-    const tree = JSON.parse(treeRaw);
+    const treeEntries = this.registryClient.fetchTree(owner, repo, GENESIS_CHANNEL);
 
     // Find upgrade skill files
     const upgradeFiles: { path: string; sha: string }[] = [];
-    for (const entry of tree.tree) {
+    for (const entry of treeEntries) {
       if (entry.type === 'blob' && entry.path.startsWith(upgradePrefix)) {
         upgradeFiles.push({ path: entry.path, sha: entry.sha });
       }
@@ -246,24 +248,14 @@ export class MindScaffold {
 
     // Download and write each file
     for (const file of upgradeFiles) {
-      const blobRaw = execSync(
-        `gh api /repos/${owner}/${repo}/git/blobs/${file.sha}`,
-        { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
-      );
-      const blob = JSON.parse(blobRaw);
-      const content = Buffer.from(blob.content, 'base64');
+      const content = this.registryClient.fetchBlob(owner, repo, file.sha);
       const localPath = path.join(mindPath, file.path);
       fs.mkdirSync(path.dirname(localPath), { recursive: true });
       fs.writeFileSync(localPath, content);
     }
 
     // Fetch remote registry to get upgrade version info
-    const regRaw = execSync(
-      `gh api /repos/${owner}/${repo}/contents/.github/registry.json?ref=${GENESIS_CHANNEL}`,
-      { encoding: 'utf8' }
-    );
-    const regContent = JSON.parse(regRaw);
-    const remoteRegistry = JSON.parse(Buffer.from(regContent.content, 'base64').toString('utf8'));
+    const remoteRegistry = this.registryClient.fetchJsonContent(owner, repo, '.github/registry.json', GENESIS_CHANNEL) as Record<string, any>;
     const upgradeInfo = remoteRegistry.skills?.upgrade;
 
     // Update local registry with upgrade skill
