@@ -1,53 +1,5 @@
-import React, { createContext, useContext, useReducer, type Dispatch } from 'react';
-import type { ChatMessage, ChatEvent, AgentStatus, ModelInfo, LensViewManifest, ContentBlock } from '../../shared/types';
-
-export type LensView = 'chat' | string;
-
-export interface AppState {
-  messages: ChatMessage[];
-  conversationId: string;
-  isStreaming: boolean;
-  agentStatus: AgentStatus;
-  availableModels: ModelInfo[];
-  selectedModel: string | null;
-  activeView: LensView;
-  discoveredViews: LensViewManifest[];
-  showLanding: boolean;
-}
-
-export type AppAction =
-  | { type: 'ADD_USER_MESSAGE'; payload: { id: string; content: string; timestamp: number } }
-  | { type: 'ADD_ASSISTANT_MESSAGE'; payload: { id: string; timestamp: number } }
-  | { type: 'CHAT_EVENT'; payload: { messageId: string; event: ChatEvent } }
-  | { type: 'SET_AGENT_STATUS'; payload: AgentStatus }
-  | { type: 'SET_AVAILABLE_MODELS'; payload: ModelInfo[] }
-  | { type: 'SET_SELECTED_MODEL'; payload: string | null }
-  | { type: 'SET_ACTIVE_VIEW'; payload: LensView }
-  | { type: 'SET_DISCOVERED_VIEWS'; payload: LensViewManifest[] }
-  | { type: 'SHOW_LANDING' }
-  | { type: 'HIDE_LANDING' }
-  | { type: 'CLEAR_MESSAGES' }
-  | { type: 'NEW_CONVERSATION' };
-
-export const initialState: AppState = {
-  messages: [],
-  conversationId: `conv-${Date.now()}`,
-  isStreaming: false,
-  agentStatus: {
-    connected: false,
-    mindPath: null,
-    agentName: null,
-    sessionActive: false,
-    uptime: null,
-    error: null,
-    extensions: [],
-  },
-  availableModels: [],
-  selectedModel: localStorage.getItem('chamber:selectedModel'),
-  activeView: 'chat',
-  discoveredViews: [],
-  showLanding: false,
-};
+import type { ChatMessage, ChatEvent, ContentBlock } from '../../../shared/types';
+import type { AppState, AppAction } from './state';
 
 /** Extract plain text from content blocks (for search, accessibility, etc.) */
 export function getPlainContent(message: ChatMessage): string {
@@ -232,27 +184,4 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     default:
       return state;
   }
-}
-
-const AppStateContext = createContext<AppState>(initialState);
-const AppDispatchContext = createContext<Dispatch<AppAction>>(() => {});
-
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
-
-  return (
-    <AppStateContext.Provider value={state}>
-      <AppDispatchContext.Provider value={dispatch}>
-        {children}
-      </AppDispatchContext.Provider>
-    </AppStateContext.Provider>
-  );
-}
-
-export function useAppState() {
-  return useContext(AppStateContext);
-}
-
-export function useAppDispatch() {
-  return useContext(AppDispatchContext);
 }

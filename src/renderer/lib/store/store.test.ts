@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { getPlainContent } from './store';
-import type { ChatMessage, ChatEvent, ContentBlock } from '../../shared/types';
+import { getPlainContent } from '.';
+import type { ChatMessage, ChatEvent, ContentBlock } from '../../../shared/types';
 
 function makeMessage(blocks: ContentBlock[], overrides?: Partial<ChatMessage>): ChatMessage {
   return {

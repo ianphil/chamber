@@ -2,9 +2,9 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { handleChatEvent, appReducer, initialState } from './store';
-import type { AppState, AppAction } from './store';
-import type { ChatMessage, ChatEvent } from '../../shared/types';
+import { handleChatEvent, appReducer, initialState } from '.';
+import type { AppState, AppAction } from '.';
+import type { ChatMessage, ChatEvent } from '../../../shared/types';
 import {
   makeMessage,
   makeTextBlock,
@@ -15,7 +15,7 @@ import {
   connectedAgentStatus,
   makeModelInfo,
   makeLensViewManifest,
-} from '../../test/helpers';
+} from '../../../test/helpers';
 
 // ---------------------------------------------------------------------------
 // handleChatEvent
