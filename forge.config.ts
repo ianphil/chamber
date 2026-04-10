@@ -2,6 +2,7 @@ import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
+import AutoUnpackNativesPlugin from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -17,7 +18,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'chamber',
-    extraResource: ['./resources/node', './src/main/assets'],
+    extraResource: ['./resources/node', './src/main/assets', './node_modules/keytar'],
     ...(enableMacOSSigning
       ? {
           osxSign: {},
@@ -56,6 +57,7 @@ const config: ForgeConfig = {
     new MakerDeb({}),
   ],
   plugins: [
+    new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
       // If you are familiar with Vite configuration, it will look really familiar.

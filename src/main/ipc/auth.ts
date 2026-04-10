@@ -6,7 +6,7 @@ export function setupAuthIPC(): void {
   const authService = new AuthService();
 
   ipcMain.handle('auth:getStatus', async () => {
-    const cred = authService.getStoredCredential();
+    const cred = await authService.getStoredCredential();
     return {
       authenticated: cred !== null,
       login: cred?.login,

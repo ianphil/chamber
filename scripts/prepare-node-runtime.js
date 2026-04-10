@@ -10,6 +10,48 @@ const repoRoot = path.resolve(__dirname, '..');
 const targetDir = path.join(repoRoot, 'resources', 'node');
 const markerPath = path.join(targetDir, 'version.txt');
 
+function getNodeBinary(rootDir) {
+  return process.platform === 'win32'
+    ? path.join(rootDir, 'node.exe')
+    : path.join(rootDir, 'bin', 'node');
+}
+
+function getNpmCli(rootDir) {
+  const candidates = process.platform === 'win32'
+    ? [
+        path.join(rootDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        path.join(rootDir, 'npm', 'bin', 'npm-cli.js'),
+      ]
+    : [
+        path.join(rootDir, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        path.join(rootDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+      ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return null;
+}
+
+function validateRuntimeDir(rootDir) {
+  const nodeBinary = getNodeBinary(rootDir);
+  if (!fs.existsSync(nodeBinary)) {
+    throw new Error(`Node binary not found in runtime: ${nodeBinary}`);
+  }
+
+  const npmCli = getNpmCli(rootDir);
+  if (!npmCli) {
+    throw new Error(`npm CLI not found in runtime: ${rootDir}`);
+  }
+
+  return { nodeBinary, npmCli };
+}
+
+function quotePowerShell(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function readNvmrcVersion() {
   try {
     const content = fs.readFileSync(path.join(repoRoot, '.nvmrc'), 'utf-8').trim();
@@ -46,6 +88,61 @@ function runCommand(command, args) {
   const result = spawnSync(command, args, { stdio: 'inherit' });
   if (result.status !== 0) {
     throw new Error(`Command failed: ${command} ${args.join(' ')}`);
+  }
+}
+
+function extractArchive(archivePath, extractDir, ext) {
+  if (ext === 'zip') {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "$ProgressPreference = 'SilentlyContinue'",
+      `Expand-Archive -LiteralPath ${quotePowerShell(archivePath)} -DestinationPath ${quotePowerShell(extractDir)} -Force`,
+    ].join('; ');
+
+    runCommand('powershell', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ]);
+    return;
+  }
+
+  runCommand('tar', ['-xzf', archivePath, '-C', extractDir]);
+}
+
+function promoteRuntime(extractedDir, version) {
+  const resourcesDir = path.dirname(targetDir);
+  const stagingDir = path.join(resourcesDir, 'node.new');
+  const backupDir = path.join(resourcesDir, 'node.old');
+
+  fs.mkdirSync(resourcesDir, { recursive: true });
+  fs.rmSync(stagingDir, { recursive: true, force: true });
+  fs.rmSync(backupDir, { recursive: true, force: true });
+
+  fs.cpSync(extractedDir, stagingDir, { recursive: true });
+  fs.writeFileSync(path.join(stagingDir, 'version.txt'), version, 'utf-8');
+  validateRuntimeDir(stagingDir);
+
+  let previousRuntimeMoved = false;
+  try {
+    if (fs.existsSync(targetDir)) {
+      fs.renameSync(targetDir, backupDir);
+      previousRuntimeMoved = true;
+    }
+
+    fs.renameSync(stagingDir, targetDir);
+    validateRuntimeDir(targetDir);
+    fs.rmSync(backupDir, { recursive: true, force: true });
+  } catch (error) {
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    if (previousRuntimeMoved && fs.existsSync(backupDir)) {
+      fs.renameSync(backupDir, targetDir);
+    }
+    throw error;
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
   }
 }
 
@@ -105,9 +202,9 @@ async function verifyIntegrity(filePath, version, filename) {
 
   if (actualHash !== expectedHash) {
     throw new Error(
-      `Integrity check failed for ${filename}.\n` +
-      `  Expected: ${expectedHash}\n` +
-      `  Actual:   ${actualHash}`
+      `Integrity check failed for ${filename}.\n`
+      + `  Expected: ${expectedHash}\n`
+      + `  Actual:   ${actualHash}`
     );
   }
   console.log('Integrity check passed.');
@@ -116,9 +213,7 @@ async function verifyIntegrity(filePath, version, filename) {
 async function main() {
   const version = resolveVersion();
   const { dist, ext } = resolveDist(version);
-  const nodeBinary = process.platform === 'win32'
-    ? path.join(targetDir, 'node.exe')
-    : path.join(targetDir, 'bin', 'node');
+  const nodeBinary = getNodeBinary(targetDir);
 
   if (fs.existsSync(markerPath) && fs.existsSync(nodeBinary)) {
     const existing = fs.readFileSync(markerPath, 'utf-8').trim();
@@ -132,6 +227,7 @@ async function main() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genesis-node-'));
   try {
     const archivePath = path.join(tempDir, `${dist}.${ext}`);
+    const extractDir = path.join(tempDir, 'extract');
 
     console.log(`Downloading ${url}`);
     await downloadFile(url, archivePath);
@@ -140,34 +236,16 @@ async function main() {
     await verifyIntegrity(archivePath, version, archiveFilename);
 
     console.log('Extracting Node runtime...');
-    if (ext === 'zip') {
-      runCommand('powershell', [
-        '-NoProfile',
-        '-Command',
-        `Expand-Archive -Path "${archivePath}" -DestinationPath "${tempDir}" -Force`,
-      ]);
-    } else {
-      runCommand('tar', ['-xzf', archivePath, '-C', tempDir]);
-    }
+    fs.mkdirSync(extractDir, { recursive: true });
+    extractArchive(archivePath, extractDir, ext);
 
-    const extractedDir = path.join(tempDir, dist);
+    const extractedDir = path.join(extractDir, dist);
     if (!fs.existsSync(extractedDir)) {
       throw new Error(`Extracted Node directory not found: ${extractedDir}`);
     }
+    validateRuntimeDir(extractedDir);
 
-    fs.rmSync(targetDir, { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-    try {
-      fs.renameSync(extractedDir, targetDir);
-    } catch (error) {
-      if (error && error.code === 'EXDEV') {
-        fs.cpSync(extractedDir, targetDir, { recursive: true });
-        fs.rmSync(extractedDir, { recursive: true, force: true });
-      } else {
-        throw error;
-      }
-    }
-    fs.writeFileSync(markerPath, version, 'utf-8');
+    promoteRuntime(extractedDir, version);
 
     console.log(`Bundled Node runtime ready at ${targetDir}`);
   } finally {

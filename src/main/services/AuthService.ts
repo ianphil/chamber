@@ -1,124 +1,68 @@
-// AuthService — GitHub device flow + Windows Credential Manager storage.
-// Stores token where copilot CLI expects it — one login, everything works.
-// IMPORTANT: The CLI reads credentials via keytar, which interprets the
-// CredentialBlob as UTF-8. We must write UTF-8 bytes — NOT cmdkey, which
-// writes UTF-16LE and produces null-byte-riddled tokens when keytar reads them.
+// AuthService — GitHub device flow + Copilot CLI credential storage via keytar.
+// Stores the token in the exact Windows credential shape the CLI reads.
 
+import { app } from 'electron';
 import * as https from 'https';
-import { execFileSync } from 'child_process';
+import { createRequire } from 'module';
+import * as path from 'path';
 
 const CLIENT_ID = 'Ov23ctDVkRmgkPke0Mmm';
 const DEVICE_CODE_URL = 'https://github.com/login/device/code';
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const AUTH_SCOPE = 'read:user,read:org,repo,gist';
-const CREDENTIAL_TARGET_PREFIX = 'copilot-cli/https://github.com';
+// The previous CredWrite-based implementation used the same service/account shape,
+// so existing Windows credentials remain readable after the switch to keytar.
+const KEYTAR_SERVICE = 'copilot-cli';
+const GITHUB_ACCOUNT_PREFIX = 'https://github.com:';
+const runtimeRequire = createRequire(__filename);
 
-// Win32 Credential Manager — write UTF-8 blobs compatible with keytar.
-// Uses a precompiled .NET script via PowerShell to call CredWriteW directly.
-// cmdkey stores UTF-16LE; keytar reads UTF-8. This bridges the gap.
+interface StoredCredential {
+  login: string;
+  account: string;
+  password: string;
+}
 
-function writeCredentialUtf8(target: string, user: string, token: string): boolean {
-  // Write a temp .cs file, compile, and run — too slow.
-  // Instead, use csc.exe directly via a temp C# source to avoid Add-Type latency.
-  // Actually simplest: write the token as raw UTF-8 bytes to a temp file,
-  // then use a minimal PowerShell script with P/Invoke preloaded from disk.
-  //
-  // Cleanest approach: Node.js can call advapi32 CredWriteW via a tiny native shim.
-  // But for now, write a .NET console app inline with csc.
-
-  // Actually — just write the raw bytes ourselves. Node has access to everything we need.
-  // Use a C# one-liner via dotnet-script or csc. But those may not be present.
-
-  // Final approach: Use node child_process to run a small C# program via csc.exe
-  // which is always present in the .NET Framework directory on Windows.
-  const fs = require('fs') as typeof import('fs');
-  const path = require('path') as typeof import('path');
-  const os = require('os') as typeof import('os');
-  const { execFileSync: efs } = require('child_process') as typeof import('child_process');
-
-  const tmpDir = path.join(os.tmpdir(), 'chamber-cred');
-  fs.mkdirSync(tmpDir, { recursive: true });
-
-  const csPath = path.join(tmpDir, 'CredWrite.cs');
-  const exePath = path.join(tmpDir, 'CredWrite.exe');
-
-  // Only compile once — reuse the exe if it exists
-  if (!fs.existsSync(exePath)) {
-    const csSource = `
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-
-class Program {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    struct CREDENTIAL {
-        public int Flags;
-        public int Type;
-        public string TargetName;
-        public string Comment;
-        public long LastWritten;
-        public int CredentialBlobSize;
-        public IntPtr CredentialBlob;
-        public int Persist;
-        public int AttributeCount;
-        public IntPtr Attributes;
-        public string TargetAlias;
-        public string UserName;
-    }
-
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    static extern bool CredWrite(ref CREDENTIAL cred, int flags);
-
-    static int Main(string[] args) {
-        if (args.Length < 3) { Console.Error.WriteLine("Usage: CredWrite target user token"); return 1; }
-        byte[] blob = Encoding.UTF8.GetBytes(args[2]);
-        IntPtr blobPtr = Marshal.AllocHGlobal(blob.Length);
-        Marshal.Copy(blob, 0, blobPtr, blob.Length);
-        CREDENTIAL cred = new CREDENTIAL();
-        cred.Type = 1;
-        cred.TargetName = args[0];
-        cred.UserName = args[1];
-        cred.CredentialBlob = blobPtr;
-        cred.CredentialBlobSize = blob.Length;
-        cred.Persist = 2;
-        bool ok = CredWrite(ref cred, 0);
-        Marshal.FreeHGlobal(blobPtr);
-        if (!ok) { Console.Error.WriteLine("CredWrite failed: " + Marshal.GetLastWin32Error()); return 1; }
-        return 0;
-    }
-}`;
-    fs.writeFileSync(csPath, csSource);
-
-    // Find csc.exe from .NET Framework (always present on Windows)
-    const frameworkDir = path.join(
-      process.env.WINDIR || 'C:\\Windows',
-      'Microsoft.NET', 'Framework64', 'v4.0.30319'
-    );
-    const cscPath = path.join(frameworkDir, 'csc.exe');
-
-    if (!fs.existsSync(cscPath)) {
-      console.error('[Auth] csc.exe not found at', cscPath);
-      return false;
-    }
-
-    try {
-      efs(cscPath, ['/nologo', '/optimize', `/out:${exePath}`, csPath], {
-        stdio: 'pipe',
-        timeout: 15_000,
-      });
-    } catch (err) {
-      console.error('[Auth] Failed to compile CredWrite:', err);
-      return false;
-    }
+function loadKeytar(): typeof import('keytar') {
+  if (!app.isPackaged) {
+    return runtimeRequire('keytar') as typeof import('keytar');
   }
 
-  try {
-    efs(exePath, [target, user, token], { stdio: 'pipe', timeout: 5_000 });
-    return true;
-  } catch (err) {
-    console.error('[Auth] CredWrite.exe failed:', err);
-    return false;
+  const packagedKeytarPath = path.join(process.resourcesPath, 'keytar', 'lib', 'keytar.js');
+  return runtimeRequire(packagedKeytarPath) as typeof import('keytar');
+}
+
+const keytar = loadKeytar();
+
+function getUserAgent(): string {
+  return `Chamber/${app.getVersion()}`;
+}
+
+function getCredentialAccount(login: string): string {
+  return `${GITHUB_ACCOUNT_PREFIX}${login}`;
+}
+
+function getLoginFromAccount(account: string): string | null {
+  if (!account.startsWith(GITHUB_ACCOUNT_PREFIX)) return null;
+  const login = account.slice(GITHUB_ACCOUNT_PREFIX.length).trim();
+  return login || null;
+}
+
+function resolveStoredCredential(credentials: Array<{ account: string; password: string }>): StoredCredential | null {
+  const matchingCredentials = credentials
+    .map((credential) => {
+      const login = getLoginFromAccount(credential.account);
+      if (!login || !credential.password) return null;
+      return { login, account: credential.account, password: credential.password };
+    })
+    .filter((credential): credential is StoredCredential => credential !== null);
+
+  if (matchingCredentials.length === 0) return null;
+
+  if (matchingCredentials.length > 1) {
+    console.warn(`[Auth] Multiple Copilot credentials found; using ${matchingCredentials[0].account}`);
   }
+
+  return matchingCredentials[0];
 }
 
 export interface AuthProgress {
@@ -141,7 +85,7 @@ function postJson(url: string, body: Record<string, string>): Promise<Record<str
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data),
-        'User-Agent': 'Chamber/0.11.0',
+        'User-Agent': getUserAgent(),
       },
     };
 
@@ -169,7 +113,7 @@ function getJson(url: string, token: string): Promise<Record<string, unknown>> {
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
-        'User-Agent': 'Chamber/0.11.0',
+        'User-Agent': getUserAgent(),
       },
     };
 
@@ -198,36 +142,20 @@ export class AuthService {
     this.aborted = true;
   }
 
-  /** Check if a copilot credential exists in Windows Credential Manager */
-  getStoredCredential(): { login: string } | null {
+  async getStoredCredential(): Promise<{ login: string } | null> {
     try {
-      const output = execFileSync('cmdkey', [
-        `/list:${CREDENTIAL_TARGET_PREFIX}*`,
-      ], { encoding: 'utf-8' });
-      const match = output.match(/Target:\s+copilot-cli\/https:\/\/github\.com:(\S+)/);
-      if (match) {
-        return { login: match[1] };
-      }
-    } catch { /* no credentials */ }
+      const credential = resolveStoredCredential(await keytar.findCredentials(KEYTAR_SERVICE));
+      return credential ? { login: credential.login } : null;
+    } catch (err) {
+      console.error('[Auth] Failed to read stored credential:', err);
+    }
+
     return null;
   }
 
-  /** Store token in Windows Credential Manager as UTF-8 blob.
-   *  The CLI reads credentials via keytar which interprets blobs as UTF-8.
-   *  cmdkey writes UTF-16LE, causing null-byte corruption when keytar reads. */
-  private storeCredential(login: string, token: string): void {
-    const target = `${CREDENTIAL_TARGET_PREFIX}:${login}`;
-    const user = `https://github.com:${login}`;
-    try {
-      const ok = writeCredentialUtf8(target, user, token);
-      if (ok) {
-        console.log(`[Auth] Stored credential for ${login} (UTF-8 blob)`);
-      } else {
-        console.error('[Auth] CredWrite returned false');
-      }
-    } catch (err) {
-      console.error('[Auth] Failed to store credential:', err);
-    }
+  private async storeCredential(login: string, token: string): Promise<void> {
+    await keytar.setPassword(KEYTAR_SERVICE, getCredentialAccount(login), token);
+    console.log(`[Auth] Stored credential for ${login} via keytar`);
   }
 
   async startLogin(): Promise<{ success: boolean; login?: string }> {
@@ -270,10 +198,11 @@ export class AuthService {
           try {
             const user = await getJson('https://api.github.com/user', token);
             login = String(user.login);
-          } catch { /* use default */ }
+          } catch (err) {
+            console.warn('[Auth] Failed to fetch user login, using default account name:', err);
+          }
 
-          // Store in Windows Credential Manager
-          this.storeCredential(login, token);
+          await this.storeCredential(login, token);
 
           this.onProgress?.({ step: 'authenticated', login });
           return { success: true, login };
