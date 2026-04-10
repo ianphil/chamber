@@ -69,17 +69,7 @@ jobs:
   build:
     needs: check-version
     if: needs.check-version.outputs.should_release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-          - os: macos-latest
-            platform: macos
-          - os: ubuntu-latest
-            platform: linux
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -93,45 +83,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Import Apple code-signing certs (macOS)
-        if: matrix.platform == 'macos'
-        id: macos-certs
-        uses: apple-actions/import-codesign-certs@v3
-        continue-on-error: true
-        with:
-          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-
-      - name: Build and package (macOS signed + notarized)
-        if: matrix.platform == 'macos' && steps.macos-certs.outcome == 'success'
-        run: npm run make
-        env:
-          ENABLE_MACOS_SIGNING: 'true'
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Build and package (macOS unsigned)
-        if: matrix.platform == 'macos' && steps.macos-certs.outcome != 'success'
+      - name: Build and package
         run: npm run make
 
-      - name: Build and package (non-macOS)
-        if: matrix.platform != 'macos'
-        run: npm run make
-
-      - name: List output files
-        shell: bash
-        run: find out/make -type f 2>/dev/null || dir out\make /s /b
-
-      - name: Stage artifacts (Unix)
-        if: matrix.platform != 'windows'
-        shell: bash
-        run: |
-          mkdir -p staged
-          find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} staged/ \;
-
-      - name: Stage artifacts (Windows)
-        if: matrix.platform == 'windows'
+      - name: Stage artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path staged
@@ -141,7 +96,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.platform }}
+          name: release-windows
           path: staged/*
           if-no-files-found: error
 
@@ -158,6 +113,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          name: release-windows
           path: artifacts
 
       - name: Display downloaded files
