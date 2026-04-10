@@ -3,11 +3,8 @@
 
 import { getSharedClient } from './SdkLoader';
 import type { ExtensionLoader } from './ExtensionLoader';
+import { IdentityLoader } from './IdentityLoader';
 import type { ChatEvent, ModelInfo } from '../../shared/types';
-import * as fs from 'fs';
-import * as path from 'path';
-
-const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 
 type CopilotSessionType = import('@github/copilot-sdk').CopilotSession;
 
@@ -16,6 +13,11 @@ export class ChatService {
   private abortControllers: Map<string, AbortController> = new Map();
   private mindPath: string | null = null;
   private extensionLoader: ExtensionLoader | null = null;
+  private identityLoader: IdentityLoader;
+
+  constructor(identityLoader?: IdentityLoader) {
+    this.identityLoader = identityLoader ?? new IdentityLoader();
+  }
 
   setMindPath(mindPath: string): void {
     this.mindPath = mindPath;
@@ -31,39 +33,6 @@ export class ChatService {
 
   getExtensionLoader(): ExtensionLoader | null {
     return this.extensionLoader;
-  }
-
-  /** Load SOUL.md + agent files into a single identity string for systemMessage */
-  private loadIdentity(): string | null {
-    if (!this.mindPath) return null;
-    const parts: string[] = [];
-
-    // 1. SOUL.md
-    try {
-      const soulPath = path.join(this.mindPath, 'SOUL.md');
-      if (fs.existsSync(soulPath)) {
-        parts.push(fs.readFileSync(soulPath, 'utf-8'));
-      }
-    } catch { /* missing */ }
-
-    // 2. .github/agents/*.agent.md (strip YAML frontmatter)
-    try {
-      const agentsDir = path.join(this.mindPath, '.github', 'agents');
-      if (fs.existsSync(agentsDir)) {
-        const files = fs.readdirSync(agentsDir)
-          .filter(f => f.endsWith('.agent.md'))
-          .sort();
-        for (const file of files) {
-          const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
-          parts.push(content.replace(FRONTMATTER_RE, '').trim());
-        }
-      }
-    } catch { /* missing */ }
-
-    if (parts.length === 0) return null;
-    const identity = parts.join('\n\n---\n\n');
-    console.log(`[ChatService] Loaded identity (${identity.length} chars)`);
-    return identity;
   }
 
   private async getOrCreateSession(conversationId: string, model?: string): Promise<CopilotSessionType> {
@@ -90,7 +59,7 @@ export class ChatService {
         // Tone: "100 words or less" → removed (agent's Vibe section covers this)
         // Keeps: tool_instructions, safety, environment, code_change_rules, guidelines.
         // custom_instructions stays open for per-repo .github/copilot-instructions.md.
-        const identity = this.loadIdentity();
+        const identity = this.identityLoader.load(this.mindPath);
         if (identity) {
           config.systemMessage = {
             mode: 'customize',

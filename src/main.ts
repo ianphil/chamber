@@ -7,6 +7,7 @@ import { ExtensionLoader } from './main/services/ExtensionLoader';
 import { ConfigService } from './main/services/ConfigService';
 import { AuthService } from './main/services/AuthService';
 import { MindScaffold } from './main/services/MindScaffold';
+import { IdentityLoader } from './main/services/IdentityLoader';
 import { loadCanvasExtension } from './main/services/adapters/canvas';
 import { loadCronExtension } from './main/services/adapters/cron';
 import { loadIdeaExtension } from './main/services/adapters/idea';
@@ -22,7 +23,8 @@ if (started) {
   app.quit();
 }
 
-const chatService = new ChatService();
+const identityLoader = new IdentityLoader();
+const chatService = new ChatService(identityLoader);
 const extensionLoader = new ExtensionLoader();
 const viewDiscovery = new ViewDiscovery(chatService);
 const configService = new ConfigService();
