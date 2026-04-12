@@ -48,12 +48,22 @@ const chatService = new ChatService(mindManager);
 // Wire Lens refresh to use the mind's session via ChatService
 viewDiscovery.setRefreshHandler({
   sendBackgroundPrompt: async (mindPath: string, prompt: string) => {
-    // Find the mind by path and send the prompt
     const mind = mindManager.listMinds().find(m => m.mindPath === mindPath);
     if (!mind) return;
     const context = mindManager.getMind(mind.mindId);
     if (!context?.session) return;
+
     await context.session.send({ prompt });
+
+    // Wait for the agent to finish processing
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 120_000);
+      const unsub = context.session!.on('session.idle', () => {
+        clearTimeout(timeout);
+        unsub();
+        resolve();
+      });
+    });
   },
 });
 
