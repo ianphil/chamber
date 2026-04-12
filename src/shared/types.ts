@@ -84,6 +84,7 @@ export interface MindContext {
   readonly identity: MindIdentity;
   readonly status: MindStatus;
   readonly error?: string;
+  readonly windowed?: boolean;
 }
 
 /** Persisted mind record in config */

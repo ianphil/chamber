@@ -290,8 +290,69 @@ describe('MindManager', () => {
       const promise2 = manager.loadMind('C:\\agents\\q');
       const [mind1, mind2] = await Promise.all([promise1, promise2]);
       expect(mind1.mindId).toBe(mind2.mindId);
-      // Only one client created despite two concurrent calls
       expect(mockClientFactory.createClient).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('window management', () => {
+    it('attachWindow associates a window with a mind', async () => {
+      const mind = await manager.loadMind('C:\\agents\\q');
+      const mockWin = { focus: vi.fn(), close: vi.fn(), on: vi.fn() };
+      manager.attachWindow(mind.mindId, mockWin);
+      expect(manager.isWindowed(mind.mindId)).toBe(true);
+      expect(manager.getWindow(mind.mindId)).toBe(mockWin);
+    });
+
+    it('detachWindow removes association, mind stays loaded', async () => {
+      const mind = await manager.loadMind('C:\\agents\\q');
+      const mockWin = { focus: vi.fn(), close: vi.fn(), on: vi.fn() };
+      manager.attachWindow(mind.mindId, mockWin);
+      manager.detachWindow(mind.mindId);
+      expect(manager.isWindowed(mind.mindId)).toBe(false);
+      expect(manager.getWindow(mind.mindId)).toBeNull();
+      expect(manager.getMind(mind.mindId)).toBeDefined();
+    });
+
+    it('getWindow returns null for non-windowed mind', async () => {
+      const mind = await manager.loadMind('C:\\agents\\q');
+      expect(manager.getWindow(mind.mindId)).toBeNull();
+    });
+
+    it('listMinds includes windowed flag', async () => {
+      const mind = await manager.loadMind('C:\\agents\\q');
+      expect(manager.listMinds()[0].windowed).toBe(false);
+      manager.attachWindow(mind.mindId, { focus: vi.fn(), close: vi.fn(), on: vi.fn() });
+      expect(manager.listMinds()[0].windowed).toBe(true);
+    });
+
+    it('auto-detaches on window close event', async () => {
+      const mind = await manager.loadMind('C:\\agents\\q');
+      let closeHandler: (() => void) | null = null;
+      const mockWin = {
+        focus: vi.fn(),
+        close: vi.fn(),
+        on: vi.fn((event: string, cb: () => void) => { if (event === 'closed') closeHandler = cb; }),
+      };
+      manager.attachWindow(mind.mindId, mockWin);
+      expect(manager.isWindowed(mind.mindId)).toBe(true);
+
+      // Simulate window close
+      closeHandler!();
+      expect(manager.isWindowed(mind.mindId)).toBe(false);
+    });
+
+    it('emits mind:windowed and mind:unwindowed events', async () => {
+      const mind = await manager.loadMind('C:\\agents\\q');
+      const windowed = vi.fn();
+      const unwindowed = vi.fn();
+      manager.on('mind:windowed', windowed);
+      manager.on('mind:unwindowed', unwindowed);
+
+      manager.attachWindow(mind.mindId, { focus: vi.fn(), close: vi.fn(), on: vi.fn() });
+      expect(windowed).toHaveBeenCalledWith(mind.mindId);
+
+      manager.detachWindow(mind.mindId);
+      expect(unwindowed).toHaveBeenCalledWith(mind.mindId);
     });
   });
 });

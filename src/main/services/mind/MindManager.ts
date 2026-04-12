@@ -17,6 +17,7 @@ export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
   private pathToId = new Map<string, string>();
   private loading = new Map<string, Promise<MindContext>>();
+  private windowByMind = new Map<string, { focus: () => void; close: () => void; on: (event: string, cb: () => void) => void }>();
   private activeMindId: string | null = null;
 
   constructor(
@@ -141,6 +142,28 @@ export class MindManager extends EventEmitter {
     return this.activeMindId;
   }
 
+  // --- Window management ---
+
+  attachWindow(mindId: string, win: { focus: () => void; close: () => void; on: (event: string, cb: () => void) => void }): void {
+    if (!this.minds.has(mindId)) return;
+    this.windowByMind.set(mindId, win);
+    win.on('closed', () => this.detachWindow(mindId));
+    this.emit('mind:windowed', mindId);
+  }
+
+  detachWindow(mindId: string): void {
+    this.windowByMind.delete(mindId);
+    this.emit('mind:unwindowed', mindId);
+  }
+
+  getWindow(mindId: string): { focus: () => void; close: () => void } | null {
+    return this.windowByMind.get(mindId) ?? null;
+  }
+
+  isWindowed(mindId: string): boolean {
+    return this.windowByMind.has(mindId);
+  }
+
   async recreateSession(mindId: string): Promise<void> {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
@@ -199,6 +222,7 @@ export class MindManager extends EventEmitter {
       identity: ctx.identity,
       status: ctx.status,
       error: ctx.error,
+      windowed: this.windowByMind.has(ctx.mindId),
     };
   }
 
