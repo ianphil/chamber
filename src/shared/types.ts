@@ -66,13 +66,47 @@ export interface AgentStatus {
   extensions: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Mind — multi-mind runtime types
+// ---------------------------------------------------------------------------
+
+export interface MindIdentity {
+  readonly name: string;
+  readonly systemMessage: string;
+}
+
+export type MindStatus = 'loading' | 'ready' | 'error' | 'unloading';
+
+/** Shared mind context — safe for renderer consumption */
+export interface MindContext {
+  readonly mindId: string;
+  readonly mindPath: string;
+  readonly identity: MindIdentity;
+  readonly status: MindStatus;
+  readonly error?: string;
+}
+
+/** Persisted mind record in config */
+export interface MindRecord {
+  id: string;
+  path: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
 }
 
-export interface AppConfig {
+/** @deprecated Use AppConfigV2 — kept for migration */
+export interface AppConfigV1 {
   mindPath: string | null;
+  theme: 'light' | 'dark' | 'system';
+}
+
+export interface AppConfig {
+  version: 2;
+  minds: MindRecord[];
+  activeMindId: string | null;
   theme: 'light' | 'dark' | 'system';
 }
 
@@ -91,12 +125,21 @@ export interface LensViewManifest {
 
 export interface ElectronAPI {
   chat: {
-    send: (conversationId: string, message: string, messageId: string, model?: string) => Promise<void>;
-    stop: (conversationId: string, messageId: string) => Promise<void>;
-    newConversation: (conversationId: string) => Promise<void>;
+    send: (mindId: string, message: string, messageId: string, model?: string) => Promise<void>;
+    stop: (mindId: string, messageId: string) => Promise<void>;
+    newConversation: (mindId: string) => Promise<void>;
     listModels: () => Promise<ModelInfo[]>;
-    onEvent: (callback: (messageId: string, event: ChatEvent) => void) => () => void;
+    onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent) => void) => () => void;
   };
+  mind: {
+    add: (mindPath: string) => Promise<MindContext>;
+    remove: (mindId: string) => Promise<void>;
+    list: () => Promise<MindContext[]>;
+    setActive: (mindId: string) => Promise<void>;
+    selectDirectory: () => Promise<string | null>;
+    onMindChanged: (callback: (minds: MindContext[]) => void) => () => void;
+  };
+  /** @deprecated Use mind: namespace instead */
   agent: {
     getStatus: () => Promise<AgentStatus>;
     selectMindDirectory: () => Promise<string | null>;
@@ -104,10 +147,10 @@ export interface ElectronAPI {
     onStatusChanged: (callback: (status: AgentStatus) => void) => () => void;
   };
   lens: {
-    getViews: () => Promise<LensViewManifest[]>;
-    getViewData: (viewId: string) => Promise<Record<string, unknown> | null>;
-    refreshView: (viewId: string) => Promise<Record<string, unknown> | null>;
-    sendAction: (viewId: string, action: string) => Promise<Record<string, unknown> | null>;
+    getViews: (mindId?: string) => Promise<LensViewManifest[]>;
+    getViewData: (viewId: string, mindId?: string) => Promise<Record<string, unknown> | null>;
+    refreshView: (viewId: string, mindId?: string) => Promise<Record<string, unknown> | null>;
+    sendAction: (viewId: string, action: string, mindId?: string) => Promise<Record<string, unknown> | null>;
     onViewsChanged: (callback: (views: LensViewManifest[]) => void) => () => void;
   };
   auth: {
