@@ -1,38 +1,26 @@
-// Chat IPC handlers — wire ChatService to renderer via ipcMain
+// Chat IPC handlers — thin adapters for ChatService
 import { ipcMain, BrowserWindow } from 'electron';
-import { ChatService } from '../services/chat';
+import type { ChatService } from '../services/chat/ChatService';
 import type { ChatEvent } from '../../shared/types';
 
 export function setupChatIPC(chatService: ChatService): void {
-  ipcMain.handle('chat:send', async (event, conversationId: string, message: string, messageId: string, model?: string) => {
+  ipcMain.handle('chat:send', async (event, mindId: string, message: string, messageId: string, model?: string) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
 
-    const emit = (evt: ChatEvent) => win.webContents.send('chat:event', messageId, evt);
-
-    await chatService.sendMessage(conversationId, message, messageId, emit, model);
+    const emit = (evt: ChatEvent) => win.webContents.send('chat:event', mindId, messageId, evt);
+    await chatService.sendMessage(mindId, message, messageId, emit, model);
   });
 
-  ipcMain.handle('chat:listModels', async () => {
-    return chatService.listModels();
+  ipcMain.handle('chat:listModels', async (_event, mindId: string) => {
+    return chatService.listModels(mindId);
   });
 
-  ipcMain.handle('chat:stop', async (event, conversationId: string, messageId: string) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-
-    await chatService.cancelMessage(
-      conversationId,
-      messageId,
-      (msgId) => win.webContents.send('chat:event', msgId, { type: 'done' } as ChatEvent),
-    );
+  ipcMain.handle('chat:stop', async (_event, mindId: string, messageId: string) => {
+    await chatService.cancelMessage(mindId, messageId);
   });
 
-  ipcMain.handle('chat:newConversation', async (_event, conversationId: string) => {
-    const controller = chatService.getAbortController(conversationId);
-    if (controller) {
-      controller.abort();
-    }
-    await chatService.destroySession(conversationId);
+  ipcMain.handle('chat:newConversation', async (_event, mindId: string) => {
+    await chatService.newConversation(mindId);
   });
 }
