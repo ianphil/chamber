@@ -11,6 +11,7 @@
 - [ ] **Upgrade genesis-created minds on open** `bug` — minds created via CLI genesis (not Chamber) may be missing lens defaults, lens skill, and other Chamber-specific bootstrapping. When a mind is opened in Chamber for the first time, detect and run `seedLensDefaults` + `installLensSkill` + any missing capabilities. *(Ian, 2026-04-12)*
 - [ ] **Landing screen needs a back button** `ux` — when "Add Agent" navigates to the landing screen, there's no way to go back if you change your mind. Add a back/cancel action that returns to the previous chat view. *(Ian, 2026-04-12)*
 - [ ] **Lens refresh survives view switching** `ux` — clicking away from a lens while it's refreshing drops the pending result. The agent still writes the file, but the UI never picks up the new data. Either show a toast when refresh completes, or re-read data when returning to the view. *(Ian, 2026-04-12)*
+- [ ] **Popout should continue conversation** `ux` — popping out an agent starts a fresh chat instead of continuing the current conversation. Messages should transfer to the popout and return when closed. Related to conversation history feature. *(Ian, 2026-04-12)*
 
 ## Next
 
