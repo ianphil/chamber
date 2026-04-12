@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
 import { Plus, X, Bot, MessageSquarePlus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { MindContext } from '../../../shared/types';
+
+const MIN_WIDTH = 140;
+const MAX_WIDTH = 400;
+const STORAGE_KEY = 'chamber:sidebarWidth';
 
 function statusColor(status: MindContext['status']): string {
   switch (status) {
@@ -18,6 +22,11 @@ function statusColor(status: MindContext['status']): string {
 export function MindSidebar() {
   const { minds, activeMindId } = useAppState();
   const dispatch = useAppDispatch();
+  const [width, setWidth] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, parseInt(saved, 10))) : 192;
+  });
+  const isResizing = useRef(false);
 
   const handleAddMind = async () => {
     dispatch({ type: 'SHOW_LANDING' });
@@ -35,10 +44,42 @@ export function MindSidebar() {
     dispatch({ type: 'REMOVE_MIND', payload: mindId });
   };
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = width;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + ev.clientX - startX));
+      setWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isResizing.current = false;
+      localStorage.setItem(STORAGE_KEY, String(width));
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [width]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, String(width));
+  }, [width]);
+
   if (minds.length === 0) return null;
 
   return (
-    <div className="w-48 bg-card/50 border-r border-border flex flex-col shrink-0">
+    <div className="relative bg-card/50 border-r border-border flex flex-col shrink-0" style={{ width }}>
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent/50 active:bg-accent z-10"
+      />
       <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
         Agents
       </div>
