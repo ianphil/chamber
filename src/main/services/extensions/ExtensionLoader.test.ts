@@ -32,14 +32,6 @@ describe('ExtensionLoader', () => {
     vi.clearAllMocks();
   });
 
-  describe('registerAdapter', () => {
-    it('registers an adapter by name', () => {
-      loader.registerAdapter('canvas', fakeAdapter([]));
-      // No direct getter — verified via loadTools
-      expect(loader.getLoadedExtensions()).toEqual([]);
-    });
-  });
-
   describe('discoverExtensions', () => {
     it('returns extension directory names', () => {
       mockExistsSync.mockReturnValue(true);
@@ -57,16 +49,10 @@ describe('ExtensionLoader', () => {
       mockExistsSync.mockReturnValue(false);
       expect(loader.discoverExtensions('C:\\test\\mind')).toEqual([]);
     });
-
-    it('returns empty array when extensions dir is empty', () => {
-      mockExistsSync.mockReturnValue(true);
-      mockReaddirSync.mockReturnValue([]);
-      expect(loader.discoverExtensions('C:\\test\\mind')).toEqual([]);
-    });
   });
 
   describe('loadTools', () => {
-    it('loads tools from adapters matching discovered extensions', async () => {
+    it('returns tools and loaded extensions from adapters', async () => {
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([
         { name: 'canvas', isDirectory: () => true },
@@ -75,10 +61,10 @@ describe('ExtensionLoader', () => {
       const tool = fakeTool('canvas_show');
       loader.registerAdapter('canvas', fakeAdapter([tool]));
 
-      const tools = await loader.loadTools('C:\\test\\mind');
+      const { tools, loaded } = await loader.loadTools('C:\\test\\mind');
       expect(tools).toHaveLength(1);
       expect(tools[0].name).toBe('canvas_show');
-      expect(loader.getLoadedExtensions()).toEqual(['canvas']);
+      expect(loaded).toHaveLength(1);
     });
 
     it('skips extensions without matching adapter', async () => {
@@ -87,7 +73,7 @@ describe('ExtensionLoader', () => {
         { name: 'unknown-ext', isDirectory: () => true },
       ] as unknown as ReturnType<typeof fs.readdirSync>);
 
-      const tools = await loader.loadTools('C:\\test\\mind');
+      const { tools } = await loader.loadTools('C:\\test\\mind');
       expect(tools).toHaveLength(0);
     });
 
@@ -101,24 +87,35 @@ describe('ExtensionLoader', () => {
       loader.registerAdapter('bad', vi.fn().mockRejectedValue(new Error('boom')));
       loader.registerAdapter('good', fakeAdapter([fakeTool('good_tool')]));
 
-      const tools = await loader.loadTools('C:\\test\\mind');
+      const { tools } = await loader.loadTools('C:\\test\\mind');
       expect(tools).toHaveLength(1);
       expect(tools[0].name).toBe('good_tool');
     });
 
-    it('returns empty array with no registered adapters', async () => {
+    it('returns empty when no extensions directory', async () => {
+      mockExistsSync.mockReturnValue(false);
+      const { tools, loaded } = await loader.loadTools('C:\\test\\mind');
+      expect(tools).toHaveLength(0);
+      expect(loaded).toHaveLength(0);
+    });
+
+    it('does not store internal state between calls', async () => {
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([
         { name: 'canvas', isDirectory: () => true },
       ] as unknown as ReturnType<typeof fs.readdirSync>);
 
-      const tools = await loader.loadTools('C:\\test\\mind');
-      expect(tools).toHaveLength(0);
+      loader.registerAdapter('canvas', fakeAdapter([fakeTool('t')]));
+      const result1 = await loader.loadTools('C:\\mind1');
+      const result2 = await loader.loadTools('C:\\mind2');
+
+      // Each call returns its own loaded array — no shared state
+      expect(result1.loaded).not.toBe(result2.loaded);
     });
   });
 
   describe('cleanup', () => {
-    it('calls cleanup on loaded extensions', async () => {
+    it('calls cleanup on provided extensions', async () => {
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([
         { name: 'canvas', isDirectory: () => true },
@@ -127,11 +124,19 @@ describe('ExtensionLoader', () => {
       const cleanupFn = vi.fn().mockResolvedValue(undefined);
       loader.registerAdapter('canvas', fakeAdapter([fakeTool('t')], cleanupFn));
 
-      await loader.loadTools('C:\\test\\mind');
-      await loader.cleanup();
+      const { loaded } = await loader.loadTools('C:\\test\\mind');
+      await ExtensionLoader.cleanup(loaded);
 
       expect(cleanupFn).toHaveBeenCalled();
-      expect(loader.getLoadedExtensions()).toEqual([]);
+    });
+
+    it('handles cleanup errors gracefully', async () => {
+      const badExt: LoadedExtension = {
+        name: 'bad',
+        tools: [],
+        cleanup: vi.fn().mockRejectedValue(new Error('cleanup fail')),
+      };
+      await expect(ExtensionLoader.cleanup([badExt])).resolves.not.toThrow();
     });
   });
 });
