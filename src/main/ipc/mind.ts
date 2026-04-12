@@ -157,15 +157,16 @@ export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): v
   });
 
   // Emit mind changes to all windows
-  mindManager.on('mind:loaded', () => {
+  const broadcastMinds = () => {
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('mind:changed', mindManager.listMinds());
+      if (!win.isDestroyed()) {
+        win.webContents.send('mind:changed', mindManager.listMinds());
+      }
     }
-  });
+  };
 
-  mindManager.on('mind:unloaded', () => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('mind:changed', mindManager.listMinds());
-    }
-  });
+  mindManager.on('mind:loaded', broadcastMinds);
+  mindManager.on('mind:unloaded', broadcastMinds);
+  mindManager.on('mind:windowed', broadcastMinds);
+  mindManager.on('mind:unwindowed', broadcastMinds);
 }
