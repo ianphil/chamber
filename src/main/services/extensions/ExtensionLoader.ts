@@ -1,5 +1,5 @@
 // ExtensionLoader — discovers mind extensions and loads their tools into SDK sessions.
-// Each supported extension has an adapter that knows how to initialize it.
+// Stateless: returns loaded extensions, caller stores them per-mind.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,9 +19,13 @@ export interface LoadedExtension {
 
 export type ExtensionAdapter = (extDir: string) => Promise<LoadedExtension>;
 
+export interface ExtensionLoadResult {
+  tools: ExtensionTool[];
+  loaded: LoadedExtension[];
+}
+
 export class ExtensionLoader {
   private adapters = new Map<string, ExtensionAdapter>();
-  private loaded = new Map<string, LoadedExtension>();
 
   registerAdapter(name: string, adapter: ExtensionAdapter): void {
     this.adapters.set(name, adapter);
@@ -40,48 +44,46 @@ export class ExtensionLoader {
     }
   }
 
-  async loadTools(mindPath: string): Promise<ExtensionTool[]> {
-    // Clean up previously loaded extensions
-    await this.cleanup();
-
+  async loadTools(mindPath: string): Promise<ExtensionLoadResult> {
     const discovered = this.discoverExtensions(mindPath);
     const allTools: ExtensionTool[] = [];
+    const loaded: LoadedExtension[] = [];
 
     for (const extName of discovered) {
       const adapter = this.adapters.get(extName);
-      if (!adapter) {
-        console.log(`[ExtensionLoader] No adapter for '${extName}', skipping`);
-        continue;
-      }
+      if (!adapter) continue;
 
       const extDir = path.join(mindPath, '.github', 'extensions', extName);
       try {
-        console.log(`[ExtensionLoader] Loading '${extName}' from ${extDir}`);
-        const loaded = await adapter(extDir);
-        this.loaded.set(extName, loaded);
-        allTools.push(...loaded.tools);
-        console.log(`[ExtensionLoader] Loaded '${extName}': ${loaded.tools.length} tool(s)`);
+        const ext = await adapter(extDir);
+        loaded.push(ext);
+        allTools.push(...ext.tools);
       } catch (err) {
         console.error(`[ExtensionLoader] Failed to load '${extName}':`, err);
       }
     }
 
-    return allTools;
+    return { tools: allTools, loaded };
   }
 
-  getLoadedExtensions(): string[] {
-    return Array.from(this.loaded.keys());
-  }
-
-  async cleanup(): Promise<void> {
-    for (const [name, ext] of this.loaded) {
+  async cleanupExtensions(loaded: LoadedExtension[]): Promise<void> {
+    for (const ext of loaded) {
       try {
         await ext.cleanup();
-        console.log(`[ExtensionLoader] Cleaned up '${name}'`);
       } catch (err) {
-        console.error(`[ExtensionLoader] Cleanup error for '${name}':`, err);
+        console.error(`[ExtensionLoader] Cleanup error for '${ext.name}':`, err);
       }
     }
-    this.loaded.clear();
+  }
+
+  /** @deprecated Use cleanupExtensions() instance method */
+  static async cleanup(loaded: LoadedExtension[]): Promise<void> {
+    for (const ext of loaded) {
+      try {
+        await ext.cleanup();
+      } catch (err) {
+        console.error(`[ExtensionLoader] Cleanup error for '${ext.name}':`, err);
+      }
+    }
   }
 }

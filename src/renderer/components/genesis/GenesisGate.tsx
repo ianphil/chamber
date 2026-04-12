@@ -2,17 +2,24 @@ import React, { useState } from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { LandingScreen } from './LandingScreen';
 import { GenesisFlow } from './GenesisFlow';
+import { ChamberLoadingScreen } from './ChamberLoadingScreen';
 
 interface Props {
   children: React.ReactNode;
 }
 
 export function GenesisGate({ children }: Props) {
-  const { agentStatus, showLanding } = useAppState();
+  const { agentStatus, minds, showLanding, mindsChecked } = useAppState();
   const dispatch = useAppDispatch();
   const [mode, setMode] = useState<'idle' | 'genesis'>('idle');
 
-  const showGate = showLanding || !agentStatus.connected;
+  // Show loading screen while initial minds check is pending
+  if (!mindsChecked && !showLanding) {
+    return <ChamberLoadingScreen />;
+  }
+
+  const hasMinds = minds.length > 0 || agentStatus.connected;
+  const showGate = showLanding || !hasMinds;
 
   // If in genesis flow, show it
   if (mode === 'genesis') {
@@ -22,7 +29,7 @@ export function GenesisGate({ children }: Props) {
     }} />;
   }
 
-  // Show landing if triggered or no mind connected
+  // Show landing if triggered or no minds loaded
   if (showGate) {
     return (
       <LandingScreen
@@ -30,8 +37,12 @@ export function GenesisGate({ children }: Props) {
         onOpenExisting={async () => {
           const path = await window.electronAPI.agent.selectMindDirectory();
           if (path) {
-            const status = await window.electronAPI.agent.getStatus();
-            dispatch({ type: 'SET_AGENT_STATUS', payload: status });
+            // Refresh minds list
+            const loadedMinds = await window.electronAPI.mind.list();
+            dispatch({ type: 'SET_MINDS', payload: loadedMinds });
+            if (loadedMinds.length > 0) {
+              dispatch({ type: 'SET_ACTIVE_MIND', payload: loadedMinds[loadedMinds.length - 1].mindId });
+            }
             dispatch({ type: 'HIDE_LANDING' });
           }
         }}

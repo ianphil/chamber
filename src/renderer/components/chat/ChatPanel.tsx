@@ -6,7 +6,9 @@ import { ChatInput } from './ChatInput';
 import { WelcomeScreen } from './WelcomeScreen';
 
 export function ChatPanel() {
-  const { messages, agentStatus, availableModels, selectedModel } = useAppState();
+  const { messagesByMind, activeMindId, minds, agentStatus, availableModels, selectedModel } = useAppState();
+  const messages = activeMindId ? (messagesByMind[activeMindId] ?? []) : [];
+  const connected = minds.length > 0 || agentStatus.connected;
   const dispatch = useAppDispatch();
   const { sendMessage, stopStreaming, isStreaming } = useChatStreaming();
 
@@ -15,7 +17,7 @@ export function ChatPanel() {
       {messages.length === 0 ? (
         <WelcomeScreen
           onSendMessage={sendMessage}
-          connected={agentStatus.connected}
+          connected={connected}
         />
       ) : (
         <MessageList />
@@ -25,7 +27,7 @@ export function ChatPanel() {
         onSend={sendMessage}
         onStop={stopStreaming}
         isStreaming={isStreaming}
-        disabled={!agentStatus.connected}
+        disabled={!connected}
         availableModels={availableModels}
         selectedModel={selectedModel}
         onModelChange={(model) => dispatch({ type: 'SET_SELECTED_MODEL', payload: model })}

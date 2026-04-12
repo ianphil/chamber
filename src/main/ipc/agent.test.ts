@@ -21,30 +21,33 @@ describe('ConfigService (via agent.test migration)', () => {
     vi.clearAllMocks();
   });
 
-  it('returns parsed config when file exists', () => {
+  it('migrates v1 config to v2 when file exists', () => {
     mockReadFileSync.mockReturnValue(JSON.stringify({ mindPath: 'C:\\test\\mind', theme: 'light' }));
     const config = svc.load();
-    expect(config).toEqual({ mindPath: 'C:\\test\\mind', theme: 'light' });
+    expect(config.version).toBe(2);
+    expect(config.minds).toHaveLength(1);
+    expect(config.minds[0].path).toBe('C:\\test\\mind');
+    expect(config.theme).toBe('light');
   });
 
-  it('returns default config when file is missing', () => {
+  it('returns default v2 config when file is missing', () => {
     mockReadFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
     const config = svc.load();
-    expect(config).toEqual({ mindPath: null, theme: 'dark' });
+    expect(config).toEqual({ version: 2, minds: [], activeMindId: null, theme: 'dark' });
   });
 
-  it('returns default config for invalid JSON', () => {
+  it('returns default v2 config for invalid JSON', () => {
     mockReadFileSync.mockReturnValue('not json');
     const config = svc.load();
-    expect(config).toEqual({ mindPath: null, theme: 'dark' });
+    expect(config).toEqual({ version: 2, minds: [], activeMindId: null, theme: 'dark' });
   });
 
-  it('creates directory and writes config', () => {
-    svc.save({ mindPath: 'C:\\test', theme: 'dark' });
+  it('creates directory and writes v2 config', () => {
+    svc.save({ version: 2, minds: [{ id: 'test-a1b2', path: 'C:\\test' }], activeMindId: 'test-a1b2', theme: 'dark' });
     expect(mockMkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
     expect(mockWriteFileSync).toHaveBeenCalledWith(
       expect.stringContaining('config.json'),
-      expect.stringContaining('"mindPath": "C:\\\\test"'),
+      expect.stringContaining('"version": 2'),
     );
   });
 });

@@ -1,40 +1,55 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
-import * as fs from 'fs';
 import started from 'electron-squirrel-startup';
-import { ChatService } from './main/services/chat';
+
+// Services
+import { CopilotClientFactory } from './main/services/sdk/CopilotClientFactory';
+import { IdentityLoader } from './main/services/chat';
 import { ExtensionLoader } from './main/services/extensions';
 import { ConfigService } from './main/services/config';
 import { AuthService } from './main/services/auth';
 import { MindScaffold } from './main/services/genesis';
-import { IdentityLoader } from './main/services/chat';
-import { seedLensDefaults, installLensSkill } from './main/services/lens';
+import { ViewDiscovery } from './main/services/lens';
+import { MindManager } from './main/services/mind/MindManager';
+import { ChatService } from './main/services/chat/ChatService';
 import { loadCanvasExtension } from './main/services/extensions/adapters/canvas';
 import { loadCronExtension } from './main/services/extensions/adapters/cron';
 import { loadIdeaExtension } from './main/services/extensions/adapters/idea';
+
+// IPC adapters
 import { setupChatIPC } from './main/ipc/chat';
-import { setupAgentIPC } from './main/ipc/agent';
+import { setupMindIPC } from './main/ipc/mind';
 import { setupLensIPC } from './main/ipc/lens';
 import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupAuthIPC } from './main/ipc/auth';
-import { stopSharedClient } from './main/services/sdk';
-import { ViewDiscovery } from './main/services/lens';
 
 if (started) {
   app.quit();
 }
 
+// --- Infrastructure (no business logic, creates capabilities) ---
+
+const clientFactory = new CopilotClientFactory();
 const identityLoader = new IdentityLoader();
-const chatService = new ChatService(identityLoader);
 const extensionLoader = new ExtensionLoader();
-const viewDiscovery = new ViewDiscovery(chatService);
-const configService = new ConfigService();
-const authService = new AuthService();
-const scaffold = new MindScaffold();
 extensionLoader.registerAdapter('canvas', loadCanvasExtension);
 extensionLoader.registerAdapter('cron', loadCronExtension);
 extensionLoader.registerAdapter('idea', loadIdeaExtension);
-chatService.setExtensionLoader(extensionLoader);
+const configService = new ConfigService();
+const authService = new AuthService();
+const scaffold = new MindScaffold();
+const viewDiscovery = new ViewDiscovery();
+
+// --- Services (business rules, all dependencies injected) ---
+
+const mindManager = new MindManager(clientFactory, identityLoader, extensionLoader, configService, viewDiscovery);
+const chatService = new ChatService(mindManager);
+
+// Wire Lens refresh to use the mind's session
+viewDiscovery.setRefreshHandler({
+  sendBackgroundPrompt: (path, prompt) => mindManager.sendBackgroundPrompt(path, prompt),
+});
+
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
@@ -55,7 +70,7 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // Required for copilot-sdk IPC
+      sandbox: false,
     },
   });
 
@@ -67,34 +82,20 @@ const createWindow = () => {
     );
   }
 
-  // Open DevTools in dev mode
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.webContents.openDevTools({ mode: 'bottom' });
   }
 };
 
-app.on('ready', () => {
-  // Restore persisted mind path on startup
-  const config = configService.load();
-  if (config.mindPath && fs.existsSync(config.mindPath)) {
-    chatService.setMindPath(config.mindPath);
-    seedLensDefaults(config.mindPath);
-    installLensSkill(config.mindPath);
-    viewDiscovery.scan(config.mindPath).then(() => {
-      viewDiscovery.startWatching(() => {
-        const win = BrowserWindow.getAllWindows()[0];
-        if (win) win.webContents.send('lens:viewsChanged', viewDiscovery.getViews());
-      });
-    });
-  }
-
-  setupChatIPC(chatService);
-  setupAgentIPC(chatService, viewDiscovery, configService);
-  setupLensIPC(viewDiscovery);
-  setupGenesisIPC(chatService, viewDiscovery, configService, scaffold);
+app.on('ready', async () => {
+  // --- IPC adapters (thin, parameter-injected) ---
+  setupChatIPC(chatService, mindManager);
+  setupMindIPC(mindManager);
+  setupLensIPC(viewDiscovery, mindManager);
+  setupGenesisIPC(mindManager, scaffold);
   setupAuthIPC(authService);
 
-  // Window control IPC — registered once, not per-window
+  // Window controls
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
   ipcMain.on('window:maximize', () => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize();
@@ -102,7 +103,16 @@ app.on('ready', () => {
   });
   ipcMain.on('window:close', () => mainWindow?.close());
 
+  // Create window first (don't block on restore)
   createWindow();
+
+  // Restore minds async — store promise so IPC can await it
+  const restorePromise = mindManager.restoreFromConfig().catch((err) => {
+    console.error('[main] Failed to restore minds:', err);
+  });
+
+  // Expose restore promise for IPC handlers that need to wait
+  (mindManager as any)._restorePromise = restorePromise;
 });
 
 app.on('window-all-closed', () => {
@@ -122,10 +132,7 @@ app.on('before-quit', (e) => {
   e.preventDefault();
   isQuitting = true;
 
-  Promise.all([
-    chatService.stop(),
-    stopSharedClient(),
-  ])
+  mindManager.shutdown()
     .catch(() => {})
     .finally(() => app.quit());
 });

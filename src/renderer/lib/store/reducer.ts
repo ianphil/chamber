@@ -108,39 +108,79 @@ export function handleChatEvent(messages: ChatMessage[], messageId: string, even
 }
 
 export function appReducer(state: AppState, action: AppAction): AppState {
+  // Helper: get current mind's messages
+  const activeMsgs = () => state.activeMindId ? (state.messagesByMind[state.activeMindId] ?? []) : [];
+  const setActiveMsgs = (msgs: ChatMessage[]) => {
+    if (!state.activeMindId) return state.messagesByMind;
+    return { ...state.messagesByMind, [state.activeMindId]: msgs };
+  };
+
   switch (action.type) {
     case 'ADD_USER_MESSAGE':
       return {
         ...state,
-        messages: [...state.messages, {
+        messagesByMind: setActiveMsgs([...activeMsgs(), {
           id: action.payload.id,
           role: 'user',
           blocks: [{ type: 'text', content: action.payload.content }],
           timestamp: action.payload.timestamp,
-        }],
+        }]),
       };
 
     case 'ADD_ASSISTANT_MESSAGE':
       return {
         ...state,
         isStreaming: true,
-        messages: [...state.messages, {
+        messagesByMind: setActiveMsgs([...activeMsgs(), {
           id: action.payload.id,
           role: 'assistant',
           blocks: [],
           timestamp: action.payload.timestamp,
           isStreaming: true,
-        }],
+        }]),
       };
 
     case 'CHAT_EVENT': {
-      const { messageId, event } = action.payload;
-      const newMessages = handleChatEvent(state.messages, messageId, event);
+      const { mindId, messageId, event } = action.payload;
+      const mindMsgs = state.messagesByMind[mindId] ?? [];
+      const newMessages = handleChatEvent(mindMsgs, messageId, event);
       const isDone = event.type === 'done' || event.type === 'error';
       return {
         ...state,
-        messages: newMessages,
+        messagesByMind: { ...state.messagesByMind, [mindId]: newMessages },
         isStreaming: isDone ? false : state.isStreaming,
+      };
+    }
+
+    case 'SET_MINDS':
+      return { ...state, minds: action.payload };
+
+    case 'SET_ACTIVE_MIND':
+      return { ...state, activeMindId: action.payload, isStreaming: false };
+
+    case 'ADD_MIND': {
+      const exists = state.minds.some(m => m.mindId === action.payload.mindId);
+      if (exists) return state;
+      return {
+        ...state,
+        minds: [...state.minds, action.payload],
+        activeMindId: state.activeMindId ?? action.payload.mindId,
+      };
+    }
+
+    case 'REMOVE_MIND': {
+      const newMinds = state.minds.filter(m => m.mindId !== action.payload);
+      const newMsgsByMind = { ...state.messagesByMind };
+      delete newMsgsByMind[action.payload];
+      const newActive = state.activeMindId === action.payload
+        ? (newMinds.length > 0 ? newMinds[0].mindId : null)
+        : state.activeMindId;
+      return {
+        ...state,
+        minds: newMinds,
+        activeMindId: newActive,
+        messagesByMind: newMsgsByMind,
+        showLanding: newMinds.length === 0,
       };
     }
 
@@ -170,14 +210,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'HIDE_LANDING':
       return { ...state, showLanding: false };
 
+    case 'MINDS_CHECKED':
+      return { ...state, mindsChecked: true };
+
     case 'CLEAR_MESSAGES':
-      return { ...state, messages: [] };
+      return {
+        ...state,
+        messagesByMind: state.activeMindId
+          ? { ...state.messagesByMind, [state.activeMindId]: [] }
+          : state.messagesByMind,
+      };
 
     case 'NEW_CONVERSATION':
       return {
         ...state,
-        messages: [],
-        conversationId: `conv-${Date.now()}`,
+        messagesByMind: state.activeMindId
+          ? { ...state.messagesByMind, [state.activeMindId]: [] }
+          : state.messagesByMind,
         isStreaming: false,
       };
 

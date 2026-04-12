@@ -181,35 +181,89 @@ describe('handleChatEvent', () => {
 // ---------------------------------------------------------------------------
 
 describe('appReducer', () => {
-  it('ADD_USER_MESSAGE adds a user message with text block', () => {
-    const state = appReducer(initialState, { type: 'ADD_USER_MESSAGE', payload: { id: 'u1', content: 'Hello', timestamp: 1000 } });
-    expect(state.messages).toHaveLength(1);
-    expect(state.messages[0]).toMatchObject({ id: 'u1', role: 'user', blocks: [{ type: 'text', content: 'Hello' }] });
+  // Helper: set up a state with an active mind for message tests
+  const mindId = 'test-mind';
+  const withActiveMind: AppState = {
+    ...initialState,
+    minds: [{ mindId, mindPath: 'C:\\test', identity: { name: 'Test', systemMessage: '' }, status: 'ready' }],
+    activeMindId: mindId,
+  };
+  const getMsgs = (s: AppState) => s.messagesByMind[mindId] ?? [];
+
+  it('ADD_USER_MESSAGE adds a user message to active mind', () => {
+    const state = appReducer(withActiveMind, { type: 'ADD_USER_MESSAGE', payload: { id: 'u1', content: 'Hello', timestamp: 1000 } });
+    expect(getMsgs(state)).toHaveLength(1);
+    expect(getMsgs(state)[0]).toMatchObject({ id: 'u1', role: 'user', blocks: [{ type: 'text', content: 'Hello' }] });
   });
 
   it('ADD_ASSISTANT_MESSAGE adds a streaming assistant message', () => {
-    const state = appReducer(initialState, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
-    expect(state.messages).toHaveLength(1);
-    expect(state.messages[0]).toMatchObject({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true });
+    const state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
+    expect(getMsgs(state)).toHaveLength(1);
+    expect(getMsgs(state)[0]).toMatchObject({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true });
     expect(state.isStreaming).toBe(true);
   });
 
-  it('CHAT_EVENT delegates to handleChatEvent', () => {
-    let state = appReducer(initialState, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
-    state = appReducer(state, { type: 'CHAT_EVENT', payload: { messageId: 'a1', event: makeChatEvent('chunk', { content: 'Hi' }) } });
-    expect(state.messages[0].blocks[0]).toMatchObject({ type: 'text', content: 'Hi' });
+  it('CHAT_EVENT delegates to handleChatEvent for the correct mind', () => {
+    let state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
+    state = appReducer(state, { type: 'CHAT_EVENT', payload: { mindId, messageId: 'a1', event: makeChatEvent('chunk', { content: 'Hi' }) } });
+    expect(getMsgs(state)[0].blocks[0]).toMatchObject({ type: 'text', content: 'Hi' });
   });
 
   it('CHAT_EVENT with done sets isStreaming false', () => {
-    let state = appReducer(initialState, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
-    state = appReducer(state, { type: 'CHAT_EVENT', payload: { messageId: 'a1', event: makeChatEvent('done') } });
+    let state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
+    state = appReducer(state, { type: 'CHAT_EVENT', payload: { mindId, messageId: 'a1', event: makeChatEvent('done') } });
     expect(state.isStreaming).toBe(false);
   });
 
   it('CHAT_EVENT with error sets isStreaming false', () => {
-    let state = appReducer(initialState, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
-    state = appReducer(state, { type: 'CHAT_EVENT', payload: { messageId: 'a1', event: makeChatEvent('error', { message: 'fail' }) } });
+    let state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
+    state = appReducer(state, { type: 'CHAT_EVENT', payload: { mindId, messageId: 'a1', event: makeChatEvent('error', { message: 'fail' }) } });
     expect(state.isStreaming).toBe(false);
+  });
+
+  it('SET_MINDS updates minds array', () => {
+    const minds = [{ mindId: 'a', mindPath: '/a', identity: { name: 'A', systemMessage: '' }, status: 'ready' as const }];
+    const state = appReducer(initialState, { type: 'SET_MINDS', payload: minds });
+    expect(state.minds).toEqual(minds);
+  });
+
+  it('SET_ACTIVE_MIND switches active mind', () => {
+    const state = appReducer(withActiveMind, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
+    expect(state.activeMindId).toBe('other-mind');
+  });
+
+  it('ADD_MIND appends a new mind and sets it active if none active', () => {
+    const mind = { mindId: 'new', mindPath: '/new', identity: { name: 'New', systemMessage: '' }, status: 'ready' as const };
+    const state = appReducer(initialState, { type: 'ADD_MIND', payload: mind });
+    expect(state.minds).toHaveLength(1);
+    expect(state.activeMindId).toBe('new');
+  });
+
+  it('ADD_MIND does not duplicate existing mind', () => {
+    const mind = withActiveMind.minds[0];
+    const state = appReducer(withActiveMind, { type: 'ADD_MIND', payload: mind });
+    expect(state.minds).toHaveLength(1);
+  });
+
+  it('REMOVE_MIND removes mind and clears its messages', () => {
+    const stateWithMsgs = { ...withActiveMind, messagesByMind: { [mindId]: [makeMessage([makeTextBlock('hi')])] } };
+    const state = appReducer(stateWithMsgs, { type: 'REMOVE_MIND', payload: mindId });
+    expect(state.minds).toHaveLength(0);
+    expect(state.messagesByMind[mindId]).toBeUndefined();
+    expect(state.activeMindId).toBeNull();
+    expect(state.showLanding).toBe(true);
+  });
+
+  it('REMOVE_MIND falls back active to next mind', () => {
+    const twoMinds: AppState = {
+      ...withActiveMind,
+      minds: [
+        withActiveMind.minds[0],
+        { mindId: 'other', mindPath: '/other', identity: { name: 'Other', systemMessage: '' }, status: 'ready' },
+      ],
+    };
+    const state = appReducer(twoMinds, { type: 'REMOVE_MIND', payload: mindId });
+    expect(state.activeMindId).toBe('other');
   });
 
   it('SET_AGENT_STATUS updates agentStatus', () => {
@@ -258,19 +312,17 @@ describe('appReducer', () => {
     expect(state.showLanding).toBe(false);
   });
 
-  it('CLEAR_MESSAGES empties messages', () => {
-    const withMsgs = { ...initialState, messages: [makeMessage([makeTextBlock('hi')])] };
-    const state = appReducer(withMsgs, { type: 'CLEAR_MESSAGES' });
-    expect(state.messages).toHaveLength(0);
+  it('CLEAR_MESSAGES empties messages for active mind', () => {
+    const stateWithMsgs = { ...withActiveMind, messagesByMind: { [mindId]: [makeMessage([makeTextBlock('hi')])] } };
+    const state = appReducer(stateWithMsgs, { type: 'CLEAR_MESSAGES' });
+    expect(getMsgs(state)).toHaveLength(0);
   });
 
-  it('NEW_CONVERSATION resets messages, streaming, and generates new conversationId', () => {
-    const prev = { ...initialState, messages: [makeMessage([])], isStreaming: true, conversationId: 'old' };
+  it('NEW_CONVERSATION resets messages and streaming for active mind', () => {
+    const prev = { ...withActiveMind, messagesByMind: { [mindId]: [makeMessage([])] }, isStreaming: true };
     const state = appReducer(prev, { type: 'NEW_CONVERSATION' });
-    expect(state.messages).toHaveLength(0);
+    expect(getMsgs(state)).toHaveLength(0);
     expect(state.isStreaming).toBe(false);
-    expect(state.conversationId).not.toBe('old');
-    expect(state.conversationId).toMatch(/^conv-/);
   });
 
   it('unknown action returns state unchanged', () => {

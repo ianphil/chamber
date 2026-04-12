@@ -6,15 +6,15 @@ import { useAppState, useAppDispatch } from '../lib/store';
  * Mount once in AppShell — never in a view component.
  */
 export function useAppSubscriptions() {
-  const { agentStatus } = useAppState();
+  const { agentStatus, activeMindId } = useAppState();
   const dispatch = useAppDispatch();
   const modelsLoaded = useRef(false);
   const viewsLoaded = useRef(false);
 
   // Chat event listener — must stay alive regardless of active view
   useEffect(() => {
-    const unsub = window.electronAPI.chat.onEvent((messageId, event) => {
-      dispatch({ type: 'CHAT_EVENT', payload: { messageId, event } });
+    const unsub = window.electronAPI.chat.onEvent((mindId, messageId, event) => {
+      dispatch({ type: 'CHAT_EVENT', payload: { mindId, messageId, event } });
     });
     return () => { unsub(); };
   }, [dispatch]);
@@ -27,9 +27,14 @@ export function useAppSubscriptions() {
     return () => { unsub(); };
   }, [dispatch]);
 
-  // Fetch models when agent connects
+  // Reload views and models when active mind changes
   useEffect(() => {
-    if (!agentStatus.connected) {
+    modelsLoaded.current = false;
+    viewsLoaded.current = false;
+  }, [activeMindId]);
+  useEffect(() => {
+    const connected = agentStatus.connected || !!activeMindId;
+    if (!connected) {
       modelsLoaded.current = false;
       viewsLoaded.current = false;
       return;
@@ -67,5 +72,5 @@ export function useAppSubscriptions() {
       };
       loadViews();
     }
-  }, [agentStatus.connected, dispatch]);
+  }, [agentStatus.connected, activeMindId, dispatch]);
 }

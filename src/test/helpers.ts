@@ -141,6 +141,14 @@ export function mockElectronAPI(): ElectronAPI {
       setMindPath: vi.fn().mockResolvedValue(undefined),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
     },
+    mind: {
+      add: vi.fn().mockResolvedValue({ mindId: 'test-1234', mindPath: 'C:\\test', identity: { name: 'Test', systemMessage: '' }, status: 'ready' }),
+      remove: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([]),
+      setActive: vi.fn().mockResolvedValue(undefined),
+      selectDirectory: vi.fn().mockResolvedValue(null),
+      onMindChanged: vi.fn().mockReturnValue(() => {}),
+    },
     lens: {
       getViews: vi.fn().mockResolvedValue([]),
       getViewData: vi.fn().mockResolvedValue(null),

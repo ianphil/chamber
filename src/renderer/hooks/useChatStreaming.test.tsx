@@ -20,16 +20,15 @@ describe('useChatStreaming', () => {
     api = installElectronAPI();
   });
 
-  it('sendMessage calls electronAPI.chat.send', async () => {
+  it('sendMessage no-ops when no active mind', async () => {
     const { result } = renderHook(() => useChatStreaming(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage('Hello');
     });
 
-    expect(api.chat.send).toHaveBeenCalled();
-    const args = (api.chat.send as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(args[1]).toBe('Hello');
+    // No active mind → no-op
+    expect(api.chat.send).not.toHaveBeenCalled();
   });
 
   it('sendMessage no-ops on empty string', async () => {
@@ -42,19 +41,14 @@ describe('useChatStreaming', () => {
     expect(api.chat.send).not.toHaveBeenCalled();
   });
 
-  it('stopStreaming calls electronAPI.chat.stop', async () => {
+  it('stopStreaming no-ops when no active mind', async () => {
     const { result } = renderHook(() => useChatStreaming(), { wrapper });
-
-    // First send a message to set currentMessageId
-    await act(async () => {
-      await result.current.sendMessage('Hello');
-    });
 
     await act(async () => {
       await result.current.stopStreaming();
     });
 
-    expect(api.chat.stop).toHaveBeenCalled();
+    expect(api.chat.stop).not.toHaveBeenCalled();
   });
 
   it('isStreaming reflects state', () => {

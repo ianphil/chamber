@@ -4,8 +4,10 @@ import { StreamingMessage } from './StreamingMessage';
 import { cn, formatTime } from '../../lib/utils';
 
 export function MessageList() {
-  const { messages, agentStatus } = useAppState();
-  const agentName = agentStatus.agentName ?? 'Agent';
+  const { messagesByMind, activeMindId, minds, agentStatus } = useAppState();
+  const messages = activeMindId ? (messagesByMind[activeMindId] ?? []) : [];
+  const activeMind = minds.find(m => m.mindId === activeMindId);
+  const agentName = activeMind?.identity.name ?? agentStatus.agentName ?? 'Agent';
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAutoScrolling = useRef(true);
 

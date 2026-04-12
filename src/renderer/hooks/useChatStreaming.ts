@@ -3,12 +3,12 @@ import { useAppState, useAppDispatch } from '../lib/store';
 import { generateId } from '../lib/utils';
 
 export function useChatStreaming() {
-  const { conversationId, isStreaming, selectedModel } = useAppState();
+  const { activeMindId, isStreaming, selectedModel } = useAppState();
   const dispatch = useAppDispatch();
   const currentMessageId = useRef<string | null>(null);
 
   const sendMessage = useCallback(async (content: string) => {
-    if (isStreaming || !content.trim()) return;
+    if (isStreaming || !content.trim() || !activeMindId) return;
 
     const userMessage = {
       id: generateId(),
@@ -24,14 +24,14 @@ export function useChatStreaming() {
       payload: { id: assistantId, timestamp: Date.now() },
     });
 
-    await window.electronAPI.chat.send(conversationId, content.trim(), assistantId, selectedModel ?? undefined);
-  }, [conversationId, isStreaming, selectedModel, dispatch]);
+    await window.electronAPI.chat.send(activeMindId, content.trim(), assistantId, selectedModel ?? undefined);
+  }, [activeMindId, isStreaming, selectedModel, dispatch]);
 
   const stopStreaming = useCallback(async () => {
-    if (currentMessageId.current) {
-      await window.electronAPI.chat.stop(conversationId, currentMessageId.current);
+    if (currentMessageId.current && activeMindId) {
+      await window.electronAPI.chat.stop(activeMindId, currentMessageId.current);
     }
-  }, [conversationId]);
+  }, [activeMindId]);
 
   return { sendMessage, stopStreaming, isStreaming };
 }

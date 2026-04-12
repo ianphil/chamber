@@ -1,126 +1,36 @@
-// Chat session management — creates SDK sessions, streams all events via single callback.
-// Adapted from cmux's CopilotService pattern.
+// ChatService — thin message streaming layer.
+// Gets sessions from MindManager, streams SDK events via callback.
 
-import { getSharedClient } from '../sdk/SdkLoader';
-import type { ExtensionLoader } from '../extensions/ExtensionLoader';
-import { IdentityLoader } from './IdentityLoader';
+import type { MindManager } from '../mind/MindManager';
 import type { ChatEvent, ModelInfo } from '../../../shared/types';
 
-type CopilotSessionType = import('@github/copilot-sdk').CopilotSession;
-
 export class ChatService {
-  private sessions: Map<string, CopilotSessionType> = new Map();
-  private abortControllers: Map<string, AbortController> = new Map();
-  private mindPath: string | null = null;
-  private extensionLoader: ExtensionLoader | null = null;
-  private identityLoader: IdentityLoader;
+  private abortControllers = new Map<string, AbortController>();
 
-  constructor(identityLoader?: IdentityLoader) {
-    this.identityLoader = identityLoader ?? new IdentityLoader();
-  }
-
-  setMindPath(mindPath: string): void {
-    this.mindPath = mindPath;
-  }
-
-  getMindPath(): string | null {
-    return this.mindPath;
-  }
-
-  setExtensionLoader(loader: ExtensionLoader): void {
-    this.extensionLoader = loader;
-  }
-
-  getExtensionLoader(): ExtensionLoader | null {
-    return this.extensionLoader;
-  }
-
-  private async getOrCreateSession(conversationId: string, model?: string): Promise<CopilotSessionType> {
-    let session = this.sessions.get(conversationId);
-    if (!session) {
-      console.log('[ChatService] No existing session, creating new one');
-      console.log('[ChatService] Mind path:', this.mindPath);
-      const client = await getSharedClient();
-      console.log('[ChatService] Got shared client');
-      const config: Record<string, unknown> = {
-        streaming: true,
-      };
-
-      if (model) {
-        config.model = model;
-        console.log('[ChatService] Using model:', model);
-      }
-
-      if (this.mindPath) {
-        config.workingDirectory = this.mindPath;
-
-        // Replace the SDK's identity and tone with the agent's SOUL + instructions.
-        // Identity: "You are GitHub Copilot CLI" → agent's SOUL.md + agent file
-        // Tone: "100 words or less" → removed (agent's Vibe section covers this)
-        // Keeps: tool_instructions, safety, environment, code_change_rules, guidelines.
-        // custom_instructions stays open for per-repo .github/copilot-instructions.md.
-        const identity = this.identityLoader.load(this.mindPath);
-        if (identity) {
-          config.systemMessage = {
-            mode: 'customize',
-            sections: {
-              identity: { action: 'replace', content: identity },
-              tone: { action: 'remove' },
-            },
-          };
-        }
-
-        if (this.extensionLoader) {
-          try {
-            const tools = await this.extensionLoader.loadTools(this.mindPath);
-            if (tools.length > 0) {
-              config.tools = tools;
-              console.log(`[ChatService] Loaded ${tools.length} extension tool(s)`);
-            }
-          } catch (err) {
-            console.error('[ChatService] Failed to load extension tools:', err);
-          }
-        }
-      }
-
-      config.onPermissionRequest = async (request: { kind: string }) => {
-        return { kind: 'approved' };
-      };
-
-      config.onUserInputRequest = async (request: { question: string }) => {
-        return { answer: 'Not available in this context', wasFreeform: true };
-      };
-
-      console.log('[ChatService] Creating session with config:', Object.keys(config));
-      session = await client.createSession(
-        config as unknown as Parameters<typeof client.createSession>[0]
-      );
-      console.log('[ChatService] Session created successfully');
-      this.sessions.set(conversationId, session);
-    }
-    return session;
-  }
+  constructor(private readonly mindManager: MindManager) {}
 
   async sendMessage(
-    conversationId: string,
+    mindId: string,
     prompt: string,
     messageId: string,
     emit: (event: ChatEvent) => void,
     model?: string,
   ): Promise<void> {
     const abortController = new AbortController();
-    this.abortControllers.set(conversationId, abortController);
+    this.abortControllers.set(mindId, abortController);
 
     const unsubs: (() => void)[] = [];
     const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
 
     try {
-      console.log('[ChatService] Creating/getting session for', conversationId);
-      const session = await this.getOrCreateSession(conversationId, model);
-      console.log('[ChatService] Session ready, sending prompt');
+      const context = this.mindManager.getMind(mindId);
+      if (!context?.session) {
+        throw new Error(`Mind ${mindId} not found or has no session`);
+      }
+      const session = context.session;
 
       // Text streaming
-      unsubs.push(session.on('assistant.message_delta', (event) => {
+      unsubs.push(session.on('assistant.message_delta', (event: any) => {
         guard(() => emit({
           type: 'chunk',
           sdkMessageId: event.data.messageId,
@@ -128,8 +38,8 @@ export class ChatService {
         }));
       }));
 
-      // Final assistant message (reconciliation / no-delta fallback)
-      unsubs.push(session.on('assistant.message', (event) => {
+      // Final assistant message
+      unsubs.push(session.on('assistant.message', (event: any) => {
         guard(() => {
           if (event.data.content) {
             emit({
@@ -142,7 +52,7 @@ export class ChatService {
       }));
 
       // Reasoning
-      unsubs.push(session.on('assistant.reasoning_delta', (event) => {
+      unsubs.push(session.on('assistant.reasoning_delta', (event: any) => {
         guard(() => emit({
           type: 'reasoning',
           reasoningId: event.data.reasoningId,
@@ -151,7 +61,7 @@ export class ChatService {
       }));
 
       // Tool execution
-      unsubs.push(session.on('tool.execution_start', (event) => {
+      unsubs.push(session.on('tool.execution_start', (event: any) => {
         guard(() => emit({
           type: 'tool_start',
           toolCallId: event.data.toolCallId,
@@ -161,7 +71,7 @@ export class ChatService {
         }));
       }));
 
-      unsubs.push(session.on('tool.execution_progress', (event) => {
+      unsubs.push(session.on('tool.execution_progress', (event: any) => {
         guard(() => emit({
           type: 'tool_progress',
           toolCallId: event.data.toolCallId,
@@ -169,7 +79,7 @@ export class ChatService {
         }));
       }));
 
-      unsubs.push(session.on('tool.execution_partial_result', (event) => {
+      unsubs.push(session.on('tool.execution_partial_result', (event: any) => {
         guard(() => emit({
           type: 'tool_output',
           toolCallId: event.data.toolCallId,
@@ -177,7 +87,7 @@ export class ChatService {
         }));
       }));
 
-      unsubs.push(session.on('tool.execution_complete', (event) => {
+      unsubs.push(session.on('tool.execution_complete', (event: any) => {
         guard(() => emit({
           type: 'tool_done',
           toolCallId: event.data.toolCallId,
@@ -187,19 +97,11 @@ export class ChatService {
         }));
       }));
 
-      // Log all events for debugging
-      unsubs.push(session.on((event) => {
-        console.log('[ChatService] Event:', event.type, JSON.stringify(event.data ?? {}).slice(0, 200));
-      }));
-
-      console.log('[ChatService] Calling send...');
       await session.send({ prompt });
 
-      // Wait for session.idle to signal completion
+      // Wait for idle
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          resolve(); // 5 min safety timeout
-        }, 300_000);
+        const timeout = setTimeout(resolve, 300_000);
 
         const unsubIdle = session.on('session.idle', () => {
           clearTimeout(timeout);
@@ -208,14 +110,13 @@ export class ChatService {
         });
         unsubs.push(unsubIdle);
 
-        const unsubError = session.on('session.error', (event) => {
+        const unsubError = session.on('session.error', (event: any) => {
           clearTimeout(timeout);
           unsubError();
           reject(new Error(event.data.message));
         });
         unsubs.push(unsubError);
 
-        // If aborted externally, resolve immediately
         abortController.signal.addEventListener('abort', () => {
           clearTimeout(timeout);
           resolve();
@@ -230,85 +131,34 @@ export class ChatService {
       emit({ type: 'error', message });
     } finally {
       for (const unsub of unsubs) unsub();
-      this.abortControllers.delete(conversationId);
+      this.abortControllers.delete(mindId);
     }
   }
 
-  async cancelMessage(
-    conversationId: string,
-    messageId: string,
-    onDone: (messageId: string) => void,
-  ): Promise<void> {
-    const controller = this.abortControllers.get(conversationId);
+  async cancelMessage(mindId: string, messageId: string): Promise<void> {
+    const controller = this.abortControllers.get(mindId);
     if (controller) {
       controller.abort();
-      this.abortControllers.delete(conversationId);
+      this.abortControllers.delete(mindId);
     }
-    const session = this.sessions.get(conversationId);
-    if (session) {
-      await session.abort().catch(() => {});
-    }
-    onDone(messageId);
-  }
-
-  getAbortController(conversationId: string): AbortController | undefined {
-    return this.abortControllers.get(conversationId);
-  }
-
-  async destroySession(conversationId: string): Promise<void> {
-    const session = this.sessions.get(conversationId);
-    if (session) {
-      await session.destroy().catch(() => {});
-      this.sessions.delete(conversationId);
-    }
-    if (this.extensionLoader) {
-      await this.extensionLoader.cleanup();
+    const context = this.mindManager.getMind(mindId);
+    if (context?.session) {
+      await context.session.abort().catch(() => {});
     }
   }
 
-  async sendBackgroundPrompt(prompt: string): Promise<void> {
-    const bgConversationId = `bg-${Date.now()}`;
+  async newConversation(mindId: string): Promise<void> {
+    await this.mindManager.recreateSession(mindId);
+  }
+
+  async listModels(mindId: string): Promise<ModelInfo[]> {
     try {
-      const session = await this.getOrCreateSession(bgConversationId);
-      await session.send({ prompt });
-
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(resolve, 120_000);
-        const unsubIdle = session.on('session.idle', () => {
-          clearTimeout(timeout);
-          unsubIdle();
-          resolve();
-        });
-        const unsubError = session.on('session.error', (event) => {
-          clearTimeout(timeout);
-          unsubError();
-          reject(new Error(event.data.message));
-        });
-      });
-    } finally {
-      await this.destroySession(bgConversationId);
-    }
-  }
-
-  async listModels(): Promise<ModelInfo[]> {
-    try {
-      const client = await getSharedClient();
-      const models = await client.listModels();
+      const context = this.mindManager.getMind(mindId);
+      if (!context?.client) return [];
+      const models = await context.client.listModels();
       return models.map((m: { id: string; name: string }) => ({ id: m.id, name: m.name }));
-    } catch (err) {
-      console.error('[ChatService] Failed to list models:', err);
+    } catch {
       return [];
-    }
-  }
-
-  async stop(): Promise<void> {
-    for (const [, session] of this.sessions) {
-      await session.destroy().catch(() => {});
-    }
-    this.sessions.clear();
-    this.abortControllers.clear();
-    if (this.extensionLoader) {
-      await this.extensionLoader.cleanup();
     }
   }
 }
