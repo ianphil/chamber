@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
-import { Plus, X, Bot } from 'lucide-react';
+import { Plus, X, Bot, MessageSquarePlus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { MindContext } from '../../../shared/types';
 
@@ -74,7 +74,21 @@ export function MindSidebar() {
         ))}
       </div>
 
-      <div className="border-t border-border p-2">
+      <div className="border-t border-border p-2 space-y-1">
+        <button
+          onClick={async () => {
+            if (activeMindId) {
+              await window.electronAPI.chat.newConversation(activeMindId);
+              dispatch({ type: 'NEW_CONVERSATION' });
+              dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
+            }
+          }}
+          disabled={!activeMindId}
+          className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded flex items-center gap-2 transition-colors disabled:opacity-50"
+        >
+          <MessageSquarePlus size={14} />
+          New Conversation
+        </button>
         <button
           onClick={handleAddMind}
           className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded flex items-center gap-2 transition-colors"
