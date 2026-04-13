@@ -17,6 +17,12 @@
 ## Next
 
 - [ ] **@mention targeting in chatroom** `ux` — `@AgentName` in a chatroom message should route only to that agent (not broadcast). Parse @mentions from input, filter broadcast participants to only the mentioned agent(s). That agent responds and does work; others stay silent. *(Ian, 2026-04-13)*
+- [ ] **Generic `handleChatEvent<T>`** `quality` — `handleChatEvent` returns `ChatMessage[]` but chatroom reducer casts to `ChatroomMessage[]`. Make function generic to preserve extended types. *(Uncle Bob review, 2026-04-13)*
+- [ ] **Chatroom roundId alignment** `bug` — renderer generates optimistic roundId, service generates a different one. Pass roundId through IPC so both sides agree. *(Uncle Bob review, 2026-04-13)*
+- [ ] **IPC input validation on chatroom:send** `security` — no runtime type guards; renderer could send non-string. Add `typeof message !== 'string'` guard. *(Uncle Bob review, 2026-04-13)*
+- [ ] **DRY session creation in MindManager** `quality` — `createChatroomSession` and `createTaskSession` share ~8 lines of identical body. Extract private `buildSessionForMind(mindId)`. *(Uncle Bob review, 2026-04-13)*
+- [ ] **Chatroom agent timeout visibility** `ux` — 5-min timeout in `sendToAgent` resolves silently with no UI indication. Emit timeout-specific error event. *(Uncle Bob review, 2026-04-13)*
+- [ ] **Chatroom `getLastNRounds` performance** `quality` — uses `Array.includes` in loop (O(n·r)). Replace with `Set`. *(Uncle Bob review, 2026-04-13)*
 - [ ] **Chat history** `ux` — conversations are lost on new conversation or restart. Show past conversations per-mind in MindSidebar, indented under each agent. Data already in `~/.copilot/session-state/`. See [[conversation-history]] for spec. *(Ian, 2026-04-12)*
 - [ ] **Boot screen activity log** `ux` — spinner too passive during genesis/startup; surface log output so user sees real-time progress. *(Kent feedback 2026-04-09)*
 - [ ] **"Open Existing" defaults to ~/agents/** `ux` — folder picker should open to `$HOME/agents/` by default (where `MindScaffold.getDefaultBasePath()` creates minds).
