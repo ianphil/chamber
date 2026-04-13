@@ -172,6 +172,10 @@ export function mockElectronAPI(): ElectronAPI {
       load: vi.fn().mockResolvedValue({ mindPath: null, theme: 'dark' }),
       save: vi.fn().mockResolvedValue(undefined),
     },
+    a2a: {
+      onIncoming: vi.fn().mockReturnValue(() => {}),
+      listAgents: vi.fn().mockResolvedValue([]),
+    },
     window: {
       minimize: vi.fn(),
       maximize: vi.fn(),

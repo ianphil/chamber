@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatEvent, AgentStatus, ModelInfo, LensViewManifest, MindContext, ContentBlock } from '../../../shared/types';
+import type { Message } from '../../../shared/a2a-types';
 
 export type LensView = 'chat' | string;
 
@@ -7,6 +8,7 @@ export interface AppState {
   activeMindId: string | null;
   messagesByMind: Record<string, ChatMessage[]>;
   isStreaming: boolean;
+  streamingByMind: Record<string, boolean>;
   /** @deprecated Use minds array instead */
   agentStatus: AgentStatus;
   availableModels: ModelInfo[];
@@ -34,13 +36,15 @@ export type AppAction =
   | { type: 'HIDE_LANDING' }
   | { type: 'MINDS_CHECKED' }
   | { type: 'CLEAR_MESSAGES' }
-  | { type: 'NEW_CONVERSATION' };
+  | { type: 'NEW_CONVERSATION' }
+  | { type: 'A2A_INCOMING'; payload: { targetMindId: string; message: Message; replyMessageId: string } };
 
 export const initialState: AppState = {
   minds: [],
   activeMindId: null,
   messagesByMind: {},
   isStreaming: false,
+  streamingByMind: {},
   agentStatus: {
     connected: false,
     mindPath: null,

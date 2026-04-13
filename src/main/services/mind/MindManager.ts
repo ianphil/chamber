@@ -26,6 +26,7 @@ export class MindManager extends EventEmitter {
     private readonly extensionLoader: ExtensionLoader,
     private readonly configService: ConfigService,
     private readonly viewDiscovery: ViewDiscovery,
+    private readonly toolBuilder?: (mindId: string, extensionTools: unknown[]) => unknown[],
   ) {
     super();
   }
@@ -69,8 +70,11 @@ export class MindManager extends EventEmitter {
     // Load extensions
     const { tools, loaded } = await this.extensionLoader.loadTools(mindPath);
 
+    // Apply toolBuilder (merges A2A tools) if provided
+    const sessionTools = this.toolBuilder ? this.toolBuilder(id, tools) : tools;
+
     // Create session
-    const session = await this.createSessionForMind(client, mindPath, identity.systemMessage, tools);
+    const session = await this.createSessionForMind(client, mindPath, identity.systemMessage, sessionTools);
 
     const context: InternalMindContext = {
       mindId: id,
@@ -169,8 +173,9 @@ export class MindManager extends EventEmitter {
     if (!context) throw new Error(`Mind ${mindId} not found`);
 
     const tools = context.extensions.flatMap((e: { tools?: unknown[] }) => e.tools ?? []);
+    const sessionTools = this.toolBuilder ? this.toolBuilder(mindId, tools) : tools;
     context.session = await this.createSessionForMind(
-      context.client, context.mindPath, context.identity.systemMessage, tools,
+      context.client, context.mindPath, context.identity.systemMessage, sessionTools,
     );
   }
 

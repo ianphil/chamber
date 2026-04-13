@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ChatService } from './ChatService';
+import { TurnQueue } from './TurnQueue';
 
 const mockSession = {
   send: vi.fn(async () => {}),
@@ -20,10 +21,12 @@ const mockMindManager = {
 
 describe('ChatService', () => {
   let svc: ChatService;
+  let turnQueue: TurnQueue;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    svc = new ChatService(mockMindManager as any);
+    turnQueue = new TurnQueue();
+    svc = new ChatService(mockMindManager as any, turnQueue);
   });
 
   describe('sendMessage', () => {
@@ -75,6 +78,60 @@ describe('ChatService', () => {
     it('returns empty array for invalid mind', async () => {
       const models = await svc.listModels('nonexistent');
       expect(models).toEqual([]);
+    });
+  });
+
+  describe('TurnQueue integration', () => {
+    it('routes sendMessage through TurnQueue', async () => {
+      const enqueueSpy = vi.spyOn(turnQueue, 'enqueue');
+      mockSession.on.mockImplementation((eventOrCb: any, cb?: any) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+      expect(enqueueSpy).toHaveBeenCalledWith('valid-mind', expect.any(Function));
+    });
+
+    it('concurrent sends to same mind are serialized', async () => {
+      const order: string[] = [];
+      let idleCallbacks: (() => void)[] = [];
+
+      mockSession.on.mockImplementation((eventOrCb: any, cb?: any) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          idleCallbacks.push(cb);
+        }
+        return vi.fn();
+      });
+
+      mockSession.send.mockImplementation(async ({ prompt }: { prompt: string }) => {
+        order.push(`send-${prompt}`);
+      });
+
+      const emit1 = vi.fn();
+      const emit2 = vi.fn();
+      const p1 = svc.sendMessage('valid-mind', 'first', 'msg-1', emit1);
+      const p2 = svc.sendMessage('valid-mind', 'second', 'msg-2', emit2);
+
+      // Let microtasks settle so first send starts
+      await new Promise((r) => setTimeout(r, 10));
+      expect(order).toEqual(['send-first']);
+
+      // Complete first message
+      idleCallbacks.shift()?.();
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Now second should have started
+      expect(order).toEqual(['send-first', 'send-second']);
+
+      // Complete second message
+      idleCallbacks.shift()?.();
+      await Promise.all([p1, p2]);
+
+      expect(emit1).toHaveBeenCalledWith({ type: 'done' });
+      expect(emit2).toHaveBeenCalledWith({ type: 'done' });
     });
   });
 });

@@ -329,4 +329,90 @@ describe('appReducer', () => {
     const state = appReducer(initialState, { type: 'BOGUS' } as unknown as AppAction);
     expect(state).toBe(initialState);
   });
+
+  // -------------------------------------------------------------------------
+  // A2A_INCOMING
+  // -------------------------------------------------------------------------
+
+  describe('A2A_INCOMING', () => {
+    const a2aPayload = (overrides?: Partial<{ targetMindId: string; message: any; replyMessageId: string }>) => ({
+      targetMindId: mindId,
+      message: {
+        messageId: 'msg-a2a-1',
+        role: 'user',
+        parts: [{ text: 'Hello from Agent A', mediaType: 'text/plain' }],
+        metadata: { fromId: 'agent-a', fromName: 'Agent A', hopCount: 1 },
+      },
+      replyMessageId: 'reply-1',
+      ...overrides,
+    });
+
+    it('inserts sender message with attribution into target mind', () => {
+      const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
+      const msgs = state.messagesByMind[mindId]!;
+      expect(msgs).toHaveLength(2);
+      expect(msgs[0].role).toBe('user');
+      expect(msgs[0].sender).toEqual({ mindId: 'agent-a', name: 'Agent A' });
+      expect(msgs[0].blocks[0]).toMatchObject({ type: 'text', content: 'Hello from Agent A' });
+    });
+
+    it('inserts assistant reply placeholder', () => {
+      const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
+      const msgs = state.messagesByMind[mindId]!;
+      expect(msgs[1].id).toBe('reply-1');
+      expect(msgs[1].role).toBe('assistant');
+      expect(msgs[1].isStreaming).toBe(true);
+    });
+
+    it('sets streamingByMind for target mind', () => {
+      const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
+      expect(state.streamingByMind[mindId]).toBe(true);
+    });
+
+    it('sets global isStreaming true when target is active mind', () => {
+      const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
+      expect(state.isStreaming).toBe(true);
+    });
+
+    it('does not set global isStreaming when target is not active mind', () => {
+      const state = appReducer(withActiveMind, {
+        type: 'A2A_INCOMING',
+        payload: a2aPayload({ targetMindId: 'other-mind' }),
+      });
+      expect(state.isStreaming).toBe(false);
+      expect(state.streamingByMind['other-mind']).toBe(true);
+    });
+
+    it('appends to existing messages in target mind', () => {
+      const stateWithMsgs = {
+        ...withActiveMind,
+        messagesByMind: { [mindId]: [makeMessage([makeTextBlock('existing')])] },
+      };
+      const state = appReducer(stateWithMsgs, { type: 'A2A_INCOMING', payload: a2aPayload() });
+      expect(state.messagesByMind[mindId]).toHaveLength(3);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // streamingByMind tracking
+  // -------------------------------------------------------------------------
+
+  describe('streamingByMind', () => {
+    it('ADD_ASSISTANT_MESSAGE sets streamingByMind for active mind', () => {
+      const state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
+      expect(state.streamingByMind[mindId]).toBe(true);
+    });
+
+    it('CHAT_EVENT done clears streamingByMind for that mind', () => {
+      let state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
+      state = appReducer(state, { type: 'CHAT_EVENT', payload: { mindId, messageId: 'a1', event: makeChatEvent('done') } });
+      expect(state.streamingByMind[mindId]).toBe(false);
+    });
+
+    it('NEW_CONVERSATION clears streamingByMind for active mind', () => {
+      const prev = { ...withActiveMind, streamingByMind: { [mindId]: true }, isStreaming: true };
+      const state = appReducer(prev, { type: 'NEW_CONVERSATION' });
+      expect(state.streamingByMind[mindId]).toBe(false);
+    });
+  });
 });

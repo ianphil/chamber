@@ -355,4 +355,98 @@ describe('MindManager', () => {
       expect(unwindowed).toHaveBeenCalledWith(mind.mindId);
     });
   });
+
+  describe('ToolBuilder integration', () => {
+    it('doLoadMind() calls toolBuilder with mindId and extension tools', async () => {
+      const toolBuilder = vi.fn((mindId: string, extTools: unknown[]) => [...extTools, { name: 'send_message' }, { name: 'list_agents' }]);
+      const mgr = new MindManager(
+        mockClientFactory as any,
+        mockIdentityLoader as any,
+        mockExtensionLoader as any,
+        mockConfigService as any,
+        mockViewDiscovery as any,
+        toolBuilder,
+      );
+
+      const mockTool = { name: 'canvas_show' };
+      mockExtensionLoader.loadTools.mockResolvedValueOnce({ tools: [mockTool], loaded: [{ tools: [mockTool] }] });
+
+      await mgr.loadMind('C:\\agents\\q');
+
+      expect(toolBuilder).toHaveBeenCalledTimes(1);
+      expect(toolBuilder).toHaveBeenCalledWith(
+        expect.stringMatching(/^q-/),
+        [mockTool],
+      );
+    });
+
+    it('doLoadMind() passes toolBuilder result to createSessionForMind', async () => {
+      const a2aTool = { name: 'send_message' };
+      const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, a2aTool]);
+      const mgr = new MindManager(
+        mockClientFactory as any,
+        mockIdentityLoader as any,
+        mockExtensionLoader as any,
+        mockConfigService as any,
+        mockViewDiscovery as any,
+        toolBuilder,
+      );
+
+      await mgr.loadMind('C:\\agents\\q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tools: expect.arrayContaining([a2aTool]),
+        }),
+      );
+    });
+
+    it('recreateSession() calls toolBuilder to rebuild tools', async () => {
+      const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, { name: 'a2a' }]);
+      const mgr = new MindManager(
+        mockClientFactory as any,
+        mockIdentityLoader as any,
+        mockExtensionLoader as any,
+        mockConfigService as any,
+        mockViewDiscovery as any,
+        toolBuilder,
+      );
+
+      const mind = await mgr.loadMind('C:\\agents\\q');
+      toolBuilder.mockClear();
+
+      await mgr.recreateSession(mind.mindId);
+
+      expect(toolBuilder).toHaveBeenCalledTimes(1);
+      expect(toolBuilder).toHaveBeenCalledWith(mind.mindId, expect.any(Array));
+    });
+
+    it('recreateSession() passes fresh tools to new session', async () => {
+      const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, { name: 'fresh_tool' }]);
+      const mgr = new MindManager(
+        mockClientFactory as any,
+        mockIdentityLoader as any,
+        mockExtensionLoader as any,
+        mockConfigService as any,
+        mockViewDiscovery as any,
+        toolBuilder,
+      );
+
+      const mind = await mgr.loadMind('C:\\agents\\q');
+      mockCreateSession.mockClear();
+
+      await mgr.recreateSession(mind.mindId);
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tools: expect.arrayContaining([{ name: 'fresh_tool' }]),
+        }),
+      );
+    });
+
+    it('works without toolBuilder (backwards compat)', async () => {
+      await manager.loadMind('C:\\agents\\q');
+      expect(mockCreateSession).toHaveBeenCalled();
+    });
+  });
 });

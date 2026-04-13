@@ -73,4 +73,12 @@ export function useAppSubscriptions() {
       loadViews();
     }
   }, [agentStatus.connected, activeMindId, dispatch]);
+
+  // A2A incoming message listener
+  useEffect(() => {
+    const unsub = window.electronAPI.a2a.onIncoming((payload) => {
+      dispatch({ type: 'A2A_INCOMING', payload });
+    });
+    return () => { unsub(); };
+  }, [dispatch]);
 }

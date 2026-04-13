@@ -131,6 +131,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         isStreaming: true,
+        streamingByMind: state.activeMindId
+          ? { ...state.streamingByMind, [state.activeMindId]: true }
+          : state.streamingByMind,
         messagesByMind: setActiveMsgs([...activeMsgs(), {
           id: action.payload.id,
           role: 'assistant',
@@ -145,10 +148,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const mindMsgs = state.messagesByMind[mindId] ?? [];
       const newMessages = handleChatEvent(mindMsgs, messageId, event);
       const isDone = event.type === 'done' || event.type === 'error';
+      const newStreamingByMind = isDone
+        ? { ...state.streamingByMind, [mindId]: false }
+        : state.streamingByMind;
       return {
         ...state,
         messagesByMind: { ...state.messagesByMind, [mindId]: newMessages },
         isStreaming: isDone ? false : state.isStreaming,
+        streamingByMind: newStreamingByMind,
       };
     }
 
@@ -156,7 +163,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, minds: action.payload };
 
     case 'SET_ACTIVE_MIND':
-      return { ...state, activeMindId: action.payload, isStreaming: false };
+      return { ...state, activeMindId: action.payload, isStreaming: false, streamingByMind: state.streamingByMind };
 
     case 'ADD_MIND': {
       const exists = state.minds.some(m => m.mindId === action.payload.mindId);
@@ -228,7 +235,45 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ? { ...state.messagesByMind, [state.activeMindId]: [] }
           : state.messagesByMind,
         isStreaming: false,
+        streamingByMind: state.activeMindId
+          ? { ...state.streamingByMind, [state.activeMindId]: false }
+          : state.streamingByMind,
       };
+
+    case 'A2A_INCOMING': {
+      const { targetMindId, message, replyMessageId } = action.payload;
+      const targetMsgs = state.messagesByMind[targetMindId] ?? [];
+      const senderMessage: ChatMessage = {
+        id: message.messageId ?? `a2a-${Date.now()}`,
+        role: 'user',
+        blocks: (message.parts ?? []).map((p) => ({
+          type: 'text' as const,
+          content: p.text ?? '',
+        })),
+        timestamp: Date.now(),
+        sender: {
+          mindId: (message.metadata?.fromId as string) ?? 'unknown',
+          name: (message.metadata?.fromName as string) ?? 'Unknown Agent',
+        },
+      };
+      const replyPlaceholder: ChatMessage = {
+        id: replyMessageId,
+        role: 'assistant',
+        blocks: [],
+        timestamp: Date.now(),
+        isStreaming: true,
+      };
+      const isActiveMind = targetMindId === state.activeMindId;
+      return {
+        ...state,
+        messagesByMind: {
+          ...state.messagesByMind,
+          [targetMindId]: [...targetMsgs, senderMessage, replyPlaceholder],
+        },
+        streamingByMind: { ...state.streamingByMind, [targetMindId]: true },
+        isStreaming: isActiveMind ? true : state.isStreaming,
+      };
+    }
 
     default:
       return state;

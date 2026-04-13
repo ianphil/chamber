@@ -1,3 +1,5 @@
+import type { Message, AgentCard } from './a2a-types';
+
 // Shared types across main, preload, and renderer processes
 
 // ---------------------------------------------------------------------------
@@ -54,6 +56,7 @@ export interface ChatMessage {
   blocks: ContentBlock[];
   timestamp: number;
   isStreaming?: boolean;
+  sender?: { mindId: string; name: string };
 }
 
 export interface AgentStatus {
@@ -169,6 +172,10 @@ export interface ElectronAPI {
   config: {
     load: () => Promise<AppConfig>;
     save: (config: AppConfig) => Promise<void>;
+  };
+  a2a: {
+    onIncoming: (callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => () => void;
+    listAgents: () => Promise<AgentCard[]>;
   };
   window: {
     minimize: () => void;

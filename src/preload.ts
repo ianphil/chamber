@@ -53,6 +53,10 @@ const electronAPI: ElectronAPI = {
     load: () => ipcRenderer.invoke('config:load'),
     save: (config) => ipcRenderer.invoke('config:save', config),
   },
+  a2a: {
+    onIncoming: (callback: (payload: any) => void) => createIpcListener(ipcRenderer, 'a2a:incoming', callback),
+    listAgents: () => ipcRenderer.invoke('a2a:listAgents'),
+  },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     maximize: () => ipcRenderer.send('window:maximize'),
