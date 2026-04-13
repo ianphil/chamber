@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.19.6 (2026-04-13)
+
+### Zero Lint / CI Green
+- **ESLint clean** — resolved all errors and warnings across the codebase
+- **CI `validate` job** — new workflow step runs `npm run lint` on every push and PR
+- **Pre-commit hook** — lint check runs before each commit via Husky + lint-staged
+- **Dependency updates** — eslint-plugin-import, TypeScript ESLint tooling refreshed
+
 ## v0.19.5 (2026-04-13)
 
 ### Final Message Drop Fix

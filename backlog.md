@@ -35,7 +35,8 @@
 - [ ] **Shared ElectronAPI type** `ipc` — single interface in `shared/electron-types.ts`, preload implements, renderer consumes. Kill `as unknown as` cast. #14.
 - [ ] **Zod validation on IPC handlers** `ipc` `security` — schema validation on `config:save` and complex payloads. Preload stays passthrough. #4.
 - [ ] **Test suite** `quality` — Vitest unit → IPC integration → Playwright E2E. No tests exist today.
-- [ ] **CI/CD pipeline** `quality` — tag-based release workflow for multi-platform builds.
+- [x] **CI/CD pipeline** `quality` — tag-based release workflow for multi-platform builds. *(shipped v0.19.6)*
+- [x] **ESLint clean + pre-commit hook** `quality` — zero errors/warnings, Husky + lint-staged. *(shipped v0.19.6)*
 
 ## Later
 
