@@ -169,7 +169,7 @@ app.on('before-quit', (e) => {
   isQuitting = true;
 
   mindManager.shutdown()
-    .catch(() => {})
+    .catch(() => { /* noop */ })
     .finally(() => app.quit());
 });
 

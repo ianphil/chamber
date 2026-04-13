@@ -9,7 +9,7 @@ vi.mock('./SdkBootstrap', () => ({
   getBundledNodePath: vi.fn(() => null),
   getCliPathFromModules: vi.fn(() => '/global/node_modules/@github/copilot/bin/copilot'),
   isLocalInstallReady: vi.fn(() => false),
-  ensureSdkInstalled: vi.fn(async () => {}),
+  ensureSdkInstalled: vi.fn(),
 }));
 vi.mock('./SdkDiscovery', () => ({
   getGlobalNodeModules: vi.fn(() => '/global/node_modules'),
@@ -22,8 +22,8 @@ vi.mock('fs', () => ({
 }));
 
 // Mock the dynamic SDK import
-const mockStart = vi.fn(async () => {});
-const mockStop = vi.fn(async () => {});
+const mockStart = vi.fn();
+const mockStop = vi.fn();
 
 class FakeCopilotClient {
   start = mockStart;

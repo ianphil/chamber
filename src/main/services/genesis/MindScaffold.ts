@@ -8,7 +8,7 @@ import { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { buildGenesisPrompt } from './genesisPrompt';
 import { GitHubRegistryClient } from './GitHubRegistryClient';
 
-const IDEA_FOLDERS= ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
+const IDEA_FOLDERS = ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
 const GENESIS_SOURCE = 'ianphil/genesis';
@@ -160,7 +160,7 @@ export class MindScaffold {
         });
       });
     } finally {
-      await session.destroy().catch(() => {});
+      await session.destroy().catch(() => { /* noop */ });
       await this.clientFactory.destroyClient(client);
     }
   }

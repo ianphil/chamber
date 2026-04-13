@@ -105,7 +105,7 @@ describe('TaskPanel', () => {
       <TaskPanel
         tasksByMind={{ m1: [completedTask, failedTask] }}
         mindNames={{}}
-        onCancelTask={() => {}}
+        onCancelTask={vi.fn()}
       />,
     );
 

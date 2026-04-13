@@ -91,7 +91,7 @@ describe('ViewDiscovery', () => {
 
       mockReadFileSync.mockReturnValue('not json');
 
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(vi.fn());
       const views = await discovery.scan('/tmp/test/mind');
       expect(views).toEqual([]);
       expect(consoleSpy).toHaveBeenCalled();

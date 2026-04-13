@@ -141,7 +141,7 @@ export class TaskManager extends EventEmitter {
     const session = this.sessions.get(id);
     if (session) {
       // CopilotSession type may not expose abort() — use optional chaining
-      (session as { abort?: () => Promise<void> }).abort?.().catch(() => {});
+      (session as { abort?: () => Promise<void> }).abort?.().catch(() => { /* noop */ });
       this.sessions.delete(id);
     }
 

@@ -12,7 +12,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { setupChatroomIPC } from './chatroom';
 import type { ChatroomService } from '../services/chatroom/ChatroomService';
 
-function getHandler(channel: string): Function {
+function getHandler(channel: string): (...args: unknown[]) => unknown {
   const calls = vi.mocked(ipcMain.handle).mock.calls;
   const match = calls.find((c) => c[0] === channel);
   if (!match) throw new Error(`No handler registered for ${channel}`);

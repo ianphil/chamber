@@ -13,17 +13,12 @@
     "plugin:import/typescript"
   ],
   "parser": "@typescript-eslint/parser",
-  "rules": {
-    "import/no-unresolved": "off",
-    "@typescript-eslint/no-empty-function": ["error", { "allow": ["arrowFunctions"] }]
-  },
-  "overrides": [
-    {
-      "files": ["**/*.test.*", "**/test/**"],
-      "rules": {
-        "@typescript-eslint/no-empty-function": "off",
-        "@typescript-eslint/ban-types": "off"
+  "settings": {
+    "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true,
+        "project": "./tsconfig.json"
       }
     }
-  ]
+  }
 }

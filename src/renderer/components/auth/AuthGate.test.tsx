@@ -31,7 +31,7 @@ describe('AuthGate', () => {
   });
 
   it('shows loading state initially', () => {
-    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {})); // never resolves
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => { /* noop */ })); // never resolves
     render(<AuthGate><div>Protected Content</div></AuthGate>);
     expect(screen.queryByText('Protected Content')).toBeNull();
   });

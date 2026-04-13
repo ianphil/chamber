@@ -50,7 +50,7 @@ describe('resolveStoredCredential', () => {
   });
 
   it('returns first credential when multiple exist', () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
     const result = resolveStoredCredential([
       { account: 'https://github.com:alice', password: 'token1' },
       { account: 'https://github.com:bob', password: 'token2' },

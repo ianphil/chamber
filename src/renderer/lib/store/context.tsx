@@ -4,7 +4,7 @@ import { initialState } from './state';
 import { appReducer } from './reducer';
 
 const AppStateContext = createContext<AppState>(initialState);
-const AppDispatchContext = createContext<Dispatch<AppAction>>(() => {});
+const AppDispatchContext = createContext<Dispatch<AppAction>>(() => { /* noop */ });
 
 export function AppStateProvider({ children, testInitialState }: { children: React.ReactNode; testInitialState?: Partial<AppState> }) {
   const [state, dispatch] = useReducer(appReducer, testInitialState ? { ...initialState, ...testInitialState } : initialState);

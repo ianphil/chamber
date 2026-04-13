@@ -12,7 +12,7 @@ const mockRegistry = {
 };
 
 const mockChatService = {
-  sendMessage: vi.fn(async () => {}),
+  sendMessage: vi.fn().mockResolvedValue(undefined),
 };
 
 function makeCard(overrides: Partial<AgentCard> & { mindId: string; name: string }): AgentCard {

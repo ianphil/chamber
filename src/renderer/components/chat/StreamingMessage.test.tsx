@@ -8,7 +8,7 @@ import { makeTextBlock, makeToolCallBlock, makeReasoningBlock } from '@/test/hel
 vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
 }));
-vi.mock('remark-gfm', () => ({ default: () => {} }));
+vi.mock('remark-gfm', () => ({ default: vi.fn() }));
 
 describe('StreamingMessage', () => {
   it('shows thinking dots when empty blocks and streaming', () => {

@@ -12,8 +12,8 @@ import type { MindContext } from '../../shared/types';
 
 function makeMockSession() {
   return {
-    send: vi.fn(async () => {}),
-    abort: vi.fn(async () => {}),
+    send: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
       // Fire session.idle immediately after send
       if (event === 'session.idle' && cb) {
@@ -36,7 +36,7 @@ function makeMockMindManager() {
         client: { listModels: vi.fn(async () => []) },
       };
     }),
-    recreateSession: vi.fn(async () => {}),
+    recreateSession: vi.fn(),
     _addMind(mindId: string, name: string, mindPath: string) {
       sessions.set(mindId, makeMockSession());
       emitter.emit('mind:loaded', {

@@ -3,15 +3,15 @@ import { createIpcListener } from './createIpcListener';
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
 
 function makeMockIpcRenderer() {
-  const listeners = new Map<string, Function[]>();
+  const listeners = new Map<string, ((...args: unknown[]) => unknown)[]>();
   return {
-    on: vi.fn((channel: string, handler: Function) => {
+    on: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
       if (!listeners.has(channel)) listeners.set(channel, []);
       const list = listeners.get(channel);
       if (!list) throw new Error('expected listener list');
       list.push(handler);
     }),
-    removeListener: vi.fn((channel: string, handler: Function) => {
+    removeListener: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
       const arr = listeners.get(channel);
       if (arr) {
         const idx = arr.indexOf(handler);

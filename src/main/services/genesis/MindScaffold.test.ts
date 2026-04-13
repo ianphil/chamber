@@ -42,7 +42,7 @@ describe('MindScaffold.getDefaultBasePath', () => {
 
 describe('MindScaffold constructor', () => {
   it('accepts an injected CopilotClientFactory', () => {
-    const fakeFactory = { createClient: async () => ({}), destroyClient: async () => {} } as unknown as CopilotClientFactory;
+    const fakeFactory = { createClient: async () => ({}), destroyClient: async () => { /* noop */ } } as unknown as CopilotClientFactory;
     const scaffold = new MindScaffold(undefined, fakeFactory);
     expect(scaffold).toBeDefined();
   });

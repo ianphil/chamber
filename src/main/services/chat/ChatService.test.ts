@@ -4,9 +4,9 @@ import { TurnQueue } from './TurnQueue';
 import type { MindManager } from '../mind';
 
 const mockSession = {
-  send: vi.fn(async () => {}),
-  abort: vi.fn(async () => {}),
-  destroy: vi.fn(async () => {}),
+  send: vi.fn().mockResolvedValue(undefined),
+  abort: vi.fn().mockResolvedValue(undefined),
+  destroy: vi.fn().mockResolvedValue(undefined),
   on: vi.fn(() => vi.fn()),
 };
 
@@ -17,7 +17,7 @@ const mockMindManager = {
     }
     return undefined;
   }),
-  recreateSession: vi.fn(async () => {}),
+  recreateSession: vi.fn(),
 };
 
 describe('ChatService', () => {
@@ -90,9 +90,9 @@ describe('ChatService', () => {
 
       // Fresh session returned by recreateSession
       const freshSession = {
-        send: vi.fn(async () => {}),
-        abort: vi.fn(async () => {}),
-        destroy: vi.fn(async () => {}),
+        send: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
         on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
           if (event === 'session.idle' && cb) setTimeout(() => cb(), 0);
           return vi.fn();
@@ -115,8 +115,8 @@ describe('ChatService', () => {
 
       const freshSession = {
         send: vi.fn().mockRejectedValueOnce(new Error('Session not found: def-456')),
-        abort: vi.fn(async () => {}),
-        destroy: vi.fn(async () => {}),
+        abort: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
         on: vi.fn(() => vi.fn()),
       };
       mockMindManager.recreateSession.mockResolvedValueOnce(freshSession);

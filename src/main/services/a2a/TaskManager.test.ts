@@ -52,8 +52,8 @@ type SessionCallback = (event?: unknown) => void;
 function createMockSession() {
   const listeners = new Map<string, SessionCallback[]>();
   return {
-    send: vi.fn(async () => {}),
-    abort: vi.fn(async () => {}),
+    send: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((event: string, cb: SessionCallback) => {
       if (!listeners.has(event)) listeners.set(event, []);
       const cbs = listeners.get(event);

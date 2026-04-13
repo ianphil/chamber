@@ -174,7 +174,7 @@ export class ChatService {
     }
     const context = this.mindManager.getMind(mindId);
     if (context?.session) {
-      await context.session.abort().catch(() => {});
+      await context.session.abort().catch(() => { /* noop */ });
     }
   }
 

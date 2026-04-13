@@ -13,8 +13,8 @@ import type { TaskSessionFactory } from './TaskManager';
 function makeMockSession() {
   const emitter = new EventEmitter();
   return {
-    send: vi.fn(async () => {}),
-    abort: vi.fn(async () => {}),
+    send: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn().mockResolvedValue(undefined),
     on: (event: string, fn: (...args: unknown[]) => void) => emitter.on(event, fn),
     off: (event: string, fn: (...args: unknown[]) => void) => emitter.off(event, fn),
     _emit: (event: string, ...args: unknown[]) => emitter.emit(event, ...args),

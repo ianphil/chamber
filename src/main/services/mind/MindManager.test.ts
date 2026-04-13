@@ -16,8 +16,8 @@ vi.mock('fs', () => ({
 
 import * as fs from 'fs';
 
-const mockStart = vi.fn(async () => {});
-const mockStop = vi.fn(async () => {});
+const mockStart = vi.fn();
+const mockStop = vi.fn();
 const mockCreateSession = vi.fn(() => ({
   send: vi.fn(),
   sendAndWait: vi.fn(),
@@ -35,7 +35,7 @@ function makeMockClient() {
 
 const mockClientFactory = {
   createClient: vi.fn(async () => makeMockClient()),
-  destroyClient: vi.fn(async () => {}),
+  destroyClient: vi.fn(),
 };
 
 const mockIdentityLoader = {
@@ -49,7 +49,7 @@ const mockExtensionLoader = {
   registerAdapter: vi.fn(),
   discoverExtensions: vi.fn(() => []),
   loadTools: vi.fn(async () => ({ tools: [], loaded: [] })),
-  cleanupExtensions: vi.fn(async () => {}),
+  cleanupExtensions: vi.fn(),
 };
 
 const mockConfigService = {
@@ -233,7 +233,7 @@ describe('MindManager', () => {
         theme: 'dark',
       });
 
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(vi.fn());
       await manager.restoreFromConfig();
       expect(manager.listMinds()).toHaveLength(1);
       expect(manager.listMinds()[0].identity.name).toBe('good');

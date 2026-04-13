@@ -113,7 +113,7 @@ export class ChatroomService extends EventEmitter {
       agent.abort.abort();
       for (const unsub of agent.unsubs) unsub();
       const session = this.sessionCache.get(agent.mindId);
-      if (session) session.abort().catch(() => {});
+      if (session) session.abort().catch(() => { /* noop */ });
     }
     this.inFlight.clear();
   }
@@ -128,7 +128,7 @@ export class ChatroomService extends EventEmitter {
 
     // Destroy all cached sessions
     for (const [, session] of this.sessionCache) {
-      await session.destroy().catch(() => {});
+      await session.destroy().catch(() => { /* noop */ });
     }
     this.sessionCache.clear();
   }
@@ -424,8 +424,8 @@ export class ChatroomService extends EventEmitter {
     // Destroy and remove cached session
     const session = this.sessionCache.get(mindId);
     if (session) {
-      session.abort().catch(() => {});
-      session.destroy().catch(() => {});
+      session.abort().catch(() => { /* noop */ });
+      session.destroy().catch(() => { /* noop */ });
       this.sessionCache.delete(mindId);
     }
   }

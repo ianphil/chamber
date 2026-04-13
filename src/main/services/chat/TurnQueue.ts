@@ -21,7 +21,7 @@ export class TurnQueue {
     });
 
     // Chain always resolves so subsequent enqueues aren't blocked by errors
-    this.chains.set(mindId, next.then(() => {}, () => {}));
+    this.chains.set(mindId, next.then(() => { /* noop */ }, () => { /* noop */ }));
 
     return promise;
   }

@@ -34,9 +34,9 @@ import type { MindContext } from '../../../shared/types';
 function createMockSession() {
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   return {
-    send: vi.fn(async () => {}),
-    abort: vi.fn(async () => {}),
-    destroy: vi.fn(async () => {}),
+    send: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn().mockResolvedValue(undefined),
+    destroy: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
       if (!listeners.has(event)) listeners.set(event, []);
       const list = listeners.get(event);
@@ -283,7 +283,7 @@ describe('ChatroomService', () => {
       vi.mocked(fs.writeFileSync).mockImplementation((_p, data) => {
         writeTimestamps.push(data as string);
       });
-      vi.mocked(fs.renameSync).mockImplementation(() => {});
+      vi.mocked(fs.renameSync).mockImplementation(vi.fn());
 
       autoIdle(sess);
       await svc.broadcast('Hello');

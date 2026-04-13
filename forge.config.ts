@@ -2,7 +2,7 @@ import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
-import AutoUnpackNativesPlugin from '@electron-forge/plugin-auto-unpack-natives';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -25,9 +25,12 @@ const config: ForgeConfig = {
           ...(enableMacOSNotarization
             ? {
                 osxNotarize: {
-                  appleId: process.env.APPLE_ID ?? '',
-                  appleIdPassword: process.env.APPLE_ID_PASSWORD ?? '',
-                  teamId: process.env.APPLE_TEAM_ID ?? '',
+                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guarded by enableMacOSNotarization check above
+                  appleId: process.env.APPLE_ID!,
+                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                  appleIdPassword: process.env.APPLE_ID_PASSWORD!,
+                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                  teamId: process.env.APPLE_TEAM_ID!,
                 },
               }
             : {}),

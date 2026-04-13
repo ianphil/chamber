@@ -18,8 +18,8 @@ vi.mock('fs', () => ({
 // Fake SDK session
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 
-const mockSend = vi.fn(async () => {});
-const mockDestroy = vi.fn(async () => {});
+const mockSend = vi.fn().mockResolvedValue(undefined);
+const mockDestroy = vi.fn().mockResolvedValue(undefined);
 const mockOn = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
   if (event === 'session.idle') setTimeout(() => cb(), 0);
   return vi.fn();
@@ -33,7 +33,7 @@ const mockCreateSession = vi.fn(async () => ({
 
 const fakeClient = { createSession: mockCreateSession };
 const mockCreateClient = vi.fn(async () => fakeClient);
-const mockDestroyClient = vi.fn(async () => {});
+const mockDestroyClient = vi.fn().mockResolvedValue(undefined);
 
 const fakeFactory = {
   createClient: mockCreateClient,
