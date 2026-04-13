@@ -8,9 +8,7 @@ import { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { buildGenesisPrompt } from './genesisPrompt';
 import { GitHubRegistryClient } from './GitHubRegistryClient';
 
-type CopilotSessionType = import('@github/copilot-sdk').CopilotSession;
-
-const IDEA_FOLDERS = ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
+const IDEA_FOLDERS= ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
 const GENESIS_SOURCE = 'ianphil/genesis';
@@ -28,6 +26,8 @@ export interface GenesisProgress {
   step: string;
   detail: string;
 }
+
+interface RemoteRegistry { skills?: { upgrade?: { version?: string; description?: string } } }
 
 export class MindScaffold {
   private onProgress?: (progress: GenesisProgress) => void;
@@ -258,7 +258,7 @@ export class MindScaffold {
     }
 
     // Fetch remote registry to get upgrade version info
-    const remoteRegistry = this.registryClient.fetchJsonContent(owner, repo, '.github/registry.json', GENESIS_CHANNEL) as Record<string, any>;
+    const remoteRegistry = this.registryClient.fetchJsonContent(owner, repo, '.github/registry.json', GENESIS_CHANNEL) as RemoteRegistry;
     const upgradeInfo = remoteRegistry.skills?.upgrade;
 
     // Update local registry with upgrade skill

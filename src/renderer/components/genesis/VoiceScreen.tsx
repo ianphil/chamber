@@ -58,7 +58,8 @@ export function VoiceScreen({ onSelect }: Props) {
       return;
     }
     setSelected(voiceId);
-    const voice = VOICES.find(v => v.id === voiceId)!;
+    const voice = VOICES.find(v => v.id === voiceId);
+    if (!voice) return;
     setTimeout(() => onSelect(voice.name, `${voice.energy}. ${voice.era}`), 400);
   };
 
@@ -68,7 +69,7 @@ export function VoiceScreen({ onSelect }: Props) {
 
     // Ask the SDK to research this voice
     try {
-      const defaultPath = await window.electronAPI.genesis.getDefaultPath();
+      await window.electronAPI.genesis.getDefaultPath();
       // Use a lightweight approach — just pass the description through with a research note
       const description = `Character/voice: "${customInput.trim()}". Research this character or persona — their communication style, catchphrases, values, how they handle pressure. Capture the energy.`;
       setTimeout(() => {

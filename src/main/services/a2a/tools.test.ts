@@ -1,6 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildSessionTools } from './tools';
-import type { Task } from './types';
+import type { AgentCard, SendMessageRequest, Task } from './types';
+import type { MessageRouter } from './MessageRouter';
+import type { AgentCardRegistry } from './AgentCardRegistry';
+import type { TaskManager } from './TaskManager';
+
+interface SessionTool {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  handler: (args: Record<string, unknown>) => Promise<unknown>;
+}
+
+interface ToolParameterSchema {
+  type: string;
+  properties: Record<string, { type: string; description?: string; items?: { type: string } }>;
+  required?: string[];
+}
 
 const mockTaskManager = {
   sendTask: vi.fn(),
@@ -10,7 +26,7 @@ const mockTaskManager = {
 };
 
 const mockRouter = {
-  sendMessage: vi.fn(async (req: any) => ({
+  sendMessage: vi.fn(async (req: SendMessageRequest) => ({
     message: {
       messageId: req.message.messageId,
       contextId: 'ctx-assigned',
@@ -66,9 +82,9 @@ const mockRegistry = {
   getCardByName: vi.fn(),
 };
 
-const extensionTools = [
-  { name: 'canvas_show', description: 'Show canvas', handler: vi.fn() },
-  { name: 'cron_create', description: 'Create cron', handler: vi.fn() },
+const extensionTools: SessionTool[] = [
+  { name: 'canvas_show', description: 'Show canvas', parameters: {}, handler: vi.fn() },
+  { name: 'cron_create', description: 'Create cron', parameters: {}, handler: vi.fn() },
 ];
 
 describe('A2A Tools', () => {
@@ -77,10 +93,10 @@ describe('A2A Tools', () => {
   it('buildSessionTools() merges extension tools with A2A tools', () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
     expect(tools.length).toBe(8); // 2 extension + 6 A2A
   });
@@ -88,10 +104,10 @@ describe('A2A Tools', () => {
   it('buildSessionTools() includes send_message and list_agents', () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
     const names = tools.map((t) => t.name);
     expect(names).toContain('a2a_send_message');
@@ -101,14 +117,15 @@ describe('A2A Tools', () => {
   it('send_message tool has correct parameter schema', () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const sendTool = tools.find((t) => t.name === 'a2a_send_message')!;
+    const sendTool = tools.find((t) => t.name === 'a2a_send_message');
+    if (!sendTool) throw new Error('Expected to find a2a_send_message tool');
     expect(sendTool.parameters).toBeDefined();
-    const params = sendTool.parameters as any;
+    const params = sendTool.parameters as ToolParameterSchema;
     expect(params.properties.recipient).toBeDefined();
     expect(params.properties.message).toBeDefined();
     expect(params.required).toContain('recipient');
@@ -118,12 +135,13 @@ describe('A2A Tools', () => {
   it('send_message handler constructs conformant A2A Message', async () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const sendTool = tools.find((t) => t.name === 'a2a_send_message')!;
+    const sendTool = tools.find((t) => t.name === 'a2a_send_message');
+    if (!sendTool) throw new Error('Expected to find a2a_send_message tool');
     await sendTool.handler({ recipient: 'mind-b', message: 'Hello B' });
 
     expect(mockRouter.sendMessage).toHaveBeenCalledTimes(1);
@@ -138,12 +156,13 @@ describe('A2A Tools', () => {
   it('send_message handler constructs SendMessageRequest with returnImmediately', async () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const sendTool = tools.find((t) => t.name === 'a2a_send_message')!;
+    const sendTool = tools.find((t) => t.name === 'a2a_send_message');
+    if (!sendTool) throw new Error('Expected to find a2a_send_message tool');
     await sendTool.handler({ recipient: 'mind-b', message: 'Hello' });
 
     const req = mockRouter.sendMessage.mock.calls[0][0];
@@ -154,27 +173,29 @@ describe('A2A Tools', () => {
   it('send_message handler returns SendMessageResponse shape', async () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const sendTool = tools.find((t) => t.name === 'a2a_send_message')!;
+    const sendTool = tools.find((t) => t.name === 'a2a_send_message');
+    if (!sendTool) throw new Error('Expected to find a2a_send_message tool');
     const result = await sendTool.handler({ recipient: 'mind-b', message: 'Hello' });
 
     expect(result).toHaveProperty('message');
-    expect((result as any).message.contextId).toBe('ctx-assigned');
+    expect((result as { message: { contextId: string } }).message.contextId).toBe('ctx-assigned');
   });
 
   it('send_message handler passes context_id when provided', async () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const sendTool = tools.find((t) => t.name === 'a2a_send_message')!;
+    const sendTool = tools.find((t) => t.name === 'a2a_send_message');
+    if (!sendTool) throw new Error('Expected to find a2a_send_message tool');
     await sendTool.handler({
       recipient: 'mind-b',
       message: 'Follow up',
@@ -188,30 +209,32 @@ describe('A2A Tools', () => {
   it('list_agents returns AgentCards excluding self', async () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const listTool = tools.find((t) => t.name === 'a2a_list_agents')!;
+    const listTool = tools.find((t) => t.name === 'a2a_list_agents');
+    if (!listTool) throw new Error('Expected to find a2a_list_agents tool');
     const result = await listTool.handler({});
 
     expect(Array.isArray(result)).toBe(true);
-    const agents = result as any[];
+    const agents = result as AgentCard[];
     expect(agents.length).toBe(2); // 3 total minus self (mind-a)
-    expect(agents.every((a: any) => a.mindId !== 'mind-a')).toBe(true);
+    expect(agents.every((a) => a.mindId !== 'mind-a')).toBe(true);
   });
 
   it('list_agents returns full A2A AgentCard shape', async () => {
     const tools = buildSessionTools(
       'mind-a',
-      extensionTools as any,
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      extensionTools,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
-    const listTool = tools.find((t) => t.name === 'a2a_list_agents')!;
-    const result = (await listTool.handler({})) as any[];
+    const listTool = tools.find((t) => t.name === 'a2a_list_agents');
+    if (!listTool) throw new Error('Expected to find a2a_list_agents tool');
+    const result = (await listTool.handler({})) as AgentCard[];
 
     const card = result[0];
     expect(card).toHaveProperty('name');
@@ -222,11 +245,13 @@ describe('A2A Tools', () => {
   });
 
   it('tools are mind-scoped via closure', async () => {
-    const toolsA = buildSessionTools('mind-a', [], mockRouter as any, mockRegistry as any, mockTaskManager as any);
-    const toolsB = buildSessionTools('mind-b', [], mockRouter as any, mockRegistry as any, mockTaskManager as any);
+    const toolsA = buildSessionTools('mind-a', [], mockRouter as unknown as MessageRouter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
+    const toolsB = buildSessionTools('mind-b', [], mockRouter as unknown as MessageRouter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
 
-    const sendA = toolsA.find((t) => t.name === 'a2a_send_message')!;
-    const sendB = toolsB.find((t) => t.name === 'a2a_send_message')!;
+    const sendA = toolsA.find((t) => t.name === 'a2a_send_message');
+    if (!sendA) throw new Error('Expected to find a2a_send_message tool');
+    const sendB = toolsB.find((t) => t.name === 'a2a_send_message');
+    if (!sendB) throw new Error('Expected to find a2a_send_message tool');
 
     await sendA.handler({ recipient: 'mind-c', message: 'From A' });
     await sendB.handler({ recipient: 'mind-c', message: 'From B' });
@@ -247,14 +272,16 @@ describe('A2A Task Tools', () => {
     return buildSessionTools(
       'mind-a',
       [],
-      mockRouter as any,
-      mockRegistry as any,
-      mockTaskManager as any,
+      mockRouter as unknown as MessageRouter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
     );
   }
 
   function findTool(name: string) {
-    return getTools().find((t) => t.name === name)!;
+    const tool = getTools().find((t) => t.name === name);
+    if (!tool) throw new Error('Expected to find tool ' + name);
+    return tool;
   }
 
   const fakeTask: Task = {
@@ -396,28 +423,32 @@ describe('A2A Task Tools', () => {
   it('all task tools have correct parameter schemas', () => {
     const tools = getTools();
 
-    const sendTask = tools.find((t) => t.name === 'a2a_send_task')!;
-    const sendParams = sendTask.parameters as any;
+    const sendTask = tools.find((t) => t.name === 'a2a_send_task');
+    if (!sendTask) throw new Error('Expected to find a2a_send_task tool');
+    const sendParams = sendTask.parameters as ToolParameterSchema;
     expect(sendParams.required).toContain('recipient');
     expect(sendParams.required).toContain('message');
     expect(sendParams.properties.context_id).toBeDefined();
     expect(sendParams.properties.reference_task_ids).toBeDefined();
     expect(sendParams.properties.reference_task_ids.type).toBe('array');
 
-    const getTask = tools.find((t) => t.name === 'a2a_get_task')!;
-    const getParams = getTask.parameters as any;
+    const getTask = tools.find((t) => t.name === 'a2a_get_task');
+    if (!getTask) throw new Error('Expected to find a2a_get_task tool');
+    const getParams = getTask.parameters as ToolParameterSchema;
     expect(getParams.required).toContain('task_id');
     expect(getParams.properties.history_length).toBeDefined();
     expect(getParams.properties.history_length.type).toBe('number');
 
-    const listTasks = tools.find((t) => t.name === 'a2a_list_tasks')!;
-    const listParams = listTasks.parameters as any;
+    const listTasks = tools.find((t) => t.name === 'a2a_list_tasks');
+    if (!listTasks) throw new Error('Expected to find a2a_list_tasks tool');
+    const listParams = listTasks.parameters as ToolParameterSchema;
     expect(listParams.properties.context_id).toBeDefined();
     expect(listParams.properties.status).toBeDefined();
     expect(listParams.required).toBeUndefined();
 
-    const cancelTask = tools.find((t) => t.name === 'a2a_cancel_task')!;
-    const cancelParams = cancelTask.parameters as any;
+    const cancelTask = tools.find((t) => t.name === 'a2a_cancel_task');
+    if (!cancelTask) throw new Error('Expected to find a2a_cancel_task tool');
+    const cancelParams = cancelTask.parameters as ToolParameterSchema;
     expect(cancelParams.required).toContain('task_id');
   });
 });

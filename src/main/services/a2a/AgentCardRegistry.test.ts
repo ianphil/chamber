@@ -40,12 +40,14 @@ describe('AgentCardRegistry', () => {
     registry.register(makeMindContext());
     const card = registry.getCard('q-123');
     expect(card).not.toBeNull();
-    expect(card!.name).toBe('Q');
+    if (!card) throw new Error('expected card');
+    expect(card.name).toBe('Q');
   });
 
   it('AgentCard has all required A2A fields', () => {
     registry.register(makeMindContext());
-    const card = registry.getCard('q-123')!;
+    const card = registry.getCard('q-123');
+    if (!card) throw new Error('expected card');
 
     expect(card.name).toBe('Q');
     expect(card.description).toBeTruthy();
@@ -60,7 +62,9 @@ describe('AgentCardRegistry', () => {
 
   it('supportedInterfaces uses IN_PROCESS binding', () => {
     registry.register(makeMindContext());
-    const iface = registry.getCard('q-123')!.supportedInterfaces[0];
+    const card = registry.getCard('q-123');
+    if (!card) throw new Error('expected card');
+    const iface = card.supportedInterfaces[0];
 
     expect(iface.protocolBinding).toBe('IN_PROCESS');
     expect(iface.protocolVersion).toBe('1.0');
@@ -87,7 +91,8 @@ describe('AgentCardRegistry', () => {
     const card = registry.getCardByName('Q');
 
     expect(card).not.toBeNull();
-    expect(card!.mindId).toBe('q-123');
+    if (!card) throw new Error('expected card');
+    expect(card.mindId).toBe('q-123');
   });
 
   it('getCardByName() returns null for ambiguous names', () => {
@@ -99,7 +104,6 @@ describe('AgentCardRegistry', () => {
 
   it('discovers skills from .github/skills/ directories', () => {
     const mindPath = 'C:\\src\\q';
-    const skillsDir = `${mindPath}\\.github\\skills`;
 
     vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => {
       const s = String(p);
@@ -126,16 +130,19 @@ describe('AgentCardRegistry', () => {
     }) as typeof fs.readFileSync);
 
     registry.register(makeMindContext({ mindPath }));
-    const card = registry.getCard('q-123')!;
+    const card = registry.getCard('q-123');
+    if (!card) throw new Error('expected card');
 
     expect(card.skills).toHaveLength(2);
 
-    const commit = card.skills.find((s) => s.id === 'commit')!;
+    const commit = card.skills.find((s) => s.id === 'commit');
+    if (!commit) throw new Error('expected commit skill');
     expect(commit.name).toBe('Commit');
     expect(commit.description).toBe('Commits changes to git.');
     expect(commit.tags).toContain('commit');
 
-    const teams = card.skills.find((s) => s.id === 'teams')!;
+    const teams = card.skills.find((s) => s.id === 'teams');
+    if (!teams) throw new Error('expected teams skill');
     expect(teams.name).toBe('Teams');
     expect(teams.description).toBe('Send messages via Teams.');
     expect(teams.tags).toContain('teams');

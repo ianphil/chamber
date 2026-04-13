@@ -26,7 +26,7 @@ function getStatusDot(status: string): string {
   return '⚪';
 }
 
-export function LensStatusBoard({ data, schema }: Props) {
+export function LensStatusBoard({ data }: Props) {
   const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [data];
 
   return (

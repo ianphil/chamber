@@ -5,7 +5,8 @@ import { ChatService } from '../services/chat/ChatService';
 import { AgentCardRegistry } from '../services/a2a/AgentCardRegistry';
 import { MessageRouter } from '../services/a2a/MessageRouter';
 import { buildSessionTools } from '../services/a2a/tools';
-import type { SendMessageRequest } from '../services/a2a/types';
+import type { MindManager } from '../services/mind';
+import type { MindContext } from '../../shared/types';
 
 // --- Mock SDK primitives ---
 
@@ -13,7 +14,7 @@ function makeMockSession() {
   return {
     send: vi.fn(async () => {}),
     abort: vi.fn(async () => {}),
-    on: vi.fn((event: string, cb?: any) => {
+    on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
       // Fire session.idle immediately after send
       if (event === 'session.idle' && cb) {
         setTimeout(() => cb(), 0);
@@ -62,13 +63,13 @@ describe('A2A Integration', () => {
     vi.clearAllMocks();
     mindManager = makeMockMindManager();
     turnQueue = new TurnQueue();
-    chatService = new ChatService(mindManager as any, turnQueue);
+    chatService = new ChatService(mindManager as unknown as MindManager, turnQueue);
     agentCardRegistry = new AgentCardRegistry();
     a2aEventBus = new EventEmitter();
     messageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
 
     // Wire registry to mind lifecycle (mirrors main.ts)
-    mindManager.on('mind:loaded', (ctx: any) => agentCardRegistry.register(ctx));
+    mindManager.on('mind:loaded', (ctx: MindContext) => agentCardRegistry.register(ctx));
     mindManager.on('mind:unloaded', (mindId: string) => agentCardRegistry.unregister(mindId));
 
     // Load two minds
@@ -84,14 +85,15 @@ describe('A2A Integration', () => {
 
     // Build tools for Agent A
     const tools = buildSessionTools('agent-a', [], messageRouter, agentCardRegistry);
-    const sendTool = tools.find(t => t.name === 'a2a_send_message')!;
+    const sendTool = tools.find(t => t.name === 'a2a_send_message');
+    if (!sendTool) throw new Error('Expected a2a_send_message tool');
 
     // Track a2a:incoming
     const incomingEvents: unknown[] = [];
     a2aEventBus.on('a2a:incoming', (payload) => incomingEvents.push(payload));
 
     // Agent A sends message to Agent B
-    const result = await sendTool.handler({ recipient: 'agent-b', message: 'Hello from A' }) as any;
+    const result = await sendTool.handler({ recipient: 'agent-b', message: 'Hello from A' }) as { message: { contextId: string; parts: Array<{ text: string }> } };
 
     // Verify response
     expect(result.message).toBeDefined();
@@ -100,12 +102,14 @@ describe('A2A Integration', () => {
 
     // Verify a2a:incoming was emitted
     expect(incomingEvents).toHaveLength(1);
-    const incoming = incomingEvents[0] as any;
+    const incoming = incomingEvents[0] as { targetMindId: string; replyMessageId: string };
     expect(incoming.targetMindId).toBe('agent-b');
     expect(incoming.replyMessageId).toBeTruthy();
 
     // Verify ChatService was called for Agent B
-    const bSession = mindManager.getMind('agent-b')!.session;
+    const bMind1 = mindManager.getMind('agent-b');
+    if (!bMind1) throw new Error('Expected agent-b mind');
+    const bSession = bMind1.session;
     expect(bSession.send).toHaveBeenCalled();
     const prompt = bSession.send.mock.calls[0][0].prompt;
     expect(prompt).toContain('<agent-message');
@@ -117,7 +121,9 @@ describe('A2A Integration', () => {
     const order: string[] = [];
 
     // Start a long-running user turn on Agent B
-    const bSession = mindManager.getMind('agent-b')!.session;
+    const bMind2 = mindManager.getMind('agent-b');
+    if (!bMind2) throw new Error('Expected agent-b mind');
+    const bSession = bMind2.session;
     let resolveUserTurn: () => void;
     const userTurnDone = new Promise<void>(r => { resolveUserTurn = r; });
 
@@ -128,7 +134,7 @@ describe('A2A Integration', () => {
     });
 
     // Fire session.idle after send completes
-    bSession.on.mockImplementation((event: string, cb?: any) => {
+    bSession.on.mockImplementation((event: string, cb?: (...args: unknown[]) => void) => {
       if (event === 'session.idle' && cb) {
         userTurnDone.then(() => setTimeout(() => cb(), 0));
       }
@@ -145,7 +151,7 @@ describe('A2A Integration', () => {
     bSession.send.mockImplementationOnce(async () => {
       order.push('a2a-turn');
     });
-    bSession.on.mockImplementation((event: string, cb?: any) => {
+    bSession.on.mockImplementation((event: string, cb?: (...args: unknown[]) => void) => {
       if (event === 'session.idle' && cb) {
         setTimeout(() => cb(), 0);
       }
@@ -164,7 +170,8 @@ describe('A2A Integration', () => {
     });
 
     // Resolve user turn
-    resolveUserTurn!();
+    if (!resolveUserTurn) throw new Error('Expected resolveUserTurn');
+    resolveUserTurn();
     await userChatPromise;
     await a2aPromise;
 

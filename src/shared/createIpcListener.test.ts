@@ -7,7 +7,9 @@ function makeMockIpcRenderer() {
   return {
     on: vi.fn((channel: string, handler: Function) => {
       if (!listeners.has(channel)) listeners.set(channel, []);
-      listeners.get(channel)!.push(handler);
+      const list = listeners.get(channel);
+      if (!list) throw new Error('expected listener list');
+      list.push(handler);
     }),
     removeListener: vi.fn((channel: string, handler: Function) => {
       const arr = listeners.get(channel);

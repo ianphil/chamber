@@ -3,8 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { act, waitFor } from '@testing-library/react';
-import { renderHook } from '@testing-library/react';
+import { act, waitFor, renderHook } from '@testing-library/react';
 import { AppStateProvider } from '../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../test/helpers';
 import { useAgentStatus } from './useAgentStatus';

@@ -10,10 +10,11 @@ vi.mock('electron', () => ({
 
 import { ipcMain, BrowserWindow } from 'electron';
 import { setupChatroomIPC } from './chatroom';
+import type { ChatroomService } from '../services/chatroom/ChatroomService';
 
 function getHandler(channel: string): Function {
-  const calls = (ipcMain.handle as any).mock.calls;
-  const match = calls.find((c: any) => c[0] === channel);
+  const calls = vi.mocked(ipcMain.handle).mock.calls;
+  const match = calls.find((c) => c[0] === channel);
   if (!match) throw new Error(`No handler registered for ${channel}`);
   return match[1];
 }
@@ -35,7 +36,7 @@ describe('Chatroom IPC', () => {
       clearHistory: vi.fn().mockResolvedValue(undefined),
       stopAll: vi.fn(),
     });
-    setupChatroomIPC(mockService as any);
+    setupChatroomIPC(mockService as unknown as ChatroomService);
   });
 
   it('chatroom:send invokes broadcast with message and model', async () => {
@@ -75,7 +76,7 @@ describe('Chatroom IPC', () => {
   it('chatroom:event forwarding sends to all windows', () => {
     const wc1 = { send: vi.fn() };
     const wc2 = { send: vi.fn() };
-    (BrowserWindow.getAllWindows as any).mockReturnValue([
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       { isDestroyed: () => false, webContents: wc1 },
       { isDestroyed: () => false, webContents: wc2 },
     ]);
@@ -90,7 +91,7 @@ describe('Chatroom IPC', () => {
   it('chatroom:event skips destroyed windows', () => {
     const wc1 = { send: vi.fn() };
     const wc2 = { send: vi.fn() };
-    (BrowserWindow.getAllWindows as any).mockReturnValue([
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       { isDestroyed: () => true, webContents: wc1 },
       { isDestroyed: () => false, webContents: wc2 },
     ]);

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { createIpcListener } from './shared/createIpcListener';
 import type { ElectronAPI } from './shared/types';
+import type { Message, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from './shared/a2a-types';
 
 const electronAPI: ElectronAPI = {
   chat: {
@@ -51,10 +52,10 @@ const electronAPI: ElectronAPI = {
     onEvent: (callback) => createIpcListener(ipcRenderer, 'chatroom:event', callback),
   },
   a2a: {
-    onIncoming: (callback: (payload: any) => void) => createIpcListener(ipcRenderer, 'a2a:incoming', callback),
+    onIncoming: (callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => createIpcListener(ipcRenderer, 'a2a:incoming', callback),
     listAgents: () => ipcRenderer.invoke('a2a:listAgents'),
-    onTaskStatusUpdate: (callback: (payload: any) => void) => createIpcListener(ipcRenderer, 'a2a:task-status-update', callback),
-    onTaskArtifactUpdate: (callback: (payload: any) => void) => createIpcListener(ipcRenderer, 'a2a:task-artifact-update', callback),
+    onTaskStatusUpdate: (callback: (payload: TaskStatusUpdateEvent & { targetMindId: string }) => void) => createIpcListener(ipcRenderer, 'a2a:task-status-update', callback),
+    onTaskArtifactUpdate: (callback: (payload: TaskArtifactUpdateEvent & { targetMindId: string }) => void) => createIpcListener(ipcRenderer, 'a2a:task-artifact-update', callback),
     getTask: (taskId: string, historyLength?: number) => ipcRenderer.invoke('a2a:getTask', taskId, historyLength),
     listTasks: (filter?: { contextId?: string; status?: string }) => ipcRenderer.invoke('a2a:listTasks', filter),
     cancelTask: (taskId: string) => ipcRenderer.invoke('a2a:cancelTask', taskId),

@@ -5,7 +5,7 @@ interface Props {
   schema?: Record<string, unknown>;
 }
 
-export function LensTimeline({ data, schema }: Props) {
+export function LensTimeline({ data }: Props) {
   const items = Array.isArray(data) ? data as Record<string, unknown>[] : [data];
 
   return (

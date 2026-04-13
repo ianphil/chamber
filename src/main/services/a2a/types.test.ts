@@ -101,8 +101,9 @@ describe('A2A Types', () => {
     it('includes ISO timestamp', () => {
       const status = createTaskStatus('submitted');
       expect(status.timestamp).toBeDefined();
-      expect(() => new Date(status.timestamp!)).not.toThrow();
-      expect(new Date(status.timestamp!).toISOString()).toBe(status.timestamp);
+      if (!status.timestamp) throw new Error('expected timestamp');
+      expect(() => new Date(status.timestamp)).not.toThrow();
+      expect(new Date(status.timestamp).toISOString()).toBe(status.timestamp);
     });
 
     it('attaches optional message as full Message object', () => {

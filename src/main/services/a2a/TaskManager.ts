@@ -226,11 +226,12 @@ export class TaskManager extends EventEmitter {
   }
 
   private bindTaskSessionListeners(session: CopilotSession, task: Task, targetMindId: string): void {
+    void targetMindId;
     let responseText = '';
 
-    session.on('assistant.message', (event: any) => {
+    session.on('assistant.message', (event) => {
       if (TERMINAL_STATES.has(task.status.state)) return;
-      const content = event?.data?.content ?? '';
+      const content = event.data.content ?? '';
       if (content) {
         responseText += (responseText ? '\n' : '') + content;
         // Add to history
@@ -269,7 +270,7 @@ export class TaskManager extends EventEmitter {
       this.taskTargets.delete(task.id);
     });
 
-    session.on('session.error', (_event: any) => {
+    session.on('session.error', () => {
       if (TERMINAL_STATES.has(task.status.state)) return;
       this.transitionState(task, 'failed');
       this.sessions.delete(task.id);
@@ -296,7 +297,9 @@ export class TaskManager extends EventEmitter {
       });
 
     while (terminalTasks.length > TaskManager.MAX_COMPLETED_TASKS) {
-      const [id] = terminalTasks.shift()!;
+      const entry = terminalTasks.shift();
+      if (!entry) break;
+      const [id] = entry;
       this.tasks.delete(id);
     }
   }

@@ -15,8 +15,8 @@ import { isStaleSessionError } from '../../../shared/sessionErrors';
 export interface ChatroomSessionFactory {
   createChatroomSession(mindId: string): Promise<CopilotSession>;
   listMinds(): MindContext[];
-  on?(event: string, listener: (...args: any[]) => void): any;
-  removeListener?(event: string, listener: (...args: any[]) => void): any;
+  on?(event: string, listener: (...args: unknown[]) => void): unknown;
+  removeListener?(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +77,7 @@ export class ChatroomService extends EventEmitter {
   // -------------------------------------------------------------------------
 
   async broadcast(userMessage: string, _model?: string): Promise<void> {
+    void _model;
     // Cancel any in-flight agents from previous round
     this.stopAll();
 
@@ -126,7 +127,7 @@ export class ChatroomService extends EventEmitter {
     this.persist();
 
     // Destroy all cached sessions
-    for (const [id, session] of this.sessionCache) {
+    for (const [, session] of this.sessionCache) {
       await session.destroy().catch(() => {});
     }
     this.sessionCache.clear();
@@ -188,13 +189,13 @@ export class ChatroomService extends EventEmitter {
     try {
       // Subscribe to streaming events
       unsubs.push(
-        session.on('assistant.message_delta', (e: any) => {
+        session.on('assistant.message_delta', (e) => {
           emitEvent({ type: 'chunk', sdkMessageId: e.data.messageId, content: e.data.deltaContent });
         }),
       );
 
       unsubs.push(
-        session.on('assistant.message', (e: any) => {
+        session.on('assistant.message', (e) => {
           if (e.data.content) {
             finalContent = e.data.content;
             emitEvent({
@@ -207,7 +208,7 @@ export class ChatroomService extends EventEmitter {
       );
 
       unsubs.push(
-        session.on('assistant.reasoning_delta', (e: any) => {
+        session.on('assistant.reasoning_delta', (e) => {
           emitEvent({
             type: 'reasoning',
             reasoningId: e.data.reasoningId,
@@ -217,7 +218,7 @@ export class ChatroomService extends EventEmitter {
       );
 
       unsubs.push(
-        session.on('tool.execution_start', (e: any) => {
+        session.on('tool.execution_start', (e) => {
           emitEvent({
             type: 'tool_start',
             toolCallId: e.data.toolCallId,
@@ -229,7 +230,7 @@ export class ChatroomService extends EventEmitter {
       );
 
       unsubs.push(
-        session.on('tool.execution_complete', (e: any) => {
+        session.on('tool.execution_complete', (e) => {
           emitEvent({
             type: 'tool_done',
             toolCallId: e.data.toolCallId,
@@ -253,7 +254,7 @@ export class ChatroomService extends EventEmitter {
         });
         unsubs.push(unsubIdle);
 
-        const unsubError = session.on('session.error', (e: any) => {
+        const unsubError = session.on('session.error', (e) => {
           clearTimeout(timeout);
           unsubError();
           reject(new Error(e.data.message));
@@ -327,8 +328,9 @@ export class ChatroomService extends EventEmitter {
   private buildPrompt(
     currentMessage: string,
     participants: MindContext[],
-    _roundId: string,
+    roundId: string,
   ): string {
+    void roundId;
     const historyRounds = this.getLastNRounds(2);
     const participantNames = participants.map((p) => p.identity.name).join(', ');
 

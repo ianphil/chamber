@@ -19,7 +19,7 @@ vi.mock('node:fs', () => ({
 // Mock node:crypto for UUID generation
 const mockRandomUUID = vi.fn(() => 'test-uuid');
 vi.mock('node:crypto', () => ({
-  randomUUID: (...args: any[]) => mockRandomUUID(...args),
+  randomUUID: (...args: unknown[]) => mockRandomUUID(...args),
 }));
 
 import * as fs from 'node:fs';
@@ -32,14 +32,16 @@ import type { MindContext } from '../../../shared/types';
 // ---------------------------------------------------------------------------
 
 function createMockSession() {
-  const listeners = new Map<string, ((...args: any[]) => void)[]>();
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   return {
     send: vi.fn(async () => {}),
     abort: vi.fn(async () => {}),
     destroy: vi.fn(async () => {}),
-    on: vi.fn((event: string, cb: (...args: any[]) => void) => {
+    on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
       if (!listeners.has(event)) listeners.set(event, []);
-      listeners.get(event)!.push(cb);
+      const list = listeners.get(event);
+      if (!list) throw new Error('expected listener list');
+      list.push(cb);
       const unsub = vi.fn(() => {
         const cbs = listeners.get(event);
         if (cbs) {
@@ -49,7 +51,7 @@ function createMockSession() {
       });
       return unsub;
     }),
-    _emit(event: string, data: any) {
+    _emit(event: string, data: unknown) {
       for (const cb of listeners.get(event) ?? []) cb(data);
     },
     _listeners: listeners,
@@ -70,7 +72,9 @@ function createFactory(minds: MindContext[], sessions: Map<string, ReturnType<ty
   const factory: ChatroomSessionFactory & EventEmitter = Object.assign(emitter, {
     createChatroomSession: vi.fn(async (mindId: string) => {
       if (!sessions.has(mindId)) sessions.set(mindId, createMockSession());
-      return sessions.get(mindId)!;
+      const sess = sessions.get(mindId);
+      if (!sess) throw new Error(`expected session for ${mindId}`);
+      return sess;
     }),
     listMinds: vi.fn(() => minds),
   });
@@ -288,14 +292,14 @@ describe('ChatroomService', () => {
       expect(writeTimestamps.length).toBeGreaterThanOrEqual(2);
 
       // First write should contain user message but not agent reply
-      const firstWrite = JSON.parse(writeTimestamps[0]);
-      expect(firstWrite.messages.some((m: any) => m.role === 'user')).toBe(true);
-      expect(firstWrite.messages.some((m: any) => m.role === 'assistant')).toBe(false);
+      const firstWrite = JSON.parse(writeTimestamps[0]) as { messages: Array<{ role: string }> };
+      expect(firstWrite.messages.some((m) => m.role === 'user')).toBe(true);
+      expect(firstWrite.messages.some((m) => m.role === 'assistant')).toBe(false);
 
       // Last write should contain both
-      const lastWrite = JSON.parse(writeTimestamps[writeTimestamps.length - 1]);
-      expect(lastWrite.messages.some((m: any) => m.role === 'user')).toBe(true);
-      expect(lastWrite.messages.some((m: any) => m.role === 'assistant')).toBe(true);
+      const lastWrite = JSON.parse(writeTimestamps[writeTimestamps.length - 1]) as { messages: Array<{ role: string }> };
+      expect(lastWrite.messages.some((m) => m.role === 'user')).toBe(true);
+      expect(lastWrite.messages.some((m) => m.role === 'assistant')).toBe(true);
     });
   });
 
@@ -374,7 +378,7 @@ describe('ChatroomService', () => {
 
       // First round never completes
       neverIdle(sess);
-      const firstBroadcast = svc.broadcast('First');
+      svc.broadcast('First');
 
       // Wait for send to fire
       await vi.waitFor(() => expect(sess.send).toHaveBeenCalledTimes(1));
@@ -551,10 +555,11 @@ describe('ChatroomService', () => {
       expect(events.length).toBeGreaterThan(0);
       const chunkEvent = events.find((e) => e.event.type === 'chunk');
       expect(chunkEvent).toBeDefined();
-      expect(chunkEvent!.mindId).toBe('dude');
-      expect(chunkEvent!.mindName).toBe('The Dude');
-      expect(chunkEvent!.roundId).toBeTruthy();
-      expect(chunkEvent!.messageId).toBeTruthy();
+      if (!chunkEvent) throw new Error('expected chunk event');
+      expect(chunkEvent.mindId).toBe('dude');
+      expect(chunkEvent.mindName).toBe('The Dude');
+      expect(chunkEvent.roundId).toBeTruthy();
+      expect(chunkEvent.messageId).toBeTruthy();
     });
   });
 

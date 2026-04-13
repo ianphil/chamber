@@ -142,7 +142,7 @@ describe('ViewDiscovery', () => {
   describe('removeMind', () => {
     it('clears views and stops watching for that mind', async () => {
       const mockClose = vi.fn();
-      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as any);
+      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as unknown as fs.FSWatcher);
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([]);
 
@@ -158,7 +158,7 @@ describe('ViewDiscovery', () => {
   describe('stopWatching', () => {
     it('closes watchers for a specific mind', () => {
       const mockClose = vi.fn();
-      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as any);
+      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as unknown as fs.FSWatcher);
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([]);
 
@@ -169,7 +169,7 @@ describe('ViewDiscovery', () => {
 
     it('closes all watchers when no mindPath given', () => {
       const mockClose = vi.fn();
-      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as any);
+      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as unknown as fs.FSWatcher);
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([]);
 

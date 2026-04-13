@@ -4,7 +4,7 @@ import type { TaskManager } from './TaskManager';
 import type { TaskState } from './types';
 import { createTextMessage } from './helpers';
 
-interface SessionTool {
+export interface SessionTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
@@ -171,8 +171,8 @@ function buildTaskTools(mindId: string, taskManager: TaskManager): SessionTool[]
       const { task_id } = args as { task_id: string };
       try {
         return taskManager.cancelTask(task_id);
-      } catch (err: any) {
-        return { error: err.message };
+      } catch (err: unknown) {
+        return { error: err instanceof Error ? err.message : String(err) };
       }
     },
   };

@@ -18,7 +18,8 @@ describe('SenderBadge', () => {
 
   it('applies genesis styling', () => {
     const { container } = render(<SenderBadge name="Q" />);
-    const badge = container.firstElementChild!;
+    const badge = container.firstElementChild;
+    if (!badge) throw new Error('expected badge element');
     expect(badge.className).toContain('text-genesis');
   });
 });

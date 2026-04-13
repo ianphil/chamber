@@ -1,18 +1,17 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, type Mock } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ChatroomPanel } from './ChatroomPanel';
 import { AppStateProvider } from '../../lib/store';
 import type { AppState } from '../../lib/store';
-import type { MindContext } from '../../../shared/types';
+import type { MindContext, ElectronAPI } from '../../../shared/types';
 import {
   installElectronAPI,
   makeChatroomMessage,
 } from '../../../test/helpers';
-import type { ElectronAPI } from '../../../shared/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

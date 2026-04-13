@@ -4,9 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import { handleChatEvent, appReducer, initialState } from '.';
 import type { AppState, AppAction } from '.';
-import type { ChatMessage, ChatEvent } from '../../../shared/types';
-import type { ChatroomMessage, ChatroomStreamEvent } from '../../../shared/chatroom-types';
-import type { Task, TaskStatus, Artifact } from '../../../shared/a2a-types';
+import type { ChatMessage } from '../../../shared/types';
+import type { Message, Task, TaskStatus, Artifact } from '../../../shared/a2a-types';
 import {
   makeMessage,
   makeTextBlock,
@@ -336,7 +335,7 @@ describe('appReducer', () => {
   // -------------------------------------------------------------------------
 
   describe('A2A_INCOMING', () => {
-    const a2aPayload = (overrides?: Partial<{ targetMindId: string; message: any; replyMessageId: string }>) => ({
+    const a2aPayload = (overrides?: Partial<{ targetMindId: string; message: Message; replyMessageId: string }>) => ({
       targetMindId: mindId,
       message: {
         messageId: 'msg-a2a-1',
@@ -350,7 +349,8 @@ describe('appReducer', () => {
 
     it('inserts sender message with attribution into target mind', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
-      const msgs = state.messagesByMind[mindId]!;
+      const msgs = state.messagesByMind[mindId];
+      if (!msgs) throw new Error('expected messages for mind');
       expect(msgs).toHaveLength(2);
       expect(msgs[0].role).toBe('user');
       expect(msgs[0].sender).toEqual({ mindId: 'agent-a', name: 'Agent A' });
@@ -359,7 +359,8 @@ describe('appReducer', () => {
 
     it('inserts assistant reply placeholder', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
-      const msgs = state.messagesByMind[mindId]!;
+      const msgs = state.messagesByMind[mindId];
+      if (!msgs) throw new Error('expected messages for mind');
       expect(msgs[1].id).toBe('reply-1');
       expect(msgs[1].role).toBe('assistant');
       expect(msgs[1].isStreaming).toBe(true);
@@ -496,7 +497,9 @@ describe('appReducer', () => {
         },
       });
       expect(state.tasksByMind[mindId][0].artifacts).toHaveLength(1);
-      expect(state.tasksByMind[mindId][0].artifacts![0].artifactId).toBe('art-1');
+      const artifacts = state.tasksByMind[mindId][0].artifacts;
+      if (!artifacts) throw new Error('expected artifacts');
+      expect(artifacts[0].artifactId).toBe('art-1');
     });
 
     it('TASK_ARTIFACT_UPDATE for unknown task is no-op', () => {

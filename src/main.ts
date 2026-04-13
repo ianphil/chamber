@@ -14,6 +14,7 @@ import { MindManager } from './main/services/mind';
 import { ChatService } from './main/services/chat/ChatService';
 import { TurnQueue } from './main/services/chat/TurnQueue';
 import { AgentCardRegistry, MessageRouter, TaskManager, buildSessionTools } from './main/services/a2a';
+import type { SessionTool } from './main/services/a2a';
 import { ChatroomService } from './main/services/chatroom';
 import { loadCanvasExtension } from './main/services/extensions/adapters/canvas';
 import { loadCronExtension } from './main/services/extensions/adapters/cron';
@@ -59,7 +60,7 @@ const turnQueue = new TurnQueue();
 // eslint-disable-next-line prefer-const
 let taskManager: TaskManager;
 const toolBuilder = (mindId: string, extensionTools: unknown[]) =>
-  buildSessionTools(mindId, extensionTools as any, messageRouter, agentCardRegistry, taskManager);
+  buildSessionTools(mindId, extensionTools as SessionTool[], messageRouter, agentCardRegistry, taskManager);
 
 const mindManager = new MindManager(clientFactory, identityLoader, extensionLoader, configService, viewDiscovery, toolBuilder);
 taskManager = new TaskManager(mindManager, agentCardRegistry);

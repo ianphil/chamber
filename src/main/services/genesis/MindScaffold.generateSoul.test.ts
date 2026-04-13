@@ -16,9 +16,11 @@ vi.mock('fs', () => ({
 }));
 
 // Fake SDK session
+import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
+
 const mockSend = vi.fn(async () => {});
 const mockDestroy = vi.fn(async () => {});
-const mockOn = vi.fn((event: string, cb: (...args: any[]) => void) => {
+const mockOn = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
   if (event === 'session.idle') setTimeout(() => cb(), 0);
   return vi.fn();
 });
@@ -57,14 +59,14 @@ describe('MindScaffold.generateSoul — CopilotClientFactory integration', () =>
   beforeEach(() => {
     vi.clearAllMocks();
     // Re-wire defaults so session.idle fires immediately
-    mockOn.mockImplementation((event: string, cb: (...args: any[]) => void) => {
+    mockOn.mockImplementation((event: string, cb: (...args: unknown[]) => void) => {
       if (event === 'session.idle') setTimeout(() => cb(), 0);
       return vi.fn();
     });
   });
 
   it('calls createClient with the mind path', async () => {
-    const scaffold = new MindScaffold(undefined, fakeFactory as any);
+    const scaffold = new MindScaffold(undefined, fakeFactory as unknown as CopilotClientFactory);
 
     await scaffold.create({
       name: 'alpha',
@@ -79,7 +81,7 @@ describe('MindScaffold.generateSoul — CopilotClientFactory integration', () =>
   });
 
   it('destroys the client after soul generation succeeds', async () => {
-    const scaffold = new MindScaffold(undefined, fakeFactory as any);
+    const scaffold = new MindScaffold(undefined, fakeFactory as unknown as CopilotClientFactory);
 
     await scaffold.create({
       name: 'bravo',
@@ -97,7 +99,7 @@ describe('MindScaffold.generateSoul — CopilotClientFactory integration', () =>
 
   it('destroys the client even when session.send throws', async () => {
     mockSend.mockRejectedValueOnce(new Error('send boom'));
-    const scaffold = new MindScaffold(undefined, fakeFactory as any);
+    const scaffold = new MindScaffold(undefined, fakeFactory as unknown as CopilotClientFactory);
 
     await expect(
       scaffold.create({

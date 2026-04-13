@@ -4,7 +4,6 @@
 import { describe, it, expect } from 'vitest';
 import { getPlainContent } from '.';
 import { makeMessage } from '../../../test/helpers';
-import type { ChatEvent, ContentBlock } from '../../../shared/types';
 
 describe('getPlainContent', () => {
   it('extracts text from text blocks', () => {

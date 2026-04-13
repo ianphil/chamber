@@ -5,7 +5,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { MindContext, AppConfig, MindRecord } from '../../../shared/types';
-import type { InternalMindContext, CopilotSession } from './types';
+import type { InternalMindContext, CopilotClient, CopilotSession } from './types';
 import { generateMindId } from './generateMindId';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import type { IdentityLoader } from '../chat/IdentityLoader';
@@ -36,7 +36,9 @@ export class MindManager extends EventEmitter {
     // Deduplicate — return existing mind
     const existingId = this.pathToId.get(mindPath);
     if (existingId && this.minds.has(existingId)) {
-      return this.toExternalContext(this.minds.get(existingId)!);
+      const existing = this.minds.get(existingId);
+      if (!existing) throw new Error(`Mind ${existingId} not found`);
+      return this.toExternalContext(existing);
     }
 
     // Concurrent guard — return in-flight promise
@@ -277,14 +279,13 @@ export class MindManager extends EventEmitter {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async createSessionForMind(
-    client: any,
+    client: CopilotClient,
     mindPath: string,
     systemMessage: string,
     tools: unknown[],
     onUserInputRequest?: (prompt: string) => Promise<{ answer: string; wasFreeform: boolean }>,
-  ): Promise<any> {
+  ): Promise<CopilotSession> {
     return client.createSession({
       workingDirectory: mindPath,
       tools,
@@ -309,9 +310,9 @@ export class MindManager extends EventEmitter {
     await context.session.send({ prompt });
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(resolve, 120_000);
-      const unsub = context.session!.on('session.idle', () => {
+      const unsub = context.session?.on('session.idle', () => {
         clearTimeout(timeout);
-        unsub();
+        unsub?.();
         resolve();
       });
     });

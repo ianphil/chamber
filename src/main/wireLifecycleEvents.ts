@@ -2,6 +2,8 @@ import type { EventEmitter } from 'events';
 import type { MindManager } from './services/mind/MindManager';
 import type { AgentCardRegistry, TaskManager } from './services/a2a';
 
+import type { MindContext } from '../shared/types';
+
 interface LifecycleServices {
   mindManager: MindManager;
   agentCardRegistry: AgentCardRegistry;
@@ -12,7 +14,7 @@ interface LifecycleServices {
 /** Wire cross-service lifecycle events that don't belong in any single service. */
 export function wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus }: LifecycleServices): void {
   // AgentCardRegistry tracks MindManager lifecycle
-  mindManager.on('mind:loaded', (ctx: any) => agentCardRegistry.register(ctx));
+  mindManager.on('mind:loaded', (ctx: MindContext) => agentCardRegistry.register(ctx));
   mindManager.on('mind:unloaded', (mindId: string) => agentCardRegistry.unregister(mindId));
 
   // TaskManager events forwarded to IPC bus

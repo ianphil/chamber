@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MindManager } from './MindManager';
-import type { MindContext } from '../../../shared/types';
+import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
+import type { IdentityLoader } from '../chat/IdentityLoader';
+import type { ExtensionLoader } from '../extensions/ExtensionLoader';
+import type { ConfigService } from '../config/ConfigService';
+import type { ViewDiscovery } from '../lens/ViewDiscovery';
 
 // --- Mocks ---
 
@@ -70,11 +74,11 @@ describe('MindManager', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     manager = new MindManager(
-      mockClientFactory as any,
-      mockIdentityLoader as any,
-      mockExtensionLoader as any,
-      mockConfigService as any,
-      mockViewDiscovery as any,
+      mockClientFactory as unknown as CopilotClientFactory,
+      mockIdentityLoader as unknown as IdentityLoader,
+      mockExtensionLoader as unknown as ExtensionLoader,
+      mockConfigService as unknown as ConfigService,
+      mockViewDiscovery as unknown as ViewDiscovery,
     );
   });
 
@@ -169,9 +173,9 @@ describe('MindManager', () => {
     it('returns internal context for valid ID', async () => {
       const mind = await manager.loadMind('C:\\agents\\q');
       const internal = manager.getMind(mind.mindId);
-      expect(internal).toBeDefined();
-      expect(internal!.client).toBeDefined();
-      expect(internal!.session).toBeDefined();
+      if (!internal) throw new Error('expected internal mind context');
+      expect(internal.client).toBeDefined();
+      expect(internal.session).toBeDefined();
     });
 
     it('returns undefined for invalid ID', () => {
@@ -182,11 +186,13 @@ describe('MindManager', () => {
   describe('recreateSession', () => {
     it('destroys old session and creates new one', async () => {
       const mind = await manager.loadMind('C:\\agents\\q');
-      const oldSession = manager.getMind(mind.mindId)!.session;
+      manager.getMind(mind.mindId); // side-effect: verify it exists
 
       await manager.recreateSession(mind.mindId);
 
-      const newSession = manager.getMind(mind.mindId)!.session;
+      const newCtx = manager.getMind(mind.mindId);
+      if (!newCtx) throw new Error('expected mind context after recreate');
+      const newSession = newCtx.session;
       expect(newSession).toBeDefined();
       expect(mockCreateSession).toHaveBeenCalledTimes(2);
     });
@@ -365,11 +371,11 @@ describe('MindManager', () => {
       const a2aTool = { name: 'send_message' };
       const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, a2aTool]);
       const mgr = new MindManager(
-        mockClientFactory as any,
-        mockIdentityLoader as any,
-        mockExtensionLoader as any,
-        mockConfigService as any,
-        mockViewDiscovery as any,
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockExtensionLoader as unknown as ExtensionLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
         toolBuilder,
       );
 
@@ -452,7 +458,8 @@ describe('MindManager', () => {
       expect(manager.isWindowed(mind.mindId)).toBe(true);
 
       // Simulate window close
-      closeHandler!();
+      if (!closeHandler) throw new Error('expected close handler');
+      closeHandler();
       expect(manager.isWindowed(mind.mindId)).toBe(false);
     });
 
@@ -475,15 +482,15 @@ describe('MindManager', () => {
     it('doLoadMind() calls toolBuilder with mindId and extension tools', async () => {
       const toolBuilder = vi.fn((mindId: string, extTools: unknown[]) => [...extTools, { name: 'send_message' }, { name: 'list_agents' }]);
       const mgr = new MindManager(
-        mockClientFactory as any,
-        mockIdentityLoader as any,
-        mockExtensionLoader as any,
-        mockConfigService as any,
-        mockViewDiscovery as any,
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockExtensionLoader as unknown as ExtensionLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
         toolBuilder,
       );
 
-      const mockTool = { name: 'canvas_show' };
+      const mockTool= { name: 'canvas_show' };
       mockExtensionLoader.loadTools.mockResolvedValueOnce({ tools: [mockTool], loaded: [{ tools: [mockTool] }] });
 
       await mgr.loadMind('C:\\agents\\q');
@@ -499,11 +506,11 @@ describe('MindManager', () => {
       const a2aTool = { name: 'send_message' };
       const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, a2aTool]);
       const mgr = new MindManager(
-        mockClientFactory as any,
-        mockIdentityLoader as any,
-        mockExtensionLoader as any,
-        mockConfigService as any,
-        mockViewDiscovery as any,
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockExtensionLoader as unknown as ExtensionLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
         toolBuilder,
       );
 
@@ -519,11 +526,11 @@ describe('MindManager', () => {
     it('recreateSession() calls toolBuilder to rebuild tools', async () => {
       const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, { name: 'a2a' }]);
       const mgr = new MindManager(
-        mockClientFactory as any,
-        mockIdentityLoader as any,
-        mockExtensionLoader as any,
-        mockConfigService as any,
-        mockViewDiscovery as any,
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockExtensionLoader as unknown as ExtensionLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
         toolBuilder,
       );
 
@@ -539,11 +546,11 @@ describe('MindManager', () => {
     it('recreateSession() passes fresh tools to new session', async () => {
       const toolBuilder = vi.fn((_mindId: string, extTools: unknown[]) => [...extTools, { name: 'fresh_tool' }]);
       const mgr = new MindManager(
-        mockClientFactory as any,
-        mockIdentityLoader as any,
-        mockExtensionLoader as any,
-        mockConfigService as any,
-        mockViewDiscovery as any,
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockExtensionLoader as unknown as ExtensionLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
         toolBuilder,
       );
 

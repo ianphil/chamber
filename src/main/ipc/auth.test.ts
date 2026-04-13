@@ -9,6 +9,7 @@ vi.mock('electron', () => ({
 
 import { ipcMain } from 'electron';
 import { setupAuthIPC } from './auth';
+import type { AuthService } from '../services/auth';
 
 describe('setupAuthIPC', () => {
   it('accepts injected AuthService and registers handlers', () => {
@@ -16,7 +17,7 @@ describe('setupAuthIPC', () => {
       getStoredCredential: vi.fn().mockResolvedValue(null),
       setProgressHandler: vi.fn(),
       startLogin: vi.fn().mockResolvedValue({ success: true }),
-    } as any;
+    } as unknown as AuthService;
     setupAuthIPC(fakeAuth);
     const channels = vi.mocked(ipcMain.handle).mock.calls.map(c => c[0]);
     expect(channels).toContain('auth:getStatus');

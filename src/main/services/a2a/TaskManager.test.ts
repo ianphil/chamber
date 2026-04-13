@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EventEmitter } from 'events';
 import { TaskManager } from './TaskManager';
-import type { AgentCard, SendMessageRequest, Task, TaskState, Message } from './types';
+import type { TaskSessionFactory } from './TaskManager';
+import type { AgentCard, SendMessageRequest, TaskState, Message, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, Artifact } from './types';
+import type { AgentCardRegistry } from './AgentCardRegistry';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,7 +47,7 @@ function makeRequest(
 // Mock session factory
 // ---------------------------------------------------------------------------
 
-type SessionCallback = (event?: any) => void;
+type SessionCallback = (event?: unknown) => void;
 
 function createMockSession() {
   const listeners = new Map<string, SessionCallback[]>();
@@ -55,11 +56,12 @@ function createMockSession() {
     abort: vi.fn(async () => {}),
     on: vi.fn((event: string, cb: SessionCallback) => {
       if (!listeners.has(event)) listeners.set(event, []);
-      listeners.get(event)!.push(cb);
+      const cbs = listeners.get(event);
+      if (cbs) cbs.push(cb);
       return vi.fn(); // unsub
     }),
     // test helper — fire a registered event
-    _emit(event: string, data?: any) {
+    _emit(event: string, data?: unknown) {
       for (const cb of listeners.get(event) ?? []) cb(data);
     },
     _listeners: listeners,
@@ -95,7 +97,7 @@ describe('TaskManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
-    tm = new TaskManager(mockMindManager as any, mockRegistry as any);
+    tm = new TaskManager(mockMindManager as unknown as TaskSessionFactory, mockRegistry as unknown as AgentCardRegistry);
   });
 
 
@@ -120,7 +122,7 @@ describe('TaskManager', () => {
 
 
   it('sendTask() transitions to working after send', async () => {
-    const events: any[] = [];
+    const events: TaskStatusUpdateEvent[] = [];
     tm.on('task:status-update', (e) => events.push(e));
 
     await tm.sendTask(makeRequest('target-1', 'hello'));
@@ -132,7 +134,7 @@ describe('TaskManager', () => {
 
 
   it('sendTask() transitions to completed on session idle', async () => {
-    const events: any[] = [];
+    const events: TaskStatusUpdateEvent[] = [];
     tm.on('task:status-update', (e) => events.push(e));
 
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
@@ -143,13 +145,14 @@ describe('TaskManager', () => {
     await flushPromises();
 
     const fetched = tm.getTask(task.id);
-    expect(fetched!.status.state).toBe('completed');
+    if (!fetched) throw new Error('Expected task to exist');
+    expect(fetched.status.state).toBe('completed');
     expect(events.some((e) => e.status.state === 'completed')).toBe(true);
   });
 
 
   it('sendTask() transitions to failed on session error', async () => {
-    const events: any[] = [];
+    const events: TaskStatusUpdateEvent[] = [];
     tm.on('task:status-update', (e) => events.push(e));
 
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
@@ -159,7 +162,8 @@ describe('TaskManager', () => {
     await flushPromises();
 
     const fetched = tm.getTask(task.id);
-    expect(fetched!.status.state).toBe('failed');
+    if (!fetched) throw new Error('Expected task to exist');
+    expect(fetched.status.state).toBe('failed');
     expect(events.some((e) => e.status.state === 'failed')).toBe(true);
   });
 
@@ -171,7 +175,7 @@ describe('TaskManager', () => {
 
 
   it('sendTask() creates artifact from agent response', async () => {
-    const artifactEvents: any[] = [];
+    const artifactEvents: TaskArtifactUpdateEvent[] = [];
     tm.on('task:artifact-update', (e) => artifactEvents.push(e));
 
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
@@ -183,9 +187,11 @@ describe('TaskManager', () => {
     await flushPromises();
 
     const fetched = tm.getTask(task.id);
-    expect(fetched!.artifacts).toBeDefined();
-    expect(fetched!.artifacts!.length).toBeGreaterThan(0);
-    expect(fetched!.artifacts![0].parts[0].text).toBe('I did it');
+    if (!fetched) throw new Error('Expected task to exist');
+    if (!fetched.artifacts) throw new Error('Expected artifacts');
+    expect(fetched.artifacts).toBeDefined();
+    expect(fetched.artifacts.length).toBeGreaterThan(0);
+    expect(fetched.artifacts[0].parts[0].text).toBe('I did it');
     expect(artifactEvents.length).toBeGreaterThan(0);
   });
 
@@ -200,8 +206,10 @@ describe('TaskManager', () => {
     await flushPromises();
 
     const fetched = tm.getTask(task.id);
+    if (!fetched) throw new Error('Expected task to exist');
+    if (!fetched.history) throw new Error('Expected history');
     // Should have at least the original user message + assistant replies
-    expect(fetched!.history!.length).toBeGreaterThanOrEqual(3);
+    expect(fetched.history.length).toBeGreaterThanOrEqual(3);
   });
 
 
@@ -223,7 +231,8 @@ describe('TaskManager', () => {
     );
     // referenceTaskIds should be on the history's first message
     const fetched = tm.getTask(task.id);
-    const userMsg = fetched!.history?.find((m) => m.role === 'user');
+    if (!fetched) throw new Error('Expected task to exist');
+    const userMsg = fetched.history?.find((m) => m.role === 'user');
     expect(userMsg?.referenceTaskIds).toEqual(['task-prev-1', 'task-prev-2']);
   });
 
@@ -232,7 +241,8 @@ describe('TaskManager', () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
     const fetched = tm.getTask(task.id);
     expect(fetched).toBeDefined();
-    expect(fetched!.id).toBe(task.id);
+    if (!fetched) throw new Error('Expected task to exist');
+    expect(fetched.id).toBe(task.id);
   });
 
 
@@ -252,15 +262,20 @@ describe('TaskManager', () => {
 
     // unset → full history
     const full = tm.getTask(task.id);
-    expect(full!.history!.length).toBeGreaterThan(0);
+    if (!full) throw new Error('Expected task to exist');
+    if (!full.history) throw new Error('Expected history');
+    expect(full.history.length).toBeGreaterThan(0);
 
     // 0 → empty history
     const none = tm.getTask(task.id, 0);
-    expect(none!.history).toEqual([]);
+    if (!none) throw new Error('Expected task to exist');
+    expect(none.history).toEqual([]);
 
     // 1 → last 1 item
     const one = tm.getTask(task.id, 1);
-    expect(one!.history!.length).toBe(1);
+    if (!one) throw new Error('Expected task to exist');
+    if (!one.history) throw new Error('Expected history');
+    expect(one.history.length).toBe(1);
   });
 
 
@@ -316,7 +331,9 @@ describe('TaskManager', () => {
     latestMockSession._emit('session.idle');
     await flushPromises();
 
-    expect(tm.getTask(task.id)!.status.state).toBe('completed');
+    const taskBeforeCancel = tm.getTask(task.id);
+    if (!taskBeforeCancel) throw new Error('Expected task to exist');
+    expect(taskBeforeCancel.status.state).toBe('completed');
     expect(() => tm.cancelTask(task.id)).toThrow();
   });
 
@@ -336,8 +353,10 @@ describe('TaskManager', () => {
     }
 
     for (const id of ids) {
-      expect(tm.getTask(id)).not.toBeNull();
-      expect(tm.getTask(id)!.status.state).toBe('completed');
+      const t = tm.getTask(id);
+      expect(t).not.toBeNull();
+      if (!t) throw new Error('Expected task to exist');
+      expect(t.status.state).toBe('completed');
     }
 
     // Verify limit is documented
@@ -355,13 +374,19 @@ describe('TaskManager', () => {
 
     // Cancel the task
     tm.cancelTask(task.id);
-    const historyLenAfterCancel = tm.getTask(task.id)!.history!.length;
+    const afterCancel = tm.getTask(task.id);
+    if (!afterCancel) throw new Error('Expected task to exist');
+    if (!afterCancel.history) throw new Error('Expected history');
+    const historyLenAfterCancel = afterCancel.history.length;
 
     // Fire a buffered assistant.message after cancellation
     latestMockSession._emit('assistant.message', { data: { content: 'late message' } });
     await flushPromises();
 
-    expect(tm.getTask(task.id)!.history!.length).toBe(historyLenAfterCancel);
+    const afterBuffered = tm.getTask(task.id);
+    if (!afterBuffered) throw new Error('Expected task to exist');
+    if (!afterBuffered.history) throw new Error('Expected history');
+    expect(afterBuffered.history.length).toBe(historyLenAfterCancel);
   });
 
 
@@ -375,7 +400,9 @@ describe('TaskManager', () => {
     await flushPromises();
 
     const fetched = tm.getTask(task.id);
-    const artifactText = fetched!.artifacts![0].parts[0].text;
+    if (!fetched) throw new Error('Expected task to exist');
+    if (!fetched.artifacts) throw new Error('Expected artifacts');
+    const artifactText = fetched.artifacts[0].parts[0].text;
     expect(artifactText).toContain('first part');
     expect(artifactText).toContain('second part');
   });
@@ -390,11 +417,11 @@ describe('TaskManager', () => {
     beforeEach(() => {
       capturedOnUserInputRequest = undefined;
       // Override mock to capture the onUserInputRequest callback
-      mockMindManager.createTaskSession.mockImplementation(async (_mindId: string, _taskId: string, onUserInputRequest?: any) => {
-        capturedOnUserInputRequest = onUserInputRequest;
+      mockMindManager.createTaskSession.mockImplementation((async (...args: unknown[]) => {
+        capturedOnUserInputRequest = args[2] as typeof capturedOnUserInputRequest;
         latestMockSession = createMockSession();
         return latestMockSession;
-      });
+      }) as typeof mockMindManager.createTaskSession);
     });
 
 
@@ -404,22 +431,25 @@ describe('TaskManager', () => {
 
       // Trigger the input-required callback (simulates agent calling ask_user)
       expect(capturedOnUserInputRequest).toBeDefined();
-      capturedOnUserInputRequest!('What is your name?');
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      capturedOnUserInputRequest('What is your name?');
       await flushPromises();
 
       const fetched = tm.getTask(task.id);
-      expect(fetched!.status.state).toBe('input-required');
+      if (!fetched) throw new Error('Expected task to exist');
+      expect(fetched.status.state).toBe('input-required');
     });
 
 
     it('input-required emits task:status-update', async () => {
-      const events: any[] = [];
+      const events: TaskStatusUpdateEvent[] = [];
       tm.on('task:status-update', (e) => events.push(e));
 
       await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
 
-      capturedOnUserInputRequest!('Need info');
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      capturedOnUserInputRequest('Need info');
       await flushPromises();
 
       const inputRequiredEvent = events.find((e) => e.status.state === 'input-required');
@@ -434,7 +464,8 @@ describe('TaskManager', () => {
       await flushPromises();
 
       // Trigger input-required and capture the promise
-      const inputPromise = capturedOnUserInputRequest!('Pick a color');
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      const inputPromise = capturedOnUserInputRequest('Pick a color');
       await flushPromises();
 
       // Resume with user answer
@@ -456,7 +487,8 @@ describe('TaskManager', () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
 
-      capturedOnUserInputRequest!('Confirm?');
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      capturedOnUserInputRequest('Confirm?');
       await flushPromises();
 
       const answerMessage: Message = {
@@ -467,7 +499,8 @@ describe('TaskManager', () => {
       tm.resumeTask(task.id, answerMessage);
 
       const fetched = tm.getTask(task.id);
-      expect(fetched!.status.state).toBe('working');
+      if (!fetched) throw new Error('Expected task to exist');
+      expect(fetched.status.state).toBe('working');
     });
 
 
@@ -499,7 +532,8 @@ describe('TaskManager', () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
 
-      capturedOnUserInputRequest!('Pick a color');
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      capturedOnUserInputRequest('Pick a color');
       await flushPromises();
 
       const answerMessage: Message = {
@@ -509,21 +543,24 @@ describe('TaskManager', () => {
       };
       const returned = tm.resumeTask(task.id, answerMessage);
       const internal = tm.getTask(task.id);
+      if (!internal) throw new Error('Expected task to exist');
 
       // Must be distinct objects
       expect(returned).not.toBe(internal);
-      expect(returned.status).not.toBe(internal!.status);
-      expect(returned.history).not.toBe(internal!.history);
-      expect(returned.artifacts).not.toBe(internal!.artifacts);
+      expect(returned.status).not.toBe(internal.status);
+      expect(returned.history).not.toBe(internal.history);
+      expect(returned.artifacts).not.toBe(internal.artifacts);
 
       // Mutating returned must not affect internal
-      returned.status.state = 'failed' as any;
-      expect(tm.getTask(task.id)!.status.state).toBe('working');
+      (returned.status as { state: string }).state = 'failed';
+      const afterMutation = tm.getTask(task.id);
+      if (!afterMutation) throw new Error('Expected task to exist');
+      expect(afterMutation.status.state).toBe('working');
     });
 
 
     it('full flow: send → working → input-required → resume → completed', async () => {
-      const events: any[] = [];
+      const events: TaskStatusUpdateEvent[] = [];
       tm.on('task:status-update', (e) => events.push(e));
 
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
@@ -533,10 +570,13 @@ describe('TaskManager', () => {
       expect(events.some((e) => e.status.state === 'working')).toBe(true);
 
       // Agent asks for input
-      const inputPromise = capturedOnUserInputRequest!('What color?');
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      const inputPromise = capturedOnUserInputRequest('What color?');
       await flushPromises();
 
-      expect(tm.getTask(task.id)!.status.state).toBe('input-required');
+      const taskAfterInput = tm.getTask(task.id);
+      if (!taskAfterInput) throw new Error('Expected task to exist');
+      expect(taskAfterInput.status.state).toBe('input-required');
       expect(events.some((e) => e.status.state === 'input-required')).toBe(true);
 
       // User provides answer
@@ -552,14 +592,18 @@ describe('TaskManager', () => {
       expect(result.answer).toBe('Red');
 
       // Task should be back to working
-      expect(tm.getTask(task.id)!.status.state).toBe('working');
+      const taskAfterResume = tm.getTask(task.id);
+      if (!taskAfterResume) throw new Error('Expected task to exist');
+      expect(taskAfterResume.status.state).toBe('working');
 
       // Agent completes
       latestMockSession._emit('assistant.message', { data: { content: 'Done with Red' } });
       latestMockSession._emit('session.idle');
       await flushPromises();
 
-      expect(tm.getTask(task.id)!.status.state).toBe('completed');
+      const taskAfterComplete = tm.getTask(task.id);
+      if (!taskAfterComplete) throw new Error('Expected task to exist');
+      expect(taskAfterComplete.status.state).toBe('completed');
 
       // Verify full state progression
       const states = events.map((e) => e.status.state);
@@ -576,7 +620,7 @@ describe('TaskManager', () => {
 
   describe('stale session retry', () => {
     it('creates fresh session and completes task on stale-send retry', async () => {
-      const events: any[] = [];
+      const events: TaskStatusUpdateEvent[] = [];
       tm.on('task:status-update', (e) => events.push(e));
 
       // First session: send rejects with stale error
@@ -597,12 +641,15 @@ describe('TaskManager', () => {
       await flushPromises();
 
       expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(2);
-      expect(tm.getTask(task.id)!.status.state).toBe('completed');
-      expect(tm.getTask(task.id)!.artifacts![0].parts[0].text).toBe('Done');
+      const completedTask = tm.getTask(task.id);
+      if (!completedTask) throw new Error('Expected task to exist');
+      if (!completedTask.artifacts) throw new Error('Expected artifacts');
+      expect(completedTask.status.state).toBe('completed');
+      expect(completedTask.artifacts[0].parts[0].text).toBe('Done');
     });
 
     it('rebinds listeners — fresh session events drive task to completion', async () => {
-      const artifactEvents: any[] = [];
+      const artifactEvents: TaskArtifactUpdateEvent[] = [];
       tm.on('task:artifact-update', (e) => artifactEvents.push(e));
 
       // First session: stale
@@ -622,15 +669,17 @@ describe('TaskManager', () => {
       freshSession._emit('session.idle');
       await flushPromises();
 
-      const fetched = tm.getTask(task.id)!;
+      const fetched = tm.getTask(task.id);
+      if (!fetched) throw new Error('Expected task to exist');
       expect(fetched.status.state).toBe('completed');
-      expect(fetched.artifacts!.length).toBeGreaterThan(0);
-      expect(fetched.artifacts![0].parts[0].text).toContain('real response');
+      if (!fetched.artifacts) throw new Error('Expected artifacts');
+      expect(fetched.artifacts.length).toBeGreaterThan(0);
+      expect(fetched.artifacts[0].parts[0].text).toContain('real response');
       expect(artifactEvents.length).toBeGreaterThan(0);
     });
 
     it('does not loop — fails task when retry also throws stale error', async () => {
-      const events: any[] = [];
+      const events: TaskStatusUpdateEvent[] = [];
       tm.on('task:status-update', (e) => events.push(e));
 
       // Both sessions throw stale error
@@ -646,7 +695,9 @@ describe('TaskManager', () => {
       await flushPromises();
 
       // processTask's .catch() transitions to failed
-      expect(tm.getTask(task.id)!.status.state).toBe('failed');
+      const failedTask1 = tm.getTask(task.id);
+      if (!failedTask1) throw new Error('Expected task to exist');
+      expect(failedTask1.status.state).toBe('failed');
       expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(2);
     });
 
@@ -659,7 +710,9 @@ describe('TaskManager', () => {
       await flushPromises();
 
       // processTask's .catch() transitions to failed, no retry
-      expect(tm.getTask(task.id)!.status.state).toBe('failed');
+      const failedTask2 = tm.getTask(task.id);
+      if (!failedTask2) throw new Error('Expected task to exist');
+      expect(failedTask2.status.state).toBe('failed');
       expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(1);
     });
   });
@@ -670,8 +723,8 @@ describe('TaskManager', () => {
 
   describe('targetMindId in events', () => {
     it('emitted task:status-update includes targetMindId', async () => {
-      const events: any[] = [];
-      tm.on('task:status-update', (e) => events.push(e));
+      const events: Array<TaskStatusUpdateEvent & { targetMindId?: string }> = [];
+      tm.on('task:status-update', (e) => events.push(e as TaskStatusUpdateEvent & { targetMindId?: string }));
 
       await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
@@ -683,8 +736,8 @@ describe('TaskManager', () => {
     });
 
     it('emitted task:artifact-update includes targetMindId', async () => {
-      const artifactEvents: any[] = [];
-      tm.on('task:artifact-update', (e) => artifactEvents.push(e));
+      const artifactEvents: Array<TaskArtifactUpdateEvent & { targetMindId?: string }> = [];
+      tm.on('task:artifact-update', (e) => artifactEvents.push(e as TaskArtifactUpdateEvent & { targetMindId?: string }));
 
       await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
@@ -709,41 +762,52 @@ describe('TaskManager', () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
 
-      const fetched = tm.getTask(task.id)!;
+      const fetched = tm.getTask(task.id);
+      if (!fetched) throw new Error('Expected task to exist');
       // Mutate the returned object
-      fetched.status.state = 'failed' as any;
-      fetched.history!.push({ messageId: 'rogue', role: 'user', parts: [] } as any);
-      fetched.artifacts!.push({ artifactId: 'rogue' } as any);
+      (fetched.status as { state: string }).state = 'failed';
+      if (!fetched.history) throw new Error('Expected history');
+      (fetched.history as unknown[]).push({ messageId: 'rogue', role: 'user', parts: [] });
+      if (!fetched.artifacts) throw new Error('Expected artifacts');
+      (fetched.artifacts as unknown[]).push({ artifactId: 'rogue' });
 
       // Internal state must be unchanged
-      const internal = tm.getTask(task.id)!;
+      const internal = tm.getTask(task.id);
+      if (!internal) throw new Error('Expected task to exist');
       expect(internal.status.state).not.toBe('failed');
-      expect(internal.history!.find((m: any) => m.messageId === 'rogue')).toBeUndefined();
-      expect(internal.artifacts!.find((a: any) => a.artifactId === 'rogue')).toBeUndefined();
+      if (!internal.history) throw new Error('Expected history');
+      expect(internal.history.find((m: Message) => m.messageId === 'rogue')).toBeUndefined();
+      if (!internal.artifacts) throw new Error('Expected artifacts');
+      expect(internal.artifacts.find((a: Artifact) => a.artifactId === 'rogue')).toBeUndefined();
     });
 
     it('listTasks() tasks are distinct from internal state', async () => {
       await tm.sendTask(makeRequest('target-1', 'hello'));
 
       const listed = tm.listTasks().tasks[0];
-      listed.status.state = 'failed' as any;
-      listed.artifacts!.push({ artifactId: 'rogue' } as any);
+      (listed.status as { state: string }).state = 'failed';
+      if (!listed.artifacts) throw new Error('Expected artifacts');
+      (listed.artifacts as unknown[]).push({ artifactId: 'rogue' });
 
       const internal = tm.listTasks().tasks[0];
       expect(internal.status.state).not.toBe('failed');
-      expect(internal.artifacts!.find((a: any) => a.artifactId === 'rogue')).toBeUndefined();
+      if (!internal.artifacts) throw new Error('Expected artifacts');
+      expect(internal.artifacts.find((a: Artifact) => a.artifactId === 'rogue')).toBeUndefined();
     });
 
     it('cancelTask() returns a distinct snapshot', async () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
       const canceled = tm.cancelTask(task.id);
 
-      canceled.status.state = 'completed' as any;
-      canceled.artifacts!.push({ artifactId: 'rogue' } as any);
+      (canceled.status as { state: string }).state = 'completed';
+      if (!canceled.artifacts) throw new Error('Expected artifacts');
+      (canceled.artifacts as unknown[]).push({ artifactId: 'rogue' });
 
-      const internal = tm.getTask(task.id)!;
+      const internal = tm.getTask(task.id);
+      if (!internal) throw new Error('Expected task to exist');
       expect(internal.status.state).toBe('canceled');
-      expect(internal.artifacts!.find((a: any) => a.artifactId === 'rogue')).toBeUndefined();
+      if (!internal.artifacts) throw new Error('Expected artifacts');
+      expect(internal.artifacts.find((a: Artifact) => a.artifactId === 'rogue')).toBeUndefined();
     });
   });
 });

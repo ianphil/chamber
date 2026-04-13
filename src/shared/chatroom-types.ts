@@ -1,6 +1,6 @@
 // Shared chatroom types — used by main, preload, and renderer
 
-import type { ChatMessage, ChatEvent, ContentBlock } from './types';
+import type { ChatMessage, ChatEvent } from './types';
 
 // ---------------------------------------------------------------------------
 // Chatroom message — ChatMessage with required sender attribution

@@ -13,14 +13,18 @@ describe('LensEditor', () => {
   it('Save button disabled when not dirty', () => {
     render(<LensEditor data={{ name: 'Agent' }} onSave={vi.fn()} />);
     const btn = screen.getByText('Save Changes');
-    expect(btn.closest('button')!.disabled).toBe(true);
+    const button = btn.closest('button');
+    if (!button) throw new Error('expected button element');
+    expect(button.disabled).toBe(true);
   });
 
   it('changing input enables Save button', () => {
     render(<LensEditor data={{ name: 'Agent' }} onSave={vi.fn()} />);
     fireEvent.change(screen.getByDisplayValue('Agent'), { target: { value: 'NewName' } });
     const btn = screen.getByText('Save Changes');
-    expect(btn.closest('button')!.disabled).toBe(false);
+    const button = btn.closest('button');
+    if (!button) throw new Error('expected button element');
+    expect(button.disabled).toBe(false);
   });
 
   it('clicking Save calls onSave with updated data', () => {

@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext, ContentBlock } from '../../../shared/types';
+import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext } from '../../../shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../../../shared/a2a-types';
 import type { ChatroomMessage, ChatroomStreamEvent } from '../../../shared/chatroom-types';
 

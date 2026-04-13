@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { MessageRouter } from './MessageRouter';
 import type { AgentCard, SendMessageRequest } from './types';
+import type { ChatService } from '../chat/ChatService';
+import type { AgentCardRegistry } from './AgentCardRegistry';
 
 const mockRegistry = {
-  getCard: vi.fn() as any,
-  getCards: vi.fn() as any,
-  getCardByName: vi.fn() as any,
+  getCard: vi.fn(),
+  getCards: vi.fn(),
+  getCardByName: vi.fn(),
 };
 
 const mockChatService = {
@@ -48,7 +50,7 @@ describe('MessageRouter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     emitter = new EventEmitter();
-    router = new MessageRouter(mockChatService as any, mockRegistry as any, emitter);
+    router = new MessageRouter(mockChatService as unknown as ChatService, mockRegistry as unknown as AgentCardRegistry, emitter);
   });
 
   it('sendMessage() resolves recipient by mindId', async () => {
@@ -81,7 +83,8 @@ describe('MessageRouter', () => {
     // Ensure no contextId on request
     delete req.message.contextId;
     const res = await router.sendMessage(req);
-    expect(res.message!.contextId).toMatch(/^ctx-/);
+    if (!res.message) throw new Error('Expected message in response');
+    expect(res.message.contextId).toMatch(/^ctx-/);
   });
 
   it('sendMessage() reuses contextId on follow-up', async () => {
@@ -90,7 +93,8 @@ describe('MessageRouter', () => {
       message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'follow-up' }], contextId: 'ctx-123' },
     });
     const res = await router.sendMessage(req);
-    expect(res.message!.contextId).toBe('ctx-123');
+    if (!res.message) throw new Error('Expected message in response');
+    expect(res.message.contextId).toBe('ctx-123');
   });
 
   it('sendMessage() rejects when context hops exceed MAX_HOPS', async () => {
@@ -130,7 +134,7 @@ describe('MessageRouter', () => {
   it('sendMessage() emits a2a:incoming before delivery', async () => {
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
 
-    const events: any[] = [];
+    const events: Array<{ targetMindId: string; message: unknown; replyMessageId: string }> = [];
     emitter.on('a2a:incoming', (payload) => events.push(payload));
 
     // Track ordering: record when event fires vs when chatService is called
@@ -168,10 +172,11 @@ describe('MessageRouter', () => {
     const res = await router.sendMessage(req);
 
     expect(res.message).toBeDefined();
-    expect(res.message!.messageId).toBe('msg-test-1');
-    expect(res.message!.role).toBe('user');
-    expect(res.message!.parts[0].text).toBe('response check');
-    expect(res.message!.contextId).toBeDefined();
+    if (!res.message) throw new Error('Expected message in response');
+    expect(res.message.messageId).toBe('msg-test-1');
+    expect(res.message.role).toBe('user');
+    expect(res.message.parts[0].text).toBe('response check');
+    expect(res.message.contextId).toBeDefined();
   });
 
   it('XML prompt contains structured envelope', async () => {
@@ -199,7 +204,7 @@ describe('MessageRouter', () => {
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
 
     // Make chatService.sendMessage hang until we resolve it
-    let resolveDelivery!: () => void;
+    let resolveDelivery: (() => void) | undefined;
     const deliveryPromise = new Promise<void>((resolve) => {
       resolveDelivery = resolve;
     });
@@ -217,6 +222,7 @@ describe('MessageRouter', () => {
     expect(mockChatService.sendMessage).toHaveBeenCalledTimes(1);
 
     // Clean up
+    if (!resolveDelivery) throw new Error('Expected resolveDelivery');
     resolveDelivery();
     await deliveryPromise;
   });

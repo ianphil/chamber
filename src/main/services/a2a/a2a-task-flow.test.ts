@@ -4,6 +4,7 @@ import { TaskManager } from './TaskManager';
 import { AgentCardRegistry } from './AgentCardRegistry';
 import { buildSessionTools } from './tools';
 import type { MessageRouter } from './MessageRouter';
+import type { TaskSessionFactory } from './TaskManager';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -14,9 +15,9 @@ function makeMockSession() {
   return {
     send: vi.fn(async () => {}),
     abort: vi.fn(async () => {}),
-    on: (event: string, fn: (...args: any[]) => void) => emitter.on(event, fn),
-    off: (event: string, fn: (...args: any[]) => void) => emitter.off(event, fn),
-    _emit: (event: string, ...args: any[]) => emitter.emit(event, ...args),
+    on: (event: string, fn: (...args: unknown[]) => void) => emitter.on(event, fn),
+    off: (event: string, fn: (...args: unknown[]) => void) => emitter.off(event, fn),
+    _emit: (event: string, ...args: unknown[]) => emitter.emit(event, ...args),
   };
 }
 
@@ -32,7 +33,7 @@ function makeMockMindManager(session = makeMockSession()) {
 function makeMockRegistry() {
   const registry = new AgentCardRegistry();
   // Manually insert a card without touching the file system
-  (registry as any).cards.set('mind-target', {
+  (registry as unknown as { cards: Map<string, unknown> }).cards.set('mind-target', {
     name: 'Target Agent',
     description: 'A test agent',
     version: '1.0.0',
@@ -73,7 +74,7 @@ describe('A2A Task Flow Integration', () => {
     session = makeMockSession();
     mindManager = makeMockMindManager(session);
     registry = makeMockRegistry();
-    taskManager = new TaskManager(mindManager as any, registry);
+    taskManager = new TaskManager(mindManager as unknown as TaskSessionFactory, registry);
   });
 
   // 1. Full lifecycle: sendTask → working → completed with artifact
@@ -82,7 +83,7 @@ describe('A2A Task Flow Integration', () => {
     taskManager.on('task:status-update', (e) =>
       events.push({ type: 'status', state: e.status.state }),
     );
-    taskManager.on('task:artifact-update', (e) =>
+    taskManager.on('task:artifact-update', () =>
       events.push({ type: 'artifact' }),
     );
 

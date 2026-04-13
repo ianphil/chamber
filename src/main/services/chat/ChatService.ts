@@ -3,6 +3,7 @@
 
 import type { MindManager } from '../mind';
 import type { ChatEvent, ModelInfo } from '../../../shared/types';
+import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError } from '../../../shared/sessionErrors';
 import { TurnQueue } from './TurnQueue';
 
@@ -19,8 +20,9 @@ export class ChatService {
     prompt: string,
     messageId: string,
     emit: (event: ChatEvent) => void,
-    model?: string,
+    _model?: string,
   ): Promise<void> {
+    void _model;
     return this.turnQueue.enqueue(mindId, async () => {
       const abortController = new AbortController();
       this.abortControllers.set(mindId, abortController);
@@ -53,7 +55,7 @@ export class ChatService {
   }
 
   private async streamTurn(
-    session: any,
+    session: CopilotSession,
     prompt: string,
     abortController: AbortController,
     emit: (event: ChatEvent) => void,
@@ -63,7 +65,7 @@ export class ChatService {
 
     try {
       // Text streaming
-      unsubs.push(session.on('assistant.message_delta', (event: any) => {
+      unsubs.push(session.on('assistant.message_delta', (event) => {
         guard(() => emit({
           type: 'chunk',
           sdkMessageId: event.data.messageId,
@@ -72,7 +74,7 @@ export class ChatService {
       }));
 
       // Final assistant message
-      unsubs.push(session.on('assistant.message', (event: any) => {
+      unsubs.push(session.on('assistant.message', (event) => {
         guard(() => {
           if (event.data.content) {
             emit({
@@ -85,7 +87,7 @@ export class ChatService {
       }));
 
       // Reasoning
-      unsubs.push(session.on('assistant.reasoning_delta', (event: any) => {
+      unsubs.push(session.on('assistant.reasoning_delta', (event) => {
         guard(() => emit({
           type: 'reasoning',
           reasoningId: event.data.reasoningId,
@@ -94,7 +96,7 @@ export class ChatService {
       }));
 
       // Tool execution
-      unsubs.push(session.on('tool.execution_start', (event: any) => {
+      unsubs.push(session.on('tool.execution_start', (event) => {
         guard(() => emit({
           type: 'tool_start',
           toolCallId: event.data.toolCallId,
@@ -104,7 +106,7 @@ export class ChatService {
         }));
       }));
 
-      unsubs.push(session.on('tool.execution_progress', (event: any) => {
+      unsubs.push(session.on('tool.execution_progress', (event) => {
         guard(() => emit({
           type: 'tool_progress',
           toolCallId: event.data.toolCallId,
@@ -112,7 +114,7 @@ export class ChatService {
         }));
       }));
 
-      unsubs.push(session.on('tool.execution_partial_result', (event: any) => {
+      unsubs.push(session.on('tool.execution_partial_result', (event) => {
         guard(() => emit({
           type: 'tool_output',
           toolCallId: event.data.toolCallId,
@@ -120,7 +122,7 @@ export class ChatService {
         }));
       }));
 
-      unsubs.push(session.on('tool.execution_complete', (event: any) => {
+      unsubs.push(session.on('tool.execution_complete', (event) => {
         guard(() => emit({
           type: 'tool_done',
           toolCallId: event.data.toolCallId,
@@ -143,7 +145,7 @@ export class ChatService {
         });
         unsubs.push(unsubIdle);
 
-        const unsubError = session.on('session.error', (event: any) => {
+        const unsubError = session.on('session.error', (event) => {
           clearTimeout(timeout);
           unsubError();
           reject(new Error(event.data.message));
@@ -163,7 +165,8 @@ export class ChatService {
     }
   }
 
-  async cancelMessage(mindId: string, messageId: string): Promise<void> {
+  async cancelMessage(mindId: string, _messageId: string): Promise<void> {
+    void _messageId;
     const controller = this.abortControllers.get(mindId);
     if (controller) {
       controller.abort();

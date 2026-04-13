@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ChatService } from './ChatService';
 import { TurnQueue } from './TurnQueue';
+import type { MindManager } from '../mind';
 
 const mockSession = {
   send: vi.fn(async () => {}),
   abort: vi.fn(async () => {}),
   destroy: vi.fn(async () => {}),
-  on: vi.fn((_eventOrCb: any, _cb?: any) => vi.fn()),
+  on: vi.fn(() => vi.fn()),
 };
 
 const mockMindManager = {
@@ -26,13 +27,13 @@ describe('ChatService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     turnQueue = new TurnQueue();
-    svc = new ChatService(mockMindManager as any, turnQueue);
+    svc = new ChatService(mockMindManager as unknown as MindManager, turnQueue);
   });
 
   describe('sendMessage', () => {
     it('gets session from MindManager and calls send', async () => {
       // Mock session.on to fire session.idle immediately
-      mockSession.on.mockImplementation((eventOrCb: any, cb?: any) => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
         if (eventOrCb === 'session.idle' && cb) {
           setTimeout(() => cb(), 0);
         }
@@ -92,7 +93,7 @@ describe('ChatService', () => {
         send: vi.fn(async () => {}),
         abort: vi.fn(async () => {}),
         destroy: vi.fn(async () => {}),
-        on: vi.fn((event: string, cb?: any) => {
+        on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
           if (event === 'session.idle' && cb) setTimeout(() => cb(), 0);
           return vi.fn();
         }),
@@ -149,7 +150,7 @@ describe('ChatService', () => {
   describe('TurnQueue integration', () => {
     it('routes sendMessage through TurnQueue', async () => {
       const enqueueSpy = vi.spyOn(turnQueue, 'enqueue');
-      mockSession.on.mockImplementation((eventOrCb: any, cb?: any) => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
         if (eventOrCb === 'session.idle' && cb) {
           setTimeout(() => cb(), 0);
         }
@@ -164,7 +165,7 @@ describe('ChatService', () => {
       const order: string[] = [];
       const idleCallbacks: (() => void)[] = [];
 
-      mockSession.on.mockImplementation((eventOrCb: any, cb?: any) => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
         if (eventOrCb === 'session.idle' && cb) {
           idleCallbacks.push(cb);
         }

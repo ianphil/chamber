@@ -8,7 +8,7 @@ vi.mock('fs', () => ({
 }));
 
 import * as fs from 'fs';
-import { seedLensDefaults, installLensSkill } from './MindBootstrap';
+import { seedLensDefaults } from './MindBootstrap';
 
 describe('seedLensDefaults', () => {
   beforeEach(() => vi.clearAllMocks());

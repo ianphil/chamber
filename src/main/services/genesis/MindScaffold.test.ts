@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MindScaffold } from './MindScaffold';
 import * as path from 'path';
 import * as os from 'os';
+import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 
 describe('MindScaffold.slugify', () => {
   it('lowercases and replaces spaces with hyphens', () => {
@@ -41,7 +42,7 @@ describe('MindScaffold.getDefaultBasePath', () => {
 
 describe('MindScaffold constructor', () => {
   it('accepts an injected CopilotClientFactory', () => {
-    const fakeFactory = { createClient: async () => ({}), destroyClient: async () => {} } as any;
+    const fakeFactory = { createClient: async () => ({}), destroyClient: async () => {} } as unknown as CopilotClientFactory;
     const scaffold = new MindScaffold(undefined, fakeFactory);
     expect(scaffold).toBeDefined();
   });
