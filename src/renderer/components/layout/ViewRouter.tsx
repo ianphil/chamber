@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppState } from '../../lib/store';
 import { ChatPanel } from '../chat/ChatPanel';
+import { ChatroomPanel } from '../chatroom/ChatroomPanel';
 import { LensViewRenderer } from '../views/LensViewRenderer';
 
 export function ViewRouter() {
@@ -8,6 +9,10 @@ export function ViewRouter() {
 
   if (activeView === 'chat') {
     return <ChatPanel />;
+  }
+
+  if (activeView === 'chatroom') {
+    return <ChatroomPanel />;
   }
 
   const view = discoveredViews.find(v => v.id === activeView);

@@ -43,6 +43,13 @@ const electronAPI: ElectronAPI = {
     onProgress: (callback) =>
       createIpcListener(ipcRenderer, 'genesis:progress', callback),
   },
+  chatroom: {
+    send: (message: string, model?: string) => ipcRenderer.invoke('chatroom:send', message, model),
+    history: () => ipcRenderer.invoke('chatroom:history'),
+    clear: () => ipcRenderer.invoke('chatroom:clear'),
+    stop: () => ipcRenderer.invoke('chatroom:stop'),
+    onEvent: (callback) => createIpcListener(ipcRenderer, 'chatroom:event', callback),
+  },
   a2a: {
     onIncoming: (callback: (payload: any) => void) => createIpcListener(ipcRenderer, 'a2a:incoming', callback),
     listAgents: () => ipcRenderer.invoke('a2a:listAgents'),

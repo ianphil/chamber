@@ -261,6 +261,21 @@ export class MindManager extends EventEmitter {
     );
   }
 
+  async createChatroomSession(mindId: string): Promise<CopilotSession> {
+    const context = this.minds.get(mindId);
+    if (!context) throw new Error(`Mind ${mindId} not found`);
+
+    const tools = context.extensions.flatMap((e: { tools?: unknown[] }) => e.tools ?? []);
+    const sessionTools = this.toolBuilder ? this.toolBuilder(mindId, tools) : tools;
+
+    return this.createSessionForMind(
+      context.client,
+      context.mindPath,
+      context.identity.systemMessage,
+      sessionTools,
+    );
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async createSessionForMind(
     client: any,

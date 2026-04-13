@@ -46,6 +46,24 @@ export function ActivityBar() {
           <TooltipContent side="right" sideOffset={8}>Chat</TooltipContent>
         </Tooltip>
 
+        {/* Chatroom — always present */}
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chatroom' })}
+              className={cn(
+                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                activeView === 'chatroom'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <Users size={20} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>Chatroom</TooltipContent>
+        </Tooltip>
+
         {discoveredViews.length > 0 && <Separator className="my-1 w-8" />}
 
         {/* Discovered views */}

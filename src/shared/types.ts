@@ -1,4 +1,5 @@
 import type { Message, AgentCard, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, ListTasksResponse } from './a2a-types';
+import type { ChatroomAPI } from './chatroom-types';
 
 // Shared types across main, preload, and renderer processes
 
@@ -152,8 +153,9 @@ export interface ElectronAPI {
     create: (config: { name: string; role: string; voice: string; voiceDescription: string; basePath: string }) => Promise<{ success: boolean; mindPath?: string; error?: string }>;
     onProgress: (callback: (progress: { step: string; detail: string }) => void) => () => void;
   };
+  chatroom: ChatroomAPI;
   a2a: {
-    onIncoming: (callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => () => void;
+    onIncoming:(callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => () => void;
     listAgents: () => Promise<AgentCard[]>;
     onTaskStatusUpdate: (callback: (payload: TaskStatusUpdateEvent & { targetMindId: string }) => void) => () => void;
     onTaskArtifactUpdate: (callback: (payload: TaskArtifactUpdateEvent & { targetMindId: string }) => void) => () => void;

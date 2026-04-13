@@ -6,8 +6,8 @@ import { appReducer } from './reducer';
 const AppStateContext = createContext<AppState>(initialState);
 const AppDispatchContext = createContext<Dispatch<AppAction>>(() => {});
 
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+export function AppStateProvider({ children, testInitialState }: { children: React.ReactNode; testInitialState?: Partial<AppState> }) {
+  const [state, dispatch] = useReducer(appReducer, testInitialState ? { ...initialState, ...testInitialState } : initialState);
 
   return (
     <AppStateContext.Provider value={state}>

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.19.0 (2026-04-13)
+
+### Chatroom (Phase 5)
+- **ChatroomService** — broadcast user messages to all loaded agents in parallel with isolated per-mind chatroom sessions
+- **Round-based echo prevention** — agents respond to user messages only; previous round context injected as escaped XML `<chatroom-history>`
+- **Session isolation** — chatroom sessions are separate from individual chat sessions (no context bleed)
+- **Mid-round sends** — user can send while agents are still responding; incomplete responses cancelled automatically
+- **Incremental persistence** — chatroom transcript saved to `~/.chamber/chatroom.json` with atomic writes (500 message cap)
+- **ChatroomPanel UI** — single timeline with sender badges, colored agent avatars, participant bar with status indicators
+- **Multi-agent streaming** — multiple agents stream simultaneously with independent progress tracking
+- **Per-agent error isolation** — one agent failing doesn't affect others
+- **ActivityBar navigation** — chatroom icon (Users) between Chat and Lens views
+
 ## v0.18.1 (2026-04-13)
 
 ### Structural Cleanup (Uncle Bob Review)

@@ -10,6 +10,7 @@ import type {
   LensViewManifest,
   ElectronAPI,
 } from '../shared/types';
+import type { ChatroomMessage, ChatroomStreamEvent } from '../shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // ContentBlock factories
@@ -132,6 +133,13 @@ export function mockElectronAPI(): ElectronAPI {
       create: vi.fn().mockResolvedValue({ success: true }),
       onProgress: vi.fn().mockReturnValue(() => {}),
     },
+    chatroom: {
+      send: vi.fn().mockResolvedValue(undefined),
+      history: vi.fn().mockResolvedValue([]),
+      clear: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      onEvent: vi.fn().mockReturnValue(() => {}),
+    },
     a2a: {
       onIncoming: vi.fn().mockReturnValue(() => {}),
       listAgents: vi.fn().mockResolvedValue([]),
@@ -146,6 +154,37 @@ export function mockElectronAPI(): ElectronAPI {
       maximize: vi.fn(),
       close: vi.fn(),
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Chatroom factories
+// ---------------------------------------------------------------------------
+
+export function makeChatroomMessage(
+  overrides?: Partial<ChatroomMessage>,
+): ChatroomMessage {
+  return {
+    id: 'cr-msg-1',
+    role: 'assistant',
+    blocks: [{ type: 'text', content: 'hello from agent' }],
+    timestamp: Date.now(),
+    sender: { mindId: 'mind-1', name: 'Agent One' },
+    roundId: 'round-1',
+    ...overrides,
+  };
+}
+
+export function makeChatroomStreamEvent(
+  overrides?: Partial<ChatroomStreamEvent>,
+): ChatroomStreamEvent {
+  return {
+    mindId: 'mind-1',
+    mindName: 'Agent One',
+    messageId: 'cr-msg-1',
+    roundId: 'round-1',
+    event: { type: 'chunk', content: 'hello' },
+    ...overrides,
   };
 }
 

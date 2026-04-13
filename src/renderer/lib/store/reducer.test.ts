@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { handleChatEvent, appReducer, initialState } from '.';
 import type { AppState, AppAction } from '.';
 import type { ChatMessage, ChatEvent } from '../../../shared/types';
+import type { ChatroomMessage, ChatroomStreamEvent } from '../../../shared/chatroom-types';
 import type { Task, TaskStatus, Artifact } from '../../../shared/a2a-types';
 import {
   makeMessage,
@@ -549,5 +550,144 @@ describe('appReducer', () => {
       });
       expect(state.tasksByMind[mindId][0].status.state).toBe('completed');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Chatroom actions
+// ---------------------------------------------------------------------------
+
+const makeChatroomMessage = (overrides?: Partial<ChatroomMessage>): ChatroomMessage => ({
+  id: 'msg-1',
+  role: 'user',
+  blocks: [{ type: 'text', content: 'hello' }],
+  timestamp: Date.now(),
+  sender: { mindId: 'user', name: 'You' },
+  roundId: 'round-1',
+  ...overrides,
+});
+
+describe('appReducer — chatroom actions', () => {
+  it('SET_CHATROOM_HISTORY sets chatroomMessages from payload', () => {
+    const msgs = [makeChatroomMessage({ id: 'h1' }), makeChatroomMessage({ id: 'h2' })];
+    const state = appReducer(initialState, { type: 'SET_CHATROOM_HISTORY', payload: msgs });
+    expect(state.chatroomMessages).toEqual(msgs);
+  });
+
+  it('CHATROOM_USER_MESSAGE appends user message with sender and roundId', () => {
+    const msg = makeChatroomMessage({ id: 'u1', sender: { mindId: 'user', name: 'You' }, roundId: 'r1' });
+    const state = appReducer(initialState, { type: 'CHATROOM_USER_MESSAGE', payload: msg });
+    expect(state.chatroomMessages).toHaveLength(1);
+    expect(state.chatroomMessages[0]).toMatchObject({ id: 'u1', sender: { mindId: 'user', name: 'You' }, roundId: 'r1' });
+  });
+
+  it('CHATROOM_AGENT_MESSAGE creates empty streaming assistant message with sender', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_AGENT_MESSAGE',
+      payload: { messageId: 'a1', mindId: 'mind-1', mindName: 'Agent A', roundId: 'r1', timestamp: 1000 },
+    });
+    expect(state.chatroomMessages).toHaveLength(1);
+    const msg = state.chatroomMessages[0];
+    expect(msg.id).toBe('a1');
+    expect(msg.role).toBe('assistant');
+    expect(msg.blocks).toEqual([]);
+    expect(msg.isStreaming).toBe(true);
+    expect(msg.sender).toEqual({ mindId: 'mind-1', name: 'Agent A' });
+    expect(msg.roundId).toBe('r1');
+    expect(state.chatroomStreamingByMind['mind-1']).toBe(true);
+  });
+
+  it('CHATROOM_EVENT chunk appends text to correct agent message', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], sender: { mindId: 'mind-1', name: 'Agent A' } }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'chunk', content: 'hello' } },
+    });
+    expect(state.chatroomMessages[0].blocks).toHaveLength(1);
+    expect(state.chatroomMessages[0].blocks[0]).toMatchObject({ type: 'text', content: 'hello' });
+  });
+
+  it('CHATROOM_EVENT done sets chatroomStreamingByMind[mindId] to false', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-1', name: 'Agent A' } }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'done' } },
+    });
+    expect(state.chatroomStreamingByMind['mind-1']).toBe(false);
+    expect(state.chatroomMessages[0].isStreaming).toBe(false);
+  });
+
+  it('CHATROOM_EVENT error sets streaming false and appends error text', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-1', name: 'Agent A' } }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'error', message: 'boom' } },
+    });
+    expect(state.chatroomStreamingByMind['mind-1']).toBe(false);
+    expect(state.chatroomMessages[0].isStreaming).toBe(false);
+    const textBlocks = state.chatroomMessages[0].blocks.filter(b => b.type === 'text');
+    expect(textBlocks.some(b => b.type === 'text' && b.content.includes('boom'))).toBe(true);
+  });
+
+  it('multi-agent interleave — two agents streaming simultaneously, events update correct messages', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-1', name: 'Agent A' }, roundId: 'r1' }),
+        makeChatroomMessage({ id: 'a2', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-2', name: 'Agent B' }, roundId: 'r1' }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true, 'mind-2': true },
+    };
+
+    // Agent A gets a chunk
+    let state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'chunk', content: 'alpha' } },
+    });
+    // Agent B gets a chunk
+    state = appReducer(state, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-2', mindName: 'Agent B', messageId: 'a2', roundId: 'r1', event: { type: 'chunk', content: 'beta' } },
+    });
+
+    expect(state.chatroomMessages[0].blocks[0]).toMatchObject({ type: 'text', content: 'alpha' });
+    expect(state.chatroomMessages[1].blocks[0]).toMatchObject({ type: 'text', content: 'beta' });
+
+    // Agent A finishes
+    state = appReducer(state, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'done' } },
+    });
+    expect(state.chatroomStreamingByMind['mind-1']).toBe(false);
+    expect(state.chatroomStreamingByMind['mind-2']).toBe(true);
+  });
+
+  it('CHATROOM_CLEAR resets all chatroom state', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [makeChatroomMessage()],
+      chatroomStreamingByMind: { 'mind-1': true },
+    };
+    const state = appReducer(base, { type: 'CHATROOM_CLEAR' });
+    expect(state.chatroomMessages).toEqual([]);
+    expect(state.chatroomStreamingByMind).toEqual({});
   });
 });

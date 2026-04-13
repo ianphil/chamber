@@ -1,5 +1,6 @@
 import type { ChatMessage, ChatEvent, ContentBlock } from '../../../shared/types';
 import type { Task, TaskState } from '../../../shared/a2a-types';
+import type { ChatroomMessage } from '../../../shared/chatroom-types';
 import type { AppState, AppAction } from './state';
 
 /** Extract plain text from content blocks (for search, accessibility, etc.) */
@@ -310,6 +311,63 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         tasksByMind: { ...state.tasksByMind, [targetMindId]: updatedTasks },
       };
     }
+
+    case 'SET_CHATROOM_HISTORY':
+      return { ...state, chatroomMessages: action.payload };
+
+    case 'CHATROOM_USER_MESSAGE':
+      return { ...state, chatroomMessages: [...state.chatroomMessages, action.payload] };
+
+    case 'CHATROOM_AGENT_MESSAGE': {
+      const { messageId, mindId, mindName, roundId, timestamp } = action.payload;
+      const agentMsg: ChatroomMessage = {
+        id: messageId,
+        role: 'assistant',
+        blocks: [],
+        timestamp,
+        isStreaming: true,
+        sender: { mindId, name: mindName },
+        roundId,
+      };
+      return {
+        ...state,
+        chatroomMessages: [...state.chatroomMessages, agentMsg],
+        chatroomStreamingByMind: { ...state.chatroomStreamingByMind, [mindId]: true },
+      };
+    }
+
+    case 'CHATROOM_EVENT': {
+      const { mindId, mindName, messageId, roundId, event } = action.payload;
+      let messages = state.chatroomMessages;
+
+      // Auto-create placeholder if this is the first event for an unknown message
+      const exists = messages.some(m => m.id === messageId);
+      if (!exists) {
+        const placeholder: ChatroomMessage = {
+          id: messageId,
+          role: 'assistant',
+          blocks: [],
+          timestamp: Date.now(),
+          isStreaming: true,
+          sender: { mindId, name: mindName },
+          roundId,
+        };
+        messages = [...messages, placeholder];
+      }
+
+      const newMessages = handleChatEvent(messages, messageId, event);
+      const isDone = event.type === 'done' || event.type === 'error';
+      return {
+        ...state,
+        chatroomMessages: newMessages as ChatroomMessage[],
+        chatroomStreamingByMind: isDone
+          ? { ...state.chatroomStreamingByMind, [mindId]: false }
+          : { ...state.chatroomStreamingByMind, [mindId]: true },
+      };
+    }
+
+    case 'CHATROOM_CLEAR':
+      return { ...state, chatroomMessages: [], chatroomStreamingByMind: {} };
 
     default:
       return state;

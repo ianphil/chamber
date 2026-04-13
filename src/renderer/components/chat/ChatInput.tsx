@@ -17,9 +17,10 @@ interface Props {
   availableModels: ModelInfo[];
   selectedModel: string | null;
   onModelChange: (model: string) => void;
+  placeholder?: string;
 }
 
-export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange }: Props) {
+export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder }: Props) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -61,7 +62,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
             value={input}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={disabled ? 'Select a mind directory to start…' : 'Message your agent…'}
+            placeholder={disabled ? 'Select a mind directory to start…' : (placeholder ?? 'Message your agent…')}
             disabled={disabled}
             rows={1}
             className="flex-1 bg-transparent text-sm resize-none outline-none placeholder:text-muted-foreground disabled:opacity-50 max-h-[200px]"

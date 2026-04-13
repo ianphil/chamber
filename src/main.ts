@@ -14,6 +14,7 @@ import { MindManager } from './main/services/mind';
 import { ChatService } from './main/services/chat/ChatService';
 import { TurnQueue } from './main/services/chat/TurnQueue';
 import { AgentCardRegistry, MessageRouter, TaskManager, buildSessionTools } from './main/services/a2a';
+import { ChatroomService } from './main/services/chatroom';
 import { loadCanvasExtension } from './main/services/extensions/adapters/canvas';
 import { loadCronExtension } from './main/services/extensions/adapters/cron';
 import { loadIdeaExtension } from './main/services/extensions/adapters/idea';
@@ -25,6 +26,7 @@ import { setupLensIPC } from './main/ipc/lens';
 import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupAuthIPC } from './main/ipc/auth';
 import { setupA2AIPC } from './main/ipc/a2a';
+import { setupChatroomIPC } from './main/ipc/chatroom';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -62,6 +64,7 @@ const mindManager = new MindManager(clientFactory, identityLoader, extensionLoad
 taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService = new ChatService(mindManager, turnQueue);
 const messageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
+const chatroomService = new ChatroomService(mindManager);
 
 wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
 
@@ -127,6 +130,7 @@ app.on('ready', async () => {
   setupGenesisIPC(mindManager, scaffold);
   setupAuthIPC(authService);
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
+  setupChatroomIPC(chatroomService);
 
   // Window controls
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
