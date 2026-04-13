@@ -107,8 +107,32 @@ export class ViewDiscovery {
   startWatching(mindPath: string, onChanged: () => void): void {
     this.stopWatching(mindPath);
     const lensDir = path.join(mindPath, '.github', 'lens');
-    if (!fs.existsSync(lensDir)) return;
 
+    if (fs.existsSync(lensDir)) {
+      this.watchLensDir(mindPath, lensDir, onChanged);
+    } else {
+      // lens/ doesn't exist yet — watch .github/ for its creation
+      const githubDir = path.join(mindPath, '.github');
+      if (!fs.existsSync(githubDir)) return;
+
+      const watchers: fs.FSWatcher[] = [];
+      try {
+        const parentWatcher = fs.watch(githubDir, (_eventType, filename) => {
+          if (filename === 'lens' && fs.existsSync(lensDir)) {
+            parentWatcher.close();
+            this.scan(mindPath).then(() => {
+              this.watchLensDir(mindPath, lensDir, onChanged);
+              onChanged();
+            });
+          }
+        });
+        watchers.push(parentWatcher);
+      } catch { /* watch not supported */ }
+      this.watchersByMind.set(mindPath, watchers);
+    }
+  }
+
+  private watchLensDir(mindPath: string, lensDir: string, onChanged: () => void): void {
     const watchers: fs.FSWatcher[] = [];
     try {
       const watcher = fs.watch(lensDir, { recursive: true }, (_eventType, filename) => {
@@ -118,7 +142,6 @@ export class ViewDiscovery {
       });
       watchers.push(watcher);
     } catch { /* watch not supported */ }
-
     this.watchersByMind.set(mindPath, watchers);
   }
 

@@ -180,4 +180,63 @@ describe('ViewDiscovery', () => {
       expect(mockClose).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('startWatching — late lens/ creation', () => {
+    it('watches .github/ when lens/ does not exist yet', () => {
+      const mockClose = vi.fn();
+      vi.mocked(fs.watch).mockReturnValue({ close: mockClose } as unknown as fs.FSWatcher);
+      mockExistsSync.mockImplementation((p: fs.PathLike) => {
+        const s = String(p);
+        if (s.endsWith(path.join('.github', 'lens'))) return false;
+        if (s.endsWith('.github')) return true;
+        return false;
+      });
+
+      const onChanged = vi.fn();
+      discovery.startWatching('/tmp/mind', onChanged);
+
+      expect(fs.watch).toHaveBeenCalledWith(
+        path.join('/tmp/mind', '.github'),
+        expect.any(Function),
+      );
+    });
+
+    it('transitions to lens/ watcher when lens/ appears', async () => {
+      const mockClose = vi.fn();
+      let parentCallback: (event: string, filename: string) => void = () => {};
+      vi.mocked(fs.watch).mockImplementation((_path: unknown, ...args: unknown[]) => {
+        const cb = args.find(a => typeof a === 'function') as (event: string, filename: string) => void;
+        if (cb) parentCallback = cb;
+        return { close: mockClose } as unknown as fs.FSWatcher;
+      });
+
+      let lensExists = false;
+      mockExistsSync.mockImplementation((p: fs.PathLike) => {
+        const s = String(p);
+        if (s.endsWith(path.join('.github', 'lens'))) return lensExists;
+        if (s.endsWith('.github')) return true;
+        return false;
+      });
+      mockReaddirSync.mockReturnValue([]);
+
+      const onChanged = vi.fn();
+      discovery.startWatching('/tmp/mind', onChanged);
+
+      // Simulate lens/ directory appearing
+      lensExists = true;
+      parentCallback('rename', 'lens');
+
+      // Allow the scan promise to resolve
+      await vi.waitFor(() => {
+        expect(onChanged).toHaveBeenCalled();
+      });
+      expect(mockClose).toHaveBeenCalled();
+    });
+
+    it('does nothing when .github/ does not exist either', () => {
+      mockExistsSync.mockReturnValue(false);
+      discovery.startWatching('/tmp/mind', vi.fn());
+      expect(fs.watch).not.toHaveBeenCalled();
+    });
+  });
 });
