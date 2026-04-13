@@ -571,6 +571,100 @@ describe('TaskManager', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Stale session retry
+  // ---------------------------------------------------------------------------
+
+  describe('stale session retry', () => {
+    it('creates fresh session and completes task on stale-send retry', async () => {
+      const events: any[] = [];
+      tm.on('task:status-update', (e) => events.push(e));
+
+      // First session: send rejects with stale error
+      const staleSession = createMockSession();
+      staleSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockMindManager.createTaskSession.mockResolvedValueOnce(staleSession);
+
+      // Second session: succeeds
+      const freshSession = createMockSession();
+      mockMindManager.createTaskSession.mockResolvedValueOnce(freshSession);
+
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      // Simulate success on fresh session
+      freshSession._emit('assistant.message', { data: { content: 'Done' } });
+      freshSession._emit('session.idle');
+      await flushPromises();
+
+      expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(2);
+      expect(tm.getTask(task.id)!.status.state).toBe('completed');
+      expect(tm.getTask(task.id)!.artifacts![0].parts[0].text).toBe('Done');
+    });
+
+    it('rebinds listeners — fresh session events drive task to completion', async () => {
+      const artifactEvents: any[] = [];
+      tm.on('task:artifact-update', (e) => artifactEvents.push(e));
+
+      // First session: stale
+      const staleSession = createMockSession();
+      staleSession.send.mockRejectedValueOnce(new Error('Session not found: abc'));
+      mockMindManager.createTaskSession.mockResolvedValueOnce(staleSession);
+
+      // Second session: succeeds
+      const freshSession = createMockSession();
+      mockMindManager.createTaskSession.mockResolvedValueOnce(freshSession);
+
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      // Fresh session completes the task
+      freshSession._emit('assistant.message', { data: { content: 'real response' } });
+      freshSession._emit('session.idle');
+      await flushPromises();
+
+      const fetched = tm.getTask(task.id)!;
+      expect(fetched.status.state).toBe('completed');
+      expect(fetched.artifacts!.length).toBeGreaterThan(0);
+      expect(fetched.artifacts![0].parts[0].text).toContain('real response');
+      expect(artifactEvents.length).toBeGreaterThan(0);
+    });
+
+    it('does not loop — fails task when retry also throws stale error', async () => {
+      const events: any[] = [];
+      tm.on('task:status-update', (e) => events.push(e));
+
+      // Both sessions throw stale error
+      const staleSession1 = createMockSession();
+      staleSession1.send.mockRejectedValueOnce(new Error('Session not found: abc'));
+      mockMindManager.createTaskSession.mockResolvedValueOnce(staleSession1);
+
+      const staleSession2 = createMockSession();
+      staleSession2.send.mockRejectedValueOnce(new Error('Session not found: def'));
+      mockMindManager.createTaskSession.mockResolvedValueOnce(staleSession2);
+
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      // processTask's .catch() transitions to failed
+      expect(tm.getTask(task.id)!.status.state).toBe('failed');
+      expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry on non-stale errors', async () => {
+      const staleSession = createMockSession();
+      staleSession.send.mockRejectedValueOnce(new Error('Network error'));
+      mockMindManager.createTaskSession.mockResolvedValueOnce(staleSession);
+
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      // processTask's .catch() transitions to failed, no retry
+      expect(tm.getTask(task.id)!.status.state).toBe('failed');
+      expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Bug 1: targetMindId in events
   // ---------------------------------------------------------------------------
 

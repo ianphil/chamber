@@ -558,6 +558,80 @@ describe('ChatroomService', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Stale session retry
+  // -------------------------------------------------------------------------
+
+  describe('stale session retry', () => {
+    it('evicts cache and retries with fresh session on stale error', async () => {
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+
+      const staleSess = createMockSession();
+      const freshSess = createMockSession();
+
+      // First call returns stale session, second returns fresh
+      (factory.createChatroomSession as Mock)
+        .mockResolvedValueOnce(staleSess)
+        .mockResolvedValueOnce(freshSess);
+
+      // Stale session: send rejects with stale error
+      staleSess.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+
+      // Fresh session: auto-idle
+      autoIdle(freshSess);
+
+      await svc.broadcast('Hello');
+
+      // Factory called twice: once initially, once after cache eviction
+      expect(factory.createChatroomSession).toHaveBeenCalledTimes(2);
+      expect(factory.createChatroomSession).toHaveBeenCalledWith('dude');
+      // Fresh session received the prompt
+      expect(freshSess.send).toHaveBeenCalled();
+    });
+
+    it('does not loop — second stale failure propagates without third attempt', async () => {
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+
+      const staleSess1 = createMockSession();
+      const staleSess2 = createMockSession();
+
+      (factory.createChatroomSession as Mock)
+        .mockResolvedValueOnce(staleSess1)
+        .mockResolvedValueOnce(staleSess2);
+
+      staleSess1.send.mockRejectedValueOnce(new Error('Session not found: abc'));
+      staleSess2.send.mockRejectedValueOnce(new Error('Session not found: def'));
+
+      // broadcast catches per-agent errors — should not throw
+      await svc.broadcast('Hello');
+
+      // Only two factory calls (initial + one retry), not three
+      expect(factory.createChatroomSession).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry on non-stale errors', async () => {
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+
+      const sess = createMockSession();
+      (factory.createChatroomSession as Mock).mockResolvedValueOnce(sess);
+
+      sess.send.mockRejectedValueOnce(new Error('Network error'));
+
+      const events: ChatroomStreamEvent[] = [];
+      svc.on('chatroom:event', (e: ChatroomStreamEvent) => events.push(e));
+
+      await svc.broadcast('Hello');
+
+      // Only one factory call — no retry
+      expect(factory.createChatroomSession).toHaveBeenCalledTimes(1);
+      // Error event emitted (not swallowed)
+      expect(events.some((e) => e.event.type === 'error')).toBe(true);
+    });
+  });
+
   // Edge: filters non-ready minds
   describe('filters non-ready minds', () => {
     it('skips minds that are not status ready', async () => {

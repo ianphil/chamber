@@ -81,6 +81,71 @@ describe('ChatService', () => {
     });
   });
 
+  describe('stale session retry', () => {
+    it('retries once with fresh session on stale error', async () => {
+      // First session: send rejects with stale-session error
+      mockSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      // Fresh session returned by recreateSession
+      const freshSession = {
+        send: vi.fn(async () => {}),
+        abort: vi.fn(async () => {}),
+        destroy: vi.fn(async () => {}),
+        on: vi.fn((event: string, cb?: any) => {
+          if (event === 'session.idle' && cb) setTimeout(() => cb(), 0);
+          return vi.fn();
+        }),
+      };
+      mockMindManager.recreateSession.mockResolvedValueOnce(freshSession);
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(mockMindManager.recreateSession).toHaveBeenCalledWith('valid-mind');
+      expect(freshSession.send).toHaveBeenCalledWith({ prompt: 'hello' });
+      expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('does not loop — surfaces error when retry also fails with stale error', async () => {
+      mockSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      const freshSession = {
+        send: vi.fn().mockRejectedValueOnce(new Error('Session not found: def-456')),
+        abort: vi.fn(async () => {}),
+        destroy: vi.fn(async () => {}),
+        on: vi.fn(() => vi.fn()),
+      };
+      mockMindManager.recreateSession.mockResolvedValueOnce(freshSession);
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error' }),
+      );
+      // recreateSession called only once — no second retry
+      expect(mockMindManager.recreateSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry on non-stale errors', async () => {
+      mockSession.send.mockRejectedValueOnce(new Error('Network error'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(mockMindManager.recreateSession).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error', message: 'Network error' }),
+      );
+    });
+  });
+
   describe('TurnQueue integration', () => {
     it('routes sendMessage through TurnQueue', async () => {
       const enqueueSpy = vi.spyOn(turnQueue, 'enqueue');
