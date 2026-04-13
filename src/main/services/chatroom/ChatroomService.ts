@@ -63,9 +63,7 @@ export class ChatroomService extends EventEmitter {
   constructor(private readonly sessionFactory: ChatroomSessionFactory) {
     super();
 
-    this.persistDir = path.join(app.getPath('userData'), '..');
-    // ~/.chamber/chatroom.json
-    const chamberDir = path.join(app.getPath('userData'));
+    const chamberDir = app.getPath('userData');
     this.persistDir = chamberDir;
     this.persistPath = path.join(chamberDir, 'chatroom.json');
 
