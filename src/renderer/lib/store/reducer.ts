@@ -93,6 +93,9 @@ export function handleChatEvent(messages: ChatMessage[], messageId: string, even
         return m;
       }
 
+      case 'reconnecting':
+        return m; // No-op in blocks — UI uses isStreaming to show indicator
+
       case 'done':
         return { ...m, isStreaming: false };
 

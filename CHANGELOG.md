@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.19.4 (2026-04-13)
+
+### Session Timeout Recovery
+- **Stale session detection** — `isStaleSessionError()` utility detects "Session not found" errors from harvested CLI sessions
+- **ChatService retry** — catches stale session on `send()`, emits `reconnecting` event, recreates session via `MindManager.recreateSession()`, retries once
+- **ChatroomService retry** — evicts stale session from cache, creates fresh session, retries broadcast once
+- **TaskManager retry** — catches stale session on A2A task sends, creates fresh task session, rebinds listeners, retries once
+- **MindManager** — `recreateSession()` now returns the new `CopilotSession` for caller use
+- **`reconnecting` ChatEvent** — new event type for UI indicators during session recovery
+
 ## v0.19.0 (2026-04-13)
 
 ### Chatroom (Phase 5)

@@ -169,7 +169,7 @@ export class MindManager extends EventEmitter {
     return this.windowByMind.has(mindId);
   }
 
-  async recreateSession(mindId: string): Promise<void> {
+  async recreateSession(mindId: string): Promise<CopilotSession> {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
 
@@ -178,6 +178,7 @@ export class MindManager extends EventEmitter {
     context.session = await this.createSessionForMind(
       context.client, context.mindPath, context.identity.systemMessage, sessionTools,
     );
+    return context.session;
   }
 
   awaitRestore(): Promise<void> {

@@ -10,6 +10,7 @@ import type {
   ListTasksResponse,
   Message,
 } from './types';
+import { isStaleSessionError } from '../../../shared/sessionErrors';
 
 export interface TaskSessionFactory {
   createTaskSession(
@@ -199,14 +200,32 @@ export class TaskManager extends EventEmitter {
       });
     };
 
-    const session = await this.sessionFactory.createTaskSession(targetMindId, task.id, onUserInputRequest);
-    this.sessions.set(task.id, session);
-
     // c. Serialize message
     const deliveryMessage: Message = { ...message, contextId: task.contextId, taskId: task.id };
     const xmlPrompt = serializeMessageToXml(deliveryMessage);
 
-    // d. Collect response text
+    let session = await this.sessionFactory.createTaskSession(targetMindId, task.id, onUserInputRequest);
+    this.sessions.set(task.id, session);
+
+    // d. Bind listeners before send so we capture all events
+    this.bindTaskSessionListeners(session, task, targetMindId);
+
+    // e. Send prompt, with stale-session retry
+    try {
+      await session.send({ prompt: xmlPrompt });
+    } catch (err) {
+      if (!isStaleSessionError(err)) throw err;
+
+      // Stale session — create a fresh one and retry once
+      this.sessions.delete(task.id);
+      session = await this.sessionFactory.createTaskSession(targetMindId, task.id, onUserInputRequest);
+      this.sessions.set(task.id, session);
+      this.bindTaskSessionListeners(session, task, targetMindId);
+      await session.send({ prompt: xmlPrompt });
+    }
+  }
+
+  private bindTaskSessionListeners(session: CopilotSession, task: Task, targetMindId: string): void {
     let responseText = '';
 
     session.on('assistant.message', (event: any) => {
@@ -256,9 +275,6 @@ export class TaskManager extends EventEmitter {
       this.sessions.delete(task.id);
       this.taskTargets.delete(task.id);
     });
-
-    // e. Send prompt
-    await session.send({ prompt: xmlPrompt });
   }
 
   private transitionState(task: Task, state: TaskState): void {

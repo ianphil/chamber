@@ -6,6 +6,7 @@ import { app } from 'electron';
 import type { ChatroomMessage, ChatroomTranscript, ChatroomStreamEvent } from '../../../shared/chatroom-types';
 import type { MindContext } from '../../../shared/types';
 import type { CopilotSession } from '../mind';
+import { isStaleSessionError } from '../../../shared/sessionErrors';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -141,6 +142,24 @@ export class ChatroomService extends EventEmitter {
     roundId: string,
   ): Promise<void> {
     const session = await this.getOrCreateSession(mind.mindId);
+    try {
+      await this.streamToAgent(session, mind, prompt, roundId);
+    } catch (err) {
+      if (!isStaleSessionError(err)) throw err;
+
+      // Stale session — evict cache, get a fresh session, retry once
+      this.sessionCache.delete(mind.mindId);
+      const freshSession = await this.getOrCreateSession(mind.mindId);
+      await this.streamToAgent(freshSession, mind, prompt, roundId);
+    }
+  }
+
+  private async streamToAgent(
+    session: CopilotSession,
+    mind: MindContext,
+    prompt: string,
+    roundId: string,
+  ): Promise<void> {
     const messageId = randomUUID();
     const abortController = new AbortController();
 
@@ -270,6 +289,8 @@ export class ChatroomService extends EventEmitter {
       emitEvent({ type: 'done' });
     } catch (err) {
       if (!abortController.signal.aborted) {
+        // Let stale-session errors propagate for retry in sendToAgent
+        if (isStaleSessionError(err)) throw err;
         const message = err instanceof Error ? err.message : String(err);
         emitEvent({ type: 'error', message });
       }

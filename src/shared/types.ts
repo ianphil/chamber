@@ -44,6 +44,7 @@ export type ChatEvent =
   | { type: 'tool_done'; toolCallId: string; success: boolean; result?: string; error?: string }
   | { type: 'reasoning'; reasoningId: string; content: string }
   | { type: 'message_final'; sdkMessageId: string; content: string }
+  | { type: 'reconnecting' }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
