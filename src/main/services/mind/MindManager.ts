@@ -288,6 +288,7 @@ export class MindManager extends EventEmitter {
   ): Promise<CopilotSession> {
     return client.createSession({
       workingDirectory: mindPath,
+      enableConfigDiscovery: true,
       tools,
       systemMessage: {
         mode: 'customize',
