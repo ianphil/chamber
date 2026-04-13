@@ -10,6 +10,12 @@ describe('isStaleSessionError', () => {
     expect(isStaleSessionError(new Error('Session not found'))).toBe(true);
   });
 
+  it('returns true for SDK-wrapped "Request session.send failed" message', () => {
+    expect(isStaleSessionError(new Error(
+      'Request session.send failed with message: Session not found: 61e71e99-09af-4ab8-b059-45519b89dba0'
+    ))).toBe(true);
+  });
+
   it('returns false for Error with different message', () => {
     expect(isStaleSessionError(new Error('Network error'))).toBe(false);
   });

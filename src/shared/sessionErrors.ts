@@ -4,5 +4,5 @@
  * instances with message `"Session not found: <sessionId>"`.
  */
 export function isStaleSessionError(err: unknown): boolean {
-  return err instanceof Error && err.message.startsWith('Session not found');
+  return err instanceof Error && err.message.includes('Session not found');
 }
