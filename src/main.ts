@@ -56,6 +56,7 @@ const turnQueue = new TurnQueue();
 
 // ToolBuilder callback — closes over services created below
 // Uses late-bound taskManager reference to break circular dependency
+// eslint-disable-next-line prefer-const
 let taskManager: TaskManager;
 const toolBuilder = (mindId: string, extensionTools: unknown[]) =>
   buildSessionTools(mindId, extensionTools as any, messageRouter, agentCardRegistry, taskManager);

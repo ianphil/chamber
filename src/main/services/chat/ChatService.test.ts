@@ -162,7 +162,7 @@ describe('ChatService', () => {
 
     it('concurrent sends to same mind are serialized', async () => {
       const order: string[] = [];
-      let idleCallbacks: (() => void)[] = [];
+      const idleCallbacks: (() => void)[] = [];
 
       mockSession.on.mockImplementation((eventOrCb: any, cb?: any) => {
         if (eventOrCb === 'session.idle' && cb) {
