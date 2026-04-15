@@ -146,7 +146,9 @@ export interface ElectronAPI {
   auth: {
     getStatus: () => Promise<{ authenticated: boolean; login?: string }>;
     startLogin: () => Promise<{ success: boolean; login?: string }>;
+    logout: () => Promise<void>;
     onProgress: (callback: (progress: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => void) => () => void;
+    onLoggedOut: (callback: () => void) => () => void;
   };
   genesis: {
     getDefaultPath: () => Promise<string>;

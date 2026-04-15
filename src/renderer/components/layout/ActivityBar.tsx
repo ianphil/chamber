@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
-import { MessageSquare, MoreHorizontal, Zap, Newspaper, Users, Clock, Settings, Layout, type LucideIcon } from 'lucide-react';
+import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
 import type { LensViewManifest } from '../../../shared/types';
@@ -32,6 +32,7 @@ export function ActivityBar() {
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <button
+              aria-label="Chat"
               onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' })}
               className={cn(
                 'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
@@ -50,6 +51,7 @@ export function ActivityBar() {
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <button
+              aria-label="Chatroom"
               onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chatroom' })}
               className={cn(
                 'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
@@ -71,6 +73,7 @@ export function ActivityBar() {
           <Tooltip key={view.id} delayDuration={300}>
             <TooltipTrigger asChild>
               <button
+                aria-label={view.name}
                 onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: view.id })}
                 className={cn(
                   'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
@@ -87,14 +90,26 @@ export function ActivityBar() {
         ))}
       </div>
 
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <button className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
-            <MoreHorizontal size={20} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" sideOffset={8}>More views</TooltipContent>
-      </Tooltip>
+      {/* Bottom-pinned settings */}
+      <div data-testid="activity-bar-footer">
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="Settings"
+              onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'settings' })}
+              className={cn(
+                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                activeView === 'settings'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <Settings size={20} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>Settings</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 }

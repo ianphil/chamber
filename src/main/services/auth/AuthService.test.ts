@@ -9,9 +9,23 @@ vi.mock('electron', () => ({
 vi.mock('keytar', () => ({
   findCredentials: vi.fn().mockResolvedValue([]),
   setPassword: vi.fn().mockResolvedValue(undefined),
+  deletePassword: vi.fn().mockResolvedValue(true),
 }));
 
-import { getCredentialAccount, getLoginFromAccount, resolveStoredCredential } from './AuthService';
+import { getCredentialAccount, getLoginFromAccount, resolveStoredCredential, AuthService } from './AuthService';
+
+type KeytarModule = typeof import('keytar');
+
+function createMockKeytar(overrides?: Partial<{ [K in keyof KeytarModule]: ReturnType<typeof vi.fn> }>): KeytarModule {
+  return {
+    getPassword: vi.fn().mockResolvedValue(null),
+    setPassword: vi.fn().mockResolvedValue(undefined),
+    deletePassword: vi.fn().mockResolvedValue(true),
+    findPassword: vi.fn().mockResolvedValue(null),
+    findCredentials: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  } as KeytarModule;
+}
 
 describe('getCredentialAccount', () => {
   it('prefixes login with GitHub account prefix', () => {
@@ -74,5 +88,25 @@ describe('resolveStoredCredential', () => {
     expect(resolveStoredCredential([
       { account: 'https://github.com:alice', password: '' },
     ])).toBeNull();
+  });
+});
+
+describe('AuthService.logout', () => {
+  it('deletes the stored credential via keytar', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://github.com:alice', password: 'gho_token123' },
+      ]),
+    });
+    const service = new AuthService(mockKeytar);
+    await service.logout();
+    expect(mockKeytar.deletePassword).toHaveBeenCalledWith('copilot-cli', 'https://github.com:alice');
+  });
+
+  it('does not throw when no credential is stored', async () => {
+    const mockKeytar = createMockKeytar();
+    const service = new AuthService(mockKeytar);
+    await expect(service.logout()).resolves.toBeUndefined();
+    expect(mockKeytar.deletePassword).not.toHaveBeenCalled();
   });
 });

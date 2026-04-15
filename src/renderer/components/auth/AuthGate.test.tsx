@@ -35,4 +35,39 @@ describe('AuthGate', () => {
     render(<AuthGate><div>Protected Content</div></AuthGate>);
     expect(screen.queryByText('Protected Content')).toBeNull();
   });
+
+  it('reverts to auth screen when auth:loggedOut fires', async () => {
+    let loggedOutCallback: (() => void) | undefined;
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true });
+    (api.auth.onLoggedOut as ReturnType<typeof vi.fn>).mockImplementation((cb: () => void) => {
+      loggedOutCallback = cb;
+      return vi.fn();
+    });
+
+    render(<AuthGate><div>Protected Content</div></AuthGate>);
+    await waitFor(() => {
+      expect(screen.getByText('Protected Content')).toBeTruthy();
+    });
+
+    // Simulate the loggedOut event — AuthGate sets authenticated=false directly
+    loggedOutCallback!();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Protected Content')).toBeNull();
+    });
+  });
+
+  it('cleans up onLoggedOut listener on unmount', async () => {
+    const unsub = vi.fn();
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true });
+    (api.auth.onLoggedOut as ReturnType<typeof vi.fn>).mockReturnValue(unsub);
+
+    const { unmount } = render(<AuthGate><div>Protected Content</div></AuthGate>);
+    await waitFor(() => {
+      expect(screen.getByText('Protected Content')).toBeTruthy();
+    });
+
+    unmount();
+    expect(unsub).toHaveBeenCalled();
+  });
 });

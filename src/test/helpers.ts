@@ -125,7 +125,9 @@ export function mockElectronAPI(): ElectronAPI {
     auth: {
       getStatus: vi.fn().mockResolvedValue({ authenticated: true }),
       startLogin: vi.fn().mockResolvedValue({ success: true }),
+      logout: vi.fn().mockResolvedValue(undefined),
       onProgress: vi.fn().mockReturnValue(vi.fn()),
+      onLoggedOut: vi.fn().mockReturnValue(vi.fn()),
     },
     genesis: {
       getDefaultPath: vi.fn().mockResolvedValue('C:\\Users\\test\\agents'),

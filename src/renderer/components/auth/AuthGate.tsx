@@ -16,8 +16,14 @@ export function AuthGate({ children }: Props) {
     });
   }, []);
 
+  useEffect(() => {
+    const unsub = window.electronAPI.auth.onLoggedOut(() => {
+      setAuthenticated(false);
+    });
+    return unsub;
+  }, []);
+
   if (checking) {
-    // Brief blank screen while checking credential manager
     return <div className="fixed inset-0 bg-background z-50" />;
   }
 

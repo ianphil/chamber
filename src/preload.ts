@@ -34,8 +34,11 @@ const electronAPI: ElectronAPI = {
   auth: {
     getStatus: () => ipcRenderer.invoke('auth:getStatus'),
     startLogin: () => ipcRenderer.invoke('auth:startLogin'),
+    logout: () => ipcRenderer.invoke('auth:logout'),
     onProgress: (callback) =>
       createIpcListener(ipcRenderer, 'auth:progress', callback),
+    onLoggedOut: (callback) =>
+      createIpcListener(ipcRenderer, 'auth:loggedOut', callback),
   },
   genesis: {
     getDefaultPath: () => ipcRenderer.invoke('genesis:getDefaultPath'),

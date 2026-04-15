@@ -16,22 +16,24 @@ const KEYTAR_SERVICE = 'copilot-cli';
 const GITHUB_ACCOUNT_PREFIX = 'https://github.com:';
 const runtimeRequire = createRequire(__filename);
 
+type KeytarModule = typeof import('keytar');
+
 interface StoredCredential {
   login: string;
   account: string;
   password: string;
 }
 
-function loadKeytar(): typeof import('keytar') {
+function loadKeytar(): KeytarModule {
   if (!app.isPackaged) {
-    return runtimeRequire('keytar') as typeof import('keytar');
+    return runtimeRequire('keytar') as KeytarModule;
   }
 
   const packagedKeytarPath = path.join(process.resourcesPath, 'keytar', 'lib', 'keytar.js');
-  return runtimeRequire(packagedKeytarPath) as typeof import('keytar');
+  return runtimeRequire(packagedKeytarPath) as KeytarModule;
 }
 
-const keytar = loadKeytar();
+const defaultKeytar = loadKeytar();
 
 function getUserAgent(): string {
   return `Chamber/${app.getVersion()}`;
@@ -133,6 +135,11 @@ function getJson(url: string, token: string): Promise<Record<string, unknown>> {
 export class AuthService {
   private onProgress?: (progress: AuthProgress) => void;
   private aborted = false;
+  private keytar: KeytarModule;
+
+  constructor(keytarModule?: KeytarModule) {
+    this.keytar = keytarModule ?? defaultKeytar;
+  }
 
   setProgressHandler(handler: (progress: AuthProgress) => void): void {
     this.onProgress = handler;
@@ -144,7 +151,7 @@ export class AuthService {
 
   async getStoredCredential(): Promise<{ login: string } | null> {
     try {
-      const credential = resolveStoredCredential(await keytar.findCredentials(KEYTAR_SERVICE));
+      const credential = resolveStoredCredential(await this.keytar.findCredentials(KEYTAR_SERVICE));
       return credential ? { login: credential.login } : null;
     } catch (err) {
       console.error('[Auth] Failed to read stored credential:', err);
@@ -153,8 +160,21 @@ export class AuthService {
     return null;
   }
 
+  async logout(): Promise<void> {
+    this.abort();
+
+    try {
+      const credential = resolveStoredCredential(await this.keytar.findCredentials(KEYTAR_SERVICE));
+      if (!credential) return;
+      await this.keytar.deletePassword(KEYTAR_SERVICE, credential.account);
+      console.log(`[Auth] Deleted credential for ${credential.login}`);
+    } catch (err) {
+      console.error('[Auth] Failed to delete credential:', err);
+    }
+  }
+
   private async storeCredential(login: string, token: string): Promise<void> {
-    await keytar.setPassword(KEYTAR_SERVICE, getCredentialAccount(login), token);
+    await this.keytar.setPassword(KEYTAR_SERVICE, getCredentialAccount(login), token);
     console.log(`[Auth] Stored credential for ${login} via keytar`);
   }
 

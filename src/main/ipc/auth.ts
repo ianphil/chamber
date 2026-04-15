@@ -26,4 +26,11 @@ export function setupAuthIPC(authService: AuthService): void {
 
     return authService.startLogin();
   });
+
+  ipcMain.handle('auth:logout', async () => {
+    await authService.logout();
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('auth:loggedOut');
+    }
+  });
 }
