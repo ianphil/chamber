@@ -18,10 +18,7 @@ export function AuthGate({ children }: Props) {
 
   useEffect(() => {
     const unsub = window.electronAPI.auth.onLoggedOut(() => {
-      window.electronAPI.auth.getStatus().then((status) => {
-        setAuthenticated(status.authenticated);
-        if (!status.authenticated) setChecking(false);
-      });
+      setAuthenticated(false);
     });
     return unsub;
   }, []);

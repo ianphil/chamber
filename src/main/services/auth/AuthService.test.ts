@@ -14,6 +14,19 @@ vi.mock('keytar', () => ({
 
 import { getCredentialAccount, getLoginFromAccount, resolveStoredCredential, AuthService } from './AuthService';
 
+type KeytarModule = typeof import('keytar');
+
+function createMockKeytar(overrides?: Partial<{ [K in keyof KeytarModule]: ReturnType<typeof vi.fn> }>): KeytarModule {
+  return {
+    getPassword: vi.fn().mockResolvedValue(null),
+    setPassword: vi.fn().mockResolvedValue(undefined),
+    deletePassword: vi.fn().mockResolvedValue(true),
+    findPassword: vi.fn().mockResolvedValue(null),
+    findCredentials: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  } as KeytarModule;
+}
+
 describe('getCredentialAccount', () => {
   it('prefixes login with GitHub account prefix', () => {
     expect(getCredentialAccount('alice')).toBe('https://github.com:alice');
@@ -80,29 +93,19 @@ describe('resolveStoredCredential', () => {
 
 describe('AuthService.logout', () => {
   it('deletes the stored credential via keytar', async () => {
-    const mockKeytar = {
+    const mockKeytar = createMockKeytar({
       findCredentials: vi.fn().mockResolvedValue([
         { account: 'https://github.com:alice', password: 'gho_token123' },
       ]),
-      deletePassword: vi.fn().mockResolvedValue(true),
-      setPassword: vi.fn(),
-      getPassword: vi.fn(),
-      findPassword: vi.fn(),
-    };
-    const service = new AuthService(mockKeytar as never);
+    });
+    const service = new AuthService(mockKeytar);
     await service.logout();
     expect(mockKeytar.deletePassword).toHaveBeenCalledWith('copilot-cli', 'https://github.com:alice');
   });
 
   it('does not throw when no credential is stored', async () => {
-    const mockKeytar = {
-      findCredentials: vi.fn().mockResolvedValue([]),
-      deletePassword: vi.fn().mockResolvedValue(false),
-      setPassword: vi.fn(),
-      getPassword: vi.fn(),
-      findPassword: vi.fn(),
-    };
-    const service = new AuthService(mockKeytar as never);
+    const mockKeytar = createMockKeytar();
+    const service = new AuthService(mockKeytar);
     await expect(service.logout()).resolves.toBeUndefined();
     expect(mockKeytar.deletePassword).not.toHaveBeenCalled();
   });

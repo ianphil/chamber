@@ -56,4 +56,12 @@ describe('SettingsView', () => {
       expect(screen.getByRole('heading', { name: /account/i })).toBeTruthy();
     });
   });
+
+  it('shows error fallback when getStatus rejects', async () => {
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('IPC failed'));
+    render(<SettingsView />);
+    await waitFor(() => {
+      expect(screen.getByText('Unable to load account info')).toBeTruthy();
+    });
+  });
 });

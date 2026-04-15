@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
-import { MessageSquare, MoreHorizontal, Zap, Newspaper, Users, Clock, Settings, Layout, type LucideIcon } from 'lucide-react';
+import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
 import type { LensViewManifest } from '../../../shared/types';
@@ -88,19 +88,6 @@ export function ActivityBar() {
             <TooltipContent side="right" sideOffset={8}>{view.name}</TooltipContent>
           </Tooltip>
         ))}
-
-        {/* Overflow — shown after lens icons */}
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <button
-              aria-label="More views"
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            >
-              <MoreHorizontal size={20} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>More views</TooltipContent>
-        </Tooltip>
       </div>
 
       {/* Bottom-pinned settings */}

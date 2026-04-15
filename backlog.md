@@ -16,10 +16,10 @@
 - [ ] **Landing screen needs a back button** `ux` — when "Add Agent" navigates to the landing screen, there's no way to go back if you change your mind. Add a back/cancel action that returns to the previous chat view. *(Ian, 2026-04-12)*
 - [ ] **Lens refresh survives view switching** `ux` — clicking away from a lens while it's refreshing drops the pending result. The agent still writes the file, but the UI never picks up the new data. Either show a toast when refresh completes, or re-read data when returning to the view. *(Ian, 2026-04-12)*
 - [ ] **Popout should continue conversation** `ux` — popping out an agent starts a fresh chat instead of continuing the current conversation. Messages should transfer to the popout and return when closed. Related to conversation history feature. *(Ian, 2026-04-12)*
+- [x] **Settings view + Logout** `ux` `auth` — ⚙ gear icon bottom-pinned in ActivityBar opens Settings view. Account section shows current login + Logout button. Logout deletes keytar credential, broadcasts to all windows, AuthGate drops to AuthScreen. *(shipped v0.20.0)*
 
 ## Next
 
-- [ ] **Settings view + Logout** `ux` `auth` — add ⚙ gear icon bottom-pinned in ActivityBar, opening a Settings view. Account section shows current login + Logout button. Logout calls `auth:logout` IPC (keytar delete), flips AuthGate back to AuthScreen. Move ⋯ overflow icon up to sit right after lens icons. *(Ian, 2026-04-15)*
 - [ ] **Switch Account** `ux` `auth` — credential picker dropdown in Settings showing cached GitHub accounts (e.g. `ianphil`, `ianphil_microsoft`). Select to switch without re-auth. "Add Account" triggers device flow to cache a new credential. Requires multi-credential awareness in AuthService. *(Ian, 2026-04-15)*
 - [ ] **Duplicate agent name collision** `bug` — creating a second agent with the same name as an existing one (e.g. "Alfred" twice) has undefined behavior. Detect name collisions during agent creation, either block with an error or auto-suffix. Clarify what happens to routing, IPC channels, and chatroom @mentions when names collide. *(Ian, 2026-04-13)*
 - [ ] **Target Linux / WSL** `platform` — primary platform target should be Linux and WSL, not just Windows. Audit platform-specific code (paths, shell spawning, credential storage, installers) and ensure first-class support. *(Ian, 2026-04-13)*

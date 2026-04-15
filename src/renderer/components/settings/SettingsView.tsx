@@ -4,14 +4,21 @@ import { LogOut } from 'lucide-react';
 export function SettingsView() {
   const [login, setLogin] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    window.electronAPI.auth.getStatus().then((status) => {
-      if (cancelled) return;
-      setLogin(status.login ?? null);
-      setLoading(false);
-    });
+    window.electronAPI.auth.getStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setLogin(status.login ?? null);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError(true);
+        setLoading(false);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -24,6 +31,8 @@ export function SettingsView() {
         <div className="rounded-lg border border-border bg-card p-4">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : error ? (
+            <p className="text-sm text-destructive">Unable to load account info</p>
           ) : login ? (
             <div className="flex items-center justify-between">
               <div>

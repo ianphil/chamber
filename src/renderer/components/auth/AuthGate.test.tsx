@@ -49,8 +49,7 @@ describe('AuthGate', () => {
       expect(screen.getByText('Protected Content')).toBeTruthy();
     });
 
-    // Simulate the loggedOut event — AuthGate should re-check status
-    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: false });
+    // Simulate the loggedOut event — AuthGate sets authenticated=false directly
     loggedOutCallback!();
 
     await waitFor(() => {
