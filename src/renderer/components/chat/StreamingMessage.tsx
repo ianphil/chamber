@@ -1,6 +1,7 @@
 import React from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { cn } from '../../lib/utils';
 import { ToolBlock } from './ToolBlock';
 import { ReasoningBlock } from './ReasoningBlock';
@@ -42,7 +43,15 @@ export function StreamingMessage({ blocks, isStreaming }: Props) {
                   isStreaming && i === blocks.length - 1 && 'streaming'
                 )}
               >
-                <Markdown remarkPlugins={[remarkGfm]}>
+                <Markdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+                  components={{
+                    a: (props) => (
+                      <a {...props} target="_blank" rel="noopener noreferrer" />
+                    ),
+                  }}
+                >
                   {block.content}
                 </Markdown>
                 {isStreaming && i === blocks.length - 1 && (
