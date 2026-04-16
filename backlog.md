@@ -19,6 +19,7 @@
 ## Next
 
 - **Remote agents via faux-foundation** `arch` `ux` — show agents running in faux-foundation containers alongside local minds in Chamber's sidebar. Chamber talks to the *agent* (e.g. Skippy) via Dapr service invocation (`/v1.0/invoke/{appID}/method/...`), not directly to the LLM proxy — the agent owns its own LLM interaction. Requires: a conversation/chat endpoint on each agent Dapr service (streaming SSE), a `RemoteMind` adapter in Chamber that implements the same `MindContext` interface, Dapr sidecar or HTTP gateway for Chamber to reach the cluster. Discovery via Dapr service invocation naming or an agent registry. See `ianphil/faux-foundation` for the harness. *(Ian, 2026-04-16)*
+- **MCP profile & config lens** `lens` `ux` — Chamber accepts a profile URL that declares available MCP servers (names, commands, descriptions). Generates a Lens view with toggles to enable/disable MCPs per agent or globally. Writes `.mcp.json` automatically. Profile is org-hosted (e.g. `aka.ms/chamber-profile/aet`), keeping internal tool details out of the public repo. Replaces manual gist/bootstrap workflow for non-technical users. *(Ian, 2026-04-16)*
 - **Deprecate genesis yellow-pages skill** `arch`— Chamber implements a2a natively and does it much better. The `yellow-pages` skill in genesis is redundant. Remove from genesis `.github/skills/yellow-pages/`. *(Skippy, 2026-04-14)*
 - **Deprecate genesis responses extension** `arch` — Chamber's a2a implementation supersedes the `responses` extension in genesis `.github/extensions/responses/`. Remove from genesis. *(Skippy, 2026-04-14)*
 - **Duplicate agent name collision** `bug` — creating a second agent with the same name as an existing one (e.g. "Alfred" twice) has undefined behavior. Detect name collisions during agent creation, either block with an error or auto-suffix. Clarify what happens to routing, IPC channels, and chatroom @mentions when names collide. *(Ian, 2026-04-13)*
@@ -52,8 +53,7 @@
 - **Multiple assistant personalities** `ux` — multiple agent personas in the voices screen. *(Kent feedback 2026-04-09)*
 - **Agent alerts / notifications** `ux` — system toasts + taskbar flash via `notify` tool and/or CronMonitor service. Electron `new Notification()` + `BrowserWindow.flashFrame()`.
 - **Scratch pad / work queue** `ux` — notepad for async handoff. User drops notes while agent is busy; agent triages when idle.
-- **Agency MCP config** `lens` — Lens editor view over MCP server config.
-- **Upgrade from genesis UI** `ux` — button/menu for discovering and installing genesis updates without typing a prompt.
+- **Upgrade from genesis UI** `ux`— button/menu for discovering and installing genesis updates without typing a prompt.
 - **Upgrade to Myelin memory** `arch` — migration from flat-file `.working-memory/` to `shsolomo/myelin` knowledge graph.
 - **Move Responses API to frontier** `arch` — extract responses extension from genesis to frontier repo.
 - **Extension lib refactor** `arch` — shared lib for CLI extensions + Lens views.
