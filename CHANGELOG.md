@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.23.0 (2026-04-16)
+
+### Chat: turn-level work log
+
+- **WorkGroup panel** — replaced the stack of per-tool and per-reasoning `Collapsible` cards with a single compact panel per turn. Each tool call and reasoning step is now a one-line entry (icon + heading + preview); click to expand the full output or reasoning body inline.
+- **Streaming auto-expand** — the running tool in the active group auto-expands so its output is visible while it streams, and collapses back to a one-liner when done.
+- **Truncation** — groups with more than 6 entries collapse the older ones behind a "Show N more" control.
+- **Safer previews** — tool previews now pull only from an allowlisted set of argument keys (`command`, `path`, `file`, `query`, etc.) so sensitive-looking args like `token` / `apiKey` / `password` can't leak into the collapsed row.
+- **Design notes** — rationale + locked architectural decisions captured in `docs/design-notes.md`.
+
 ## v0.22.0 (2026-04-16)
 
 ### Chat markdown rendering
