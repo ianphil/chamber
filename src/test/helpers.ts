@@ -124,9 +124,13 @@ export function mockElectronAPI(): ElectronAPI {
     },
     auth: {
       getStatus: vi.fn().mockResolvedValue({ authenticated: true }),
+      listAccounts: vi.fn().mockResolvedValue([]),
       startLogin: vi.fn().mockResolvedValue({ success: true }),
+      switchAccount: vi.fn().mockResolvedValue(undefined),
       logout: vi.fn().mockResolvedValue(undefined),
       onProgress: vi.fn().mockReturnValue(vi.fn()),
+      onAccountSwitchStarted: vi.fn().mockReturnValue(vi.fn()),
+      onAccountSwitched: vi.fn().mockReturnValue(vi.fn()),
       onLoggedOut: vi.fn().mockReturnValue(vi.fn()),
     },
     genesis: {

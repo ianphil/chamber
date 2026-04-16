@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function GenesisGate({ children }: Props) {
-  const { minds, showLanding, mindsChecked } = useAppState();
+  const { minds, showLanding, mindsChecked, runtimePhase, switchingAccountLogin } = useAppState();
   const dispatch = useAppDispatch();
   const [mode, setMode] = useState<'idle' | 'genesis'>('idle');
 
@@ -22,6 +22,10 @@ export function GenesisGate({ children }: Props) {
   // Show loading screen while initial minds check is pending
   if (!mindsChecked && !showLanding) {
     return <ChamberLoadingScreen />;
+  }
+
+  if (runtimePhase === 'switching-account') {
+    return <ChamberLoadingScreen mode="switching-account" login={switchingAccountLogin} />;
   }
 
   const hasMinds = minds.length > 0;
@@ -51,6 +55,7 @@ export function GenesisGate({ children }: Props) {
             dispatch({ type: 'HIDE_LANDING' });
           }
         }}
+        onClose={showLanding && hasMinds ? () => dispatch({ type: 'HIDE_LANDING' }) : undefined}
       />
     );
   }

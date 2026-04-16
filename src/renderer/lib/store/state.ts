@@ -7,6 +7,8 @@ export type LensView = 'chat' | string;
 export interface AppState {
   minds: MindContext[];
   activeMindId: string | null;
+  runtimePhase: 'ready' | 'switching-account';
+  switchingAccountLogin: string | null;
   messagesByMind: Record<string, ChatMessage[]>;
   isStreaming: boolean;
   streamingByMind: Record<string, boolean>;
@@ -35,6 +37,9 @@ export type AppAction =
   | { type: 'SET_DISCOVERED_VIEWS'; payload: LensViewManifest[] }
   | { type: 'SHOW_LANDING' }
   | { type: 'HIDE_LANDING' }
+  | { type: 'ACCOUNT_SWITCH_STARTED'; payload: { login: string } }
+  | { type: 'ACCOUNT_SWITCH_COMPLETED' }
+  | { type: 'LOGGED_OUT' }
   | { type: 'MINDS_CHECKED' }
   | { type: 'CLEAR_MESSAGES' }
   | { type: 'NEW_CONVERSATION' }
@@ -50,6 +55,8 @@ export type AppAction =
 export const initialState: AppState = {
   minds: [],
   activeMindId: null,
+  runtimePhase: 'ready',
+  switchingAccountLogin: null,
   messagesByMind: {},
   isStreaming: false,
   streamingByMind: {},

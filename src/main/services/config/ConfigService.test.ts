@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import { ConfigService } from './ConfigService';
 import type { AppConfig } from '../../../shared/types';
 
-const DEFAULT_CONFIG: AppConfig = { version: 2, minds: [], activeMindId: null, theme: 'dark' };
+const DEFAULT_CONFIG: AppConfig = { version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' };
 
 describe('ConfigService', () => {
   let svc: ConfigService;
@@ -22,9 +22,26 @@ describe('ConfigService', () => {
 
   describe('load', () => {
     it('returns v2 config as-is', () => {
-      const v2: AppConfig = { version: 2, minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }], activeMindId: 'q-a1b2', theme: 'light' };
+      const v2: AppConfig = { version: 2, minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }], activeMindId: 'q-a1b2', activeLogin: 'alice', theme: 'light' };
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(v2));
       expect(svc.load()).toEqual(v2);
+    });
+
+    it('backfills activeLogin for legacy v2 configs', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
+        activeMindId: 'q-a1b2',
+        theme: 'light',
+      }));
+
+      expect(svc.load()).toEqual({
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'light',
+      });
     });
 
     it('migrates v1 config with mindPath to v2', () => {
@@ -37,6 +54,7 @@ describe('ConfigService', () => {
       expect(result.minds[0].path).toBe('/tmp/agents/q');
       expect(result.minds[0].id).toMatch(/^q-[a-f0-9]{4}$/);
       expect(result.activeMindId).toBe(result.minds[0].id);
+      expect(result.activeLogin).toBeNull();
       expect(result.theme).toBe('light');
     });
 
@@ -67,18 +85,20 @@ describe('ConfigService', () => {
           { id: 'q-c3d4', path: '/tmp/agents/q' },
         ],
         activeMindId: 'q-a1b2',
+        activeLogin: 'alice',
         theme: 'dark',
       };
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(v2));
       const result = svc.load();
       expect(result.minds).toHaveLength(1);
       expect(result.minds[0].id).toBe('q-a1b2');
+      expect(result.activeLogin).toBe('alice');
     });
   });
 
   describe('save', () => {
     it('creates directory and writes v2 JSON', () => {
-      const config: AppConfig = { version: 2, minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }], activeMindId: 'q-a1b2', theme: 'dark' };
+      const config: AppConfig = { version: 2, minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }], activeMindId: 'q-a1b2', activeLogin: 'alice', theme: 'dark' };
       svc.save(config);
       expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalledWith(expect.any(String), {
         recursive: true,
@@ -87,6 +107,7 @@ describe('ConfigService', () => {
       const parsed = JSON.parse(written);
       expect(parsed.version).toBe(2);
       expect(parsed.minds).toHaveLength(1);
+      expect(parsed.activeLogin).toBe('alice');
     });
   });
 

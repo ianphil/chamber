@@ -28,4 +28,21 @@ describe('LandingScreen', () => {
     fireEvent.click(screen.getByText('Open Existing'));
     expect(onOpenExisting).toHaveBeenCalledOnce();
   });
+
+  it('renders a close button when onClose is provided', () => {
+    render(<LandingScreen onNewAgent={vi.fn()} onOpenExisting={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
+  });
+
+  it('does not render a close button when onClose is not provided', () => {
+    render(<LandingScreen onNewAgent={vi.fn()} onOpenExisting={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
+  });
+
+  it('clicking close calls onClose', () => {
+    const onClose = vi.fn();
+    render(<LandingScreen onNewAgent={vi.fn()} onOpenExisting={vi.fn()} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
 });

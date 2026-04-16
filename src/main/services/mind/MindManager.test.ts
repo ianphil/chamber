@@ -52,9 +52,19 @@ const mockExtensionLoader = {
   cleanupExtensions: vi.fn(),
 };
 
+let currentConfig = {
+  version: 2 as const,
+  minds: [],
+  activeMindId: null,
+  activeLogin: null,
+  theme: 'dark' as const,
+};
+
 const mockConfigService = {
-  load: vi.fn(() => ({ version: 2 as const, minds: [], activeMindId: null, theme: 'dark' as const })),
-  save: vi.fn(),
+  load: vi.fn(() => currentConfig),
+  save: vi.fn((config) => {
+    currentConfig = config;
+  }),
 };
 
 const mockViewDiscovery = {
@@ -71,6 +81,19 @@ describe('MindManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfigService.load.mockReset();
+    mockConfigService.save.mockReset();
+    mockConfigService.load.mockImplementation(() => currentConfig);
+    mockConfigService.save.mockImplementation((config) => {
+      currentConfig = config;
+    });
+    currentConfig = {
+      version: 2 as const,
+      minds: [],
+      activeMindId: null,
+      activeLogin: null,
+      theme: 'dark' as const,
+    };
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     manager = new MindManager(
@@ -211,6 +234,7 @@ describe('MindManager', () => {
           { id: 'fox-c3d4', path: '/tmp/agents/fox' },
         ],
         activeMindId: 'q-a1b2',
+        activeLogin: 'alice',
         theme: 'dark',
       });
 
@@ -230,6 +254,7 @@ describe('MindManager', () => {
           { id: 'bad-c3d4', path: '/tmp/agents/bad' },
         ],
         activeMindId: 'good-a1b2',
+        activeLogin: 'alice',
         theme: 'dark',
       });
 
@@ -242,7 +267,7 @@ describe('MindManager', () => {
 
     it('handles empty config gracefully', async () => {
       mockConfigService.load.mockReturnValue({
-        version: 2, minds: [], activeMindId: null, theme: 'dark',
+        version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark',
       });
 
       await manager.restoreFromConfig();
@@ -280,6 +305,7 @@ describe('MindManager', () => {
         version: 2,
         minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
         activeMindId: 'q-a1b2',
+        activeLogin: 'alice',
         theme: 'dark',
       });
 
@@ -301,6 +327,7 @@ describe('MindManager', () => {
         version: 2,
         minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
         activeMindId: 'q-a1b2',
+        activeLogin: 'alice',
         theme: 'dark',
       });
 
@@ -317,6 +344,7 @@ describe('MindManager', () => {
         version: 2,
         minds: [{ id: 'my-stable-id', path: '/tmp/agents/q' }],
         activeMindId: 'my-stable-id',
+        activeLogin: 'alice',
         theme: 'dark',
       });
 
@@ -569,6 +597,74 @@ describe('MindManager', () => {
     it('works without toolBuilder (backwards compat)', async () => {
       await manager.loadMind('/tmp/agents/q');
       expect(mockCreateSession).toHaveBeenCalled();
+    });
+  });
+
+  describe('reloadAllMinds', () => {
+    it('unloads every loaded mind and restores them from config', async () => {
+      await manager.loadMind('/tmp/agents/q');
+      await manager.loadMind('/tmp/agents/fox');
+
+      await manager.reloadAllMinds();
+
+      expect(mockClientFactory.destroyClient).toHaveBeenCalledTimes(2);
+      expect(manager.listMinds()).toHaveLength(2);
+    });
+
+    it('preserves activeMindId', async () => {
+      const firstMind = await manager.loadMind('/tmp/agents/q');
+      const secondMind = await manager.loadMind('/tmp/agents/fox');
+      manager.setActiveMind(secondMind.mindId);
+
+      await manager.reloadAllMinds();
+
+      expect(manager.getActiveMindId()).toBe(secondMind.mindId);
+      expect(manager.getActiveMindId()).not.toBe(firstMind.mindId);
+    });
+
+    it('creates fresh client instances after reload', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const originalClient = manager.getMind(mind.mindId)?.client;
+
+      await manager.reloadAllMinds();
+
+      const reloadedClient = manager.getMind(mind.mindId)?.client;
+      expect(reloadedClient).toBeDefined();
+      expect(reloadedClient).not.toBe(originalClient);
+    });
+
+    it('preserves activeLogin in persisted config snapshots', async () => {
+      mockConfigService.load.mockReturnValue({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: 'alice',
+        theme: 'dark',
+      });
+      await manager.loadMind('/tmp/agents/q');
+
+      await manager.reloadAllMinds();
+
+      expect(mockConfigService.save).toHaveBeenCalledWith(expect.objectContaining({
+        activeLogin: 'alice',
+      }));
+    });
+
+    it('suppresses per-mind config writes during reload — only the snapshot save is written', async () => {
+      await manager.loadMind('/tmp/agents/q');
+      await manager.loadMind('/tmp/agents/fox');
+      mockConfigService.save.mockClear();
+
+      await manager.reloadAllMinds();
+
+      // One snapshot save before restore, then one per re-loaded mind (from loadMind's persistConfig).
+      // The two unloadMind calls should NOT produce saves thanks to the reloading guard.
+      const saveCalls = mockConfigService.save.mock.calls;
+      // First save is the snapshot (contains both minds)
+      expect(saveCalls[0][0].minds).toHaveLength(2);
+      // No save should have an empty minds array (which would be the mid-unload state)
+      const emptyMindsSaves = saveCalls.filter((call: unknown[]) => (call[0] as { minds: unknown[] }).minds.length === 0);
+      expect(emptyMindsSaves).toHaveLength(0);
     });
   });
 });

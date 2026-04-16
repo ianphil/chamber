@@ -33,10 +33,16 @@ const electronAPI: ElectronAPI = {
   },
   auth: {
     getStatus: () => ipcRenderer.invoke('auth:getStatus'),
+    listAccounts: () => ipcRenderer.invoke('auth:listAccounts'),
     startLogin: () => ipcRenderer.invoke('auth:startLogin'),
+    switchAccount: (login) => ipcRenderer.invoke('auth:switchAccount', login),
     logout: () => ipcRenderer.invoke('auth:logout'),
     onProgress: (callback) =>
       createIpcListener(ipcRenderer, 'auth:progress', callback),
+    onAccountSwitchStarted: (callback) =>
+      createIpcListener(ipcRenderer, 'auth:accountSwitchStarted', callback),
+    onAccountSwitched: (callback) =>
+      createIpcListener(ipcRenderer, 'auth:accountSwitched', callback),
     onLoggedOut: (callback) =>
       createIpcListener(ipcRenderer, 'auth:loggedOut', callback),
   },

@@ -57,10 +57,32 @@ describe('AuthGate', () => {
     });
   });
 
+  it('stays authenticated when auth:accountSwitched fires', async () => {
+    let accountSwitchedCallback: ((data: { login: string }) => void) | undefined;
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'alice' });
+    (api.auth.onAccountSwitched as ReturnType<typeof vi.fn>).mockImplementation((cb: (data: { login: string }) => void) => {
+      accountSwitchedCallback = cb;
+      return vi.fn();
+    });
+
+    render(<AuthGate><div>Protected Content</div></AuthGate>);
+    await waitFor(() => {
+      expect(screen.getByText('Protected Content')).toBeTruthy();
+    });
+
+    accountSwitchedCallback!({ login: 'bob' });
+
+    await waitFor(() => {
+      expect(screen.getByText('Protected Content')).toBeTruthy();
+    });
+  });
+
   it('cleans up onLoggedOut listener on unmount', async () => {
     const unsub = vi.fn();
+    const unsubAccountSwitched = vi.fn();
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true });
     (api.auth.onLoggedOut as ReturnType<typeof vi.fn>).mockReturnValue(unsub);
+    (api.auth.onAccountSwitched as ReturnType<typeof vi.fn>).mockReturnValue(unsubAccountSwitched);
 
     const { unmount } = render(<AuthGate><div>Protected Content</div></AuthGate>);
     await waitFor(() => {
@@ -69,5 +91,6 @@ describe('AuthGate', () => {
 
     unmount();
     expect(unsub).toHaveBeenCalled();
+    expect(unsubAccountSwitched).toHaveBeenCalled();
   });
 });

@@ -49,24 +49,6 @@ export function getLoginFromAccount(account: string): string | null {
   return login || null;
 }
 
-export function resolveStoredCredential(credentials: Array<{ account: string; password: string }>): StoredCredential | null {
-  const matchingCredentials = credentials
-    .map((credential) => {
-      const login = getLoginFromAccount(credential.account);
-      if (!login || !credential.password) return null;
-      return { login, account: credential.account, password: credential.password };
-    })
-    .filter((credential): credential is StoredCredential => credential !== null);
-
-  if (matchingCredentials.length === 0) return null;
-
-  if (matchingCredentials.length > 1) {
-    console.warn(`[Auth] Multiple Copilot credentials found; using ${matchingCredentials[0].account}`);
-  }
-
-  return matchingCredentials[0];
-}
-
 export interface AuthProgress {
   step: 'device_code' | 'polling' | 'authenticated' | 'error';
   userCode?: string;
@@ -137,7 +119,11 @@ export class AuthService {
   private aborted = false;
   private keytar: KeytarModule;
 
-  constructor(keytarModule?: KeytarModule) {
+  constructor(
+    keytarModule?: KeytarModule,
+    private readonly getActiveLogin: () => string | null = () => null,
+    readonly setActiveLogin: (login: string | null) => void = () => undefined,
+  ) {
     this.keytar = keytarModule ?? defaultKeytar;
   }
 
@@ -149,9 +135,18 @@ export class AuthService {
     this.aborted = true;
   }
 
+  async listAccounts(): Promise<Array<{ login: string }>> {
+    try {
+      return (await this.getStoredCredentials()).map(({ login }) => ({ login }));
+    } catch (err) {
+      console.error('[Auth] Failed to list stored credentials:', err);
+      return [];
+    }
+  }
+
   async getStoredCredential(): Promise<{ login: string } | null> {
     try {
-      const credential = resolveStoredCredential(await this.keytar.findCredentials(KEYTAR_SERVICE));
+      const credential = await this.getStoredCredentialEntry();
       return credential ? { login: credential.login } : null;
     } catch (err) {
       console.error('[Auth] Failed to read stored credential:', err);
@@ -164,13 +159,43 @@ export class AuthService {
     this.abort();
 
     try {
-      const credential = resolveStoredCredential(await this.keytar.findCredentials(KEYTAR_SERVICE));
+      const credential = await this.getStoredCredentialEntry();
       if (!credential) return;
       await this.keytar.deletePassword(KEYTAR_SERVICE, credential.account);
+      this.setActiveLogin(null);
       console.log(`[Auth] Deleted credential for ${credential.login}`);
     } catch (err) {
       console.error('[Auth] Failed to delete credential:', err);
     }
+  }
+
+  private async getStoredCredentials(): Promise<StoredCredential[]> {
+    const credentials = await this.keytar.findCredentials(KEYTAR_SERVICE);
+    const storedCredentials = credentials
+      .map((credential) => {
+        const login = getLoginFromAccount(credential.account);
+        if (!login || !credential.password) return null;
+        return { login, account: credential.account, password: credential.password };
+      })
+      .filter((credential): credential is StoredCredential => credential !== null)
+      .sort((a, b) => a.login.localeCompare(b.login));
+
+    return storedCredentials;
+  }
+
+  private async getStoredCredentialEntry(): Promise<StoredCredential | null> {
+    const credentials = await this.getStoredCredentials();
+    if (credentials.length === 0) return null;
+
+    const activeLogin = this.getActiveLogin();
+    if (activeLogin === null) {
+      if (credentials.length > 1) {
+        console.warn(`[Auth] Multiple Copilot credentials found; using ${credentials[0].account}`);
+      }
+      return credentials[0];
+    }
+
+    return credentials.find((credential) => credential.login === activeLogin) ?? null;
   }
 
   private async storeCredential(login: string, token: string): Promise<void> {
@@ -189,7 +214,7 @@ export class AuthService {
       });
 
       const userCode = String(deviceResp.user_code);
-      const verificationUri = String(deviceResp.verification_uri);
+      const verificationUri = String(deviceResp.verification_uri_complete ?? deviceResp.verification_uri);
       const deviceCode = String(deviceResp.device_code);
       let interval = Number(deviceResp.interval) || 5;
       const expiresIn = Number(deviceResp.expires_in) || 900;

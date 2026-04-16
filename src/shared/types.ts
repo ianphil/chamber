@@ -103,6 +103,7 @@ export interface AppConfig {
   version: 2;
   minds: MindRecord[];
   activeMindId: string | null;
+  activeLogin: string | null;
   theme: 'light' | 'dark' | 'system';
 }
 
@@ -145,9 +146,13 @@ export interface ElectronAPI {
   };
   auth: {
     getStatus: () => Promise<{ authenticated: boolean; login?: string }>;
+    listAccounts: () => Promise<Array<{ login: string }>>;
     startLogin: () => Promise<{ success: boolean; login?: string }>;
+    switchAccount: (login: string) => Promise<void>;
     logout: () => Promise<void>;
     onProgress: (callback: (progress: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => void) => () => void;
+    onAccountSwitchStarted: (callback: (data: { login: string }) => void) => () => void;
+    onAccountSwitched: (callback: (data: { login: string }) => void) => () => void;
     onLoggedOut: (callback: () => void) => () => void;
   };
   genesis: {

@@ -19,9 +19,21 @@ export function useAgentStatus() {
     const unsubMinds = window.electronAPI.mind.onMindChanged((updatedMinds) => {
       dispatch({ type: 'SET_MINDS', payload: updatedMinds });
     });
+    const unsubSwitchStarted = window.electronAPI.auth.onAccountSwitchStarted(({ login }) => {
+      dispatch({ type: 'ACCOUNT_SWITCH_STARTED', payload: { login } });
+    });
+    const unsubSwitched = window.electronAPI.auth.onAccountSwitched(() => {
+      dispatch({ type: 'ACCOUNT_SWITCH_COMPLETED' });
+    });
+    const unsubLoggedOut = window.electronAPI.auth.onLoggedOut(() => {
+      dispatch({ type: 'LOGGED_OUT' });
+    });
 
     return () => {
       unsubMinds();
+      unsubSwitchStarted();
+      unsubSwitched();
+      unsubLoggedOut();
     };
   }, [dispatch]);
 

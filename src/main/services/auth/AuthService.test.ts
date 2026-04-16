@@ -12,7 +12,7 @@ vi.mock('keytar', () => ({
   deletePassword: vi.fn().mockResolvedValue(true),
 }));
 
-import { getCredentialAccount, getLoginFromAccount, resolveStoredCredential, AuthService } from './AuthService';
+import { getCredentialAccount, getLoginFromAccount, AuthService } from './AuthService';
 
 type KeytarModule = typeof import('keytar');
 
@@ -55,42 +55,6 @@ describe('getLoginFromAccount', () => {
   });
 });
 
-describe('resolveStoredCredential', () => {
-  it('returns credential for valid entry', () => {
-    const result = resolveStoredCredential([
-      { account: 'https://github.com:alice', password: 'gho_token123' },
-    ]);
-    expect(result).toEqual({ login: 'alice', account: 'https://github.com:alice', password: 'gho_token123' });
-  });
-
-  it('returns first credential when multiple exist', () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
-    const result = resolveStoredCredential([
-      { account: 'https://github.com:alice', password: 'token1' },
-      { account: 'https://github.com:bob', password: 'token2' },
-    ]);
-    expect(result?.login).toBe('alice');
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
-  });
-
-  it('returns null for no valid credentials', () => {
-    expect(resolveStoredCredential([
-      { account: 'https://gitlab.com:alice', password: 'token' },
-    ])).toBeNull();
-  });
-
-  it('returns null for empty array', () => {
-    expect(resolveStoredCredential([])).toBeNull();
-  });
-
-  it('skips entries with empty password', () => {
-    expect(resolveStoredCredential([
-      { account: 'https://github.com:alice', password: '' },
-    ])).toBeNull();
-  });
-});
-
 describe('AuthService.logout', () => {
   it('deletes the stored credential via keytar', async () => {
     const mockKeytar = createMockKeytar({
@@ -108,5 +72,94 @@ describe('AuthService.logout', () => {
     const service = new AuthService(mockKeytar);
     await expect(service.logout()).resolves.toBeUndefined();
     expect(mockKeytar.deletePassword).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService multi-account', () => {
+  it('listAccounts returns all stored accounts sorted alphabetically', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://github.com:zebra', password: 'token2' },
+        { account: 'https://github.com:alice', password: 'token1' },
+      ]),
+    });
+
+    const service = new AuthService(mockKeytar);
+    await expect(service.listAccounts()).resolves.toEqual([
+      { login: 'alice' },
+      { login: 'zebra' },
+    ]);
+  });
+
+  it('listAccounts returns empty array when no credentials exist', async () => {
+    const service = new AuthService(createMockKeytar());
+    await expect(service.listAccounts()).resolves.toEqual([]);
+  });
+
+  it('listAccounts filters out malformed accounts', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://gitlab.com:alice', password: 'token1' },
+        { account: 'https://github.com:bob', password: 'token2' },
+      ]),
+    });
+
+    const service = new AuthService(mockKeytar);
+    await expect(service.listAccounts()).resolves.toEqual([{ login: 'bob' }]);
+  });
+
+  it('getStoredCredential returns the configured active account', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://github.com:alice', password: 'token1' },
+        { account: 'https://github.com:bob', password: 'token2' },
+      ]),
+    });
+
+    const service = new AuthService(mockKeytar, () => 'bob');
+    await expect(service.getStoredCredential()).resolves.toEqual({ login: 'bob' });
+  });
+
+  it('getStoredCredential falls back to the first stored account when activeLogin is null', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://github.com:bob', password: 'token2' },
+        { account: 'https://github.com:alice', password: 'token1' },
+      ]),
+    });
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+    const service = new AuthService(mockKeytar, () => null);
+
+    await expect(service.getStoredCredential()).resolves.toEqual({ login: 'alice' });
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('getStoredCredential returns null when activeLogin is set but missing', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://github.com:alice', password: 'token1' },
+      ]),
+    });
+
+    const service = new AuthService(mockKeytar, () => 'bob');
+    await expect(service.getStoredCredential()).resolves.toBeNull();
+  });
+
+  it('logout deletes only the active credential and clears activeLogin', async () => {
+    const mockKeytar = createMockKeytar({
+      findCredentials: vi.fn().mockResolvedValue([
+        { account: 'https://github.com:alice', password: 'token1' },
+        { account: 'https://github.com:bob', password: 'token2' },
+      ]),
+    });
+    const setActiveLogin = vi.fn();
+    const service = new AuthService(mockKeytar, () => 'bob', setActiveLogin);
+
+    await service.logout();
+
+    expect(mockKeytar.deletePassword).toHaveBeenCalledWith('copilot-cli', 'https://github.com:bob');
+    expect(setActiveLogin).toHaveBeenCalledWith(null);
   });
 });

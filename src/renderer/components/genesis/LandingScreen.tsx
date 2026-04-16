@@ -1,13 +1,24 @@
 import React from 'react';
+import { X } from 'lucide-react';
 
 interface Props {
   onNewAgent: () => void;
   onOpenExisting: () => void;
+  onClose?: () => void;
 }
 
-export function LandingScreen({ onNewAgent, onOpenExisting }: Props) {
+export function LandingScreen({ onNewAgent, onOpenExisting, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-50">
+      {onClose && (
+        <button
+          aria-label="Close"
+          onClick={onClose}
+          className="absolute top-4 right-4 w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <X size={18} />
+        </button>
+      )}
       <div className="text-center space-y-8">
         <div className="w-20 h-20 rounded-2xl bg-genesis flex items-center justify-center text-3xl font-bold text-primary-foreground mx-auto">
           C

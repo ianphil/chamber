@@ -45,7 +45,15 @@ extensionLoader.registerAdapter('canvas', loadCanvasExtension);
 extensionLoader.registerAdapter('cron', loadCronExtension);
 extensionLoader.registerAdapter('idea', loadIdeaExtension);
 const configService = new ConfigService();
-const authService = new AuthService();
+const saveActiveLogin = (login: string | null) => {
+  const config = configService.load();
+  configService.save({ ...config, activeLogin: login });
+};
+const authService = new AuthService(
+  undefined,
+  () => configService.load().activeLogin,
+  saveActiveLogin,
+);
 const scaffold = new MindScaffold();
 const viewDiscovery = new ViewDiscovery();
 
@@ -130,7 +138,7 @@ app.on('ready', async () => {
   });
   setupLensIPC(viewDiscovery, mindManager);
   setupGenesisIPC(mindManager, scaffold);
-  setupAuthIPC(authService);
+  setupAuthIPC(authService, mindManager);
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
   setupChatroomIPC(chatroomService);
 
@@ -172,4 +180,3 @@ app.on('before-quit', (e) => {
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
 });
-

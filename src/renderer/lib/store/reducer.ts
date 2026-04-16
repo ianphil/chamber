@@ -219,6 +219,28 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'HIDE_LANDING':
       return { ...state, showLanding: false };
 
+    case 'ACCOUNT_SWITCH_STARTED':
+      return {
+        ...state,
+        runtimePhase: 'switching-account',
+        switchingAccountLogin: action.payload.login,
+        showLanding: false,
+      };
+
+    case 'ACCOUNT_SWITCH_COMPLETED':
+      return {
+        ...state,
+        runtimePhase: 'ready',
+        switchingAccountLogin: null,
+      };
+
+    case 'LOGGED_OUT':
+      return {
+        ...state,
+        runtimePhase: 'ready',
+        switchingAccountLogin: null,
+      };
+
     case 'MINDS_CHECKED':
       return { ...state, mindsChecked: true };
 

@@ -20,6 +20,7 @@ export class MindManager extends EventEmitter {
   private windowByMind = new Map<string, { focus: () => void; close: () => void; on: (event: string, cb: () => void) => void }>();
   private activeMindId: string | null = null;
   private restorePromise: Promise<void> | null = null;
+  private reloading = false;
 
   constructor(
     private readonly clientFactory: CopilotClientFactory,
@@ -192,6 +193,36 @@ export class MindManager extends EventEmitter {
     return this.restorePromise;
   }
 
+  async reloadAllMinds(): Promise<void> {
+    await this.awaitRestore();
+
+    const existingConfig = this.configService.load();
+    const configSnapshot: AppConfig = {
+      version: 2,
+      minds: Array.from(this.minds.values()).map((mind) => ({
+        id: mind.mindId,
+        path: mind.mindPath,
+      })),
+      activeMindId: this.activeMindId,
+      activeLogin: existingConfig.activeLogin,
+      theme: existingConfig.theme,
+    };
+
+    this.reloading = true;
+    try {
+      const loadedMindIds = Array.from(this.minds.keys());
+      for (const mindId of loadedMindIds) {
+        await this.unloadMind(mindId);
+      }
+    } finally {
+      this.reloading = false;
+    }
+
+    this.activeMindId = null;
+    this.configService.save(configSnapshot);
+    await this.restoreFromConfig();
+  }
+
   private async doRestore(): Promise<void> {
     const config = this.configService.load();
     for (const record of config.minds) {
@@ -320,6 +351,8 @@ export class MindManager extends EventEmitter {
   }
 
   private persistConfig(): void {
+    if (this.reloading) return;
+    const existingConfig = this.configService.load();
     const minds: MindRecord[] = Array.from(this.minds.values()).map(m => ({
       id: m.mindId,
       path: m.mindPath,
@@ -328,7 +361,8 @@ export class MindManager extends EventEmitter {
       version: 2,
       minds,
       activeMindId: this.activeMindId,
-      theme: this.configService.load().theme,
+      activeLogin: existingConfig.activeLogin,
+      theme: existingConfig.theme,
     };
     this.configService.save(config);
   }

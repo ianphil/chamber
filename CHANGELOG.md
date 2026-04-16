@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.21.0 (2026-04-16)
+
+### Multi-account GitHub auth
+- **Account selection** - Settings now lists all stored GitHub accounts, keeps the active account selected, and lets you add another account from the same picker.
+- **Active login persistence** - Chamber now persists `activeLogin` in config so auth status resolves the intended credential instead of whichever one keytar returns first.
+- **Full auth reload on switch** - Switching accounts reloads every mind so Copilot clients, chatroom sessions, and task sessions all restart with fresh auth state.
+- **Targeted logout** - Logging out removes only the active credential and returns the app to the signed-out flow without auto-switching to another stored account.
+
+## v0.20.0 (2026-04-15)
+
+### Settings view and logout
+- **Settings navigation** — added a bottom-pinned gear icon in the ActivityBar that opens a dedicated Settings view.
+- **Account section** — Settings now shows the current GitHub login and a logout action in the app UI.
+- **Logout flow** — logging out deletes the stored keytar credential, broadcasts the event to all windows, and returns AuthGate to the sign-in screen.
+
+## v0.19.7 (2026-04-13)
+
+### Lens discovery fix
+- **Late-created lens folders** — Chamber now discovers lens views created after a mind was already loaded instead of requiring a manual reload.
+
 ## v0.19.6 (2026-04-13)
 
 ### Zero Lint / CI Green

@@ -7,7 +7,7 @@ import type { AppConfig, AppConfigV1, MindRecord } from '../../../shared/types';
 const CONFIG_DIR = path.join(os.homedir(), '.chamber');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
-const DEFAULT_CONFIG: AppConfig = { version: 2, minds: [], activeMindId: null, theme: 'dark' };
+const DEFAULT_CONFIG: AppConfig = { version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' };
 
 export class ConfigService {
   /** @deprecated Use generateMindId() from mind/generateMindId instead */
@@ -30,9 +30,23 @@ export class ConfigService {
 
   private normalize(raw: Record<string, unknown>): AppConfig {
     if (raw.version === 2) {
-      return this.deduplicateMinds(raw as AppConfig);
+      return this.normalizeV2(raw);
     }
     return this.migrateV1(raw as unknown as AppConfigV1);
+  }
+
+  private normalizeV2(raw: Record<string, unknown>): AppConfig {
+    const theme = raw.theme === 'light' || raw.theme === 'dark' || raw.theme === 'system'
+      ? raw.theme
+      : 'dark';
+    const minds = Array.isArray(raw.minds) ? raw.minds as MindRecord[] : [];
+    return this.deduplicateMinds({
+      version: 2,
+      minds,
+      activeMindId: typeof raw.activeMindId === 'string' ? raw.activeMindId : null,
+      activeLogin: typeof raw.activeLogin === 'string' ? raw.activeLogin : null,
+      theme,
+    });
   }
 
   private migrateV1(v1: AppConfigV1): AppConfig {
@@ -44,6 +58,7 @@ export class ConfigService {
       version: 2,
       minds: [{ id, path: v1.mindPath }],
       activeMindId: id,
+      activeLogin: null,
       theme: v1.theme ?? 'dark',
     };
   }

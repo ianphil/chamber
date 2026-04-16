@@ -312,6 +312,34 @@ describe('appReducer', () => {
     expect(state.showLanding).toBe(false);
   });
 
+  it('ACCOUNT_SWITCH_STARTED enters switching-account runtime phase', () => {
+    const state = appReducer(initialState, { type: 'ACCOUNT_SWITCH_STARTED', payload: { login: 'bob' } });
+    expect(state.runtimePhase).toBe('switching-account');
+    expect(state.switchingAccountLogin).toBe('bob');
+  });
+
+  it('ACCOUNT_SWITCH_COMPLETED clears switching-account runtime phase', () => {
+    const switchingState = {
+      ...initialState,
+      runtimePhase: 'switching-account' as const,
+      switchingAccountLogin: 'bob',
+    };
+    const state = appReducer(switchingState, { type: 'ACCOUNT_SWITCH_COMPLETED' });
+    expect(state.runtimePhase).toBe('ready');
+    expect(state.switchingAccountLogin).toBeNull();
+  });
+
+  it('LOGGED_OUT resets switching state back to ready', () => {
+    const switchingState = {
+      ...initialState,
+      runtimePhase: 'switching-account' as const,
+      switchingAccountLogin: 'bob',
+    };
+    const state = appReducer(switchingState, { type: 'LOGGED_OUT' });
+    expect(state.runtimePhase).toBe('ready');
+    expect(state.switchingAccountLogin).toBeNull();
+  });
+
   it('CLEAR_MESSAGES empties messages for active mind', () => {
     const stateWithMsgs = { ...withActiveMind, messagesByMind: { [mindId]: [makeMessage([makeTextBlock('hi')])] } };
     const state = appReducer(stateWithMsgs, { type: 'CLEAR_MESSAGES' });
