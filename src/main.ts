@@ -32,6 +32,7 @@ import { setupWindowIPC } from './main/ipc/window';
 import { Dispatcher } from './main/rpc/dispatcher';
 import { PushBus } from './main/rpc/pushBus';
 import { startRpcSidecar, type RpcSidecarHandle } from './main/rpc/wsServer';
+import { installIpcPushSink } from './main/ipc/pushSink';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -137,22 +138,23 @@ app.on('ready', async () => {
   // --- RPC dispatcher (transport-agnostic handler table) ---
   const dispatcher = new Dispatcher();
   const pushBus = new PushBus();
+  installIpcPushSink(pushBus);
 
   // --- IPC adapters (thin, parameter-injected) ---
   setupChatIPC(dispatcher, chatService, mindManager);
-  setupMindIPC(mindManager, {
+  setupMindIPC(dispatcher, pushBus, mindManager, {
     preloadPath: path.join(__dirname, 'preload.js'),
     devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined,
     rendererPath: MAIN_WINDOW_VITE_DEV_SERVER_URL ? undefined : path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
   });
-  setupLensIPC(viewDiscovery, mindManager);
-  setupGenesisIPC(mindManager, scaffold);
-  setupAuthIPC(authService, mindManager);
-  setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
-  setupChatroomIPC(chatroomService);
+  setupLensIPC(dispatcher, viewDiscovery, mindManager);
+  setupGenesisIPC(dispatcher, mindManager, scaffold);
+  setupAuthIPC(dispatcher, pushBus, authService, mindManager);
+  setupA2AIPC(dispatcher, pushBus, a2aEventBus, agentCardRegistry, taskManager);
+  setupChatroomIPC(dispatcher, pushBus, chatroomService);
 
   // Window controls
-  setupWindowIPC(() => mainWindow);
+  setupWindowIPC(dispatcher, () => mainWindow);
 
   // --- RPC sidecar: loopback WebSocket + JSON-RPC 2.0 ---
   // Binds 127.0.0.1 on a random free port and writes userData/rpc-port.json

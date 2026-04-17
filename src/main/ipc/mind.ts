@@ -1,9 +1,16 @@
-// Mind IPC handlers — thin adapters for MindManager
+// Mind IPC adapter — bridges ipcMain to the Dispatcher.
+//
+// Some mind:* channels are electron-only (mind:selectDirectory uses dialog,
+// mind:openWindow creates a BrowserWindow). Those register on the
+// dispatcher for uniformity but WS callers get -32601; see
+// src/main/rpc/channelClassification.ts.
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import type { MindManager } from '../services/mind';
-import { withValidation } from './withValidation';
+import type { Dispatcher } from '../rpc/dispatcher';
+import type { PushBus } from '../rpc/pushBus';
+import { makeIpcBridge } from './bridge';
 import {
   MindAddArgs,
   MindListArgs,
@@ -19,117 +26,102 @@ export interface MindIPCConfig {
   rendererPath?: string;
 }
 
-export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): void {
-  ipcMain.handle(
-    'mind:add',
-    withValidation('mind:add', MindAddArgs, async (_event, mindPath) => {
-      return mindManager.loadMind(mindPath);
-    }),
-  );
+const MIND_CHANNELS = [
+  'mind:add',
+  'mind:remove',
+  'mind:list',
+  'mind:setActive',
+  'mind:selectDirectory',
+  'mind:openWindow',
+] as const;
 
-  ipcMain.handle(
-    'mind:remove',
-    withValidation('mind:remove', MindRemoveArgs, async (_event, mindId) => {
-      await mindManager.unloadMind(mindId);
-    }),
-  );
+export function setupMindIPC(
+  dispatcher: Dispatcher,
+  pushBus: PushBus,
+  mindManager: MindManager,
+  config: MindIPCConfig,
+): void {
+  // --- Portable handlers ------------------------------------------------
+  dispatcher.register('mind:add', MindAddArgs, async ([mindPath]) => {
+    return mindManager.loadMind(mindPath);
+  });
 
-  ipcMain.handle(
-    'mind:list',
-    withValidation('mind:list', MindListArgs, async () => {
-      await mindManager.awaitRestore();
-      return mindManager.listMinds();
-    }),
-  );
+  dispatcher.register('mind:remove', MindRemoveArgs, async ([mindId]) => {
+    await mindManager.unloadMind(mindId);
+  });
 
-  ipcMain.handle(
-    'mind:setActive',
-    withValidation('mind:setActive', MindSetActiveArgs, async (_event, mindId) => {
-      mindManager.setActiveMind(mindId);
-    }),
-  );
+  dispatcher.register('mind:list', MindListArgs, async () => {
+    await mindManager.awaitRestore();
+    return mindManager.listMinds();
+  });
 
-  ipcMain.handle(
-    'mind:selectDirectory',
-    withValidation(
-      'mind:selectDirectory',
-      MindSelectDirectoryArgs,
-      async (event: Electron.IpcMainInvokeEvent) => {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        if (!win) return null;
+  dispatcher.register('mind:setActive', MindSetActiveArgs, async ([mindId]) => {
+    mindManager.setActiveMind(mindId);
+  });
 
-        const result = await dialog.showOpenDialog(win, {
-          properties: ['openDirectory'],
-          title: 'Select Genesis Mind Directory',
-          defaultPath: path.join(os.homedir(), 'agents'),
-        });
+  // --- Electron-only handlers (WS callers get -32601) --------------------
+  dispatcher.register('mind:selectDirectory', MindSelectDirectoryArgs, async (_args, ctx) => {
+    const sender = ctx.senderHandle as Electron.WebContents;
+    const win = BrowserWindow.fromWebContents(sender);
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openDirectory'],
+      title: 'Select Genesis Mind Directory',
+      defaultPath: path.join(os.homedir(), 'agents'),
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
 
-        if (result.canceled || result.filePaths.length === 0) return null;
-        return result.filePaths[0];
-      },
-    ),
-  );
-
-  ipcMain.handle(
-    'mind:openWindow',
-    withValidation('mind:openWindow', MindOpenWindowArgs, async (_event, mindId) => {
-      const existing = mindManager.getWindow(mindId);
-      if (existing) {
-        existing.focus();
-        return;
-      }
-
-      const mind = mindManager.getMind(mindId);
-      if (!mind) return;
-
-      const win = new BrowserWindow({
-        width: 900,
-        height: 700,
-        minWidth: 500,
-        minHeight: 400,
-        title: `${mind.identity.name} — Chamber`,
-        titleBarStyle: 'hiddenInset',
-        titleBarOverlay:
-          process.platform === 'win32'
-            ? {
-                color: '#09090b',
-                symbolColor: '#fafafa',
-                height: 36,
-              }
-            : undefined,
-        backgroundColor: '#09090b',
-        webPreferences: {
-          preload: config.preloadPath,
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: false,
-        },
-      });
-
-      if (config.devServerUrl) {
-        win.loadURL(`${config.devServerUrl}?mindId=${mindId}&popout=true`);
-      } else if (config.rendererPath) {
-        win.loadFile(config.rendererPath, { query: { mindId, popout: 'true' } });
-      }
-
-      mindManager.attachWindow(mindId, win);
-
-      for (const w of BrowserWindow.getAllWindows()) {
-        w.webContents.send('mind:changed', mindManager.listMinds());
-      }
-    }),
-  );
-
-  const broadcastMinds = () => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send('mind:changed', mindManager.listMinds());
-      }
+  dispatcher.register('mind:openWindow', MindOpenWindowArgs, async ([mindId]) => {
+    const existing = mindManager.getWindow(mindId);
+    if (existing) {
+      existing.focus();
+      return;
     }
-  };
+    const mind = mindManager.getMind(mindId);
+    if (!mind) return;
 
-  mindManager.on('mind:loaded', broadcastMinds);
-  mindManager.on('mind:unloaded', broadcastMinds);
-  mindManager.on('mind:windowed', broadcastMinds);
-  mindManager.on('mind:unwindowed', broadcastMinds);
+    const win = new BrowserWindow({
+      width: 900,
+      height: 700,
+      minWidth: 500,
+      minHeight: 400,
+      title: `${mind.identity.name} — Chamber`,
+      titleBarStyle: 'hiddenInset',
+      titleBarOverlay:
+        process.platform === 'win32'
+          ? { color: '#09090b', symbolColor: '#fafafa', height: 36 }
+          : undefined,
+      backgroundColor: '#09090b',
+      webPreferences: {
+        preload: config.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+
+    if (config.devServerUrl) {
+      win.loadURL(`${config.devServerUrl}?mindId=${mindId}&popout=true`);
+    } else if (config.rendererPath) {
+      win.loadFile(config.rendererPath, { query: { mindId, popout: 'true' } });
+    }
+
+    mindManager.attachWindow(mindId, win);
+    pushBus.publish('mind:changed', { minds: mindManager.listMinds() });
+  });
+
+  // --- IPC bridges + broadcast wiring ------------------------------------
+  for (const channel of MIND_CHANNELS) {
+    ipcMain.handle(channel, makeIpcBridge(dispatcher, channel));
+  }
+
+  const broadcast = () => {
+    pushBus.publish('mind:changed', { minds: mindManager.listMinds() });
+  };
+  mindManager.on('mind:loaded', broadcast);
+  mindManager.on('mind:unloaded', broadcast);
+  mindManager.on('mind:windowed', broadcast);
+  mindManager.on('mind:unwindowed', broadcast);
 }

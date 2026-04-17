@@ -151,6 +151,18 @@ describe('startRpcSidecar', () => {
     expect(errObj.data?.channel).toBe('mind:selectDirectory');
   });
 
+  it('returns -32601 for a2a:* channels over WS (ws-unsupported pending codec)', async () => {
+    const { dispatcher, handle: h } = await boot();
+    dispatcher.register('a2a:listAgents', z.tuple([]), async () => []);
+    const socket = connect(h.port);
+    sockets.push(socket);
+    await ready(socket);
+    const frame = await rpc(socket, 31, 'a2a:listAgents', []);
+    const errObj = frame.error as { code: number; data?: { channel: string } };
+    expect(errObj.code).toBe(JSON_RPC_ERROR.METHOD_NOT_FOUND);
+    expect(errObj.data?.channel).toBe('a2a:listAgents');
+  });
+
   it('returns -32602 INVALID_PARAMS with sanitized issues on schema failure', async () => {
     const { dispatcher, handle: h } = await boot();
     dispatcher.register('strict', z.tuple([z.string()]), async ([s]) => s);

@@ -33,3 +33,18 @@ export const ELECTRON_ONLY_CHANNELS: ReadonlySet<string> = new Set([
 export function isElectronOnlyChannel(channel: string): boolean {
   return ELECTRON_ONLY_CHANNELS.has(channel);
 }
+
+// WS-UNSUPPORTED channels — portable on IPC but not safe to expose over
+// WebSocket yet. A2A payloads carry `Uint8Array` parts that need a recursive
+// base64 codec (see docs/design-notes.md). Until that codec lands the WS
+// transport returns -32601 for these methods.
+export const WS_UNSUPPORTED_CHANNELS: ReadonlySet<string> = new Set([
+  'a2a:listAgents',
+  'a2a:getTask',
+  'a2a:listTasks',
+  'a2a:cancelTask',
+]);
+
+export function isWsRejectedChannel(channel: string): boolean {
+  return ELECTRON_ONLY_CHANNELS.has(channel) || WS_UNSUPPORTED_CHANNELS.has(channel);
+}

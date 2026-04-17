@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import { fromZodError, IpcValidationError } from '../../contracts/errors';
-import { isElectronOnlyChannel } from './channelClassification';
+import { isElectronOnlyChannel, isWsRejectedChannel } from './channelClassification';
 
 /**
  * Opaque handle identifying the caller (a live WebSocket or the webContents
@@ -48,11 +48,11 @@ interface Registration {
 export class DispatcherMethodNotFound extends Error {
   readonly code = 'METHOD_NOT_FOUND';
   readonly channel: string;
-  constructor(channel: string, reason: 'unknown' | 'electron-only' = 'unknown') {
+  constructor(channel: string, reason: 'unknown' | 'electron-only' | 'ws-unsupported' = 'unknown') {
     super(
-      reason === 'electron-only'
-        ? `method not available on this transport: ${channel}`
-        : `method not found: ${channel}`,
+      reason === 'unknown'
+        ? `method not found: ${channel}`
+        : `method not available on this transport: ${channel}`,
     );
     this.name = 'DispatcherMethodNotFound';
     this.channel = channel;
@@ -110,8 +110,11 @@ export class Dispatcher {
     if (!reg) {
       throw new DispatcherMethodNotFound(channel, 'unknown');
     }
-    if (ctx.transport === 'ws' && isElectronOnlyChannel(channel)) {
-      throw new DispatcherMethodNotFound(channel, 'electron-only');
+    if (ctx.transport === 'ws' && isWsRejectedChannel(channel)) {
+      throw new DispatcherMethodNotFound(
+        channel,
+        isElectronOnlyChannel(channel) ? 'electron-only' : 'ws-unsupported',
+      );
     }
     const parsed = reg.schema.safeParse(args);
     if (!parsed.success) {

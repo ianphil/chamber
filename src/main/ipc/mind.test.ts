@@ -13,6 +13,8 @@ import { ipcMain } from 'electron';
 import { setupMindIPC } from './mind';
 import { IpcValidationError } from '../../contracts/errors';
 import type { MindManager } from '../services/mind';
+import { Dispatcher } from '../rpc/dispatcher';
+import { PushBus } from '../rpc/pushBus';
 
 function fakeMindManager() {
   return {
@@ -37,8 +39,12 @@ function getHandler(channel: string): (event: unknown, ...args: unknown[]) => un
 describe('setupMindIPC — validation', () => {
   beforeEach(() => vi.mocked(ipcMain.handle).mockClear());
 
+  function install(mgr: MindManager) {
+    setupMindIPC(new Dispatcher(), new PushBus(), mgr, { preloadPath: '/pre' });
+  }
+
   it('registers all mind handlers', () => {
-    setupMindIPC(fakeMindManager(), { preloadPath: '/pre' });
+    install(fakeMindManager());
     const channels = vi.mocked(ipcMain.handle).mock.calls.map((c) => c[0]);
     expect(channels).toEqual(
       expect.arrayContaining([
@@ -59,21 +65,21 @@ describe('setupMindIPC — validation', () => {
     ['mind:openWindow', []],
   ] as const)('%s rejects bad args', async (channel, bad) => {
     const mgr = fakeMindManager();
-    setupMindIPC(mgr, { preloadPath: '/pre' });
+    install(mgr);
     const handler = getHandler(channel);
     await expect(handler({ sender: {} }, ...bad)).rejects.toBeInstanceOf(IpcValidationError);
   });
 
   it('mind:add accepts string and delegates', async () => {
     const mgr = fakeMindManager();
-    setupMindIPC(mgr, { preloadPath: '/pre' });
+    install(mgr);
     await getHandler('mind:add')({ sender: {} }, '/tmp/m1');
     expect(mgr.loadMind).toHaveBeenCalledWith('/tmp/m1');
   });
 
   it('mind:list accepts no args', async () => {
     const mgr = fakeMindManager();
-    setupMindIPC(mgr, { preloadPath: '/pre' });
+    install(mgr);
     await getHandler('mind:list')({ sender: {} });
     expect(mgr.awaitRestore).toHaveBeenCalled();
     expect(mgr.listMinds).toHaveBeenCalled();

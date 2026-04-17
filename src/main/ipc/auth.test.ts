@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
-  BrowserWindow: { fromWebContents: vi.fn(), getAllWindows: vi.fn().mockReturnValue([]) },
+  BrowserWindow: {
+    fromWebContents: vi.fn(),
+    getAllWindows: vi.fn().mockReturnValue([]),
+  },
   shell: { openExternal: vi.fn() },
   app: { isPackaged: false },
 }));
@@ -12,6 +15,9 @@ import { setupAuthIPC } from './auth';
 import { IpcValidationError } from '../../contracts/errors';
 import type { AuthService } from '../services/auth';
 import type { MindManager } from '../services/mind';
+import { Dispatcher } from '../rpc/dispatcher';
+import { PushBus } from '../rpc/pushBus';
+import { installIpcPushSink } from './pushSink';
 
 function createFakeAuth() {
   return {
@@ -30,14 +36,37 @@ function createFakeMindManager() {
   } as unknown as MindManager;
 }
 
+function install(auth: AuthService, mgr: MindManager) {
+  const dispatcher = new Dispatcher();
+  const pushBus = new PushBus();
+  installIpcPushSink(pushBus);
+  setupAuthIPC(dispatcher, pushBus, auth, mgr);
+}
+
+function getHandler(channel: string) {
+  const call = vi.mocked(ipcMain.handle).mock.calls.find((c) => c[0] === channel);
+  if (!call) throw new Error(`handler not registered: ${channel}`);
+  return call[1] as (event: unknown, ...args: unknown[]) => Promise<unknown>;
+}
+
+function mockWindows(sends: ReturnType<typeof vi.fn>[]) {
+  vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(
+    sends.map((send) => ({
+      isDestroyed: () => false,
+      webContents: { send },
+    })) as never,
+  );
+}
+
 describe('setupAuthIPC', () => {
   beforeEach(() => {
     vi.mocked(ipcMain.handle).mockClear();
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([] as never);
   });
 
   it('registers all auth handlers', () => {
-    setupAuthIPC(createFakeAuth(), createFakeMindManager());
-    const channels = vi.mocked(ipcMain.handle).mock.calls.map(c => c[0]);
+    install(createFakeAuth(), createFakeMindManager());
+    const channels = vi.mocked(ipcMain.handle).mock.calls.map((c) => c[0]);
     expect(channels).toContain('auth:getStatus');
     expect(channels).toContain('auth:listAccounts');
     expect(channels).toContain('auth:startLogin');
@@ -48,105 +77,94 @@ describe('setupAuthIPC', () => {
   it('auth:listAccounts returns authService.listAccounts()', async () => {
     const fakeAuth = createFakeAuth();
     fakeAuth.listAccounts = vi.fn().mockResolvedValue([{ login: 'alice' }]);
-
-    setupAuthIPC(fakeAuth, createFakeMindManager());
-
-    const listCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:listAccounts');
-    await expect(listCall![1]({} as never, ...([] as never))).resolves.toEqual([{ login: 'alice' }]);
+    install(fakeAuth, createFakeMindManager());
+    await expect(getHandler('auth:listAccounts')({ sender: {} })).resolves.toEqual([
+      { login: 'alice' },
+    ]);
   });
 
-  it('auth:switchAccount sets activeLogin via authService, reloads minds, and broadcasts accountSwitched', async () => {
+  it('auth:switchAccount sets activeLogin, reloads minds, and broadcasts accountSwitched', async () => {
     const fakeAuth = createFakeAuth();
-    const fakeMindManager = createFakeMindManager();
+    const fakeMgr = createFakeMindManager();
     fakeAuth.listAccounts = vi.fn().mockResolvedValue([{ login: 'alice' }, { login: 'bob' }]);
+    const send = vi.fn();
+    mockWindows([send]);
 
-    const mockSend = vi.fn();
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: { send: mockSend } }] as never);
-
-    setupAuthIPC(fakeAuth, fakeMindManager);
-
-    const switchCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:switchAccount');
-    await switchCall![1]({} as never, 'bob');
+    install(fakeAuth, fakeMgr);
+    await getHandler('auth:switchAccount')({ sender: {} }, 'bob');
 
     expect(fakeAuth.setActiveLogin).toHaveBeenCalledWith('bob');
-    expect(fakeMindManager.reloadAllMinds).toHaveBeenCalled();
-    expect(mockSend).toHaveBeenNthCalledWith(1, 'auth:accountSwitchStarted', { login: 'bob' });
-    expect(mockSend).toHaveBeenNthCalledWith(2, 'auth:accountSwitched', { login: 'bob' });
+    expect(fakeMgr.reloadAllMinds).toHaveBeenCalled();
+    expect(send).toHaveBeenNthCalledWith(1, 'auth:accountSwitchStarted', { login: 'bob' });
+    expect(send).toHaveBeenNthCalledWith(2, 'auth:accountSwitched', { login: 'bob' });
   });
 
   it('auth:switchAccount rejects with IpcValidationError on empty login', async () => {
-    setupAuthIPC(createFakeAuth(), createFakeMindManager());
-    const switchCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:switchAccount');
-    await expect(switchCall![1]({} as never, '')).rejects.toBeInstanceOf(IpcValidationError);
+    install(createFakeAuth(), createFakeMindManager());
+    await expect(getHandler('auth:switchAccount')({ sender: {} }, '')).rejects.toBeInstanceOf(
+      IpcValidationError,
+    );
   });
 
   it('auth:switchAccount rejects when account is missing', async () => {
     const fakeAuth = createFakeAuth();
     fakeAuth.listAccounts = vi.fn().mockResolvedValue([{ login: 'alice' }]);
-
-    setupAuthIPC(fakeAuth, createFakeMindManager());
-
-    const switchCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:switchAccount');
-    await expect(switchCall![1]({} as never, 'bob')).rejects.toThrow('Account bob is not available');
+    install(fakeAuth, createFakeMindManager());
+    await expect(getHandler('auth:switchAccount')({ sender: {} }, 'bob')).rejects.toThrow(
+      'Account bob is not available',
+    );
   });
 
-  it('auth:startLogin sets activeLogin via authService, reloads minds, and broadcasts accountSwitched after success', async () => {
+  it('auth:startLogin sets activeLogin, reloads minds, and broadcasts', async () => {
     const fakeAuth = createFakeAuth();
-    const fakeMindManager = createFakeMindManager();
+    const fakeMgr = createFakeMindManager();
     fakeAuth.startLogin = vi.fn().mockResolvedValue({ success: true, login: 'alice' });
+    const send = vi.fn();
+    mockWindows([send]);
+    vi.mocked(BrowserWindow.fromWebContents).mockReturnValue({
+      isDestroyed: () => false,
+      webContents: { send },
+    } as never);
 
-    const mockSend = vi.fn();
-    vi.mocked(BrowserWindow.fromWebContents).mockReturnValue({ webContents: { send: mockSend } } as never);
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: { send: mockSend } }] as never);
+    install(fakeAuth, fakeMgr);
 
-    setupAuthIPC(fakeAuth, fakeMindManager);
-
-    const startLoginCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:startLogin');
-    await expect(startLoginCall![1]({ sender: {} } as never, ...([] as never))).resolves.toEqual({ success: true, login: 'alice' });
-
+    await expect(getHandler('auth:startLogin')({ sender: {} })).resolves.toEqual({
+      success: true,
+      login: 'alice',
+    });
     expect(fakeAuth.setActiveLogin).toHaveBeenCalledWith('alice');
-    expect(fakeMindManager.reloadAllMinds).toHaveBeenCalled();
-    expect(mockSend).toHaveBeenNthCalledWith(1, 'auth:accountSwitchStarted', { login: 'alice' });
-    expect(mockSend).toHaveBeenNthCalledWith(2, 'auth:accountSwitched', { login: 'alice' });
+    expect(fakeMgr.reloadAllMinds).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith('auth:accountSwitchStarted', { login: 'alice' });
+    expect(send).toHaveBeenCalledWith('auth:accountSwitched', { login: 'alice' });
   });
 
   it('auth:switchAccount still broadcasts accountSwitched when reloadAllMinds rejects', async () => {
     const fakeAuth = createFakeAuth();
-    const fakeMindManager = createFakeMindManager();
-    fakeMindManager.reloadAllMinds = vi.fn().mockRejectedValue(new Error('disk failure')) as never;
+    const fakeMgr = createFakeMindManager();
+    fakeMgr.reloadAllMinds = vi.fn().mockRejectedValue(new Error('disk failure')) as never;
     fakeAuth.listAccounts = vi.fn().mockResolvedValue([{ login: 'alice' }]);
-
-    const mockSend = vi.fn();
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: { send: mockSend } }] as never);
+    const send = vi.fn();
+    mockWindows([send]);
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(vi.fn());
-    setupAuthIPC(fakeAuth, fakeMindManager);
+    install(fakeAuth, fakeMgr);
+    await getHandler('auth:switchAccount')({ sender: {} }, 'alice');
 
-    const switchCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:switchAccount');
-    await switchCall![1]({} as never, 'alice');
-
-    expect(mockSend).toHaveBeenCalledWith('auth:accountSwitched', { login: 'alice' });
+    expect(send).toHaveBeenCalledWith('auth:accountSwitched', { login: 'alice' });
     consoleSpy.mockRestore();
   });
 
-  it('auth:logout handler calls authService.logout and broadcasts to all windows', async () => {
+  it('auth:logout calls authService.logout and broadcasts to all windows', async () => {
     const fakeAuth = createFakeAuth();
-    const mockSend = vi.fn();
-    const mockWindows = [
-      { webContents: { send: mockSend } },
-      { webContents: { send: mockSend } },
-    ];
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(mockWindows as never);
+    const send1 = vi.fn();
+    const send2 = vi.fn();
+    mockWindows([send1, send2]);
 
-    setupAuthIPC(fakeAuth, createFakeMindManager());
-
-    // Find and invoke the auth:logout handler
-    const logoutCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:logout');
-    expect(logoutCall).toBeDefined();
-    await logoutCall![1]({} as never, ...([] as never));
+    install(fakeAuth, createFakeMindManager());
+    await getHandler('auth:logout')({ sender: {} });
 
     expect(fakeAuth.logout).toHaveBeenCalled();
-    expect(mockSend).toHaveBeenCalledWith('auth:loggedOut');
-    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(send1).toHaveBeenCalledWith('auth:loggedOut');
+    expect(send2).toHaveBeenCalledWith('auth:loggedOut');
   });
 });

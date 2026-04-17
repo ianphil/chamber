@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
+  BrowserWindow: {
+    fromWebContents: vi.fn().mockReturnValue(null),
+    getAllWindows: vi.fn().mockReturnValue([]),
+  },
 }));
 
 import { ipcMain } from 'electron';
@@ -9,6 +13,7 @@ import { setupLensIPC } from './lens';
 import { IpcValidationError } from '../../contracts/errors';
 import type { ViewDiscovery } from '../services/lens';
 import type { MindManager } from '../services/mind';
+import { Dispatcher } from '../rpc/dispatcher';
 
 function fakeViewDiscovery() {
   return {
@@ -36,7 +41,7 @@ describe('setupLensIPC — validation', () => {
   beforeEach(() => vi.mocked(ipcMain.handle).mockClear());
 
   it('registers all lens handlers', () => {
-    setupLensIPC(fakeViewDiscovery(), fakeMindManager());
+    setupLensIPC(new Dispatcher(), fakeViewDiscovery(), fakeMindManager());
     const channels = vi.mocked(ipcMain.handle).mock.calls.map((c) => c[0]);
     expect(channels).toEqual(
       expect.arrayContaining([
@@ -53,7 +58,7 @@ describe('setupLensIPC — validation', () => {
     ['lens:refreshView', []],
     ['lens:sendAction', ['v1']],
   ] as const)('%s rejects bad args', async (channel, bad) => {
-    setupLensIPC(fakeViewDiscovery(), fakeMindManager());
+    setupLensIPC(new Dispatcher(), fakeViewDiscovery(), fakeMindManager());
     await expect(getHandler(channel)({ sender: {} }, ...bad)).rejects.toBeInstanceOf(
       IpcValidationError,
     );
@@ -61,14 +66,14 @@ describe('setupLensIPC — validation', () => {
 
   it('lens:getViews accepts no args', async () => {
     const vd = fakeViewDiscovery();
-    setupLensIPC(vd, fakeMindManager());
+    setupLensIPC(new Dispatcher(), vd, fakeMindManager());
     await getHandler('lens:getViews')({ sender: {} });
     expect(vd.getViews).toHaveBeenCalledWith('/tmp/m1');
   });
 
   it('lens:sendAction delegates on valid args', async () => {
     const vd = fakeViewDiscovery();
-    setupLensIPC(vd, fakeMindManager());
+    setupLensIPC(new Dispatcher(), vd, fakeMindManager());
     await getHandler('lens:sendAction')({ sender: {} }, 'v1', 'save');
     expect(vd.sendAction).toHaveBeenCalledWith('v1', 'save', '/tmp/m1');
   });

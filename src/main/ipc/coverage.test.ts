@@ -27,7 +27,8 @@ describe('IPC validation coverage', () => {
       f.endsWith('.ts') &&
       !f.endsWith('.test.ts') &&
       f !== 'withValidation.ts' &&
-      f !== 'bridge.ts',
+      f !== 'bridge.ts' &&
+      f !== 'pushSink.ts',
   );
 
   // Regex only matches registrations whose first arg is a string literal —
@@ -40,7 +41,7 @@ describe('IPC validation coverage', () => {
   for (const file of files) {
     it(`every ipcMain registration in ${file} uses exactly one validation path`, () => {
       const src = readFileSync(join(IPC_DIR, file), 'utf8');
-      const usesDispatcher = src.includes('makeIpcBridge(');
+      const usesDispatcher = src.includes('makeIpcBridge(') || src.includes('makeIpcSendBridge(');
       const usesLegacy = LEGACY_PREFIXES.some((p) => src.includes(p));
 
       expect(
@@ -66,9 +67,9 @@ describe('IPC validation coverage', () => {
           const [, kind, channel, rest] = match;
           const trimmed = rest.trimStart();
           expect(
-            trimmed.startsWith('makeIpcBridge('),
+            trimmed.startsWith('makeIpcBridge(') || trimmed.startsWith('makeIpcSendBridge('),
             `ipcMain.${kind}('${channel}', ...) in ${file} must route through ` +
-              `makeIpcBridge in this dispatcher file. Got: ${trimmed.slice(0, 80)}`,
+              `makeIpcBridge/makeIpcSendBridge in this dispatcher file. Got: ${trimmed.slice(0, 80)}`,
           ).toBe(true);
         }
         return;

@@ -16,6 +16,20 @@
 - **Dropped unused barrel** — deleted `src/shared/index.ts` (zero consumers).
 - **No behavior change** — existing tests pass unchanged; `src/shared/types.ts` remains authoritative for consumer imports during Phase 1.
 
+## Unreleased
+
+### RPC sidecar (Phase 2 of architecture split)
+
+- **Loopback WebSocket + JSON-RPC 2.0 sidecar** — `src/main/rpc/wsServer.ts` starts a `ws` server on `127.0.0.1` (OS-assigned port) at `app.ready` and writes `<userData>/rpc-port.json` atomically (temp-file + rename) for discovery. No auth, no TLS — loopback only; pairing-URL auth is Phase 5.
+- **Transport-agnostic dispatcher** — `src/main/rpc/dispatcher.ts` holds the single handler table. Both the IPC bridge (`src/main/ipc/bridge.ts`) and the WS server call `dispatcher.invoke(channel, args, ctx)`. Validation (zod tuple schemas from `src/contracts/`) happens once, at the dispatcher boundary.
+- **Reply vs broadcast split** — `InvocationCtx.reply.emit` sends only to the caller; `PushBus.publish` broadcasts to every IPC window *and* every WS connection. Renderer wire format unchanged — `installIpcPushSink` fans out via the existing positional `webContents.send(channel, ...args)` form using the new outbound registry.
+- **Outbound registry** — `src/main/rpc/outboundRegistry.ts` is the source of truth for the 11 push channels (`chat:event`, `mind:changed`, `auth:progress`, `auth:loggedOut`, `auth:accountSwitchStarted`, `auth:accountSwitched`, `genesis:progress`, `chatroom:event`, `a2a:incoming`, `a2a:task-status-update`, `a2a:task-artifact-update`). Each entry declares its zod schema + `toIpcArgs` translator. Coverage test fails the build if a `webContents.send` call site references an unregistered channel.
+- **JSON-RPC error mapping** — `DispatcherMethodNotFound` → `-32601`; `IpcValidationError` → `-32602` with `{channel, issues}`; handler throws → `-32603` with sanitized message (no stack); malformed JSON → `-32700`; malformed envelope → `-32600`; named params → `-32602`.
+- **Electron-boundary enforcement** — `src/main/rpc/**` cannot import `electron` (ESLint rule + boundary test). Electron-only channels (`mind:selectDirectory`, `mind:openWindow`, `genesis:pickPath`, `auth:startLogin`, `window:*`) register on the dispatcher but WS callers get `-32601`.
+- **A2A over WS deferred** — `a2a:*` methods are registered on the dispatcher (IPC path unchanged) but the WS transport returns `-32601` until a recursive base64 codec exists for `Part.raw: Uint8Array` payloads.
+- **Coverage invariant flipped** — each `src/main/ipc/<domain>.ts` now uses exactly one validation path: `withValidation`/`withValidationOn` (legacy) *or* `makeIpcBridge`/`makeIpcSendBridge` (dispatcher). Mixing both in one file fails the build.
+- **No renderer changes** — preload bridge, `ipcRenderer` wiring, and renderer listeners are all unchanged. Phase 3 migrates the renderer onto the contracts package.
+
 ## v0.23.0 (2026-04-16)
 
 ### Chat: turn-level work log

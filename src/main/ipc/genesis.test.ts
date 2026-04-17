@@ -11,6 +11,7 @@ import { setupGenesisIPC } from './genesis';
 import { IpcValidationError } from '../../contracts/errors';
 import type { MindManager } from '../services/mind';
 import type { MindScaffold } from '../services/genesis';
+import { Dispatcher } from '../rpc/dispatcher';
 
 function fakeMindManager() {
   return {
@@ -36,7 +37,7 @@ describe('setupGenesisIPC — validation', () => {
   beforeEach(() => vi.mocked(ipcMain.handle).mockClear());
 
   it('registers all genesis handlers', () => {
-    setupGenesisIPC(fakeMindManager(), fakeScaffold());
+    setupGenesisIPC(new Dispatcher(), fakeMindManager(), fakeScaffold());
     const channels = vi.mocked(ipcMain.handle).mock.calls.map((c) => c[0]);
     expect(channels).toEqual(
       expect.arrayContaining(['genesis:getDefaultPath', 'genesis:pickPath', 'genesis:create']),
@@ -44,14 +45,14 @@ describe('setupGenesisIPC — validation', () => {
   });
 
   it('genesis:create rejects missing config', async () => {
-    setupGenesisIPC(fakeMindManager(), fakeScaffold());
+    setupGenesisIPC(new Dispatcher(), fakeMindManager(), fakeScaffold());
     await expect(getHandler('genesis:create')({ sender: {} })).rejects.toBeInstanceOf(
       IpcValidationError,
     );
   });
 
   it('genesis:create rejects incomplete config', async () => {
-    setupGenesisIPC(fakeMindManager(), fakeScaffold());
+    setupGenesisIPC(new Dispatcher(), fakeMindManager(), fakeScaffold());
     await expect(
       getHandler('genesis:create')({ sender: {} }, { name: 'A' }),
     ).rejects.toBeInstanceOf(IpcValidationError);
@@ -60,7 +61,7 @@ describe('setupGenesisIPC — validation', () => {
   it('genesis:create succeeds with valid config', async () => {
     const mgr = fakeMindManager();
     const scaffold = fakeScaffold();
-    setupGenesisIPC(mgr, scaffold);
+    setupGenesisIPC(new Dispatcher(), mgr, scaffold);
     const result = await getHandler('genesis:create')({ sender: {} }, {
       name: 'Aria',
       role: 'assist',
@@ -73,7 +74,7 @@ describe('setupGenesisIPC — validation', () => {
   });
 
   it('genesis:getDefaultPath accepts no args', async () => {
-    setupGenesisIPC(fakeMindManager(), fakeScaffold());
+    setupGenesisIPC(new Dispatcher(), fakeMindManager(), fakeScaffold());
     await expect(getHandler('genesis:getDefaultPath')({ sender: {} })).resolves.toBeTypeOf('string');
   });
 });

@@ -1,48 +1,18 @@
-import { ipcMain, BrowserWindow } from 'electron';
+// Chatroom IPC adapter — thin bridge from ipcMain to the Dispatcher.
+import { ipcMain } from 'electron';
 import type { ChatroomService } from '../services/chatroom/ChatroomService';
-import { withValidation } from './withValidation';
-import {
-  ChatroomClearArgs,
-  ChatroomHistoryArgs,
-  ChatroomSendArgs,
-  ChatroomStopArgs,
-} from '../../contracts/chatroom';
+import type { Dispatcher } from '../rpc/dispatcher';
+import type { PushBus } from '../rpc/pushBus';
+import { registerChatroomHandlers, CHATROOM_CHANNELS } from '../rpc/handlers/chatroom';
+import { makeIpcBridge } from './bridge';
 
-export function setupChatroomIPC(chatroomService: ChatroomService): void {
-  ipcMain.handle(
-    'chatroom:send',
-    withValidation('chatroom:send', ChatroomSendArgs, async (_event, message, model) => {
-      await chatroomService.broadcast(message, model);
-    }),
-  );
-
-  ipcMain.handle(
-    'chatroom:history',
-    withValidation('chatroom:history', ChatroomHistoryArgs, async () => {
-      return chatroomService.getHistory();
-    }),
-  );
-
-  ipcMain.handle(
-    'chatroom:clear',
-    withValidation('chatroom:clear', ChatroomClearArgs, async () => {
-      await chatroomService.clearHistory();
-    }),
-  );
-
-  ipcMain.handle(
-    'chatroom:stop',
-    withValidation('chatroom:stop', ChatroomStopArgs, async () => {
-      chatroomService.stopAll();
-    }),
-  );
-
-  // Forward chatroom streaming events to all renderer windows
-  chatroomService.on('chatroom:event', (event) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send('chatroom:event', event);
-      }
-    }
-  });
+export function setupChatroomIPC(
+  dispatcher: Dispatcher,
+  pushBus: PushBus,
+  chatroomService: ChatroomService,
+): void {
+  registerChatroomHandlers(dispatcher, chatroomService, pushBus);
+  for (const channel of CHATROOM_CHANNELS) {
+    ipcMain.handle(channel, makeIpcBridge(dispatcher, channel));
+  }
 }

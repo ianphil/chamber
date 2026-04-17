@@ -13,27 +13,44 @@ export type IpcBridge = (
   ...args: unknown[]
 ) => Promise<unknown>;
 
+export type IpcSendBridge = (event: Electron.IpcMainEvent, ...args: unknown[]) => void;
+
+function makeCtx(sender: Electron.WebContents): InvocationCtx {
+  const win = BrowserWindow.fromWebContents(sender);
+  return {
+    reply: {
+      emit(replyChannel, payload) {
+        if (!getOutboundEntry(replyChannel)) {
+          throw new Error(
+            `[ipcBridge] emit for unregistered outbound channel: ${replyChannel}`,
+          );
+        }
+        if (!win || win.isDestroyed()) return;
+        const ipcArgs = translateForIpc(replyChannel, payload);
+        win.webContents.send(replyChannel, ...ipcArgs);
+      },
+    },
+    senderHandle: sender,
+    transport: 'ipc',
+  };
+}
+
 export function makeIpcBridge(dispatcher: Dispatcher, channel: string): IpcBridge {
   return async (event, ...args) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const ctx: InvocationCtx = {
-      reply: {
-        emit(replyChannel, payload) {
-          // Only translate channels the outbound registry knows about.
-          // Unknown channels would be a programmer error; surface it loudly.
-          if (!getOutboundEntry(replyChannel)) {
-            throw new Error(
-              `[ipcBridge] emit for unregistered outbound channel: ${replyChannel}`,
-            );
-          }
-          if (!win || win.isDestroyed()) return;
-          const ipcArgs = translateForIpc(replyChannel, payload);
-          win.webContents.send(replyChannel, ...ipcArgs);
-        },
-      },
-      senderHandle: event.sender,
-      transport: 'ipc',
-    };
+    const ctx = makeCtx(event.sender);
     return dispatcher.invoke(channel, args, ctx);
+  };
+}
+
+/**
+ * `ipcMain.on` variant — send-only channels (`window:*`). No response
+ * channel, so handler errors are logged and dropped rather than thrown.
+ */
+export function makeIpcSendBridge(dispatcher: Dispatcher, channel: string): IpcSendBridge {
+  return (event, ...args) => {
+    const ctx = makeCtx(event.sender);
+    dispatcher.invoke(channel, args, ctx).catch((err) => {
+      console.error(`[ipcBridge] ${channel} (send) failed:`, err);
+    });
   };
 }
