@@ -3,6 +3,15 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import type { MindManager } from '../services/mind';
+import { withValidation } from './withValidation';
+import {
+  MindAddArgs,
+  MindListArgs,
+  MindOpenWindowArgs,
+  MindRemoveArgs,
+  MindSelectDirectoryArgs,
+  MindSetActiveArgs,
+} from '../../contracts/mind';
 
 export interface MindIPCConfig {
   preloadPath: string;
@@ -11,88 +20,106 @@ export interface MindIPCConfig {
 }
 
 export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): void {
-  ipcMain.handle('mind:add', async (event, mindPath: string) => {
-    return mindManager.loadMind(mindPath);
-  });
+  ipcMain.handle(
+    'mind:add',
+    withValidation('mind:add', MindAddArgs, async (_event, mindPath) => {
+      return mindManager.loadMind(mindPath);
+    }),
+  );
 
-  ipcMain.handle('mind:remove', async (_event, mindId: string) => {
-    await mindManager.unloadMind(mindId);
-  });
+  ipcMain.handle(
+    'mind:remove',
+    withValidation('mind:remove', MindRemoveArgs, async (_event, mindId) => {
+      await mindManager.unloadMind(mindId);
+    }),
+  );
 
-  ipcMain.handle('mind:list', async () => {
-    // Wait for restore to complete before returning the list
-    await mindManager.awaitRestore();
-    return mindManager.listMinds();
-  });
+  ipcMain.handle(
+    'mind:list',
+    withValidation('mind:list', MindListArgs, async () => {
+      await mindManager.awaitRestore();
+      return mindManager.listMinds();
+    }),
+  );
 
-  ipcMain.handle('mind:setActive', async (_event, mindId: string) => {
-    mindManager.setActiveMind(mindId);
-  });
+  ipcMain.handle(
+    'mind:setActive',
+    withValidation('mind:setActive', MindSetActiveArgs, async (_event, mindId) => {
+      mindManager.setActiveMind(mindId);
+    }),
+  );
 
-  ipcMain.handle('mind:selectDirectory', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return null;
+  ipcMain.handle(
+    'mind:selectDirectory',
+    withValidation(
+      'mind:selectDirectory',
+      MindSelectDirectoryArgs,
+      async (event: Electron.IpcMainInvokeEvent) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (!win) return null;
 
-    const result = await dialog.showOpenDialog(win, {
-      properties: ['openDirectory'],
-      title: 'Select Genesis Mind Directory',
-      defaultPath: path.join(os.homedir(), 'agents'),
-    });
+        const result = await dialog.showOpenDialog(win, {
+          properties: ['openDirectory'],
+          title: 'Select Genesis Mind Directory',
+          defaultPath: path.join(os.homedir(), 'agents'),
+        });
 
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
-  });
-
-  ipcMain.handle('mind:openWindow', async (_event, mindId: string) => {
-    // If already popped out, focus existing window
-    const existing = mindManager.getWindow(mindId);
-    if (existing) {
-      existing.focus();
-      return;
-    }
-
-    // Verify mind exists
-    const mind = mindManager.getMind(mindId);
-    if (!mind) return;
-
-    // Create popout window
-    const win = new BrowserWindow({
-      width: 900,
-      height: 700,
-      minWidth: 500,
-      minHeight: 400,
-      title: `${mind.identity.name} — Chamber`,
-      titleBarStyle: 'hiddenInset',
-      titleBarOverlay: process.platform === 'win32' ? {
-        color: '#09090b',
-        symbolColor: '#fafafa',
-        height: 36,
-      } : undefined,
-      backgroundColor: '#09090b',
-      webPreferences: {
-        preload: config.preloadPath,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
+        if (result.canceled || result.filePaths.length === 0) return null;
+        return result.filePaths[0];
       },
-    });
+    ),
+  );
 
-    // Load same renderer with popout query params
-    if (config.devServerUrl) {
-      win.loadURL(`${config.devServerUrl}?mindId=${mindId}&popout=true`);
-    } else if (config.rendererPath) {
-      win.loadFile(config.rendererPath, { query: { mindId, popout: 'true' } });
-    }
+  ipcMain.handle(
+    'mind:openWindow',
+    withValidation('mind:openWindow', MindOpenWindowArgs, async (_event, mindId) => {
+      const existing = mindManager.getWindow(mindId);
+      if (existing) {
+        existing.focus();
+        return;
+      }
 
-    mindManager.attachWindow(mindId, win);
+      const mind = mindManager.getMind(mindId);
+      if (!mind) return;
 
-    // Notify all windows about the state change
-    for (const w of BrowserWindow.getAllWindows()) {
-      w.webContents.send('mind:changed', mindManager.listMinds());
-    }
-  });
+      const win = new BrowserWindow({
+        width: 900,
+        height: 700,
+        minWidth: 500,
+        minHeight: 400,
+        title: `${mind.identity.name} — Chamber`,
+        titleBarStyle: 'hiddenInset',
+        titleBarOverlay:
+          process.platform === 'win32'
+            ? {
+                color: '#09090b',
+                symbolColor: '#fafafa',
+                height: 36,
+              }
+            : undefined,
+        backgroundColor: '#09090b',
+        webPreferences: {
+          preload: config.preloadPath,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: false,
+        },
+      });
 
-  // Emit mind changes to all windows
+      if (config.devServerUrl) {
+        win.loadURL(`${config.devServerUrl}?mindId=${mindId}&popout=true`);
+      } else if (config.rendererPath) {
+        win.loadFile(config.rendererPath, { query: { mindId, popout: 'true' } });
+      }
+
+      mindManager.attachWindow(mindId, win);
+
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send('mind:changed', mindManager.listMinds());
+      }
+    }),
+  );
+
   const broadcastMinds = () => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
