@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Repo hygiene
+
+- **Backlog migrated to GitHub Issues** — removed `backlog.md`; all 62 open items filed as issues #29–#90 with `now` / `next` / `later` priority labels. Open work is tracked on the issue tracker from here on.
+- **Design notes promoted to discussion issue** — removed `docs/design-notes.md`; contents captured in #28 for inline commentary.
+
 ### SDK
 
 - **CopilotClient runs with the mind folder as `cwd`** — `CopilotClientFactory.createClient` now forwards `mindPath` as the CLI process `cwd`. Previously the CLI inherited Electron's launch directory (often `C:\Windows\System32` when launched from Start Menu), so mind-local config like `.mcp.json`, `.copilot/`, and `AGENTS.md` was never discovered. Each mind now spawns its CLI inside its own folder.
