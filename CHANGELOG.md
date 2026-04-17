@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Contracts package (Phase 1 of architecture split)
+
+- **`src/contracts/`** — new zod-backed contracts package mirroring the current IPC surface. Defines request-arg schemas for every `chat:*`, `mind:*`, `lens:*`, `auth:*`, `genesis:*`, `a2a:*`, `chatroom:*`, and `window:*` channel, plus `ChatEvent`, `ChatMessage`, `ModelInfo`, `LensViewManifest`, `AuthAccount`, `AppConfig` (v2), and outbound push-event schemas.
+- **Main-side runtime validation** — every `ipcMain.handle` and `ipcMain.on` registration is wrapped with `withValidation` / `withValidationOn`. Invalid args reject with a sanitized `IpcValidationError` (`code: 'INVALID_PARAMS'`, channel, issues) that maps cleanly to JSON-RPC `-32602` in Phase 2. Raw `ZodError` is never leaked across the IPC boundary.
+- **Exhaustive coverage test** — `src/main/ipc/coverage.test.ts` statically scans every ipc registration file and asserts each handler is wrapped with a validator. One missed wrap = test failure.
+- **Outbound schemas** — `src/contracts/outbound.ts` documents the shape of every push channel for Phase 2 WS clients to validate on receipt.
+- **A2A scope** — only arg tuples are schematized. `Part.raw: Uint8Array` is not JSON-RPC safe, so payload-level schemas are deferred to Phase 2.
+- **Dropped unused barrel** — deleted `src/shared/index.ts` (zero consumers).
+- **No behavior change** — existing tests pass unchanged; `src/shared/types.ts` remains authoritative for consumer imports during Phase 1.
+
 ## v0.23.0 (2026-04-16)
 
 ### Chat: turn-level work log
