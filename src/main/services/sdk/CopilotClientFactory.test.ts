@@ -26,8 +26,12 @@ const mockStart = vi.fn();
 const mockStop = vi.fn();
 
 class FakeCopilotClient {
+  options: Record<string, unknown>;
   start = mockStart;
   stop = mockStop;
+  constructor(options: Record<string, unknown>) {
+    this.options = options;
+  }
 }
 
 vi.mock('./sdkImport', () => ({
@@ -50,6 +54,11 @@ describe('CopilotClientFactory', () => {
       expect(mockStart).toHaveBeenCalledTimes(1);
       expect(client).toBeDefined();
       expect(client.start).toBeDefined();
+    });
+
+    it('passes mindPath as cwd so the CLI discovers .mcp.json from the mind folder', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      expect(client.options.cwd).toBe('C:\\agents\\q');
     });
 
     it('creates separate clients for different mind paths', async () => {

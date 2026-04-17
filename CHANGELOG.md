@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### SDK
+
+- **CopilotClient runs with the mind folder as `cwd`** — `CopilotClientFactory.createClient` now forwards `mindPath` as the CLI process `cwd`. Previously the CLI inherited Electron's launch directory (often `C:\Windows\System32` when launched from Start Menu), so mind-local config like `.mcp.json`, `.copilot/`, and `AGENTS.md` was never discovered. Each mind now spawns its CLI inside its own folder.
+
 ## v0.23.0 (2026-04-16)
 
 ### Chat: turn-level work log

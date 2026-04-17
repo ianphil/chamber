@@ -21,7 +21,6 @@ export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
 
   async createClient(mindPath: string): Promise<CopilotClient> {
-    void mindPath;
     const sdk = await this.getSdk();
     const modulesDir = resolveNodeModulesDir();
     const cliPath = getCliPathFromModules(modulesDir);
@@ -46,6 +45,7 @@ export class CopilotClientFactory {
 
     const client = new sdk.CopilotClient({
       cliPath: resolvedCliPath,
+      cwd: mindPath,
       logLevel: 'all',
       cliArgs,
     });
