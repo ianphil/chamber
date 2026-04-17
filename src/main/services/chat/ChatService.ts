@@ -186,6 +186,10 @@ export class ChatService {
     try {
       const context = this.mindManager.getMind(mindId);
       if (!context?.client) return [];
+      // The SDK caches models forever per CopilotClient instance.
+      // Clear the cache so we always get a fresh list from the CLI.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (context.client as any).modelsCache = null;
       const models = await context.client.listModels();
       return models.map((m: { id: string; name: string }) => ({ id: m.id, name: m.name }));
     } catch {
