@@ -151,7 +151,13 @@ describe('ChatroomPanel', () => {
     expect(api.chatroom.onEvent).toHaveBeenCalled();
   });
 
-  // 10. Stop button calls chatroom.stop()
+  // 10. OrchestrationPicker renders
+  it('renders the orchestration picker', () => {
+    renderPanel({ minds: [MIND_A] }, api);
+    expect(screen.getByTestId('orchestration-picker')).toBeTruthy();
+  });
+
+  // 12. Stop button calls chatroom.stop()
   it('calls chatroom.stop() when stop is clicked during streaming', async () => {
     const streamingMsg = makeChatroomMessage({
       id: 's1',
@@ -169,9 +175,14 @@ describe('ChatroomPanel', () => {
       api,
     );
 
-    const button = screen.getByRole('button');
+    // The stop button is the one inside ChatInput (not the orchestration buttons)
+    const buttons = screen.getAllByRole('button');
+    const stopButton = buttons.find(
+      (b) => b.querySelector('svg rect') !== null,
+    );
+    expect(stopButton).toBeTruthy();
     await act(async () => {
-      fireEvent.click(button);
+      fireEvent.click(stopButton!);
     });
     expect(api.chatroom.stop).toHaveBeenCalled();
   });

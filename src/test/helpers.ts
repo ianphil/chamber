@@ -10,7 +10,14 @@ import type {
   LensViewManifest,
   ElectronAPI,
 } from '../shared/types';
-import type { ChatroomMessage, ChatroomStreamEvent } from '../shared/chatroom-types';
+import type {
+  ChatroomMessage,
+  ChatroomStreamEvent,
+  OrchestrationMode,
+  GroupChatConfig,
+  OrchestrationEvent,
+  OrchestrationEventType,
+} from '../shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // ContentBlock factories
@@ -144,6 +151,8 @@ export function mockElectronAPI(): ElectronAPI {
       history: vi.fn().mockResolvedValue([]),
       clear: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
+      setOrchestration: vi.fn().mockResolvedValue(undefined),
+      getOrchestration: vi.fn().mockResolvedValue({ mode: 'concurrent', config: null }),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
     },
     a2a: {
@@ -198,4 +207,27 @@ export function installElectronAPI(api?: ElectronAPI): ElectronAPI {
   const mock = api ?? mockElectronAPI();
   Object.defineProperty(window, 'electronAPI', { value: mock, writable: true, configurable: true });
   return mock;
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration factories
+// ---------------------------------------------------------------------------
+
+export function makeOrchestrationEvent(
+  type: OrchestrationEventType = 'orchestration:turn-start',
+  data: Record<string, unknown> = { speaker: 'Agent One' },
+): OrchestrationEvent {
+  return { type, data };
+}
+
+export function makeGroupChatConfig(
+  overrides?: Partial<GroupChatConfig>,
+): GroupChatConfig {
+  return {
+    moderatorMindId: 'moderator-1',
+    maxTurns: 10,
+    minRounds: 1,
+    maxSpeakerRepeats: 3,
+    ...overrides,
+  };
 }

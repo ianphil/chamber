@@ -58,6 +58,8 @@ const electronAPI: ElectronAPI = {
     history: () => ipcRenderer.invoke('chatroom:history'),
     clear: () => ipcRenderer.invoke('chatroom:clear'),
     stop: () => ipcRenderer.invoke('chatroom:stop'),
+    setOrchestration: (mode: string, config?: unknown) => ipcRenderer.invoke('chatroom:set-orchestration', mode, config),
+    getOrchestration: () => ipcRenderer.invoke('chatroom:get-orchestration'),
     onEvent: (callback) => createIpcListener(ipcRenderer, 'chatroom:event', callback),
   },
   a2a: {

@@ -654,4 +654,61 @@ describe('ChatroomService', () => {
       expect(factory.createChatroomSession).toHaveBeenCalledWith('dude');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Orchestration mode management
+  // -------------------------------------------------------------------------
+
+  describe('orchestration mode', () => {
+    it('defaults to concurrent mode', () => {
+      const { mode, config } = svc.getOrchestration();
+      expect(mode).toBe('concurrent');
+      expect(config).toBeNull();
+    });
+
+    it('setOrchestration changes mode', () => {
+      svc.setOrchestration('sequential');
+      expect(svc.getOrchestration().mode).toBe('sequential');
+    });
+
+    it('setOrchestration stores group chat config', () => {
+      const config = {
+        moderatorMindId: 'dude',
+        maxTurns: 10,
+        minRounds: 1,
+        maxSpeakerRepeats: 3,
+      };
+      svc.setOrchestration('group-chat', config);
+      const { mode, config: storedConfig } = svc.getOrchestration();
+      expect(mode).toBe('group-chat');
+      expect(storedConfig).toEqual(config);
+    });
+
+    it('mode persists across rounds', async () => {
+      svc.setOrchestration('sequential');
+
+      const sess = createMockSession();
+      sessions.set('dude', sess);
+      autoIdle(sess);
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+
+      await svc.broadcast('round 1');
+      await svc.broadcast('round 2');
+
+      // Mode should still be sequential
+      expect(svc.getOrchestration().mode).toBe('sequential');
+    });
+
+    it('switching mode clears group chat config when not group-chat', () => {
+      svc.setOrchestration('group-chat', {
+        moderatorMindId: 'dude',
+        maxTurns: 10,
+        minRounds: 1,
+        maxSpeakerRepeats: 3,
+      });
+      svc.setOrchestration('concurrent');
+      expect(svc.getOrchestration().config).toBeNull();
+    });
+  });
 });

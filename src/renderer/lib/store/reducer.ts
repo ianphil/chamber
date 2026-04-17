@@ -262,6 +262,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         streamingByMind: state.activeMindId
           ? { ...state.streamingByMind, [state.activeMindId]: false }
           : state.streamingByMind,
+        chatroomMessages: [],
+        chatroomStreamingByMind: {},
+        chatroomActiveSpeaker: null,
       };
 
     case 'A2A_INCOMING': {
@@ -363,6 +366,50 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'CHATROOM_EVENT': {
       const { mindId, mindName, messageId, roundId, event } = action.payload;
+
+      // Orchestration events update the active speaker indicator
+      if ('type' in event && (event.type as string).startsWith('orchestration:')) {
+        const orchType = event.type as string;
+        if (orchType === 'orchestration:turn-start') {
+          const data = (event as { data: Record<string, unknown> }).data;
+          return {
+            ...state,
+            chatroomActiveSpeaker: {
+              mindId: (data.speakerMindId as string) ?? mindId,
+              mindName: (data.speaker as string) ?? mindName,
+              phase: 'speaking',
+            },
+          };
+        }
+        if (orchType === 'orchestration:moderator-decision') {
+          return {
+            ...state,
+            chatroomActiveSpeaker: {
+              mindId,
+              mindName,
+              phase: 'moderating',
+            },
+          };
+        }
+        if (orchType === 'orchestration:synthesis') {
+          return {
+            ...state,
+            chatroomActiveSpeaker: {
+              mindId,
+              mindName,
+              phase: 'synthesizing',
+            },
+          };
+        }
+        if (orchType === 'orchestration:convergence') {
+          return { ...state, chatroomActiveSpeaker: null };
+        }
+        return state;
+      }
+
+      // At this point, event is a ChatEvent (not an OrchestrationEvent)
+      const chatEvent = event as ChatEvent;
+
       let messages = state.chatroomMessages;
 
       // Auto-create placeholder if this is the first event for an unknown message
@@ -380,19 +427,32 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         messages = [...messages, placeholder];
       }
 
-      const newMessages = handleChatEvent(messages, messageId, event);
-      const isDone = event.type === 'done' || event.type === 'error';
+      const newMessages = handleChatEvent(messages, messageId, chatEvent);
+      const isDone = chatEvent.type === 'done' || chatEvent.type === 'error';
       return {
         ...state,
         chatroomMessages: newMessages as ChatroomMessage[],
         chatroomStreamingByMind: isDone
           ? { ...state.chatroomStreamingByMind, [mindId]: false }
           : { ...state.chatroomStreamingByMind, [mindId]: true },
+        // Clear active speaker when all streaming stops
+        ...(isDone && !Object.entries(state.chatroomStreamingByMind).some(
+          ([id, s]) => s && id !== mindId,
+        ) ? { chatroomActiveSpeaker: null } : {}),
       };
     }
 
     case 'CHATROOM_CLEAR':
-      return { ...state, chatroomMessages: [], chatroomStreamingByMind: {} };
+      return { ...state, chatroomMessages: [], chatroomStreamingByMind: {}, chatroomActiveSpeaker: null };
+
+    case 'SET_ORCHESTRATION':
+      return { ...state, chatroomOrchestration: action.payload };
+
+    case 'SET_GROUP_CHAT_CONFIG':
+      return { ...state, chatroomGroupChatConfig: action.payload };
+
+    case 'CHATROOM_ACTIVE_SPEAKER':
+      return { ...state, chatroomActiveSpeaker: action.payload };
 
     default:
       return state;

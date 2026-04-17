@@ -156,6 +156,7 @@ export function MindSidebar() {
           onClick={async () => {
             if (activeMindId) {
               await window.electronAPI.chat.newConversation(activeMindId);
+              await window.electronAPI.chatroom.clear();
               dispatch({ type: 'NEW_CONVERSATION' });
               dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
             }
