@@ -1,36 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import type { MindContext } from '../../../../shared/types';
 import type {
-  ChatroomStreamEvent,
-  ChatroomMessage,
   GroupChatConfig,
 } from '../../../../shared/chatroom-types';
 import type { OrchestrationStrategy, OrchestrationContext } from './types';
-import { isStaleSessionError } from '../../../../shared/sessionErrors';
-import type { CopilotSession } from '../../mind';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const XML_ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&apos;',
-};
-
-function escapeXml(text: string): string {
-  return text.replace(/[&<>"']/g, (ch) => XML_ESCAPE_MAP[ch]);
-}
-
-function textContent(msg: ChatroomMessage): string {
-  return msg.blocks
-    .filter((b) => b.type === 'text')
-    .map((b) => (b as { content: string }).content)
-    .join('');
-}
+import { escapeXml, textContent, extractJsonObject } from './shared';
+import { sendToAgentWithRetry } from './stream-agent';
 
 // ---------------------------------------------------------------------------
 // Moderator response parsing
@@ -43,12 +17,11 @@ interface ModeratorDecision {
 }
 
 function parseModeratorResponse(text: string): ModeratorDecision | null {
-  // Try to extract JSON from the response (may be wrapped in markdown code fences)
-  const jsonMatch = text.match(/\{[\s\S]*?"next_speaker"[\s\S]*?\}/);
-  if (!jsonMatch) return null;
+  const jsonStr = extractJsonObject(text);
+  if (!jsonStr) return null;
 
   try {
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
     const nextSpeaker = typeof parsed.next_speaker === 'string' ? parsed.next_speaker : '';
     const direction = typeof parsed.direction === 'string' ? parsed.direction : '';
     const action = parsed.action === 'close' ? 'close' as const : 'direct' as const;
@@ -78,7 +51,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
   readonly mode = 'group-chat' as const;
   private abortController: AbortController | null = null;
   private currentUnsubs: (() => void)[] = [];
-  private config: GroupChatConfig;
+  private readonly config: GroupChatConfig;
 
   constructor(config: GroupChatConfig) {
     this.config = config;
@@ -96,7 +69,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
 
     const moderator = participants.find((p) => p.mindId === this.config.moderatorMindId);
     if (!moderator) {
-      console.error('[GroupChat] Moderator mind not found among participants');
+      console.error('[Chatroom:GroupChat] Moderator mind not found among participants');
       return;
     }
 
@@ -145,12 +118,27 @@ export class GroupChatStrategy implements OrchestrationStrategy {
       },
     });
 
-    const openingResponse = await this.invokeSpeaker(
-      moderator,
-      openingPrompt,
-      roundId,
-      context,
-    );
+    let openingResponse;
+    try {
+      ({ message: openingResponse } = await sendToAgentWithRetry({
+        mind: moderator,
+        prompt: openingPrompt,
+        roundId,
+        context,
+        abortSignal: this.abortController.signal,
+        unsubs: this.currentUnsubs,
+        orchestrationMode: 'group-chat',
+      }));
+    } catch (err) {
+      context.emitEvent({
+        mindId: moderator.mindId,
+        mindName: moderator.identity.name,
+        messageId: '',
+        roundId,
+        event: { type: 'error', message: `Moderator failed: ${err instanceof Error ? err.message : String(err)}` },
+      });
+      return;
+    }
 
     const openingText = openingResponse ? textContent(openingResponse) : '';
     const openingDecision = parseModeratorResponse(openingText);
@@ -199,15 +187,25 @@ export class GroupChatStrategy implements OrchestrationStrategy {
         transcript,
         context,
         nextDirection,
+        speaker,
       );
 
       // Invoke speaker
-      const response = await this.invokeSpeaker(
-        speaker,
-        speakerPrompt,
-        roundId,
-        context,
-      );
+      let response;
+      try {
+        ({ message: response } = await sendToAgentWithRetry({
+          mind: speaker,
+          prompt: speakerPrompt,
+          roundId,
+          context,
+          abortSignal: this.abortController.signal,
+          unsubs: this.currentUnsubs,
+          orchestrationMode: 'group-chat',
+        }));
+      } catch (err) {
+        console.error(`[Chatroom:GroupChat] Speaker ${speaker.mindId} failed:`, err);
+        continue; // Skip this turn, let moderator pick next speaker
+      }
 
       if (response) {
         transcript.push({
@@ -238,12 +236,21 @@ export class GroupChatStrategy implements OrchestrationStrategy {
         phase,
       );
 
-      const moderatorResponse = await this.invokeSpeaker(
-        moderator,
-        moderatorPrompt,
-        roundId,
-        context,
-      );
+      let moderatorResponse;
+      try {
+        ({ message: moderatorResponse } = await sendToAgentWithRetry({
+          mind: moderator,
+          prompt: moderatorPrompt,
+          roundId,
+          context,
+          abortSignal: this.abortController.signal,
+          unsubs: this.currentUnsubs,
+          orchestrationMode: 'group-chat',
+        }));
+      } catch (err) {
+        console.error(`[Chatroom:GroupChat] Moderator decision failed:`, err);
+        break; // Can't continue without moderator direction
+      }
 
       const moderatorText = moderatorResponse ? textContent(moderatorResponse) : '';
       const decision = parseModeratorResponse(moderatorText);
@@ -289,14 +296,18 @@ export class GroupChatStrategy implements OrchestrationStrategy {
         });
 
         // Synthesis step: send full transcript to moderator for summary
-        await this.invokeSynthesis(
-          moderator,
-          userMessage,
-          participants,
-          transcript,
-          roundId,
-          context,
-        );
+        try {
+          await this.invokeSynthesis(
+            moderator,
+            userMessage,
+            participants,
+            transcript,
+            roundId,
+            context,
+          );
+        } catch (err) {
+          console.error(`[Chatroom:GroupChat] Synthesis failed:`, err);
+        }
 
         break;
       }
@@ -341,8 +352,9 @@ export class GroupChatStrategy implements OrchestrationStrategy {
     transcript: TranscriptTurn[],
     context: OrchestrationContext,
     moderatorDirection?: string,
+    forMind?: MindContext,
   ): string {
-    const basePrompt = context.buildBasePrompt(userMessage, participants);
+    const basePrompt = context.buildBasePrompt(userMessage, participants, forMind);
 
     if (transcript.length === 0 && !moderatorDirection) {
       return basePrompt;
@@ -465,170 +477,15 @@ export class GroupChatStrategy implements OrchestrationStrategy {
       },
     });
 
-    await this.invokeSpeaker(moderator, xml, roundId, context);
-  }
-
-  // -------------------------------------------------------------------------
-  // Agent communication (shared with sequential pattern)
-  // -------------------------------------------------------------------------
-
-  private async invokeSpeaker(
-    mind: MindContext,
-    prompt: string,
-    roundId: string,
-    context: OrchestrationContext,
-  ): Promise<ChatroomMessage | null> {
-    const session = await context.getOrCreateSession(mind.mindId);
-    try {
-      return await this.streamToAgent(session, mind, prompt, roundId, context);
-    } catch (err) {
-      if (!isStaleSessionError(err)) throw err;
-      context.evictSession(mind.mindId);
-      const freshSession = await context.getOrCreateSession(mind.mindId);
-      return await this.streamToAgent(freshSession, mind, prompt, roundId, context);
-    }
-  }
-
-  private async streamToAgent(
-    session: CopilotSession,
-    mind: MindContext,
-    prompt: string,
-    roundId: string,
-    context: OrchestrationContext,
-  ): Promise<ChatroomMessage | null> {
-    const messageId = randomUUID();
-    const unsubs: (() => void)[] = [];
-    this.currentUnsubs = unsubs;
-
-    const emitEvent = (event: ChatroomStreamEvent['event']) => {
-      if (!this.abortController?.signal.aborted) {
-        context.emitEvent({
-          mindId: mind.mindId,
-          mindName: mind.identity.name,
-          messageId,
-          roundId,
-          event,
-        } satisfies ChatroomStreamEvent);
-      }
-    };
-
-    let finalContent = '';
-
-    try {
-      unsubs.push(
-        session.on('assistant.message_delta', (e) => {
-          emitEvent({ type: 'chunk', sdkMessageId: e.data.messageId, content: e.data.deltaContent });
-        }),
-      );
-
-      unsubs.push(
-        session.on('assistant.message', (e) => {
-          if (e.data.content) {
-            finalContent = e.data.content;
-            emitEvent({
-              type: 'message_final',
-              sdkMessageId: e.data.messageId,
-              content: e.data.content,
-            });
-          }
-        }),
-      );
-
-      unsubs.push(
-        session.on('assistant.reasoning_delta', (e) => {
-          emitEvent({
-            type: 'reasoning',
-            reasoningId: e.data.reasoningId,
-            content: e.data.deltaContent,
-          });
-        }),
-      );
-
-      unsubs.push(
-        session.on('tool.execution_start', (e) => {
-          emitEvent({
-            type: 'tool_start',
-            toolCallId: e.data.toolCallId,
-            toolName: e.data.toolName,
-            args: e.data.arguments,
-            parentToolCallId: e.data.parentToolCallId,
-          });
-        }),
-      );
-
-      unsubs.push(
-        session.on('tool.execution_complete', (e) => {
-          emitEvent({
-            type: 'tool_done',
-            toolCallId: e.data.toolCallId,
-            success: e.data.success,
-            result: e.data.result?.content,
-            error: e.data.error?.message,
-          });
-        }),
-      );
-
-      await session.send({ prompt });
-
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(resolve, 300_000);
-
-        const unsubIdle = session.on('session.idle', () => {
-          clearTimeout(timeout);
-          unsubIdle();
-          resolve();
-        });
-        unsubs.push(unsubIdle);
-
-        const unsubError = session.on('session.error', (e) => {
-          clearTimeout(timeout);
-          unsubError();
-          reject(new Error(e.data.message));
-        });
-        unsubs.push(unsubError);
-
-        if (this.abortController) {
-          this.abortController.signal.addEventListener(
-            'abort',
-            () => {
-              clearTimeout(timeout);
-              resolve();
-            },
-            { once: true },
-          );
-        }
-      });
-
-      if (this.abortController?.signal.aborted) return null;
-
-      if (finalContent) {
-        const agentMsg: ChatroomMessage = {
-          id: messageId,
-          role: 'assistant',
-          blocks: [{ type: 'text', content: finalContent }],
-          timestamp: Date.now(),
-          sender: { mindId: mind.mindId, name: mind.identity.name },
-          roundId,
-          orchestrationMode: 'group-chat',
-        };
-        context.persistMessage(agentMsg);
-        emitEvent({ type: 'done' });
-        return agentMsg;
-      }
-
-      emitEvent({ type: 'done' });
-      return null;
-    } catch (err) {
-      if (!this.abortController?.signal.aborted) {
-        if (isStaleSessionError(err)) throw err;
-        const message = err instanceof Error ? err.message : String(err);
-        emitEvent({ type: 'error', message });
-      }
-      return null;
-    } finally {
-      for (const unsub of unsubs) unsub();
-      this.currentUnsubs = [];
-    }
+    await sendToAgentWithRetry({
+      mind: moderator,
+      prompt: xml,
+      roundId,
+      context,
+      abortSignal: this.abortController?.signal ?? new AbortController().signal,
+      unsubs: this.currentUnsubs,
+      orchestrationMode: 'group-chat',
+    });
   }
 
   // -------------------------------------------------------------------------

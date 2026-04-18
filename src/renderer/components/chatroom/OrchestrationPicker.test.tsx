@@ -1,12 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { OrchestrationPicker } from './OrchestrationPicker';
 import type { MindContext } from '../../../shared/types';
-import type { OrchestrationMode, GroupChatConfig } from '../../../shared/chatroom-types';
+import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../../shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,18 +29,26 @@ const MIND_B: MindContext = {
 function renderPicker(overrides?: {
   mode?: OrchestrationMode;
   groupChatConfig?: GroupChatConfig | null;
+  handoffConfig?: HandoffConfig | null;
+  magneticConfig?: MagenticConfig | null;
   minds?: MindContext[];
   disabled?: boolean;
   onModeChange?: (mode: OrchestrationMode) => void;
   onGroupChatConfigChange?: (config: GroupChatConfig) => void;
+  onHandoffConfigChange?: (config: HandoffConfig) => void;
+  onMagneticConfigChange?: (config: MagenticConfig) => void;
 }) {
   const props = {
     mode: overrides?.mode ?? 'concurrent',
     groupChatConfig: overrides?.groupChatConfig ?? null,
+    handoffConfig: overrides?.handoffConfig ?? null,
+    magneticConfig: overrides?.magneticConfig ?? null,
     minds: overrides?.minds ?? [MIND_A, MIND_B],
     disabled: overrides?.disabled ?? false,
     onModeChange: overrides?.onModeChange ?? vi.fn(),
     onGroupChatConfigChange: overrides?.onGroupChatConfigChange ?? vi.fn(),
+    onHandoffConfigChange: overrides?.onHandoffConfigChange ?? vi.fn(),
+    onMagneticConfigChange: overrides?.onMagneticConfigChange ?? vi.fn(),
   };
   return render(<OrchestrationPicker {...props} />);
 }
@@ -59,12 +67,18 @@ describe('OrchestrationPicker', () => {
     expect(screen.getByText('Magentic')).toBeTruthy();
   });
 
-  it('disables Handoff and Magentic buttons', () => {
-    renderPicker();
+  it('Handoff and Magentic buttons are enabled and clickable', () => {
+    const onModeChange = vi.fn();
+    renderPicker({ onModeChange });
     const handoff = screen.getByText('Handoff');
     const magentic = screen.getByText('Magentic');
-    expect(handoff.closest('button')?.disabled).toBe(true);
-    expect(magentic.closest('button')?.disabled).toBe(true);
+    expect(handoff.closest('button')?.disabled).toBe(false);
+    expect(magentic.closest('button')?.disabled).toBe(false);
+
+    fireEvent.click(handoff);
+    expect(onModeChange).toHaveBeenCalledWith('handoff');
+    fireEvent.click(magentic);
+    expect(onModeChange).toHaveBeenCalledWith('magentic');
   });
 
   it('calls onModeChange when a mode is selected', () => {
@@ -149,5 +163,83 @@ describe('OrchestrationPicker', () => {
   it('has data-testid orchestration-picker', () => {
     renderPicker();
     expect(screen.getByTestId('orchestration-picker')).toBeTruthy();
+  });
+
+  // -------------------------------------------------------------------------
+  // Handoff config
+  // -------------------------------------------------------------------------
+
+  it('shows initial agent selector when handoff mode is selected', () => {
+    renderPicker({ mode: 'handoff' });
+    expect(screen.getByText('Start with:')).toBeTruthy();
+  });
+
+  it('auto-creates default handoff config when switching to handoff', () => {
+    const onModeChange = vi.fn();
+    const onHandoffConfigChange = vi.fn();
+    renderPicker({ onModeChange, onHandoffConfigChange });
+
+    fireEvent.click(screen.getByText('Handoff'));
+    expect(onModeChange).toHaveBeenCalledWith('handoff');
+    expect(onHandoffConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialMindId: 'mind-a',
+        maxHandoffHops: 5,
+      }),
+    );
+  });
+
+  it('calls onHandoffConfigChange when initial agent is changed', () => {
+    const onHandoffConfigChange = vi.fn();
+    renderPicker({
+      mode: 'handoff',
+      handoffConfig: { initialMindId: 'mind-a', maxHandoffHops: 5 },
+      onHandoffConfigChange,
+    });
+
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'mind-b' } });
+    expect(onHandoffConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({ initialMindId: 'mind-b' }),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Magentic config
+  // -------------------------------------------------------------------------
+
+  it('shows manager selector when magentic mode is selected', () => {
+    renderPicker({ mode: 'magentic' });
+    expect(screen.getByText('Manager:')).toBeTruthy();
+  });
+
+  it('auto-creates default magentic config when switching to magentic', () => {
+    const onModeChange = vi.fn();
+    const onMagneticConfigChange = vi.fn();
+    renderPicker({ onModeChange, onMagneticConfigChange });
+
+    fireEvent.click(screen.getByText('Magentic'));
+    expect(onModeChange).toHaveBeenCalledWith('magentic');
+    expect(onMagneticConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        managerMindId: 'mind-a',
+        maxSteps: 10,
+      }),
+    );
+  });
+
+  it('calls onMagneticConfigChange when manager is changed', () => {
+    const onMagneticConfigChange = vi.fn();
+    renderPicker({
+      mode: 'magentic',
+      magneticConfig: { managerMindId: 'mind-a', maxSteps: 10 },
+      onMagneticConfigChange,
+    });
+
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'mind-b' } });
+    expect(onMagneticConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({ managerMindId: 'mind-b' }),
+    );
   });
 });

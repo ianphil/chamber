@@ -177,7 +177,7 @@ describe('ChatroomService', () => {
 
   // 3. Session caching
   describe('session caching', () => {
-    it('reuses sessions across rounds', async () => {
+    it('creates fresh sessions between rounds (stopAll clears cache)', async () => {
       const sess = createMockSession();
       sessions.set('dude', sess);
       autoIdle(sess);
@@ -187,9 +187,8 @@ describe('ChatroomService', () => {
       await svc.broadcast('round 1');
       await svc.broadcast('round 2');
 
-      // createChatroomSession called only once — cached after first
-      expect(factory.createChatroomSession).toHaveBeenCalledTimes(1);
-      expect(sess.send).toHaveBeenCalledTimes(2);
+      // stopAll between rounds clears cache — session created once per round
+      expect(factory.createChatroomSession).toHaveBeenCalledTimes(2);
     });
   });
 

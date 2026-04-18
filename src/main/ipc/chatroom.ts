@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { ChatroomService } from '../services/chatroom/ChatroomService';
-import type { OrchestrationMode, GroupChatConfig } from '../../shared/chatroom-types';
+import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../shared/chatroom-types';
 
 export function setupChatroomIPC(chatroomService: ChatroomService): void {
   ipcMain.handle('chatroom:send', async (_event, message: string, model?: string) => {
@@ -19,7 +19,7 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
     chatroomService.stopAll();
   });
 
-  ipcMain.handle('chatroom:set-orchestration', async (_event, mode: OrchestrationMode, config?: GroupChatConfig) => {
+  ipcMain.handle('chatroom:set-orchestration', async (_event, mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => {
     chatroomService.setOrchestration(mode, config);
   });
 

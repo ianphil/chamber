@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.25.0 (2026-04-18)
+
+### Chatroom: orchestration strategies
+
+- **5 orchestration modes** — Concurrent (parallel fan-out), Sequential (round-robin with accumulated context), GroupChat (moderator-directed with speaker selection), Handoff (agent-to-agent delegation with transcript), Magentic (manager-driven task ledger with step budget).
+- **OrchestrationStrategy interface** — pluggable strategy pattern with `OrchestrationContext` adapter; adding a new mode requires zero changes to ChatroomService.
+- **OrchestrationPicker UI** — mode selector with per-mode config dialogs (moderator, initial agent, manager, max hops/steps).
+- **Shared stream-agent infrastructure** — extracted duplicated SDK event wiring, stale session retry, and send timeout into `stream-agent.ts`; shared XML/JSON helpers in `shared.ts`.
+- **Approval gate** — configurable tool execution review gate for orchestrated sessions.
+- **Structured observability** — event emission with parameter redaction for orchestration audit trails.
+
+### Bug fixes
+
+- **Session idle race condition** — `session.idle` and `session.error` listeners now register BEFORE `session.send()` in both ChatService and all 5 strategies, preventing missed events that caused 5-minute hangs.
+- **Send timeout guard** — 30-second timeout on `session.send()` itself; if the call hangs (dead WebSocket), throws a stale session error triggering retry with a fresh session.
+- **TypingIndicator alignment** — chatroom typing indicator now left-aligns with message content instead of centering.
+
 ## v0.24.0 (2026-04-17)
 
 ### Model picker

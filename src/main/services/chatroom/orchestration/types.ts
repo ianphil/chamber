@@ -26,7 +26,7 @@ export interface OrchestrationStrategy {
 export interface OrchestrationContext {
   getOrCreateSession(mindId: string): Promise<CopilotSession>;
   evictSession(mindId: string): void;
-  buildBasePrompt(userMessage: string, participants: MindContext[]): string;
+  buildBasePrompt(userMessage: string, participants: MindContext[], forMind?: MindContext): string;
   emitEvent(event: ChatroomStreamEvent): void;
   persistMessage(message: ChatroomMessage): void;
   getHistory(): ChatroomMessage[];

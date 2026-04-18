@@ -76,7 +76,7 @@ function createContext(
     evictSession: vi.fn((mindId: string) => {
       sessions.delete(mindId);
     }),
-    buildBasePrompt: vi.fn((_msg: string, _parts: MindContext[]) => 'test prompt'),
+    buildBasePrompt: vi.fn(() => 'test prompt'),
     emitEvent: vi.fn((event: ChatroomStreamEvent) => events.push(event)),
     persistMessage: vi.fn((msg: ChatroomMessage) => messages.push(msg)),
     getHistory: vi.fn(() => []),

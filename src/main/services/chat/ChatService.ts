@@ -132,10 +132,8 @@ export class ChatService {
         }));
       }));
 
-      await session.send({ prompt });
-
-      // Wait for idle
-      await new Promise<void>((resolve, reject) => {
+      // Set up idle/error listeners BEFORE send to avoid missing events
+      const turnDone = new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(resolve, 300_000);
 
         const unsubIdle = session.on('session.idle', () => {
@@ -157,6 +155,20 @@ export class ChatService {
           resolve();
         }, { once: true });
       });
+
+      // Send with a timeout guard — if send() itself hangs, treat as stale
+      let sendTimerId: ReturnType<typeof setTimeout> | undefined;
+      const sendTimeout = new Promise<never>((_, reject) => {
+        sendTimerId = setTimeout(() => reject(new Error('Session not found')), 30_000);
+      });
+      try {
+        await Promise.race([session.send({ prompt }), sendTimeout]);
+      } finally {
+        clearTimeout(sendTimerId);
+      }
+
+      // Wait for idle (listener already active since before send)
+      await turnDone;
 
       if (abortController.signal.aborted) return;
       emit({ type: 'done' });

@@ -9,6 +9,8 @@ import type {
   ChatroomStreamEvent,
   OrchestrationMode,
   GroupChatConfig,
+  HandoffConfig,
+  MagenticConfig,
 } from '../../../shared/chatroom-types';
 import type { MindContext } from '../../../shared/types';
 import type { CopilotSession } from '../mind';
@@ -61,6 +63,8 @@ export class ChatroomService extends EventEmitter {
   private activeStrategy: OrchestrationStrategy | null = null;
   private orchestrationMode: OrchestrationMode = 'concurrent';
   private groupChatConfig: GroupChatConfig | null = null;
+  private handoffConfig: HandoffConfig | null = null;
+  private magneticConfig: MagenticConfig | null = null;
   private readonly persistPath: string;
   private readonly persistDir: string;
 
@@ -98,16 +102,36 @@ export class ChatroomService extends EventEmitter {
 
     if (participants.length === 0) return;
 
+    console.log(`[Chatroom] broadcast mode="${this.orchestrationMode}" participants=${participants.length} handoffConfig=${JSON.stringify(this.handoffConfig)} magneticConfig=${JSON.stringify(this.magneticConfig)}`);
+
     // Create strategy for current orchestration mode
-    const strategy = createStrategy(this.orchestrationMode, this.groupChatConfig ?? undefined);
+    let strategy: OrchestrationStrategy;
+    try {
+      strategy = createStrategy(
+        this.orchestrationMode,
+        this.groupChatConfig ?? undefined,
+        this.handoffConfig ?? undefined,
+        this.magneticConfig ?? undefined,
+      );
+    } catch (err) {
+      console.error(`[Chatroom] Failed to create strategy for mode "${this.orchestrationMode}":`, err);
+      this.emit('chatroom:event', {
+        mindId: 'system',
+        mindName: 'System',
+        messageId: randomUUID(),
+        roundId,
+        event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
+      } satisfies ChatroomStreamEvent);
+      return;
+    }
     this.activeStrategy = strategy;
 
     // Build context adapter for strategies
     const contextAdapter: OrchestrationContext = {
       getOrCreateSession: (mindId: string) => this.getOrCreateSession(mindId),
       evictSession: (mindId: string) => this.evictSession(mindId),
-      buildBasePrompt: (msg: string, parts: MindContext[]) =>
-        this.buildPrompt(msg, parts, roundId),
+      buildBasePrompt: (msg: string, parts: MindContext[], forMind?: MindContext) =>
+        this.buildPrompt(msg, parts, roundId, forMind),
       emitEvent: (event: ChatroomStreamEvent) => this.emit('chatroom:event', event),
       persistMessage: (message: ChatroomMessage) => {
         this.messages.push(message);
@@ -117,7 +141,18 @@ export class ChatroomService extends EventEmitter {
       orchestrationMode: this.orchestrationMode,
     };
 
-    await strategy.execute(userMessage, participants, roundId, contextAdapter);
+    try {
+      await strategy.execute(userMessage, participants, roundId, contextAdapter);
+    } catch (err) {
+      console.error(`[Chatroom] Strategy "${this.orchestrationMode}" execution failed:`, err);
+      this.emit('chatroom:event', {
+        mindId: 'system',
+        mindName: 'System',
+        messageId: randomUUID(),
+        roundId,
+        event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
+      } satisfies ChatroomStreamEvent);
+    }
   }
 
   stopAll(): void {
@@ -125,19 +160,32 @@ export class ChatroomService extends EventEmitter {
       this.activeStrategy.stop();
       this.activeStrategy = null;
     }
-    // Also abort cached sessions for safety
+    // Abort and evict all cached sessions so next round gets fresh ones
     for (const [, session] of this.sessionCache) {
       session.abort().catch(() => { /* noop */ });
     }
+    this.sessionCache.clear();
   }
 
-  setOrchestration(mode: OrchestrationMode, config?: GroupChatConfig): void {
+  setOrchestration(mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig): void {
     this.orchestrationMode = mode;
-    this.groupChatConfig = config ?? null;
+    this.groupChatConfig = null;
+    this.handoffConfig = null;
+    this.magneticConfig = null;
+    if (mode === 'group-chat' && config && 'moderatorMindId' in config && 'maxTurns' in config) {
+      this.groupChatConfig = config as GroupChatConfig;
+    } else if (mode === 'handoff' && config && 'maxHandoffHops' in config) {
+      this.handoffConfig = config as HandoffConfig;
+    } else if (mode === 'magentic' && config && 'managerMindId' in config && 'maxSteps' in config) {
+      this.magneticConfig = config as MagenticConfig;
+    }
   }
 
-  getOrchestration(): { mode: OrchestrationMode; config: GroupChatConfig | null } {
-    return { mode: this.orchestrationMode, config: this.groupChatConfig };
+  getOrchestration(): { mode: OrchestrationMode; config: GroupChatConfig | HandoffConfig | MagenticConfig | null } {
+    return {
+      mode: this.orchestrationMode,
+      config: this.groupChatConfig ?? this.handoffConfig ?? this.magneticConfig,
+    };
   }
 
   getHistory(): ChatroomMessage[] {
@@ -192,16 +240,23 @@ export class ChatroomService extends EventEmitter {
     currentMessage: string,
     participants: MindContext[],
     roundId: string,
+    forMind?: MindContext,
   ): string {
     void roundId;
     const historyRounds = this.getLastNRounds(2);
     const participantNames = participants.map((p) => p.identity.name).join(', ');
 
+    // Identity reminder so each agent stays in character
+    const identityPrefix = forMind
+      ? `<identity>You are ${escapeXml(forMind.identity.name)}. Stay in character. Respond as this persona would — use their voice, perspective, and expertise. Do not break character or sound like the other participants.</identity>\n\n`
+      : '';
+
     if (historyRounds.length === 0) {
-      return `<message sender="You">${escapeXml(currentMessage)}</message>`;
+      return `${identityPrefix}<message sender="You">${escapeXml(currentMessage)}</message>`;
     }
 
-    let xml = `<chatroom-history participants="${escapeXml(participantNames)}">\n`;
+    let xml = identityPrefix;
+    xml += `<chatroom-history participants="${escapeXml(participantNames)}">\n`;
     for (const msg of historyRounds) {
       const sender = msg.sender.name;
       xml += `  <message sender="${escapeXml(sender)}">${escapeXml(textContent(msg))}</message>\n`;

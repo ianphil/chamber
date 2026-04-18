@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext } from '../../../shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../../../shared/a2a-types';
-import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig } from '../../../shared/chatroom-types';
+import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../../shared/chatroom-types';
 
 export type LensView = 'chat' | string;
 
@@ -23,6 +23,8 @@ export interface AppState {
   chatroomStreamingByMind: Record<string, boolean>;
   chatroomOrchestration: OrchestrationMode;
   chatroomGroupChatConfig: GroupChatConfig | null;
+  chatroomHandoffConfig: HandoffConfig | null;
+  chatroomMagenticConfig: MagenticConfig | null;
   /** Who is currently speaking / being selected — shown as typing indicator */
   chatroomActiveSpeaker: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null;
 }
@@ -57,6 +59,8 @@ export type AppAction =
   | { type: 'CHATROOM_CLEAR' }
   | { type: 'SET_ORCHESTRATION'; payload: OrchestrationMode }
   | { type: 'SET_GROUP_CHAT_CONFIG'; payload: GroupChatConfig | null }
+  | { type: 'SET_HANDOFF_CONFIG'; payload: HandoffConfig | null }
+  | { type: 'SET_MAGENTIC_CONFIG'; payload: MagenticConfig | null }
   | { type: 'CHATROOM_ACTIVE_SPEAKER'; payload: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null };
 
 export const initialState: AppState = {
@@ -78,5 +82,7 @@ export const initialState: AppState = {
   chatroomStreamingByMind: {},
   chatroomOrchestration: 'concurrent',
   chatroomGroupChatConfig: null,
+  chatroomHandoffConfig: null,
+  chatroomMagenticConfig: null,
   chatroomActiveSpeaker: null,
 };

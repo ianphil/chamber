@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import type { OrchestrationMode, GroupChatConfig } from '../../../shared/chatroom-types';
+import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../../shared/chatroom-types';
 import type { MindContext } from '../../../shared/types';
 
 // ---------------------------------------------------------------------------
@@ -17,8 +17,8 @@ const MODES: ModeOption[] = [
   { value: 'concurrent', label: 'Concurrent', enabled: true },
   { value: 'sequential', label: 'Sequential', enabled: true },
   { value: 'group-chat', label: 'Group Chat', enabled: true },
-  { value: 'handoff', label: 'Handoff', enabled: false },
-  { value: 'magentic', label: 'Magentic', enabled: false },
+  { value: 'handoff', label: 'Handoff', enabled: true },
+  { value: 'magentic', label: 'Magentic', enabled: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -28,10 +28,14 @@ const MODES: ModeOption[] = [
 interface OrchestrationPickerProps {
   mode: OrchestrationMode;
   groupChatConfig: GroupChatConfig | null;
+  handoffConfig: HandoffConfig | null;
+  magneticConfig: MagenticConfig | null;
   minds: MindContext[];
   disabled?: boolean;
   onModeChange: (mode: OrchestrationMode) => void;
   onGroupChatConfigChange: (config: GroupChatConfig) => void;
+  onHandoffConfigChange: (config: HandoffConfig) => void;
+  onMagneticConfigChange: (config: MagenticConfig) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,10 +45,14 @@ interface OrchestrationPickerProps {
 export function OrchestrationPicker({
   mode,
   groupChatConfig,
+  handoffConfig,
+  magneticConfig,
   minds,
   disabled = false,
   onModeChange,
   onGroupChatConfigChange,
+  onHandoffConfigChange,
+  onMagneticConfigChange,
 }: OrchestrationPickerProps) {
   const readyMinds = minds.filter((m) => m.status === 'ready');
 
@@ -59,6 +67,22 @@ export function OrchestrationPicker({
         maxTurns: 10,
         minRounds: 1,
         maxSpeakerRepeats: 3,
+      });
+    }
+
+    // Auto-create default handoff config
+    if (newMode === 'handoff' && !handoffConfig) {
+      onHandoffConfigChange({
+        initialMindId: readyMinds[0]?.mindId,
+        maxHandoffHops: 5,
+      });
+    }
+
+    // Auto-create default magentic config
+    if (newMode === 'magentic' && !magneticConfig && readyMinds.length > 0) {
+      onMagneticConfigChange({
+        managerMindId: readyMinds[0].mindId,
+        maxSteps: 10,
       });
     }
   };
@@ -101,6 +125,54 @@ export function OrchestrationPicker({
                 maxTurns: groupChatConfig?.maxTurns ?? 10,
                 minRounds: groupChatConfig?.minRounds ?? 1,
                 maxSpeakerRepeats: groupChatConfig?.maxSpeakerRepeats ?? 3,
+              });
+            }}
+            className="bg-secondary text-secondary-foreground rounded px-2 py-0.5 text-xs border border-border"
+          >
+            {readyMinds.map((mind) => (
+              <option key={mind.mindId} value={mind.mindId}>
+                {mind.identity.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Handoff config: initial agent selector */}
+      {mode === 'handoff' && readyMinds.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Start with:</span>
+          <select
+            disabled={disabled}
+            value={handoffConfig?.initialMindId ?? readyMinds[0].mindId}
+            onChange={(e) => {
+              onHandoffConfigChange({
+                initialMindId: e.target.value,
+                maxHandoffHops: handoffConfig?.maxHandoffHops ?? 5,
+              });
+            }}
+            className="bg-secondary text-secondary-foreground rounded px-2 py-0.5 text-xs border border-border"
+          >
+            {readyMinds.map((mind) => (
+              <option key={mind.mindId} value={mind.mindId}>
+                {mind.identity.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Magentic config: manager selector */}
+      {mode === 'magentic' && readyMinds.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Manager:</span>
+          <select
+            disabled={disabled}
+            value={magneticConfig?.managerMindId ?? readyMinds[0].mindId}
+            onChange={(e) => {
+              onMagneticConfigChange({
+                managerMindId: e.target.value,
+                maxSteps: magneticConfig?.maxSteps ?? 10,
               });
             }}
             className="bg-secondary text-secondary-foreground rounded px-2 py-0.5 text-xs border border-border"

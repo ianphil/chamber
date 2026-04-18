@@ -5,7 +5,7 @@ import { StreamingMessage } from '../chat/StreamingMessage';
 import { OrchestrationPicker } from './OrchestrationPicker';
 import { cn, formatTime } from '../../lib/utils';
 import type { MindContext } from '../../../shared/types';
-import type { ChatroomMessage, OrchestrationEvent } from '../../../shared/chatroom-types';
+import type { ChatroomMessage } from '../../../shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // Colour palette for agent badges
@@ -129,14 +129,16 @@ function TypingIndicator({ speaker, minds }: {
       : 'is speaking…';
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2">
-      <div className="max-w-3xl mx-auto flex items-center gap-2">
+    <div className="flex gap-3">
+      {/* Spacer matching avatar width */}
+      <div className="w-7 shrink-0" />
+      <div className="flex items-center gap-1.5 text-muted-foreground">
         <div className="flex gap-1">
-          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '0ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '150ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '300ms' }} />
+          <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '0ms' }} />
+          <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '150ms' }} />
+          <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '300ms' }} />
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs">
           <span className="font-medium" style={{ color }}>{speaker.mindName}</span> {phaseText}
         </span>
       </div>
@@ -264,6 +266,8 @@ export function ChatroomPanel() {
     selectedModel,
     chatroomOrchestration,
     chatroomGroupChatConfig,
+    chatroomHandoffConfig,
+    chatroomMagenticConfig,
     chatroomActiveSpeaker,
   } = useAppState();
   const dispatch = useAppDispatch();
@@ -312,15 +316,29 @@ export function ChatroomPanel() {
       <OrchestrationPicker
         mode={chatroomOrchestration}
         groupChatConfig={chatroomGroupChatConfig}
+        handoffConfig={chatroomHandoffConfig}
+        magneticConfig={chatroomMagenticConfig}
         minds={minds}
         disabled={isStreaming}
         onModeChange={(mode) => {
           dispatch({ type: 'SET_ORCHESTRATION', payload: mode });
-          window.electronAPI.chatroom.setOrchestration(mode, chatroomGroupChatConfig ?? undefined);
+          const config = mode === 'group-chat' ? chatroomGroupChatConfig
+            : mode === 'handoff' ? chatroomHandoffConfig
+            : mode === 'magentic' ? chatroomMagenticConfig
+            : undefined;
+          window.electronAPI.chatroom.setOrchestration(mode, config ?? undefined);
         }}
         onGroupChatConfigChange={(config) => {
           dispatch({ type: 'SET_GROUP_CHAT_CONFIG', payload: config });
-          window.electronAPI.chatroom.setOrchestration(chatroomOrchestration, config);
+          window.electronAPI.chatroom.setOrchestration('group-chat', config);
+        }}
+        onHandoffConfigChange={(config) => {
+          dispatch({ type: 'SET_HANDOFF_CONFIG', payload: config });
+          window.electronAPI.chatroom.setOrchestration('handoff', config);
+        }}
+        onMagneticConfigChange={(config) => {
+          dispatch({ type: 'SET_MAGENTIC_CONFIG', payload: config });
+          window.electronAPI.chatroom.setOrchestration('magentic', config);
         }}
       />
 

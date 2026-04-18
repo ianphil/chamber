@@ -13,8 +13,9 @@ import type {
 import type {
   ChatroomMessage,
   ChatroomStreamEvent,
-  OrchestrationMode,
   GroupChatConfig,
+  HandoffConfig,
+  MagenticConfig,
   OrchestrationEvent,
   OrchestrationEventType,
 } from '../shared/chatroom-types';
@@ -228,6 +229,25 @@ export function makeGroupChatConfig(
     maxTurns: 10,
     minRounds: 1,
     maxSpeakerRepeats: 3,
+    ...overrides,
+  };
+}
+
+export function makeHandoffConfig(
+  overrides?: Partial<HandoffConfig>,
+): HandoffConfig {
+  return {
+    maxHandoffHops: 5,
+    ...overrides,
+  };
+}
+
+export function makeMagenticConfig(
+  overrides?: Partial<MagenticConfig>,
+): MagenticConfig {
+  return {
+    managerMindId: 'manager-1',
+    maxSteps: 10,
     ...overrides,
   };
 }

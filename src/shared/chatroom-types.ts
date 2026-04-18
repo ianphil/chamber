@@ -21,6 +21,63 @@ export interface GroupChatConfig {
   maxSpeakerRepeats: number;    // Max times one speaker can go consecutively (default 3)
 }
 
+/** Configuration for handoff orchestration */
+export interface HandoffConfig {
+  initialMindId?: string;       // Which mind starts (defaults to first participant)
+  maxHandoffHops: number;       // Safety cap on total handoffs (default 5)
+}
+
+/** Reason a handoff orchestration terminated */
+export type HandoffTerminationReason =
+  | 'DONE'           // Agent signalled task complete
+  | 'MAX_HOPS'       // Hit maxHandoffHops limit
+  | 'LOOP_DETECTED'  // Cycle detected (A→B→A)
+  | 'ERROR'          // Unrecoverable error
+  | 'CANCELLED';     // User/system abort
+
+/** Configuration for magentic (manager-driven) orchestration */
+export interface MagenticConfig {
+  managerMindId: string;        // Which mind acts as the manager
+  maxSteps: number;             // Safety cap on total steps (default 10)
+  allowedMindIds?: string[];    // Allowlist of agent mindIds (defaults to all participants)
+}
+
+/** A single task item in the magentic task ledger */
+export interface TaskLedgerItem {
+  id: string;
+  description: string;
+  assignee?: string;            // mindId of assigned agent
+  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  result?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Approval gate — governance for side-effect tools
+// ---------------------------------------------------------------------------
+
+/** Risk level for side-effect tool invocation */
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+/** Payload emitted when a side-effect tool requires approval */
+export interface ApprovalRequest {
+  correlationId: string;
+  actorId: string;
+  toolName: string;
+  parameters: Record<string, unknown>;  // Redacted
+  reason: string;
+  riskLevel: RiskLevel;
+  timestamp: number;
+}
+
+/** Decision from an approver */
+export interface ApprovalDecision {
+  correlationId: string;
+  approved: boolean;
+  decidedBy: string;
+  timestamp: number;
+  reason?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration events — emitted alongside normal ChatroomStreamEvents
 // ---------------------------------------------------------------------------
@@ -29,7 +86,14 @@ export type OrchestrationEventType =
   | 'orchestration:turn-start'
   | 'orchestration:moderator-decision'
   | 'orchestration:convergence'
-  | 'orchestration:synthesis';
+  | 'orchestration:synthesis'
+  | 'orchestration:handoff'
+  | 'orchestration:handoff-terminated'
+  | 'orchestration:magentic-terminated'
+  | 'orchestration:task-ledger-update'
+  | 'orchestration:manager-plan'
+  | 'orchestration:approval-requested'
+  | 'orchestration:approval-decided';
 
 export interface OrchestrationEvent {
   type: OrchestrationEventType;
@@ -77,7 +141,7 @@ export interface ChatroomAPI {
   history: () => Promise<ChatroomMessage[]>;
   clear: () => Promise<void>;
   stop: () => Promise<void>;
-  setOrchestration: (mode: OrchestrationMode, config?: GroupChatConfig) => Promise<void>;
-  getOrchestration: () => Promise<{ mode: OrchestrationMode; config: GroupChatConfig | null }>;
+  setOrchestration: (mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => Promise<void>;
+  getOrchestration: () => Promise<{ mode: OrchestrationMode; config: GroupChatConfig | HandoffConfig | MagenticConfig | null }>;
   onEvent: (callback: (event: ChatroomStreamEvent) => void) => () => void;
 }

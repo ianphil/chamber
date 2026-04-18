@@ -401,8 +401,29 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             },
           };
         }
-        if (orchType === 'orchestration:convergence') {
+        if (orchType === 'orchestration:convergence' || orchType === 'orchestration:handoff-terminated' || orchType === 'orchestration:magentic-terminated') {
           return { ...state, chatroomActiveSpeaker: null };
+        }
+        if (orchType === 'orchestration:handoff') {
+          const data = (event as { data: Record<string, unknown> }).data;
+          return {
+            ...state,
+            chatroomActiveSpeaker: {
+              mindId: (data.toMindId as string) ?? mindId,
+              mindName: (data.to as string) ?? mindName,
+              phase: 'speaking',
+            },
+          };
+        }
+        if (orchType === 'orchestration:manager-plan' || orchType === 'orchestration:task-ledger-update') {
+          return {
+            ...state,
+            chatroomActiveSpeaker: {
+              mindId,
+              mindName,
+              phase: 'moderating',
+            },
+          };
         }
         return state;
       }
@@ -450,6 +471,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_GROUP_CHAT_CONFIG':
       return { ...state, chatroomGroupChatConfig: action.payload };
+
+    case 'SET_HANDOFF_CONFIG':
+      return { ...state, chatroomHandoffConfig: action.payload };
+
+    case 'SET_MAGENTIC_CONFIG':
+      return { ...state, chatroomMagenticConfig: action.payload };
 
     case 'CHATROOM_ACTIVE_SPEAKER':
       return { ...state, chatroomActiveSpeaker: action.payload };

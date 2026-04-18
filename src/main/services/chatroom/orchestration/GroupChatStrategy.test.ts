@@ -9,7 +9,7 @@ vi.mock('node:crypto', () => ({
 import { GroupChatStrategy } from './GroupChatStrategy';
 import type { OrchestrationContext } from './types';
 import type { MindContext } from '../../../../shared/types';
-import type { ChatroomStreamEvent, ChatroomMessage, GroupChatConfig } from '../../../../shared/chatroom-types';
+import type { ChatroomStreamEvent, GroupChatConfig } from '../../../../shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -84,7 +84,7 @@ function createContext(
     evictSession: vi.fn((mindId: string) => {
       sessions.delete(mindId);
     }),
-    buildBasePrompt: vi.fn((_msg: string, _parts: MindContext[]) => '<message sender="You">test</message>'),
+    buildBasePrompt: vi.fn(() => '<message sender="You">test</message>'),
     emitEvent: vi.fn(),
     persistMessage: vi.fn(),
     getHistory: vi.fn(() => []),
@@ -124,11 +124,14 @@ describe('GroupChatStrategy', () => {
   it('moderator receives structured XML prompt', async () => {
     const modSess = createMockSession();
     const aSess = createMockSession();
+    const bSess = createMockSession();
     sessions.set('mod', modSess);
     sessions.set('a', aSess);
+    sessions.set('b', bSess);
 
-    // Agent A speaks first
+    // Both speakers must have sessions — moderator may pick either
     autoIdleWith(aSess, 'Cortana speaks');
+    autoIdleWith(bSess, 'Jarvis speaks');
 
     // Moderator decides to close after first speaker (all heard + minRounds=1 with only 1 speaker needed)
     // But we have 2 speakers so this won't close yet. Let's set maxTurns=1 as safety cap.
@@ -413,7 +416,7 @@ describe('GroupChatStrategy', () => {
     autoIdleWith(bSess, 'Jarvis');
 
     let turnCount = 0;
-    modSess.send.mockImplementation(async (opts: { prompt: string }) => {
+    modSess.send.mockImplementation(async () => {
       turnCount++;
       let content: string;
       if (turnCount === 1) content = moderatorResponse('Jarvis');

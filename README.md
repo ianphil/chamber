@@ -29,6 +29,7 @@ Chamber is where that happens. Your agent wakes up, finds its voice, and prepare
 - **Self-extending** — the agent has a Lens skill. Ask it to "create a view for my cron jobs" and it builds one.
 - **Activity bar** — VS Code-style icon strip. Icons appear as views are discovered.
 - **Streaming chat** — real-time responses with markdown, tool calls, and reasoning blocks.
+- **Chatroom** — multi-agent group chat with 5 orchestration modes: Concurrent (all agents respond in parallel), Sequential (round-robin), GroupChat (moderator-directed), Handoff (agent-to-agent delegation), and Magentic (manager-driven task ledger).
 - **Model picker** — choose your model, persisted across sessions.
 - **Agent identity** — chat shows the agent's name. This is their chamber.
 
@@ -49,9 +50,17 @@ Select a mind directory from the sidebar. The agent connects, views appear, and 
 Electron Main Process
 ├── SdkLoader        — singleton CopilotClient, auto-install SDK
 ├── ChatService      — streaming sessions, background prompts
+├── ChatroomService  — multi-agent broadcast, orchestration strategy dispatch
+│   └── orchestration/
+│       ├── stream-agent.ts  — shared SDK event wiring + stale session retry
+│       ├── shared.ts        — XML/JSON helpers shared across strategies
+│       ├── ConcurrentStrategy, SequentialStrategy, GroupChatStrategy,
+│       │   HandoffStrategy, MagenticStrategy
+│       ├── approval-gate.ts — tool execution review gate
+│       └── observability.ts — structured event emission with redaction
 ├── ViewDiscovery    — scans .github/lens/ for view.json, file watcher
 ├── ExtensionLoader  — canvas, cron, IDEA adapters
-└── IPC Handlers     — chat, agent, lens, config channels
+└── IPC Handlers     — chat, chatroom, agent, lens, config channels
 
 Preload Bridge
 └── contextBridge    — narrow typed API (chat, agent, lens, config, window)
@@ -61,7 +70,8 @@ React Renderer
 ├── SidePanel        — contextual per view (chat, lens metadata)
 ├── ViewRouter       — routes to ChatPanel or LensViewRenderer
 ├── Lens components  — Form, Table, Briefing, Detail, StatusBoard, Timeline, Editor
-└── Chat components  — MessageList, ChatInput, StreamingMessage, WelcomeScreen
+├── Chat components  — MessageList, ChatInput, StreamingMessage, WelcomeScreen
+└── Chatroom components — ChatroomPanel, OrchestrationPicker, ParticipantBar
 ```
 
 ## Development

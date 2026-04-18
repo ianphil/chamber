@@ -728,4 +728,130 @@ describe('appReducer — chatroom actions', () => {
     expect(state.chatroomMessages).toEqual([]);
     expect(state.chatroomStreamingByMind).toEqual({});
   });
+
+  // -------------------------------------------------------------------------
+  // Orchestration events — set chatroomActiveSpeaker
+  // -------------------------------------------------------------------------
+
+  it('orchestration:turn-start sets active speaker with phase speaking', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:turn-start', data: { speaker: 'Agent A', speakerMindId: 'mind-1' } },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' });
+  });
+
+  it('orchestration:moderator-decision sets phase moderating', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mod-1', mindName: 'Moderator', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:moderator-decision', data: {} },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mod-1', mindName: 'Moderator', phase: 'moderating' });
+  });
+
+  it('orchestration:synthesis sets phase synthesizing', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mod-1', mindName: 'Moderator', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:synthesis', data: {} },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mod-1', mindName: 'Moderator', phase: 'synthesizing' });
+  });
+
+  it('orchestration:convergence clears active speaker', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomActiveSpeaker: { mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:convergence', data: {} },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toBeNull();
+  });
+
+  it('orchestration:handoff-terminated clears active speaker', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomActiveSpeaker: { mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:handoff-terminated', data: { reason: 'DONE' } },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toBeNull();
+  });
+
+  it('orchestration:magentic-terminated clears active speaker', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomActiveSpeaker: { mindId: 'mgr-1', mindName: 'Manager', phase: 'moderating' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mgr-1', mindName: 'Manager', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:magentic-terminated', data: { reason: 'STEP_BUDGET_EXHAUSTED' } },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toBeNull();
+  });
+
+  it('orchestration:handoff sets active speaker to handoff target', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:handoff', data: { from: 'Agent A', fromMindId: 'mind-1', to: 'Agent B', toMindId: 'mind-2' } },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mind-2', mindName: 'Agent B', phase: 'speaking' });
+  });
+
+  it('orchestration:manager-plan sets phase moderating', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mgr-1', mindName: 'Manager', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:manager-plan', data: { phase: 'initial-planning' } },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mgr-1', mindName: 'Manager', phase: 'moderating' });
+  });
+
+  it('orchestration:task-ledger-update sets phase moderating', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mgr-1', mindName: 'Manager', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:task-ledger-update', data: { ledger: [] } },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mgr-1', mindName: 'Manager', phase: 'moderating' });
+  });
+
+  it('unknown orchestration event is a no-op', () => {
+    const state = appReducer(initialState, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:unknown-future-event', data: {} },
+      },
+    });
+    expect(state.chatroomActiveSpeaker).toBeNull();
+  });
 });
