@@ -7,6 +7,7 @@ import { HandoffStrategy } from './HandoffStrategy';
 import { MagenticStrategy } from './MagenticStrategy';
 
 export type { OrchestrationStrategy, OrchestrationContext } from './types';
+export { BaseStrategy } from './types';
 export { ConcurrentStrategy } from './ConcurrentStrategy';
 export { SequentialStrategy } from './SequentialStrategy';
 export { GroupChatStrategy } from './GroupChatStrategy';

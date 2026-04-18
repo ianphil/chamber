@@ -20,6 +20,46 @@ export interface OrchestrationStrategy {
 }
 
 // ---------------------------------------------------------------------------
+// BaseStrategy — shared lifecycle for strategies that use abort + unsubs
+// ---------------------------------------------------------------------------
+
+/**
+ * Abstract base that owns the `abortController` / `unsubs` lifecycle
+ * shared by Sequential, GroupChat, Handoff, and Magentic strategies.
+ * ConcurrentStrategy manages per-agent controllers so it does NOT extend this.
+ */
+export abstract class BaseStrategy implements OrchestrationStrategy {
+  abstract readonly mode: OrchestrationMode;
+
+  protected abortController: AbortController | null = null;
+  protected currentUnsubs: (() => void)[] = [];
+
+  abstract execute(
+    userMessage: string,
+    participants: MindContext[],
+    roundId: string,
+    context: OrchestrationContext,
+  ): Promise<void>;
+
+  /** Start a new round — call at the top of execute() */
+  protected begin(): AbortController {
+    this.abortController = new AbortController();
+    return this.abortController;
+  }
+
+  /** Whether the current round has been cancelled */
+  protected get isAborted(): boolean {
+    return this.abortController?.signal.aborted ?? false;
+  }
+
+  stop(): void {
+    this.abortController?.abort();
+    for (const unsub of this.currentUnsubs) unsub();
+    this.currentUnsubs = [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // OrchestrationContext — adapter provided by ChatroomService to strategies
 // ---------------------------------------------------------------------------
 

@@ -95,9 +95,25 @@ export type OrchestrationEventType =
   | 'orchestration:approval-requested'
   | 'orchestration:approval-decided';
 
-export interface OrchestrationEvent {
-  type: OrchestrationEventType;
-  data: Record<string, unknown>;
+/** Discriminated union of orchestration events — enables type-safe switch in reducers */
+export type OrchestrationEvent =
+  | { type: 'orchestration:turn-start'; data: { speaker: string; speakerMindId: string } & Record<string, unknown> }
+  | { type: 'orchestration:moderator-decision'; data: Record<string, unknown> }
+  | { type: 'orchestration:convergence'; data: Record<string, unknown> }
+  | { type: 'orchestration:synthesis'; data: Record<string, unknown> }
+  | { type: 'orchestration:handoff'; data: { from: string; fromMindId: string; to: string; toMindId: string; reason: string } & Record<string, unknown> }
+  | { type: 'orchestration:handoff-terminated'; data: Record<string, unknown> }
+  | { type: 'orchestration:magentic-terminated'; data: Record<string, unknown> }
+  | { type: 'orchestration:task-ledger-update'; data: Record<string, unknown> }
+  | { type: 'orchestration:manager-plan'; data: Record<string, unknown> }
+  | { type: 'orchestration:approval-requested'; data: Record<string, unknown> }
+  | { type: 'orchestration:approval-decided'; data: Record<string, unknown> };
+
+/** Type guard: narrows ChatEvent | OrchestrationEvent to OrchestrationEvent */
+export function isOrchestrationEvent(
+  event: ChatEvent | OrchestrationEvent,
+): event is OrchestrationEvent {
+  return event.type.startsWith('orchestration:');
 }
 
 // ---------------------------------------------------------------------------

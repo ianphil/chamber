@@ -4,7 +4,8 @@ import type {
   MagenticConfig,
   TaskLedgerItem,
 } from '../../../../shared/chatroom-types';
-import type { OrchestrationStrategy, OrchestrationContext } from './types';
+import type { OrchestrationContext } from './types';
+import { BaseStrategy } from './types';
 import { ObservabilityEmitter } from './observability';
 import { escapeXml, textContent, extractJsonObject, stripControlJson } from './shared';
 import { sendToAgentWithRetry } from './stream-agent';
@@ -64,13 +65,12 @@ function parseManagerResponse(text: string): ManagerDecision | null {
  * Current limitation:
  * - Single-threaded execution (one worker per step, no parallel sub-tasks)
  */
-export class MagenticStrategy implements OrchestrationStrategy {
+export class MagenticStrategy extends BaseStrategy {
   readonly mode = 'magentic' as const;
-  private abortController: AbortController | null = null;
-  private currentUnsubs: (() => void)[] = [];
   private readonly config: MagenticConfig;
 
   constructor(config: MagenticConfig) {
+    super();
     this.config = config;
   }
 
@@ -82,7 +82,7 @@ export class MagenticStrategy implements OrchestrationStrategy {
   ): Promise<void> {
     if (participants.length === 0) return;
 
-    this.abortController = new AbortController();
+    this.begin();
 
     const obs = new ObservabilityEmitter('magentic');
     obs.start({ participantCount: participants.length, maxSteps: this.config.maxSteps });
@@ -136,7 +136,7 @@ export class MagenticStrategy implements OrchestrationStrategy {
         prompt: planPrompt,
         roundId,
         context,
-        abortSignal: this.abortController.signal,
+        abortSignal: this.abortController!.signal,
         unsubs: this.currentUnsubs,
         orchestrationMode: 'magentic',
         transformContent: (raw) => stripControlJson(raw, (a) => ['assign', 'complete', 'update-plan'].includes(a as string)),
@@ -171,7 +171,7 @@ export class MagenticStrategy implements OrchestrationStrategy {
     // ── Phase 2: Manager-driven execution loop ──
 
     for (step = 0; step < this.config.maxSteps; step++) {
-      if (this.abortController.signal.aborted) break;
+      if (this.isAborted) break;
 
       // Check if all tasks are completed
       const allDone = ledger.every(
@@ -192,7 +192,7 @@ export class MagenticStrategy implements OrchestrationStrategy {
           prompt: assignPrompt,
           roundId,
           context,
-          abortSignal: this.abortController.signal,
+          abortSignal: this.abortController!.signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'magentic',
           transformContent: (raw) => stripControlJson(raw, (a) => ['assign', 'complete', 'update-plan'].includes(a as string)),
@@ -285,7 +285,7 @@ export class MagenticStrategy implements OrchestrationStrategy {
             prompt: workerPrompt,
             roundId,
             context,
-            abortSignal: this.abortController.signal,
+            abortSignal: this.abortController!.signal,
             unsubs: this.currentUnsubs,
             orchestrationMode: 'magentic',
           });
@@ -320,12 +320,6 @@ export class MagenticStrategy implements OrchestrationStrategy {
     }
 
     obs.end({ totalSteps: step, ledgerSize: ledger.length });
-  }
-
-  stop(): void {
-    this.abortController?.abort();
-    for (const unsub of this.currentUnsubs) unsub();
-    this.currentUnsubs = [];
   }
 
   // -------------------------------------------------------------------------

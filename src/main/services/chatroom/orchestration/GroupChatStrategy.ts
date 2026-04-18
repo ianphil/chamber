@@ -2,7 +2,8 @@ import type { MindContext } from '../../../../shared/types';
 import type {
   GroupChatConfig,
 } from '../../../../shared/chatroom-types';
-import type { OrchestrationStrategy, OrchestrationContext } from './types';
+import type { OrchestrationContext } from './types';
+import { BaseStrategy } from './types';
 import { escapeXml, textContent, extractJsonObject } from './shared';
 import { sendToAgentWithRetry } from './stream-agent';
 
@@ -47,13 +48,12 @@ interface TranscriptTurn {
 // GroupChatStrategy — moderated sequential turn-taking
 // ---------------------------------------------------------------------------
 
-export class GroupChatStrategy implements OrchestrationStrategy {
+export class GroupChatStrategy extends BaseStrategy {
   readonly mode = 'group-chat' as const;
-  private abortController: AbortController | null = null;
-  private currentUnsubs: (() => void)[] = [];
   private readonly config: GroupChatConfig;
 
   constructor(config: GroupChatConfig) {
+    super();
     this.config = config;
   }
 
@@ -65,7 +65,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
   ): Promise<void> {
     if (participants.length === 0) return;
 
-    this.abortController = new AbortController();
+    this.begin();
 
     const moderator = participants.find((p) => p.mindId === this.config.moderatorMindId);
     if (!moderator) {
@@ -125,7 +125,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
         prompt: openingPrompt,
         roundId,
         context,
-        abortSignal: this.abortController.signal,
+        abortSignal: this.abortController!.signal,
         unsubs: this.currentUnsubs,
         orchestrationMode: 'group-chat',
       }));
@@ -163,7 +163,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
     }
 
     for (let turn = 0; turn < this.config.maxTurns; turn++) {
-      if (this.abortController.signal.aborted) break;
+      if (this.isAborted) break;
 
       turnNumber = turn + 1;
       const speaker = nextSpeakerMind;
@@ -198,7 +198,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
           prompt: speakerPrompt,
           roundId,
           context,
-          abortSignal: this.abortController.signal,
+          abortSignal: this.abortController!.signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'group-chat',
         }));
@@ -219,7 +219,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
         spokeMindIds.add(speaker.mindId);
       }
 
-      if (this.abortController.signal.aborted) break;
+      if (this.isAborted) break;
 
       // ── Moderator decision ──
       const completedRounds = Math.min(
@@ -243,7 +243,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
           prompt: moderatorPrompt,
           roundId,
           context,
-          abortSignal: this.abortController.signal,
+          abortSignal: this.abortController!.signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'group-chat',
         }));
@@ -334,12 +334,6 @@ export class GroupChatStrategy implements OrchestrationStrategy {
         nextSpeakerMind = nextUnheard();
       }
     }
-  }
-
-  stop(): void {
-    this.abortController?.abort();
-    for (const unsub of this.currentUnsubs) unsub();
-    this.currentUnsubs = [];
   }
 
   // -------------------------------------------------------------------------
@@ -452,7 +446,7 @@ export class GroupChatStrategy implements OrchestrationStrategy {
     roundId: string,
     context: OrchestrationContext,
   ): Promise<void> {
-    if (this.abortController?.signal.aborted) return;
+    if (this.isAborted) return;
 
     const participantNames = participants.map((p) => p.identity.name).join(', ');
 

@@ -1,4 +1,4 @@
-import { describe, it, expectTypeOf } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import type {
   ChatroomMessage,
   ChatroomTranscript,
@@ -9,6 +9,7 @@ import type {
   OrchestrationEvent,
   OrchestrationEventType,
 } from './chatroom-types';
+import { isOrchestrationEvent } from './chatroom-types';
 import type { ChatMessage, ChatEvent } from './types';
 
 describe('chatroom-types', () => {
@@ -66,6 +67,51 @@ describe('chatroom-types', () => {
 
   it('OrchestrationEvent has type and data', () => {
     expectTypeOf<OrchestrationEvent['type']>().toEqualTypeOf<OrchestrationEventType>();
-    expectTypeOf<OrchestrationEvent['data']>().toEqualTypeOf<Record<string, unknown>>();
+    expectTypeOf<OrchestrationEvent['data']>().toMatchTypeOf<Record<string, unknown>>();
+  });
+
+  // -------------------------------------------------------------------------
+  // isOrchestrationEvent — runtime type guard tests
+  // -------------------------------------------------------------------------
+
+  it('isOrchestrationEvent returns true for orchestration:turn-start', () => {
+    const event: OrchestrationEvent = { type: 'orchestration:turn-start', data: { speaker: 'A', speakerMindId: 'a1' } };
+    expect(isOrchestrationEvent(event)).toBe(true);
+  });
+
+  it('isOrchestrationEvent returns true for all orchestration event types', () => {
+    const types: OrchestrationEventType[] = [
+      'orchestration:turn-start',
+      'orchestration:moderator-decision',
+      'orchestration:convergence',
+      'orchestration:synthesis',
+      'orchestration:handoff',
+      'orchestration:handoff-terminated',
+      'orchestration:magentic-terminated',
+      'orchestration:task-ledger-update',
+      'orchestration:manager-plan',
+      'orchestration:approval-requested',
+      'orchestration:approval-decided',
+    ];
+    for (const type of types) {
+      // Use `as any` because not all data shapes match the discriminated members
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(isOrchestrationEvent({ type, data: {} } as any)).toBe(true);
+    }
+  });
+
+  it('isOrchestrationEvent returns false for ChatEvent types', () => {
+    const chatEvents: ChatEvent[] = [
+      { type: 'chunk', content: 'hello' },
+      { type: 'done' },
+      { type: 'error', message: 'fail' },
+      { type: 'reconnecting' },
+      { type: 'tool_start', toolCallId: 't1', toolName: 'read' },
+      { type: 'reasoning', reasoningId: 'r1', content: 'thinking' },
+      { type: 'message_final', sdkMessageId: 's1', content: 'final' },
+    ];
+    for (const event of chatEvents) {
+      expect(isOrchestrationEvent(event)).toBe(false);
+    }
   });
 });

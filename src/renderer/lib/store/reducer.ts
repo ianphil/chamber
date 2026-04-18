@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatEvent, ContentBlock } from '../../../shared/types';
 import type { Task, TaskState } from '../../../shared/a2a-types';
 import type { ChatroomMessage } from '../../../shared/chatroom-types';
+import { isOrchestrationEvent } from '../../../shared/chatroom-types';
 import type { AppState, AppAction } from './state';
 
 /** Extract plain text from content blocks (for search, accessibility, etc.) */
@@ -368,64 +369,69 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const { mindId, mindName, messageId, roundId, event } = action.payload;
 
       // Orchestration events update the active speaker indicator
-      if ('type' in event && (event.type as string).startsWith('orchestration:')) {
-        const orchType = event.type as string;
-        if (orchType === 'orchestration:turn-start') {
-          const data = (event as { data: Record<string, unknown> }).data;
-          return {
-            ...state,
-            chatroomActiveSpeaker: {
-              mindId: (data.speakerMindId as string) ?? mindId,
-              mindName: (data.speaker as string) ?? mindName,
-              phase: 'speaking',
-            },
-          };
+      if (isOrchestrationEvent(event)) {
+        switch (event.type) {
+          case 'orchestration:turn-start':
+            return {
+              ...state,
+              chatroomActiveSpeaker: {
+                mindId: event.data.speakerMindId ?? mindId,
+                mindName: event.data.speaker ?? mindName,
+                phase: 'speaking',
+              },
+            };
+
+          case 'orchestration:moderator-decision':
+            return {
+              ...state,
+              chatroomActiveSpeaker: {
+                mindId,
+                mindName,
+                phase: 'moderating',
+              },
+            };
+
+          case 'orchestration:synthesis':
+            return {
+              ...state,
+              chatroomActiveSpeaker: {
+                mindId,
+                mindName,
+                phase: 'synthesizing',
+              },
+            };
+
+          case 'orchestration:convergence':
+          case 'orchestration:handoff-terminated':
+          case 'orchestration:magentic-terminated':
+            return { ...state, chatroomActiveSpeaker: null };
+
+          case 'orchestration:handoff':
+            return {
+              ...state,
+              chatroomActiveSpeaker: {
+                mindId: event.data.toMindId ?? mindId,
+                mindName: event.data.to ?? mindName,
+                phase: 'speaking',
+              },
+            };
+
+          case 'orchestration:manager-plan':
+          case 'orchestration:task-ledger-update':
+            return {
+              ...state,
+              chatroomActiveSpeaker: {
+                mindId,
+                mindName,
+                phase: 'moderating',
+              },
+            };
+
+          case 'orchestration:approval-requested':
+          case 'orchestration:approval-decided':
+          default:
+            return state;
         }
-        if (orchType === 'orchestration:moderator-decision') {
-          return {
-            ...state,
-            chatroomActiveSpeaker: {
-              mindId,
-              mindName,
-              phase: 'moderating',
-            },
-          };
-        }
-        if (orchType === 'orchestration:synthesis') {
-          return {
-            ...state,
-            chatroomActiveSpeaker: {
-              mindId,
-              mindName,
-              phase: 'synthesizing',
-            },
-          };
-        }
-        if (orchType === 'orchestration:convergence' || orchType === 'orchestration:handoff-terminated' || orchType === 'orchestration:magentic-terminated') {
-          return { ...state, chatroomActiveSpeaker: null };
-        }
-        if (orchType === 'orchestration:handoff') {
-          const data = (event as { data: Record<string, unknown> }).data;
-          return {
-            ...state,
-            chatroomActiveSpeaker: {
-              mindId: (data.toMindId as string) ?? mindId,
-              mindName: (data.to as string) ?? mindName,
-              phase: 'speaking',
-            },
-          };
-        }
-        if (orchType === 'orchestration:manager-plan' || orchType === 'orchestration:task-ledger-update') {
-          return {
-            ...state,
-            chatroomActiveSpeaker: {
-              mindId,
-              mindName,
-              phase: 'moderating',
-            },
-          };
-        }
-        return state;
       }
 
       // At this point, event is a ChatEvent (not an OrchestrationEvent)

@@ -4,7 +4,8 @@ import type {
   HandoffConfig,
   HandoffTerminationReason,
 } from '../../../../shared/chatroom-types';
-import type { OrchestrationStrategy, OrchestrationContext } from './types';
+import type { OrchestrationContext } from './types';
+import { BaseStrategy } from './types';
 import { ObservabilityEmitter } from './observability';
 import { escapeXml, extractJsonObject, stripControlJson } from './shared';
 import { sendToAgentWithRetry } from './stream-agent';
@@ -52,13 +53,12 @@ interface HandoffTurn {
 // HandoffStrategy — agent-to-agent delegation with safety limits
 // ---------------------------------------------------------------------------
 
-export class HandoffStrategy implements OrchestrationStrategy {
+export class HandoffStrategy extends BaseStrategy {
   readonly mode = 'handoff' as const;
-  private abortController: AbortController | null = null;
-  private currentUnsubs: (() => void)[] = [];
   private readonly config: HandoffConfig;
 
   constructor(config: HandoffConfig) {
+    super();
     this.config = config;
   }
 
@@ -70,7 +70,7 @@ export class HandoffStrategy implements OrchestrationStrategy {
   ): Promise<void> {
     if (participants.length === 0) return;
 
-    this.abortController = new AbortController();
+    this.begin();
 
     const obs = new ObservabilityEmitter('handoff');
     obs.start({ participantCount: participants.length, maxHops: this.config.maxHandoffHops });
@@ -88,7 +88,7 @@ export class HandoffStrategy implements OrchestrationStrategy {
       participants.find((p) => p.identity.name.toLowerCase() === name.toLowerCase());
 
     for (let hop = 0; hop < this.config.maxHandoffHops; hop++) {
-      if (this.abortController.signal.aborted) {
+      if (this.isAborted) {
         terminationReason = 'CANCELLED';
         break;
       }
@@ -151,7 +151,7 @@ export class HandoffStrategy implements OrchestrationStrategy {
           prompt,
           roundId,
           context,
-          abortSignal: this.abortController.signal,
+          abortSignal: this.abortController!.signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'handoff',
           transformContent: (raw) => stripControlJson(raw, (a) => a === 'handoff' || a === 'done'),
@@ -174,7 +174,7 @@ export class HandoffStrategy implements OrchestrationStrategy {
       }
 
       if (!response) {
-        terminationReason = this.abortController.signal.aborted ? 'CANCELLED' : 'ERROR';
+        terminationReason = this.isAborted ? 'CANCELLED' : 'ERROR';
         break;
       }
 
@@ -264,12 +264,6 @@ export class HandoffStrategy implements OrchestrationStrategy {
     }
 
     obs.end({ terminationReason, totalHops: visitedSequence.length });
-  }
-
-  stop(): void {
-    this.abortController?.abort();
-    for (const unsub of this.currentUnsubs) unsub();
-    this.currentUnsubs = [];
   }
 
   // -------------------------------------------------------------------------

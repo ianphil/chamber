@@ -216,9 +216,9 @@ export function installElectronAPI(api?: ElectronAPI): ElectronAPI {
 
 export function makeOrchestrationEvent(
   type: OrchestrationEventType = 'orchestration:turn-start',
-  data: Record<string, unknown> = { speaker: 'Agent One' },
+  data: Record<string, unknown> = { speaker: 'Agent One', speakerMindId: 'agent-1' },
 ): OrchestrationEvent {
-  return { type, data };
+  return { type, data } as OrchestrationEvent;
 }
 
 export function makeGroupChatConfig(

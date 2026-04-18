@@ -849,9 +849,42 @@ describe('appReducer — chatroom actions', () => {
       type: 'CHATROOM_EVENT',
       payload: {
         mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
-        event: { type: 'orchestration:unknown-future-event', data: {} },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- forward-compat: simulates a future event type
+        event: { type: 'orchestration:unknown-future-event', data: {} } as any,
       },
     });
     expect(state.chatroomActiveSpeaker).toBeNull();
+  });
+
+  it('orchestration:approval-requested is a no-op', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomActiveSpeaker: { mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:approval-requested', data: { correlationId: 'c1' } },
+      },
+    });
+    // State unchanged — approval events don't modify active speaker
+    expect(state).toBe(base);
+  });
+
+  it('orchestration:approval-decided is a no-op', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomActiveSpeaker: { mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: {
+        mindId: 'mind-1', mindName: 'Agent A', messageId: '', roundId: 'r1',
+        event: { type: 'orchestration:approval-decided', data: { correlationId: 'c1' } },
+      },
+    });
+    // State unchanged
+    expect(state).toBe(base);
   });
 });

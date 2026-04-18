@@ -1,6 +1,7 @@
 import type { MindContext } from '../../../../shared/types';
 import type { ChatroomMessage } from '../../../../shared/chatroom-types';
-import type { OrchestrationStrategy, OrchestrationContext } from './types';
+import type { OrchestrationContext } from './types';
+import { BaseStrategy } from './types';
 import { sendToAgentWithRetry } from './stream-agent';
 import { escapeXml, textContent } from './shared';
 
@@ -8,10 +9,8 @@ import { escapeXml, textContent } from './shared';
 // SequentialStrategy — round-robin, each agent speaks in order
 // ---------------------------------------------------------------------------
 
-export class SequentialStrategy implements OrchestrationStrategy {
+export class SequentialStrategy extends BaseStrategy {
   readonly mode = 'sequential' as const;
-  private abortController: AbortController | null = null;
-  private currentUnsubs: (() => void)[] = [];
 
   async execute(
     userMessage: string,
@@ -21,11 +20,11 @@ export class SequentialStrategy implements OrchestrationStrategy {
   ): Promise<void> {
     if (participants.length === 0) return;
 
-    this.abortController = new AbortController();
+    this.begin();
     const roundResponses: ChatroomMessage[] = [];
 
     for (const mind of participants) {
-      if (this.abortController.signal.aborted) break;
+      if (this.isAborted) break;
 
       // Build prompt that includes responses from earlier agents in this round
       const prompt = this.buildSequentialPrompt(
@@ -53,7 +52,7 @@ export class SequentialStrategy implements OrchestrationStrategy {
         this.currentUnsubs = unsubs;
         const { message } = await sendToAgentWithRetry({
           mind, prompt, roundId, context,
-          abortSignal: this.abortController.signal,
+          abortSignal: this.abortController!.signal,
           unsubs,
           orchestrationMode: 'sequential',
         });
@@ -65,12 +64,6 @@ export class SequentialStrategy implements OrchestrationStrategy {
         // Continue to next agent — don't break the chain
       }
     }
-  }
-
-  stop(): void {
-    this.abortController?.abort();
-    for (const unsub of this.currentUnsubs) unsub();
-    this.currentUnsubs = [];
   }
 
   // -------------------------------------------------------------------------
