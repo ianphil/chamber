@@ -16,5 +16,5 @@
       }
     }
   },
-  "source": "prompt"
+  "source": "data.json"
 }
