@@ -555,7 +555,7 @@ describe('MagenticStrategy', () => {
     const lastLedger = ledgerUpdates[ledgerUpdates.length - 1];
     expect(lastLedger).toBeDefined();
 
-    const ledgerData = (lastLedger.event as { data: { ledger: Array<{ status: string }> } }).data.ledger;
+    const ledgerData = (lastLedger.event as unknown as { data: { ledger: Array<{ status: string }> } }).data.ledger;
     const failedTask = ledgerData.find((t) => t.status === 'failed');
     expect(failedTask).toBeDefined();
   }, 180_000); // Extended timeout — worker timeout is 120s

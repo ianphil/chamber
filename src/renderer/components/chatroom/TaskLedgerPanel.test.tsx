@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { TaskLedgerPanel } from './TaskLedgerPanel';
+import type { TaskLedgerItem } from '../../../shared/chatroom-types';
 
 describe('TaskLedgerPanel', () => {
   const minds = [
@@ -18,7 +19,7 @@ describe('TaskLedgerPanel', () => {
   });
 
   it('renders task descriptions', () => {
-    const ledger = [
+    const ledger: TaskLedgerItem[] = [
       { id: '1', description: 'Research AI safety', status: 'completed', assignee: 'a' },
       { id: '2', description: 'Write summary', status: 'in-progress', assignee: 'b' },
     ];
@@ -28,7 +29,7 @@ describe('TaskLedgerPanel', () => {
   });
 
   it('resolves assignee names from minds', () => {
-    const ledger = [
+    const ledger: TaskLedgerItem[] = [
       { id: '1', description: 'Task', status: 'completed', assignee: 'a' },
     ];
     render(<TaskLedgerPanel ledger={ledger} minds={minds} />);
@@ -36,7 +37,7 @@ describe('TaskLedgerPanel', () => {
   });
 
   it('shows no assignee label for tasks without assignee', () => {
-    const ledger = [
+    const ledger: TaskLedgerItem[] = [
       { id: '1', description: 'Pending task', status: 'pending' },
     ];
     render(<TaskLedgerPanel ledger={ledger} minds={minds} />);
@@ -45,7 +46,7 @@ describe('TaskLedgerPanel', () => {
   });
 
   it('shows status labels for each state', () => {
-    const ledger = [
+    const ledger: TaskLedgerItem[] = [
       { id: '1', description: 'Task alpha', status: 'pending' },
       { id: '2', description: 'Task beta', status: 'in-progress' },
       { id: '3', description: 'Task gamma', status: 'completed' },
@@ -59,7 +60,7 @@ describe('TaskLedgerPanel', () => {
   });
 
   it('renders Task Ledger heading', () => {
-    const ledger = [{ id: '1', description: 'Task', status: 'pending' }];
+    const ledger: TaskLedgerItem[] = [{ id: '1', description: 'Task', status: 'pending' }];
     render(<TaskLedgerPanel ledger={ledger} minds={minds} />);
     expect(screen.getByText('Task Ledger')).toBeDefined();
   });
