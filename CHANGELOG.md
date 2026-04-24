@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.26.0 (2026-04-23)
+
+### Built-in cron
+
+- **CronService** — Chamber now ships cron as a first-class main-process service instead of a per-mind `.github/extensions/cron` adapter.
+- **Per-mind cron storage** — scheduled jobs live in `<mindPath>/.chamber/cron.json` with durable run history in `<mindPath>/.chamber/cron-runs.json`.
+- **Job types** — cron supports prompt, process (`execFile`), webhook, and notification jobs.
+- **Prompt jobs via TaskManager** — scheduled prompt runs execute in isolated task sessions and never interfere with the user’s live chat session.
+- **Cron tools** — minds now get `cron_create`, `cron_list`, `cron_remove`, `cron_enable`, `cron_disable`, `cron_run_now`, and `cron_history`.
+
+### Runtime architecture
+
+- **ChamberToolProvider** — replaced the old extension-loading seam with provider-based tool injection.
+- **A2aToolProvider** — A2A tools now participate through the same provider abstraction used by built-in services.
+- **Windows tray persistence** — closing the window hides Chamber to the tray; explicit Quit shuts the app down.
+- **Single-instance lock** — launching Chamber a second time focuses the running instance instead of creating a duplicate process.
+
+### Genesis
+
+- **No `.github/extensions/` scaffold** — new minds no longer create the extensions folder locally.
+- **Skills-only bootstrap** — genesis bootstrap installs remote skills without pulling template extensions back onto disk.
+
+### Breaking changes
+
+- **Removed extension loader runtime** — `src/main/services/extensions/` has been deleted.
+- **Canvas and IDEA adapters removed** — follow-up work will re-internalize them as Chamber-native services.
+
 ## v0.25.0 (2026-04-18)
 
 ### Chatroom: orchestration strategies

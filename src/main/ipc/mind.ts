@@ -1,5 +1,5 @@
 // Mind IPC handlers — thin adapters for MindManager
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, type NativeImage } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import type { MindManager } from '../services/mind';
@@ -8,6 +8,7 @@ export interface MindIPCConfig {
   preloadPath: string;
   devServerUrl?: string;
   rendererPath?: string;
+  windowIcon?: NativeImage;
 }
 
 export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): void {
@@ -68,6 +69,7 @@ export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): v
         symbolColor: '#fafafa',
         height: 36,
       } : undefined,
+      icon: config.windowIcon,
       backgroundColor: '#09090b',
       webPreferences: {
         preload: config.preloadPath,

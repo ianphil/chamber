@@ -1,16 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildSessionTools } from './tools';
+import { buildA2ATools } from './tools';
 import type { AgentCard, SendMessageRequest, Task } from './types';
 import type { MessageRouter } from './MessageRouter';
 import type { AgentCardRegistry } from './AgentCardRegistry';
 import type { TaskManager } from './TaskManager';
-
-interface SessionTool {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
-}
 
 interface ToolParameterSchema {
   type: string;
@@ -82,29 +75,22 @@ const mockRegistry = {
   getCardByName: vi.fn(),
 };
 
-const extensionTools: SessionTool[] = [
-  { name: 'canvas_show', description: 'Show canvas', parameters: {}, handler: vi.fn() },
-  { name: 'cron_create', description: 'Create cron', parameters: {}, handler: vi.fn() },
-];
-
 describe('A2A Tools', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('buildSessionTools() merges extension tools with A2A tools', () => {
-    const tools = buildSessionTools(
+  it('buildA2ATools() returns all 6 A2A tools', () => {
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
     );
-    expect(tools.length).toBe(8); // 2 extension + 6 A2A
+    expect(tools.length).toBe(6);
   });
 
-  it('buildSessionTools() includes send_message and list_agents', () => {
-    const tools = buildSessionTools(
+  it('buildA2ATools() includes send_message and list_agents', () => {
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -115,9 +101,8 @@ describe('A2A Tools', () => {
   });
 
   it('send_message tool has correct parameter schema', () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -133,9 +118,8 @@ describe('A2A Tools', () => {
   });
 
   it('send_message handler constructs conformant A2A Message', async () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -154,9 +138,8 @@ describe('A2A Tools', () => {
   });
 
   it('send_message handler constructs SendMessageRequest with returnImmediately', async () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -171,9 +154,8 @@ describe('A2A Tools', () => {
   });
 
   it('send_message handler returns SendMessageResponse shape', async () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -187,9 +169,8 @@ describe('A2A Tools', () => {
   });
 
   it('send_message handler passes context_id when provided', async () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -207,9 +188,8 @@ describe('A2A Tools', () => {
   });
 
   it('list_agents returns AgentCards excluding self', async () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -225,9 +205,8 @@ describe('A2A Tools', () => {
   });
 
   it('list_agents returns full A2A AgentCard shape', async () => {
-    const tools = buildSessionTools(
+    const tools = buildA2ATools(
       'mind-a',
-      extensionTools,
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
@@ -245,8 +224,8 @@ describe('A2A Tools', () => {
   });
 
   it('tools are mind-scoped via closure', async () => {
-    const toolsA = buildSessionTools('mind-a', [], mockRouter as unknown as MessageRouter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
-    const toolsB = buildSessionTools('mind-b', [], mockRouter as unknown as MessageRouter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
+    const toolsA = buildA2ATools('mind-a', mockRouter as unknown as MessageRouter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
+    const toolsB = buildA2ATools('mind-b', mockRouter as unknown as MessageRouter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
 
     const sendA = toolsA.find((t) => t.name === 'a2a_send_message');
     if (!sendA) throw new Error('Expected to find a2a_send_message tool');
@@ -269,9 +248,8 @@ describe('A2A Task Tools', () => {
   beforeEach(() => vi.clearAllMocks());
 
   function getTools() {
-    return buildSessionTools(
+    return buildA2ATools(
       'mind-a',
-      [],
       mockRouter as unknown as MessageRouter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,

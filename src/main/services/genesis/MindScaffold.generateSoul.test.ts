@@ -17,6 +17,8 @@ vi.mock('fs', () => ({
 
 // Fake SDK session
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
+import * as fs from 'fs';
+import { execSync } from 'child_process';
 
 const mockSend = vi.fn().mockResolvedValue(undefined);
 const mockDestroy = vi.fn().mockResolvedValue(undefined);
@@ -113,5 +115,24 @@ describe('MindScaffold.generateSoul — CopilotClientFactory integration', () =>
 
     // Client must still be cleaned up
     expect(mockDestroyClient).toHaveBeenCalledWith(fakeClient);
+  });
+
+  it('does not scaffold a .github/extensions directory or install remote extensions', async () => {
+    const scaffold = new MindScaffold(undefined, fakeFactory as unknown as CopilotClientFactory);
+
+    await scaffold.create({
+      name: 'delta',
+      role: 'assistant',
+      voice: 'neutral',
+      voiceDescription: 'focused',
+      basePath: 'C:\\agents',
+    });
+
+    const mkdirCalls = vi.mocked(fs.mkdirSync).mock.calls.map(([dir]) => String(dir));
+    expect(mkdirCalls.some((dir) => dir.includes(`${String.raw`.github\extensions`}`))).toBe(false);
+
+    const execCalls = vi.mocked(execSync).mock.calls
+      .map(([command]) => String(command));
+    expect(execCalls.some((command) => command.includes('install --all'))).toBe(false);
   });
 });

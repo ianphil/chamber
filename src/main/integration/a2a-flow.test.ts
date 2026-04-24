@@ -4,7 +4,7 @@ import { TurnQueue } from '../services/chat/TurnQueue';
 import { ChatService } from '../services/chat/ChatService';
 import { AgentCardRegistry } from '../services/a2a/AgentCardRegistry';
 import { MessageRouter } from '../services/a2a/MessageRouter';
-import { buildSessionTools } from '../services/a2a/tools';
+import { buildA2ATools } from '../services/a2a/tools';
 import type { MindManager } from '../services/mind';
 import type { TaskManager } from '../services/a2a/TaskManager';
 import type { MindContext } from '../../shared/types';
@@ -87,7 +87,7 @@ describe('A2A Integration', () => {
     expect(agentCardRegistry.getCard('agent-b')).toBeTruthy();
 
     // Build tools for Agent A
-    const tools = buildSessionTools('agent-a', [], messageRouter, agentCardRegistry, stubTaskManager);
+    const tools = buildA2ATools('agent-a', messageRouter, agentCardRegistry, stubTaskManager);
     const sendTool = tools.find(t => t.name === 'a2a_send_message');
     if (!sendTool) throw new Error('Expected a2a_send_message tool');
 

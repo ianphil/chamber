@@ -10,11 +10,9 @@ import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInpu
 import { generateMindId } from './generateMindId';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import type { IdentityLoader } from '../chat/IdentityLoader';
-import type { ExtensionLoader } from '../extensions/ExtensionLoader';
+import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
-
-export type ToolBuilder = (mindId: string, extensionTools: Tool[]) => Tool[];
 
 export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
@@ -24,16 +22,19 @@ export class MindManager extends EventEmitter {
   private activeMindId: string | null = null;
   private restorePromise: Promise<void> | null = null;
   private reloading = false;
+  private providers: ChamberToolProvider[] = [];
 
   constructor(
     private readonly clientFactory: CopilotClientFactory,
     private readonly identityLoader: IdentityLoader,
-    private readonly extensionLoader: ExtensionLoader,
     private readonly configService: ConfigService,
     private readonly viewDiscovery: ViewDiscovery,
-    private readonly toolBuilder?: ToolBuilder,
   ) {
     super();
+  }
+
+  setProviders(providers: ChamberToolProvider[]): void {
+    this.providers = [...providers];
   }
 
   async loadMind(mindPath: string, mindId?: string): Promise<MindContext> {
@@ -74,11 +75,7 @@ export class MindManager extends EventEmitter {
     // Create client
     const client = await this.clientFactory.createClient(mindPath);
 
-    // Load extensions
-    const { tools, loaded } = await this.extensionLoader.loadTools(mindPath);
-
-    // Apply toolBuilder (merges A2A tools) if provided
-    const sessionTools = this.toolBuilder ? this.toolBuilder(id, tools) : tools;
+    const sessionTools = this.getSessionTools(id, mindPath);
 
     // Create session
     const session = await this.createSessionForMind(client, mindPath, identity.systemMessage, sessionTools);
@@ -90,14 +87,23 @@ export class MindManager extends EventEmitter {
       status: 'ready',
       client,
       session,
-      extensions: loaded,
     };
 
     this.minds.set(id, context);
     this.pathToId.set(mindPath, id);
 
-    // Scan views
-    await this.viewDiscovery.scan(mindPath);
+    try {
+      await Promise.all([
+        this.activateProviders(id, mindPath),
+        this.viewDiscovery.scan(mindPath),
+      ]);
+    } catch (err) {
+      this.minds.delete(id);
+      this.pathToId.delete(mindPath);
+      await this.releaseProviders(id).catch(() => { /* noop */ });
+      await this.clientFactory.destroyClient(client);
+      throw err;
+    }
 
     // Persist
     this.persistConfig();
@@ -110,8 +116,7 @@ export class MindManager extends EventEmitter {
     const context = this.minds.get(mindId);
     if (!context) return;
 
-    // Cleanup extensions
-    await this.extensionLoader.cleanupExtensions(context.extensions);
+    await this.releaseProviders(mindId);
 
     // Destroy client
     await this.clientFactory.destroyClient(context.client);
@@ -179,8 +184,7 @@ export class MindManager extends EventEmitter {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
 
-    const tools: Tool[] = context.extensions.flatMap((e) => e.tools);
-    const sessionTools = this.toolBuilder ? this.toolBuilder(mindId, tools) : tools;
+    const sessionTools = this.getSessionTools(mindId, context.mindPath);
     context.session = await this.createSessionForMind(
       context.client, context.mindPath, context.identity.systemMessage, sessionTools,
     );
@@ -249,7 +253,7 @@ export class MindManager extends EventEmitter {
 
     // Clean up resources without persisting (don't call unloadMind which clears config)
     for (const [, context] of this.minds) {
-      await this.extensionLoader.cleanupExtensions(context.extensions);
+      await this.releaseProviders(context.mindId);
       await this.clientFactory.destroyClient(context.client);
       this.viewDiscovery.removeMind(context.mindPath);
     }
@@ -278,6 +282,18 @@ export class MindManager extends EventEmitter {
     };
   }
 
+  private getSessionTools(mindId: string, mindPath: string): Tool[] {
+    return this.providers.flatMap((provider) => provider.getToolsForMind(mindId, mindPath));
+  }
+
+  private async activateProviders(mindId: string, mindPath: string): Promise<void> {
+    await Promise.all(this.providers.map((provider) => provider.activateMind?.(mindId, mindPath)));
+  }
+
+  private async releaseProviders(mindId: string): Promise<void> {
+    await Promise.all(this.providers.map((provider) => provider.releaseMind?.(mindId)));
+  }
+
   async createTaskSession(
     mindId: string,
     taskId: string,
@@ -286,8 +302,7 @@ export class MindManager extends EventEmitter {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
 
-    const tools: Tool[] = context.extensions.flatMap((e) => e.tools);
-    const sessionTools = this.toolBuilder ? this.toolBuilder(mindId, tools) : tools;
+    const sessionTools = this.getSessionTools(mindId, context.mindPath);
 
     return this.createSessionForMind(
       context.client,
@@ -302,8 +317,7 @@ export class MindManager extends EventEmitter {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
 
-    const tools: Tool[] = context.extensions.flatMap((e) => e.tools);
-    const sessionTools = this.toolBuilder ? this.toolBuilder(mindId, tools) : tools;
+    const sessionTools = this.getSessionTools(mindId, context.mindPath);
 
     return this.createSessionForMind(
       context.client,

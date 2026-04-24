@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { TaskManager } from './TaskManager';
 import { AgentCardRegistry } from './AgentCardRegistry';
-import { buildSessionTools } from './tools';
+import { buildA2ATools } from './tools';
 import type { MessageRouter } from './MessageRouter';
 import type { TaskSessionFactory } from './TaskManager';
 
@@ -183,8 +183,8 @@ describe('A2A Task Flow Integration', () => {
     expect(busEvents).toContain('artifact');
   });
 
-  // 5. buildSessionTools includes all 6 tools
-  it('buildSessionTools returns 6 tools with correct names', () => {
+  // 5. buildA2ATools includes all 6 tools
+  it('buildA2ATools returns 6 tools with correct names', () => {
     const mockRouter = {} as MessageRouter;
     const mockTaskMgr = {
       sendTask: vi.fn(),
@@ -193,7 +193,7 @@ describe('A2A Task Flow Integration', () => {
       cancelTask: vi.fn(),
     } as unknown as TaskManager;
 
-    const tools = buildSessionTools('mind-1', [], mockRouter, registry, mockTaskMgr);
+    const tools = buildA2ATools('mind-1', mockRouter, registry, mockTaskMgr);
 
     expect(tools).toHaveLength(6);
     const names = tools.map((t) => t.name);

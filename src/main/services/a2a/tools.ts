@@ -11,9 +11,8 @@ export interface SessionTool {
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
-export function buildSessionTools(
+export function buildA2ATools(
   mindId: string,
-  extensionTools: SessionTool[],
   messageRouter: MessageRouter,
   agentCardRegistry: AgentCardRegistry,
   taskManager: TaskManager,
@@ -62,7 +61,7 @@ export function buildSessionTools(
     },
   };
 
-  return [...extensionTools, sendMessage, listAgents, ...buildTaskTools(mindId, taskManager)];
+  return [sendMessage, listAgents, ...buildTaskTools(mindId, taskManager)];
 }
 
 const VALID_TASK_STATES: Set<string> = new Set([

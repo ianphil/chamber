@@ -27,7 +27,9 @@ export interface GenesisProgress {
   detail: string;
 }
 
-interface RemoteRegistry { skills?: { upgrade?: { version?: string; description?: string } } }
+interface RemoteRegistry {
+  skills?: Record<string, { version?: string; description?: string }>;
+}
 
 export class MindScaffold {
   private onProgress?: (progress: GenesisProgress) => void;
@@ -99,7 +101,6 @@ export class MindScaffold {
 
     // .github structure
     fs.mkdirSync(path.join(mindPath, '.github', 'agents'), { recursive: true });
-    fs.mkdirSync(path.join(mindPath, '.github', 'extensions'), { recursive: true });
     fs.mkdirSync(path.join(mindPath, '.github', 'skills'), { recursive: true });
 
     // Working memory
@@ -192,12 +193,18 @@ export class MindScaffold {
 
     // 2. Pull upgrade skill (the bootloader)
     this.emit('capabilities', 'Pulling upgrade skill...');
-    this.pullUpgradeSkill(mindPath);
+    const remoteRegistry = this.pullUpgradeSkill(mindPath);
 
-    // 3. Run upgrade --all to pull remaining capabilities
-    this.emit('capabilities', 'Installing extensions and skills...');
+    // 3. Install only skills — Chamber internalizes extensions.
+    const skillNames = Object.keys(remoteRegistry.skills ?? {});
+    if (skillNames.length === 0) {
+      this.emit('capabilities', 'No remote skills to install.');
+      return;
+    }
+
+    this.emit('capabilities', 'Installing skills...');
     const upgradeScript = path.join(mindPath, '.github', 'skills', 'upgrade', 'upgrade.js');
-    const result = execSync(`node "${upgradeScript}" install --all`, {
+    const result = execSync(`node "${upgradeScript}" install ${skillNames.join(',')}`, {
       cwd: mindPath,
       encoding: 'utf8',
       timeout: 300_000, // 5 minute timeout
@@ -230,7 +237,7 @@ export class MindScaffold {
     }
   }
 
-  private pullUpgradeSkill(mindPath: string): void {
+  private pullUpgradeSkill(mindPath: string): RemoteRegistry {
     const [owner, repo] = GENESIS_SOURCE.split('/');
     const upgradePrefix = '.github/skills/upgrade/';
 
@@ -270,6 +277,7 @@ export class MindScaffold {
       description: upgradeInfo?.description || 'Pull updates from genesis template registry',
     };
     fs.writeFileSync(localRegPath, JSON.stringify(localReg, null, 2) + '\n');
+    return remoteRegistry;
   }
 
   validate(mindPath: string): { ok: boolean; missing: string[] } {

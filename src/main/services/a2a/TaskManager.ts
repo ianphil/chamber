@@ -31,6 +31,10 @@ import {
 
 const TERMINAL_STATES: Set<TaskState> = new Set(['completed', 'failed', 'canceled', 'rejected']);
 
+export interface SendTaskRequest extends SendMessageRequest {
+  onUserInputRequest?: UserInputHandler;
+}
+
 export class TaskManager extends EventEmitter {
   static readonly MAX_COMPLETED_TASKS = 100;
 
@@ -46,7 +50,7 @@ export class TaskManager extends EventEmitter {
     super();
   }
 
-  async sendTask(request: SendMessageRequest): Promise<Task> {
+  async sendTask(request: SendTaskRequest): Promise<Task> {
     // 1. Resolve recipient
     const card =
       this.agentCardRegistry.getCard(request.recipient) ??
@@ -86,7 +90,7 @@ export class TaskManager extends EventEmitter {
 
     // 8. Async processing (fire-and-forget, deferred so caller gets submitted state)
     Promise.resolve().then(() =>
-      this.processTask(task, targetMindId, request.message)
+      this.processTask(task, targetMindId, request.message, request.onUserInputRequest)
         .catch((err) => {
           this.transitionState(task, 'failed');
           console.error(`[TaskManager] Task ${taskId} failed:`, err);
@@ -184,12 +188,17 @@ export class TaskManager extends EventEmitter {
     };
   }
 
-  private async processTask(task: Task, targetMindId: string, message: Message): Promise<void> {
+  private async processTask(
+    task: Task,
+    targetMindId: string,
+    message: Message,
+    onUserInputOverride?: UserInputHandler,
+  ): Promise<void> {
     // a. Transition to working
     this.transitionState(task, 'working');
 
     // b. Create isolated session with input-required callback
-    const onUserInputRequest: UserInputHandler = async (request): Promise<UserInputResponse> => {
+    const defaultOnUserInputRequest: UserInputHandler = async (request): Promise<UserInputResponse> => {
       const statusMessage = createTextMessage(targetMindId, request.question, { contextId: task.contextId });
       task.status = createTaskStatus('input-required', statusMessage);
       task.history = [...(task.history ?? []), statusMessage];
@@ -199,6 +208,7 @@ export class TaskManager extends EventEmitter {
         this.pendingInputs.set(task.id, resolve);
       });
     };
+    const onUserInputRequest = onUserInputOverride ?? defaultOnUserInputRequest;
 
     // c. Serialize message
     const deliveryMessage: Message = { ...message, contextId: task.contextId, taskId: task.id };

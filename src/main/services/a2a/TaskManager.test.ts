@@ -238,6 +238,26 @@ describe('TaskManager', () => {
   });
 
 
+  it('sendTask() passes custom onUserInputRequest through to createTaskSession', async () => {
+    const customHandler: UserInputHandler = async () => ({
+      answer: 'Not now',
+      wasFreeform: true,
+    });
+
+    await tm.sendTask({
+      ...makeRequest('target-1', 'hello'),
+      onUserInputRequest: customHandler,
+    });
+    await flushPromises();
+
+    expect(mockMindManager.createTaskSession).toHaveBeenCalledWith(
+      'target-1',
+      expect.stringMatching(/^task-/),
+      customHandler,
+    );
+  });
+
+
   it('getTask() returns current task state', async () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
     const fetched = tm.getTask(task.id);

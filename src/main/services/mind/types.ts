@@ -3,7 +3,6 @@
 
 import type { MindContext } from '../../../shared/types.js';
 import type { CopilotClient, CopilotSession, SessionConfig, Tool as SdkTool } from '@github/copilot-sdk';
-import type { LoadedExtension } from '../extensions/ExtensionLoader';
 
 export type { CopilotClient, CopilotSession };
 
@@ -22,5 +21,4 @@ export type UserInputResponse = Awaited<ReturnType<UserInputHandler>>;
 export interface InternalMindContext extends MindContext {
   client: CopilotClient;
   session: CopilotSession | null;
-  extensions: LoadedExtension[];
 }

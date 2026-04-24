@@ -27,6 +27,7 @@ Chamber is where that happens. Your agent wakes up, finds its voice, and prepare
 - **Prompt-driven views** — click Refresh, the agent gathers data and populates the view. Edit the prompt to change what it shows.
 - **Write-back** — type instructions in the action bar on any view. The agent modifies the data.
 - **Self-extending** — the agent has a Lens skill. Ask it to "create a view for my cron jobs" and it builds one.
+- **Built-in cron** — schedule prompt, process, webhook, and notification jobs per mind without installing per-mind extensions.
 - **Activity bar** — VS Code-style icon strip. Icons appear as views are discovered.
 - **Streaming chat** — real-time responses with markdown, tool calls, and reasoning blocks.
 - **Chatroom** — multi-agent group chat with 5 orchestration modes: Concurrent (all agents respond in parallel), Sequential (round-robin), GroupChat (moderator-directed), Handoff (agent-to-agent delegation), and Magentic (manager-driven task ledger).
@@ -48,9 +49,10 @@ Select a mind directory from the sidebar. The agent connects, views appear, and 
 
 ```
 Electron Main Process
-├── SdkLoader        — singleton CopilotClient, auto-install SDK
-├── ChatService      — streaming sessions, background prompts
-├── ChatroomService  — multi-agent broadcast, orchestration strategy dispatch
+├── CopilotClientFactory — per-mind CopilotClient lifecycle
+├── CronService         — built-in scheduled jobs and durable run history
+├── ChatService         — streaming sessions, background prompts
+├── ChatroomService     — multi-agent broadcast, orchestration strategy dispatch
 │   └── orchestration/
 │       ├── stream-agent.ts  — shared SDK event wiring + stale session retry
 │       ├── shared.ts        — XML/JSON helpers shared across strategies
@@ -58,9 +60,9 @@ Electron Main Process
 │       │   HandoffStrategy, MagenticStrategy
 │       ├── approval-gate.ts — tool execution review gate
 │       └── observability.ts — structured event emission with redaction
-├── ViewDiscovery    — scans .github/lens/ for view.json, file watcher
-├── ExtensionLoader  — canvas, cron, IDEA adapters
-└── IPC Handlers     — chat, chatroom, agent, lens, config channels
+├── ViewDiscovery       — scans .github/lens/ for view.json, file watcher
+├── Tray                — Windows close-to-tray lifecycle
+└── IPC Handlers        — chat, chatroom, agent, lens, config channels
 
 Preload Bridge
 └── contextBridge    — narrow typed API (chat, agent, lens, config, window)
@@ -78,7 +80,7 @@ React Renderer
 
 ```bash
 npm start          # Launch with hot reload
-npm run lint       # ESLint
+npm run lint       # TypeScript + ESLint
 npm run make       # Build distributable
 ```
 
