@@ -345,7 +345,7 @@ describe('MagenticStrategy', () => {
     expect(workerBSess.send).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to sequential when dispatchTask is not available', async () => {
+  it('falls back to sequential when only a single worker is assigned', async () => {
     const managerSess = createMockSession();
     const workerSess = createMockSession();
     sessions.set('manager', managerSess);
@@ -359,46 +359,12 @@ describe('MagenticStrategy', () => {
     autoIdleWith(workerSess, 'Done');
 
     const strategy = new MagenticStrategy({ managerMindId: 'manager', maxSteps: 10 });
-    // No dispatchTask — should use sequential path
     const ctx = createContext(sessions);
-    expect(ctx.dispatchTask).toBeUndefined();
 
     const minds = [makeMind('manager', 'Manager'), makeMind('worker-a', 'Worker A')];
     await strategy.execute('Test', minds, 'round-1', ctx);
 
     expect(workerSess.send).toHaveBeenCalledTimes(1);
-  });
-
-  it('batch assignments with dispatchTask available still execute sequentially', async () => {
-    const managerSess = createMockSession();
-    const workerASess = createMockSession();
-    const workerBSess = createMockSession();
-    sessions.set('manager', managerSess);
-    sessions.set('worker-a', workerASess);
-    sessions.set('worker-b', workerBSess);
-
-    autoIdleWithSequence(managerSess, [
-      '{"action": "update-plan", "plan": [{"id": "1", "description": "task A"}, {"id": "2", "description": "task B"}]}',
-      '{"action": "assign", "assignments": [{"assignee": "Worker A", "task_id": "1"}, {"assignee": "Worker B", "task_id": "2"}]}',
-      '{"action": "complete", "summary": "done"}',
-    ]);
-
-    autoIdleWith(workerASess, 'A done');
-    autoIdleWith(workerBSess, 'B done');
-
-    const mockDispatch = vi.fn();
-
-    const strategy = new MagenticStrategy({ managerMindId: 'manager', maxSteps: 10 });
-    const ctx = createContext(sessions, { dispatchTask: mockDispatch, pollTask: vi.fn() });
-    const minds = [makeMind('manager', 'Manager'), makeMind('worker-a', 'Worker A'), makeMind('worker-b', 'Worker B')];
-
-    await strategy.execute('Test', minds, 'round-1', ctx);
-
-    // A2A dispatch never called — always sequential now
-    expect(mockDispatch).not.toHaveBeenCalled();
-    // Both workers called sequentially
-    expect(workerASess.send).toHaveBeenCalledTimes(1);
-    expect(workerBSess.send).toHaveBeenCalledTimes(1);
   });
 
   it('worker prompts use natural language, not XML directives', async () => {
@@ -532,7 +498,11 @@ describe('MagenticStrategy', () => {
     // Worker send resolves but session.idle never fires — simulates a hang
     workerSess.send.mockResolvedValue(undefined);
 
-    const strategy = new MagenticStrategy({ managerMindId: 'manager', maxSteps: 10 });
+    // Inject a tiny worker timeout (50ms) so this test runs in <1s instead of 120s.
+    const strategy = new MagenticStrategy(
+      { managerMindId: 'manager', maxSteps: 10 },
+      { workerTimeoutMs: 50 },
+    );
     const ctx = createContext(sessions);
     const minds = [makeMind('manager', 'Manager'), makeMind('worker-a', 'Worker A')];
 
@@ -558,7 +528,7 @@ describe('MagenticStrategy', () => {
     const ledgerData = (lastLedger.event as unknown as { data: { ledger: Array<{ status: string }> } }).data.ledger;
     const failedTask = ledgerData.find((t) => t.status === 'failed');
     expect(failedTask).toBeDefined();
-  }, 180_000); // Extended timeout — worker timeout is 120s
+  });
 
   it('worker prompt includes conciseness and tool-limit guidance', async () => {
     const managerSess = createMockSession();

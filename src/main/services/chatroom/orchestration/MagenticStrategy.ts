@@ -13,8 +13,14 @@ import { sendToAgentWithRetry, TurnTimeoutError } from './stream-agent';
 /** Max characters stored in task.result (safe summary only) */
 const MAX_RESULT_LENGTH = 500;
 
-/** Max time (ms) a worker agent has to complete its turn before being timed out */
-const WORKER_TIMEOUT_MS = 120_000;
+/** Default max time (ms) a worker agent has to complete its turn before being timed out */
+const DEFAULT_WORKER_TIMEOUT_MS = 120_000;
+
+/** Optional overrides for tests and advanced configuration */
+export interface MagenticStrategyOptions {
+  /** Override the per-worker turn timeout (ms). Default: 120_000. */
+  workerTimeoutMs?: number;
+}
 
 /** Mark a task as failed and emit observability event */
 function failTask(
@@ -150,10 +156,12 @@ function parseManagerResponse(text: string): ManagerDecision | null {
 export class MagenticStrategy extends BaseStrategy {
   readonly mode = 'magentic' as const;
   private readonly config: MagenticConfig;
+  private readonly workerTimeoutMs: number;
 
-  constructor(config: MagenticConfig) {
+  constructor(config: MagenticConfig, options: MagenticStrategyOptions = {}) {
     super();
     this.config = config;
+    this.workerTimeoutMs = options.workerTimeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS;
   }
 
   async execute(
@@ -275,7 +283,7 @@ export class MagenticStrategy extends BaseStrategy {
           this.emitSyntheticMessage(manager, roundId, assignLines.join('\n'), context);
         }
 
-        await this.executeConcurrent(resolved, userMessage, participants, ledger, roundId, context, obs, 0);
+        await this.executeAssignments(resolved, userMessage, participants, ledger, roundId, context, obs, 0);
         this.emitLedgerUpdate(manager, roundId, ledger, context);
       }
     }
@@ -384,7 +392,7 @@ export class MagenticStrategy extends BaseStrategy {
         // SDK sessions (each worker has its own mindId → own session).
         // Dependent tasks (those whose prompt references completed results)
         // are held until their dependencies finish.
-        await this.executeConcurrent(resolved, userMessage, participants, ledger, roundId, context, obs, step);
+        await this.executeAssignments(resolved, userMessage, participants, ledger, roundId, context, obs, step);
 
         this.emitLedgerUpdate(manager, roundId, ledger, context);
       }
@@ -600,15 +608,15 @@ export class MagenticStrategy extends BaseStrategy {
   }
 
   // -------------------------------------------------------------------------
-  // Task execution — concurrent (SDK sessions) and sequential (fallback)
+  // Task execution — workers always run via Promise.all with isolated unsubs
   // -------------------------------------------------------------------------
 
   /**
-   * Run workers concurrently via separate SDK sessions (each mindId gets
-   * its own session from the cache). Each worker gets its own unsubs array
-   * to avoid cross-contamination. Ledger is updated as each worker finishes.
+   * Run all assigned worker tasks. Each worker gets its own unsubs array so
+   * SDK listeners cannot leak between concurrent turns. A single assignment
+   * still goes through Promise.all (it's a no-op wrapper for length 1).
    */
-  private async executeConcurrent(
+  private async executeAssignments(
     resolved: Array<{ worker: MindContext; task: TaskLedgerItem }>,
     userMessage: string,
     participants: MindContext[],
@@ -618,100 +626,77 @@ export class MagenticStrategy extends BaseStrategy {
     obs: ObservabilityEmitter,
     step: number,
   ): Promise<void> {
-    // If only one task, skip the overhead of Promise.all
-    if (resolved.length <= 1) {
-      return this.executeSequential(resolved, userMessage, participants, ledger, roundId, context, obs, step);
-    }
-
+    const isParallel = resolved.length > 1;
     const manager = participants.find((p) => p.mindId === this.config.managerMindId);
 
     await Promise.all(
-      resolved.map(async ({ worker, task }) => {
-        if (this.isAborted) return;
-
-        this.emitTurnStart(worker, roundId, context, step, true);
-        obs.agentStep(worker.mindId, { step, taskId: task.id, parallel: true });
-
-        const workerPrompt = this.buildWorkerPrompt(userMessage, participants, task, ledger, context, worker);
-        const workerUnsubs: (() => void)[] = [];
-
-        try {
-          const { message: workerResponse } = await sendToAgentWithRetry({
-            mind: worker,
-            prompt: workerPrompt,
-            roundId,
-            context,
-            abortSignal: this.abortController!.signal,
-            unsubs: workerUnsubs,
-            orchestrationMode: 'magentic',
-            turnTimeout: WORKER_TIMEOUT_MS,
-          });
-          const workerText = workerResponse ? textContent(workerResponse) : '';
-          task.status = 'completed';
-          task.result = workerText.slice(0, MAX_RESULT_LENGTH);
-        } catch (err) {
-          if (err instanceof TurnTimeoutError) {
-            task.status = 'failed';
-            task.result = `Timed out after ${WORKER_TIMEOUT_MS / 1000}s`;
-            obs.failure(task.result, { step, mindId: worker.mindId, taskId: task.id });
-          } else {
-            failTask(task, err, obs, { step, mindId: worker.mindId, taskId: task.id });
-          }
-        }
-
-        // Emit ledger update as each worker finishes (shows live progress)
-        if (manager) {
-          this.emitLedgerUpdate(manager, roundId, ledger, context);
-        }
-      }),
+      resolved.map(({ worker, task }) =>
+        this.runWorkerTask({
+          worker, task, userMessage, participants, ledger,
+          roundId, context, obs, step, isParallel, manager,
+        }),
+      ),
     );
   }
 
-  private async executeSequential(
-    resolved: Array<{ worker: MindContext; task: TaskLedgerItem }>,
-    userMessage: string,
-    participants: MindContext[],
-    ledger: TaskLedgerItem[],
-    roundId: string,
-    context: OrchestrationContext,
-    obs: ObservabilityEmitter,
-    step: number,
-  ): Promise<void> {
-    for (const { worker, task } of resolved) {
-      if (this.isAborted) break;
+  /**
+   * Execute a single worker task. Owns its own `unsubs` array so multiple
+   * concurrent invocations can safely share `this.abortController` without
+   * tearing down each other's SDK listeners.
+   */
+  private async runWorkerTask(args: {
+    worker: MindContext;
+    task: TaskLedgerItem;
+    userMessage: string;
+    participants: MindContext[];
+    ledger: TaskLedgerItem[];
+    roundId: string;
+    context: OrchestrationContext;
+    obs: ObservabilityEmitter;
+    step: number;
+    isParallel: boolean;
+    manager?: MindContext;
+  }): Promise<void> {
+    const {
+      worker, task, userMessage, participants, ledger,
+      roundId, context, obs, step, isParallel, manager,
+    } = args;
 
-      console.log(`[Magentic:seq] starting worker=${worker.identity.name} task=${task.id}`);
+    if (this.isAborted) return;
 
-      this.emitTurnStart(worker, roundId, context, step, false);
-      obs.agentStep(worker.mindId, { step, taskId: task.id });
+    this.emitTurnStart(worker, roundId, context, step, isParallel);
+    obs.agentStep(worker.mindId, { step, taskId: task.id, ...(isParallel ? { parallel: true } : {}) });
 
-      const workerPrompt = this.buildWorkerPrompt(userMessage, participants, task, ledger, context, worker);
+    const workerPrompt = this.buildWorkerPrompt(userMessage, participants, task, ledger, context, worker);
+    const workerUnsubs: (() => void)[] = [];
 
-      try {
-        const { message: workerResponse } = await sendToAgentWithRetry({
-          mind: worker,
-          prompt: workerPrompt,
-          roundId,
-          context,
-          abortSignal: this.abortController!.signal,
-          unsubs: this.currentUnsubs,
-          orchestrationMode: 'magentic',
-          turnTimeout: WORKER_TIMEOUT_MS,
-        });
-        const workerText = workerResponse ? textContent(workerResponse) : '';
-        task.status = 'completed';
-        task.result = workerText.slice(0, MAX_RESULT_LENGTH);
-        console.log(`[Magentic:seq] completed worker=${worker.identity.name} task=${task.id}`);
-      } catch (err) {
-        console.log(`[Magentic:seq] error worker=${worker.identity.name} task=${task.id}:`, err instanceof Error ? err.message : String(err));
-        if (err instanceof TurnTimeoutError) {
-          task.status = 'failed';
-          task.result = `Timed out after ${WORKER_TIMEOUT_MS / 1000}s`;
-          obs.failure(task.result, { step, mindId: worker.mindId, taskId: task.id });
-        } else {
-          failTask(task, err, obs, { step, mindId: worker.mindId, taskId: task.id });
-        }
+    try {
+      const { message: workerResponse } = await sendToAgentWithRetry({
+        mind: worker,
+        prompt: workerPrompt,
+        roundId,
+        context,
+        abortSignal: this.abortController!.signal,
+        unsubs: workerUnsubs,
+        orchestrationMode: 'magentic',
+        turnTimeout: this.workerTimeoutMs,
+      });
+      const workerText = workerResponse ? textContent(workerResponse) : '';
+      task.status = 'completed';
+      task.result = workerText.slice(0, MAX_RESULT_LENGTH);
+    } catch (err) {
+      if (err instanceof TurnTimeoutError) {
+        task.status = 'failed';
+        task.result = `Timed out after ${this.workerTimeoutMs / 1000}s`;
+        obs.failure(task.result, { step, mindId: worker.mindId, taskId: task.id });
+      } else {
+        failTask(task, err, obs, { step, mindId: worker.mindId, taskId: task.id });
       }
+    }
+
+    // Emit ledger update as each worker finishes (shows live progress)
+    if (manager) {
+      this.emitLedgerUpdate(manager, roundId, ledger, context);
     }
   }
 
