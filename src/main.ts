@@ -74,7 +74,7 @@ const mindManager: MindManager = new MindManager(clientFactory, identityLoader, 
 taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
 const messageRouter: MessageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
-const chatroomService = new ChatroomService(mindManager, taskManager);
+const chatroomService = new ChatroomService(mindManager);
 
 wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
 

@@ -1,5 +1,4 @@
 import type { OrchestrationMode, ChatroomStreamEvent, ChatroomMessage } from '../../../../shared/chatroom-types';
-import type { Task } from '../../../../shared/a2a-types';
 import type { MindContext } from '../../../../shared/types';
 import type { CopilotSession } from '../../mind';
 
@@ -72,9 +71,4 @@ export interface OrchestrationContext {
   persistMessage(message: ChatroomMessage): void;
   getHistory(): ChatroomMessage[];
   readonly orchestrationMode: OrchestrationMode;
-
-  /** Dispatch a task to an agent via A2A. Returns the submitted task. */
-  dispatchTask?(mindId: string, description: string, contextId: string): Promise<Task>;
-  /** Poll an A2A task by id. Returns null if not found. */
-  pollTask?(taskId: string): Promise<Task | null>;
 }

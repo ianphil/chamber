@@ -15,7 +15,6 @@ import type {
 } from '../../../shared/chatroom-types';
 import type { MindContext } from '../../../shared/types';
 import type { CopilotSession } from '../mind';
-import type { Task, SendMessageRequest } from '../../../shared/a2a-types';
 import { createStrategy } from './orchestration';
 import type { OrchestrationStrategy, OrchestrationContext } from './orchestration';
 import { escapeXml, textContent, stripControlJson } from './orchestration/shared';
@@ -23,12 +22,6 @@ import { escapeXml, textContent, stripControlJson } from './orchestration/shared
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
-
-/** A2A task dispatch — provided by TaskManager, optional */
-export interface TaskDispatcher {
-  sendTask(request: SendMessageRequest): Promise<Task>;
-  getTask(id: string): Task | null;
-}
 
 export interface ChatroomSessionFactory {
   createChatroomSession(mindId: string): Promise<CopilotSession>;
@@ -63,7 +56,6 @@ export class ChatroomService extends EventEmitter {
 
   constructor(
     private readonly sessionFactory: ChatroomSessionFactory,
-    private readonly taskDispatcher?: TaskDispatcher,
   ) {
     super();
 
@@ -100,7 +92,7 @@ export class ChatroomService extends EventEmitter {
 
     // Drop any pending debounced ledger write — we're starting a new round
     // and will write the cleared ledger below.
-    this.flushLedgerPersist();
+    this.cancelPendingLedgerPersist();
 
     // Clear stale task ledger from previous orchestration round
     // (persisted alongside user message below)
@@ -163,25 +155,6 @@ export class ChatroomService extends EventEmitter {
       },
       getHistory: () => [...this.messages],
       orchestrationMode: this.orchestrationMode,
-      ...(this.taskDispatcher ? {
-        dispatchTask: (mindId: string, description: string, contextId: string) =>
-          this.taskDispatcher!.sendTask({
-            recipient: mindId,
-            message: {
-              messageId: randomUUID(),
-              role: 'user',
-              parts: [{ text: description, mediaType: 'text/plain' }],
-              contextId,
-            },
-          }),
-        pollTask: (taskId: string) => {
-          try {
-            return Promise.resolve(this.taskDispatcher!.getTask(taskId));
-          } catch {
-            return Promise.resolve(null);
-          }
-        },
-      } : {}),
     };
 
     try {
@@ -240,7 +213,7 @@ export class ChatroomService extends EventEmitter {
   }
 
   async clearHistory(): Promise<void> {
-    this.flushLedgerPersist();
+    this.cancelPendingLedgerPersist();
     this.messages = [];
     this.lastLedger = [];
     this.persist();
@@ -388,8 +361,12 @@ export class ChatroomService extends EventEmitter {
     this.ledgerPersistTimer.unref?.();
   }
 
-  /** Flush any pending debounced ledger persist immediately. */
-  private flushLedgerPersist(): void {
+  /**
+   * Cancel any pending debounced ledger persist (does NOT trigger a write).
+   * Call this when you're about to overwrite the ledger anyway, so the
+   * debounced timer doesn't write stale state on top of fresh state.
+   */
+  private cancelPendingLedgerPersist(): void {
     if (this.ledgerPersistTimer) {
       clearTimeout(this.ledgerPersistTimer);
       this.ledgerPersistTimer = null;
