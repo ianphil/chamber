@@ -148,6 +148,76 @@ describe('ChatService', () => {
     });
   });
 
+  describe('listener ordering (regression: v0.25.0)', () => {
+    it('attaches session.idle listener BEFORE session.send is called', async () => {
+      // Simulate the SDK firing session.idle synchronously during send().
+      // If listeners are registered AFTER send resolves, this event is missed
+      // and turnDone hangs until the 5-minute timer expires.
+      let idleListener: (() => void) | undefined;
+
+      mockSession.on.mockImplementation(
+        (event: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+          if (event === 'session.idle' && cb) {
+            idleListener = cb as () => void;
+          }
+          return vi.fn();
+        },
+      );
+
+      mockSession.send.mockImplementation(async () => {
+        // SDK behavior: session.idle fires inside send() before it resolves.
+        // The listener MUST already be attached for this to be caught.
+        if (!idleListener) {
+          throw new Error(
+            'REGRESSION: session.idle listener was not attached before session.send() — this causes 5-minute hangs',
+          );
+        }
+        idleListener();
+      });
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('treats hung session.send as a stale session (30s send timeout)', async () => {
+      vi.useFakeTimers();
+      try {
+        // send() never resolves — simulates dead WebSocket / killed CLI.
+        mockSession.send.mockImplementation(() => new Promise(() => { /* hang */ }));
+        mockSession.on.mockReturnValue(vi.fn());
+
+        // Recreate returns a fresh, working session for the retry path.
+        const freshSession = {
+          send: vi.fn().mockResolvedValue(undefined),
+          abort: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+          on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
+            if (event === 'session.idle' && cb) queueMicrotask(() => cb());
+            return vi.fn();
+          }),
+        };
+        mockMindManager.recreateSession.mockResolvedValueOnce(freshSession);
+
+        const emit = vi.fn();
+        const promise = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        // Trip the 30s send-timeout guard.
+        await vi.advanceTimersByTimeAsync(30_000);
+        await promise;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+        expect(mockMindManager.recreateSession).toHaveBeenCalledWith('valid-mind');
+        expect(freshSession.send).toHaveBeenCalledWith({ prompt: 'hello' });
+      } finally {
+        vi.useRealTimers();
+        // Restore default impl so subsequent tests aren't left with a hung send.
+        mockSession.send.mockResolvedValue(undefined);
+      }
+    });
+  });
+
   describe('TurnQueue integration', () => {
     it('routes sendMessage through TurnQueue', async () => {
       const enqueueSpy = vi.spyOn(turnQueue, 'enqueue');

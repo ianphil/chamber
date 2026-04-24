@@ -4,7 +4,7 @@
 import type { MindManager } from '../mind';
 import type { ChatEvent, ModelInfo } from '../../../shared/types';
 import type { CopilotSession } from '../mind/types';
-import { isStaleSessionError } from '../../../shared/sessionErrors';
+import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '../../../shared/sessionErrors';
 import { TurnQueue } from './TurnQueue';
 
 export class ChatService {
@@ -133,41 +133,45 @@ export class ChatService {
       }));
 
       // Set up idle/error listeners BEFORE send to avoid missing events
+      // that fire synchronously inside session.send (regression-test guarded).
+      let turnDoneTimerId: ReturnType<typeof setTimeout> | undefined;
       const turnDone = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(resolve, 300_000);
+        turnDoneTimerId = setTimeout(resolve, DEFAULT_TURN_TIMEOUT_MS);
 
         const unsubIdle = session.on('session.idle', () => {
-          clearTimeout(timeout);
+          if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           unsubIdle();
           resolve();
         });
         unsubs.push(unsubIdle);
 
         const unsubError = session.on('session.error', (event) => {
-          clearTimeout(timeout);
+          if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           unsubError();
           reject(new Error(event.data.message));
         });
         unsubs.push(unsubError);
 
         abortController.signal.addEventListener('abort', () => {
-          clearTimeout(timeout);
+          if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           resolve();
         }, { once: true });
       });
 
-      // Send with a timeout guard — if send() itself hangs, treat as stale
+      // Send with a timeout guard — if session.send() itself hangs (dead
+      // WebSocket, killed CLI), surface as a stale-session error so the
+      // outer catch can recreate the session and retry.
       let sendTimerId: ReturnType<typeof setTimeout> | undefined;
       const sendTimeout = new Promise<never>((_, reject) => {
-        sendTimerId = setTimeout(() => reject(new Error('Session not found')), 30_000);
+        sendTimerId = setTimeout(() => reject(sendTimeoutError()), SEND_TIMEOUT_MS);
       });
       try {
         await Promise.race([session.send({ prompt }), sendTimeout]);
       } finally {
-        clearTimeout(sendTimerId);
+        if (sendTimerId) clearTimeout(sendTimerId);
       }
 
-      // Wait for idle (listener already active since before send)
+      // Wait for idle (listeners already active from before send)
       await turnDone;
 
       if (abortController.signal.aborted) return;

@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext } from '../../../shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../../../shared/a2a-types';
-import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../../shared/chatroom-types';
+import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '../../../shared/chatroom-types';
 
 export type LensView = 'chat' | string;
 
@@ -27,6 +27,10 @@ export interface AppState {
   chatroomMagenticConfig: MagenticConfig | null;
   /** Who is currently speaking / being selected — shown as typing indicator */
   chatroomActiveSpeaker: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null;
+  /** Live task ledger from Magentic orchestration */
+  chatroomTaskLedger: TaskLedgerItem[];
+  /** Orchestration completion metrics */
+  chatroomMetrics: { elapsedMs: number; totalTasks: number; completedTasks: number; failedTasks: number; agentsUsed: number; orchestrationMode: string } | null;
 }
 
 export type AppAction =
@@ -57,6 +61,7 @@ export type AppAction =
   | { type: 'CHATROOM_AGENT_MESSAGE'; payload: { messageId: string; mindId: string; mindName: string; roundId: string; timestamp: number } }
   | { type: 'CHATROOM_EVENT'; payload: ChatroomStreamEvent }
   | { type: 'CHATROOM_CLEAR' }
+  | { type: 'SET_CHATROOM_TASK_LEDGER'; payload: TaskLedgerItem[] }
   | { type: 'SET_ORCHESTRATION'; payload: OrchestrationMode }
   | { type: 'SET_GROUP_CHAT_CONFIG'; payload: GroupChatConfig | null }
   | { type: 'SET_HANDOFF_CONFIG'; payload: HandoffConfig | null }
@@ -85,4 +90,6 @@ export const initialState: AppState = {
   chatroomHandoffConfig: null,
   chatroomMagenticConfig: null,
   chatroomActiveSpeaker: null,
+  chatroomTaskLedger: [],
+  chatroomMetrics: null,
 };

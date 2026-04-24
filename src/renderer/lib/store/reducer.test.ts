@@ -445,6 +445,15 @@ describe('appReducer', () => {
       const state = appReducer(prev, { type: 'NEW_CONVERSATION' });
       expect(state.streamingByMind[mindId]).toBe(false);
     });
+
+    it('NEW_CONVERSATION clears chatroomTaskLedger', () => {
+      const prev = {
+        ...withActiveMind,
+        chatroomTaskLedger: [{ id: '1', description: 'task', status: 'completed' as const }],
+      };
+      const state = appReducer(prev, { type: 'NEW_CONVERSATION' });
+      expect(state.chatroomTaskLedger).toEqual([]);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -620,6 +629,19 @@ describe('appReducer — chatroom actions', () => {
     expect(state.chatroomMessages[0]).toMatchObject({ id: 'u1', sender: { mindId: 'user', name: 'You' }, roundId: 'r1' });
   });
 
+  it('CHATROOM_USER_MESSAGE clears stale metrics and task ledger from previous round', () => {
+    const prev: AppState = {
+      ...initialState,
+      chatroomMetrics: { elapsedMs: 5000, totalTasks: 3, completedTasks: 3, failedTasks: 0, agentsUsed: 2, orchestrationMode: 'magentic' },
+      chatroomTaskLedger: [{ id: '1', description: 'old task', status: 'completed' }],
+    };
+    const msg = makeChatroomMessage({ id: 'u2', sender: { mindId: 'user', name: 'You' }, roundId: 'r2' });
+    const state = appReducer(prev, { type: 'CHATROOM_USER_MESSAGE', payload: msg });
+    expect(state.chatroomMetrics).toBeNull();
+    expect(state.chatroomTaskLedger).toEqual([]);
+    expect(state.chatroomMessages).toHaveLength(1);
+  });
+
   it('CHATROOM_AGENT_MESSAGE creates empty streaming assistant message with sender', () => {
     const state = appReducer(initialState, {
       type: 'CHATROOM_AGENT_MESSAGE',
@@ -666,6 +688,38 @@ describe('appReducer — chatroom actions', () => {
     });
     expect(state.chatroomStreamingByMind['mind-1']).toBe(false);
     expect(state.chatroomMessages[0].isStreaming).toBe(false);
+  });
+
+  it('CHATROOM_EVENT done clears activeSpeaker when it matches the finishing mind', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-1', name: 'Agent A' } }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true },
+      chatroomActiveSpeaker: { mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'done' } },
+    });
+    expect(state.chatroomActiveSpeaker).toBeNull();
+  });
+
+  it('CHATROOM_EVENT done does NOT clear activeSpeaker for a different mind', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-1', name: 'Agent A' } }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true },
+      chatroomActiveSpeaker: { mindId: 'mind-2', mindName: 'Agent B', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'done' } },
+    });
+    expect(state.chatroomActiveSpeaker).toEqual({ mindId: 'mind-2', mindName: 'Agent B', phase: 'speaking' });
   });
 
   it('CHATROOM_EVENT error sets streaming false and appends error text', () => {

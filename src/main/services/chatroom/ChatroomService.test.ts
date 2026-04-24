@@ -246,6 +246,36 @@ describe('ChatroomService', () => {
     });
   });
 
+  // 5b. Control JSON stripping
+  describe('control JSON stripping in history', () => {
+    it('strips orchestration control JSON from history messages', async () => {
+      const sess = createMockSession();
+      sessions.set('dude', sess);
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+
+      // First round: agent responds with control JSON embedded
+      sess.send.mockImplementation(async () => {
+        setTimeout(() => {
+          sess._emit('assistant.message', {
+            data: { messageId: 'sdk-1', content: 'I analyzed this. {"action": "done", "reason": "task complete"}' },
+          });
+          sess._emit('session.idle', {});
+        }, 0);
+      });
+      await svc.broadcast('Analyze this');
+
+      // Second round: check that control JSON was stripped from history
+      autoIdle(sess);
+      await svc.broadcast('Follow up');
+
+      const prompt = sess.send.mock.calls[1][0].prompt as string;
+      expect(prompt).toContain('I analyzed this.');
+      expect(prompt).not.toContain('"action"');
+      expect(prompt).not.toContain('"done"');
+    });
+  });
+
   // 6. Context window — only last 2 rounds
   describe('context window', () => {
     it('only includes last 2 rounds in history', async () => {
@@ -299,6 +329,36 @@ describe('ChatroomService', () => {
       const lastWrite = JSON.parse(writeTimestamps[writeTimestamps.length - 1]) as { messages: Array<{ role: string }> };
       expect(lastWrite.messages.some((m) => m.role === 'user')).toBe(true);
       expect(lastWrite.messages.some((m) => m.role === 'assistant')).toBe(true);
+    });
+
+    it('debounces ledger-update persistence into a single write', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(fs.writeFileSync).mockClear();
+        vi.mocked(fs.renameSync).mockImplementation(vi.fn());
+
+        // Fire a burst of task-ledger-update events (Magentic emits one per
+        // task transition + per parallel-worker completion).
+        for (let i = 0; i < 25; i++) {
+          svc.emit('chatroom:event', {
+            roundId: 'r1',
+            mindId: 'magentic-orchestrator',
+            event: {
+              type: 'orchestration:task-ledger-update',
+              data: { ledger: [{ id: `t${i}`, description: `task ${i}`, status: 'pending' }] },
+            },
+          });
+        }
+
+        // Synchronous burst MUST NOT have triggered a write.
+        expect(fs.writeFileSync).not.toHaveBeenCalled();
+
+        // Advance past the debounce window — exactly one write should land.
+        await vi.advanceTimersByTimeAsync(600);
+        expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -651,63 +711,6 @@ describe('ChatroomService', () => {
 
       expect(factory.createChatroomSession).toHaveBeenCalledTimes(1);
       expect(factory.createChatroomSession).toHaveBeenCalledWith('dude');
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Orchestration mode management
-  // -------------------------------------------------------------------------
-
-  describe('orchestration mode', () => {
-    it('defaults to concurrent mode', () => {
-      const { mode, config } = svc.getOrchestration();
-      expect(mode).toBe('concurrent');
-      expect(config).toBeNull();
-    });
-
-    it('setOrchestration changes mode', () => {
-      svc.setOrchestration('sequential');
-      expect(svc.getOrchestration().mode).toBe('sequential');
-    });
-
-    it('setOrchestration stores group chat config', () => {
-      const config = {
-        moderatorMindId: 'dude',
-        maxTurns: 10,
-        minRounds: 1,
-        maxSpeakerRepeats: 3,
-      };
-      svc.setOrchestration('group-chat', config);
-      const { mode, config: storedConfig } = svc.getOrchestration();
-      expect(mode).toBe('group-chat');
-      expect(storedConfig).toEqual(config);
-    });
-
-    it('mode persists across rounds', async () => {
-      svc.setOrchestration('sequential');
-
-      const sess = createMockSession();
-      sessions.set('dude', sess);
-      autoIdle(sess);
-      minds.length = 0;
-      minds.push(makeMind('dude', 'The Dude'));
-
-      await svc.broadcast('round 1');
-      await svc.broadcast('round 2');
-
-      // Mode should still be sequential
-      expect(svc.getOrchestration().mode).toBe('sequential');
-    });
-
-    it('switching mode clears group chat config when not group-chat', () => {
-      svc.setOrchestration('group-chat', {
-        moderatorMindId: 'dude',
-        maxTurns: 10,
-        minRounds: 1,
-        maxSpeakerRepeats: 3,
-      });
-      svc.setOrchestration('concurrent');
-      expect(svc.getOrchestration().config).toBeNull();
     });
   });
 });

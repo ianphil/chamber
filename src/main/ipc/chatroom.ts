@@ -11,6 +11,10 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
     return chatroomService.getHistory();
   });
 
+  ipcMain.handle('chatroom:task-ledger', async () => {
+    return chatroomService.getTaskLedger();
+  });
+
   ipcMain.handle('chatroom:clear', async () => {
     await chatroomService.clearHistory();
   });

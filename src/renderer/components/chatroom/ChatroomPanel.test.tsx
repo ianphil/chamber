@@ -57,7 +57,7 @@ describe('ChatroomPanel', () => {
   // 1. Empty state with agents present
   it('renders empty state when no messages and agents are loaded', () => {
     renderPanel({ minds: [MIND_A] }, api);
-    expect(screen.getByText(/messages you send here go to all agents/i)).toBeTruthy();
+    expect(screen.getByText(/multi-agent chatroom/i)).toBeTruthy();
   });
 
   // 2. Participant bar

@@ -150,6 +150,7 @@ export function mockElectronAPI(): ElectronAPI {
     chatroom: {
       send: vi.fn().mockResolvedValue(undefined),
       history: vi.fn().mockResolvedValue([]),
+      taskLedger: vi.fn().mockResolvedValue([]),
       clear: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
       setOrchestration: vi.fn().mockResolvedValue(undefined),

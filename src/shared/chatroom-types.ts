@@ -93,7 +93,8 @@ export type OrchestrationEventType =
   | 'orchestration:task-ledger-update'
   | 'orchestration:manager-plan'
   | 'orchestration:approval-requested'
-  | 'orchestration:approval-decided';
+  | 'orchestration:approval-decided'
+  | 'orchestration:metrics';
 
 /** Discriminated union of orchestration events — enables type-safe switch in reducers */
 export type OrchestrationEvent =
@@ -107,7 +108,8 @@ export type OrchestrationEvent =
   | { type: 'orchestration:task-ledger-update'; data: Record<string, unknown> }
   | { type: 'orchestration:manager-plan'; data: Record<string, unknown> }
   | { type: 'orchestration:approval-requested'; data: Record<string, unknown> }
-  | { type: 'orchestration:approval-decided'; data: Record<string, unknown> };
+  | { type: 'orchestration:approval-decided'; data: Record<string, unknown> }
+  | { type: 'orchestration:metrics'; data: { elapsedMs: number; totalTasks: number; completedTasks: number; failedTasks: number; agentsUsed: number; orchestrationMode: string } };
 
 /** Type guard: narrows ChatEvent | OrchestrationEvent to OrchestrationEvent */
 export function isOrchestrationEvent(
@@ -133,6 +135,7 @@ export interface ChatroomMessage extends ChatMessage {
 export interface ChatroomTranscript {
   version: 1;
   messages: ChatroomMessage[];
+  taskLedger?: TaskLedgerItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +158,7 @@ export interface ChatroomStreamEvent {
 export interface ChatroomAPI {
   send: (message: string, model?: string) => Promise<void>;
   history: () => Promise<ChatroomMessage[]>;
+  taskLedger: () => Promise<TaskLedgerItem[]>;
   clear: () => Promise<void>;
   stop: () => Promise<void>;
   setOrchestration: (mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => Promise<void>;

@@ -11,11 +11,13 @@ import type {
   GroupChatConfig,
   HandoffConfig,
   MagenticConfig,
+  TaskLedgerItem,
 } from '../../../shared/chatroom-types';
 import type { MindContext } from '../../../shared/types';
 import type { CopilotSession } from '../mind';
 import { createStrategy } from './orchestration';
 import type { OrchestrationStrategy, OrchestrationContext } from './orchestration';
+import { escapeXml, textContent, stripControlJson } from './orchestration/shared';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -29,29 +31,10 @@ export interface ChatroomSessionFactory {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Constants
 // ---------------------------------------------------------------------------
 
 const MAX_MESSAGES = 500;
-
-const XML_ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&apos;',
-};
-
-function escapeXml(text: string): string {
-  return text.replace(/[&<>"']/g, (ch) => XML_ESCAPE_MAP[ch]);
-}
-
-function textContent(msg: ChatroomMessage): string {
-  return msg.blocks
-    .filter((b) => b.type === 'text')
-    .map((b) => (b as { content: string }).content)
-    .join('');
-}
 
 // ---------------------------------------------------------------------------
 // ChatroomService
@@ -59,6 +42,7 @@ function textContent(msg: ChatroomMessage): string {
 
 export class ChatroomService extends EventEmitter {
   private messages: ChatroomMessage[] = [];
+  private lastLedger: TaskLedgerItem[] = [];
   private sessionCache = new Map<string, CopilotSession>();
   private activeStrategy: OrchestrationStrategy | null = null;
   private orchestrationMode: OrchestrationMode = 'concurrent';
@@ -67,8 +51,12 @@ export class ChatroomService extends EventEmitter {
   private magneticConfig: MagenticConfig | null = null;
   private readonly persistPath: string;
   private readonly persistDir: string;
+  private ledgerPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly LEDGER_PERSIST_DEBOUNCE_MS = 500;
 
-  constructor(private readonly sessionFactory: ChatroomSessionFactory) {
+  constructor(
+    private readonly sessionFactory: ChatroomSessionFactory,
+  ) {
     super();
 
     const chamberDir = app.getPath('userData');
@@ -77,6 +65,20 @@ export class ChatroomService extends EventEmitter {
 
     this.loadTranscript();
     this.listenToFactoryEvents();
+
+    // Track ledger updates for persistence across view switches.
+    // Magentic orchestration emits one task-ledger-update per task transition
+    // and per parallel-worker completion — debounce to avoid blocking the
+    // main thread with sync writeFileSync on every event.
+    this.on('chatroom:event', (event: ChatroomStreamEvent) => {
+      if (event.event.type === 'orchestration:task-ledger-update') {
+        const data = event.event.data as { ledger?: TaskLedgerItem[] };
+        if (data.ledger) {
+          this.lastLedger = data.ledger;
+          this.schedulePersist();
+        }
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -87,6 +89,14 @@ export class ChatroomService extends EventEmitter {
     void _model;
     // Cancel any in-flight agents from previous round
     this.stopAll();
+
+    // Drop any pending debounced ledger write — we're starting a new round
+    // and will write the cleared ledger below.
+    this.cancelPendingLedgerPersist();
+
+    // Clear stale task ledger from previous orchestration round
+    // (persisted alongside user message below)
+    this.lastLedger = [];
 
     const roundId = randomUUID();
 
@@ -103,6 +113,12 @@ export class ChatroomService extends EventEmitter {
     if (participants.length === 0) return;
 
     console.log(`[Chatroom] broadcast mode="${this.orchestrationMode}" participants=${participants.length} handoffConfig=${JSON.stringify(this.handoffConfig)} magneticConfig=${JSON.stringify(this.magneticConfig)}`);
+
+    // Warm session pool — pre-create sessions for all participants in parallel
+    // to eliminate cold-start delays when workers begin their turns.
+    await Promise.all(
+      participants.map((p) => this.getOrCreateSession(p.mindId).catch(() => { /* non-fatal */ })),
+    );
 
     // Create strategy for current orchestration mode
     let strategy: OrchestrationStrategy;
@@ -192,8 +208,14 @@ export class ChatroomService extends EventEmitter {
     return [...this.messages];
   }
 
+  getTaskLedger(): TaskLedgerItem[] {
+    return [...this.lastLedger];
+  }
+
   async clearHistory(): Promise<void> {
+    this.cancelPendingLedgerPersist();
     this.messages = [];
+    this.lastLedger = [];
     this.persist();
 
     // Destroy all cached sessions
@@ -259,7 +281,13 @@ export class ChatroomService extends EventEmitter {
     xml += `<chatroom-history participants="${escapeXml(participantNames)}">\n`;
     for (const msg of historyRounds) {
       const sender = msg.sender.name;
-      xml += `  <message sender="${escapeXml(sender)}">${escapeXml(textContent(msg))}</message>\n`;
+      // Strip orchestration control JSON (manager directives, handoff decisions)
+      // so workers don't see structured commands from other agents in their context
+      const content = stripControlJson(
+        textContent(msg),
+        (a) => ['assign', 'complete', 'update-plan', 'handoff', 'done', 'direct', 'close'].includes(a as string),
+      );
+      xml += `  <message sender="${escapeXml(sender)}">${escapeXml(content)}</message>\n`;
     }
     xml += `</chatroom-history>\n`;
     xml += `Respond only to the following message. The chatroom history above is for context only.\n\n`;
@@ -298,6 +326,7 @@ export class ChatroomService extends EventEmitter {
       const transcript: ChatroomTranscript = JSON.parse(raw);
       if (transcript.version === 1 && Array.isArray(transcript.messages)) {
         this.messages = transcript.messages;
+        this.lastLedger = Array.isArray(transcript.taskLedger) ? transcript.taskLedger : [];
       }
     } catch {
       // Corrupt or missing — start fresh
@@ -309,12 +338,38 @@ export class ChatroomService extends EventEmitter {
       fs.mkdirSync(this.persistDir, { recursive: true });
       const trimmed = this.messages.slice(-MAX_MESSAGES);
       this.messages = trimmed;
-      const transcript: ChatroomTranscript = { version: 1, messages: trimmed };
+      const transcript: ChatroomTranscript = { version: 1, messages: trimmed, taskLedger: this.lastLedger };
       const tmpPath = this.persistPath + '.tmp';
       fs.writeFileSync(tmpPath, JSON.stringify(transcript, null, 2));
       fs.renameSync(tmpPath, this.persistPath);
     } catch {
       // Persistence failure is non-fatal
+    }
+  }
+
+  /**
+   * Schedules a debounced persist for ledger updates so a burst of
+   * orchestration:task-ledger-update events results in at most one disk write.
+   */
+  private schedulePersist(): void {
+    if (this.ledgerPersistTimer) return;
+    this.ledgerPersistTimer = setTimeout(() => {
+      this.ledgerPersistTimer = null;
+      this.persist();
+    }, ChatroomService.LEDGER_PERSIST_DEBOUNCE_MS);
+    // Don't keep the event loop alive for a pending ledger flush.
+    this.ledgerPersistTimer.unref?.();
+  }
+
+  /**
+   * Cancel any pending debounced ledger persist (does NOT trigger a write).
+   * Call this when you're about to overwrite the ledger anyway, so the
+   * debounced timer doesn't write stale state on top of fresh state.
+   */
+  private cancelPendingLedgerPersist(): void {
+    if (this.ledgerPersistTimer) {
+      clearTimeout(this.ledgerPersistTimer);
+      this.ledgerPersistTimer = null;
     }
   }
 

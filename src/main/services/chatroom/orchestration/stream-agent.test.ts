@@ -6,7 +6,7 @@ vi.mock('node:crypto', () => ({
   randomUUID: () => mockRandomUUID(),
 }));
 
-import { streamAgentTurn, sendToAgentWithRetry } from './stream-agent';
+import { streamAgentTurn, sendToAgentWithRetry, TurnTimeoutError } from './stream-agent';
 import type { StreamAgentOptions, SendToAgentOptions } from './stream-agent';
 import type { OrchestrationContext } from './types';
 import type { MindContext } from '../../../../shared/types';
@@ -286,6 +286,55 @@ describe('streamAgentTurn', () => {
     await expect(streamAgentTurn(makeStreamOpts(sess))).rejects.toThrow('boom');
   });
 
+  it('emits error event on session.error so renderer clears streaming state', async () => {
+    const sess = createMockSession();
+    const ctx = createContext(sessions);
+    sess.send.mockImplementation(async () => {
+      setTimeout(() => {
+        sess._emit('session.error', { data: { message: 'boom' } });
+      }, 0);
+    });
+
+    await expect(streamAgentTurn(makeStreamOpts(sess, { context: ctx }))).rejects.toThrow('boom');
+
+    const events = (ctx.emitEvent as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as ChatroomStreamEvent,
+    );
+    const errorEvents = events.filter((e) => e.event.type === 'error');
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0].event).toMatchObject({ type: 'error', message: 'boom' });
+    // The messageId should not be empty — needed for reducer to find the placeholder
+    expect(errorEvents[0].messageId).not.toBe('');
+  });
+
+  it('emits error event on turn timeout so renderer clears streaming state', async () => {
+    vi.useFakeTimers();
+    const sess = createMockSession();
+    const ctx = createContext(sessions);
+    sess.send.mockResolvedValue(undefined);
+
+    const swallow = () => {};
+    process.on('unhandledRejection', swallow);
+
+    const promise = streamAgentTurn(makeStreamOpts(sess, { context: ctx, turnTimeout: 5_000 }));
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(promise).rejects.toThrow(TurnTimeoutError);
+
+    const events = (ctx.emitEvent as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as ChatroomStreamEvent,
+    );
+    const errorEvents = events.filter((e) => e.event.type === 'error');
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0].event).toMatchObject({
+      type: 'error',
+      message: expect.stringContaining('timed out'),
+    });
+
+    process.removeListener('unhandledRejection', swallow);
+  });
+
   it('pushes unsub functions into the unsubs array', async () => {
     const sess = createMockSession();
     const unsubs: (() => void)[] = [];
@@ -319,6 +368,48 @@ describe('streamAgentTurn', () => {
     // The 300s turnDone timer must have been cleared when the 30s send
     // timeout fired. If it leaked, getTimerCount() would be 1.
     expect(vi.getTimerCount()).toBe(0);
+
+    process.removeListener('unhandledRejection', swallow);
+  });
+
+  it('turn timeout: rejects with TurnTimeoutError when session.idle never fires', async () => {
+    vi.useFakeTimers();
+    const sess = createMockSession();
+
+    // send resolves immediately but session.idle never fires
+    sess.send.mockResolvedValue(undefined);
+
+    const swallow = () => {};
+    process.on('unhandledRejection', swallow);
+
+    const promise = streamAgentTurn(makeStreamOpts(sess, { turnTimeout: 5_000 }));
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(promise).rejects.toThrow(TurnTimeoutError);
+    await expect(promise).rejects.toThrow('Agent turn timed out after 5000ms');
+
+    expect(vi.getTimerCount()).toBe(0);
+    process.removeListener('unhandledRejection', swallow);
+  });
+
+  it('turn timeout: configurable via turnTimeout option', async () => {
+    vi.useFakeTimers();
+    const sess = createMockSession();
+    sess.send.mockResolvedValue(undefined);
+
+    const swallow = () => {};
+    process.on('unhandledRejection', swallow);
+
+    const promise = streamAgentTurn(makeStreamOpts(sess, { turnTimeout: 10_000 }));
+
+    // At 5s, should still be pending
+    await vi.advanceTimersByTimeAsync(5_000);
+    // Need a microtask tick to check — the promise should not have settled yet
+
+    // At 10s, should reject
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(promise).rejects.toThrow(TurnTimeoutError);
 
     process.removeListener('unhandledRejection', swallow);
   });

@@ -56,6 +56,7 @@ const electronAPI: ElectronAPI = {
   chatroom: {
     send: (message: string, model?: string) => ipcRenderer.invoke('chatroom:send', message, model),
     history: () => ipcRenderer.invoke('chatroom:history'),
+    taskLedger: () => ipcRenderer.invoke('chatroom:task-ledger'),
     clear: () => ipcRenderer.invoke('chatroom:clear'),
     stop: () => ipcRenderer.invoke('chatroom:stop'),
     setOrchestration: (mode: string, config?: unknown) => ipcRenderer.invoke('chatroom:set-orchestration', mode, config),

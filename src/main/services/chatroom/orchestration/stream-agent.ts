@@ -3,7 +3,18 @@ import type { MindContext } from '../../../../shared/types';
 import type { ChatroomStreamEvent, OrchestrationMode, ChatroomMessage } from '../../../../shared/chatroom-types';
 import type { OrchestrationContext } from './types';
 import type { CopilotSession } from '../../mind';
-import { isStaleSessionError } from '../../../../shared/sessionErrors';
+import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '../../../../shared/sessionErrors';
+
+// ---------------------------------------------------------------------------
+// TurnTimeoutError — distinguishable timeout for callers
+// ---------------------------------------------------------------------------
+
+export class TurnTimeoutError extends Error {
+  constructor(public readonly timeoutMs: number) {
+    super(`Agent turn timed out after ${timeoutMs}ms`);
+    this.name = 'TurnTimeoutError';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // streamAgentTurn — shared SDK event wiring for all orchestration strategies
@@ -18,6 +29,10 @@ export interface StreamAgentOptions {
   abortSignal: AbortSignal;
   unsubs: (() => void)[];
   orchestrationMode: OrchestrationMode;
+  /** If true, suppress all renderer-visible events (chunks, tool calls, etc.) */
+  silent?: boolean;
+  /** Max ms to wait for session.idle before rejecting with TurnTimeoutError (default: 300_000) */
+  turnTimeout?: number;
 }
 
 export interface StreamAgentResult {
@@ -36,7 +51,7 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
   const messageId = randomUUID();
 
   const emitEvent = (event: ChatroomStreamEvent['event']) => {
-    if (!abortSignal.aborted) {
+    if (!abortSignal.aborted && !opts.silent) {
       context.emitEvent({
         mindId: mind.mindId,
         mindName: mind.identity.name,
@@ -126,8 +141,12 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
   // The turnDone timeout ID is hoisted so it can be cleared on any exit path
   // (send timeout, abort, or normal completion) to prevent 5-minute timer leaks.
   let turnDoneTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  const turnTimeoutMs = opts.turnTimeout ?? DEFAULT_TURN_TIMEOUT_MS;
   const turnDone = new Promise<void>((resolve, reject) => {
-    turnDoneTimeoutId = setTimeout(resolve, 300_000);
+    turnDoneTimeoutId = setTimeout(
+      () => reject(new TurnTimeoutError(turnTimeoutMs)),
+      turnTimeoutMs,
+    );
 
     const unsubIdle = session.on('session.idle', () => {
       clearTimeout(turnDoneTimeoutId);
@@ -151,7 +170,7 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
 
   let sendTimerId: ReturnType<typeof setTimeout> | undefined;
   const sendTimeout = new Promise<never>((_, reject) => {
-    sendTimerId = setTimeout(() => reject(new Error('Session not found')), 30_000);
+    sendTimerId = setTimeout(() => reject(sendTimeoutError()), SEND_TIMEOUT_MS);
   });
   try {
     await Promise.race([session.send({ prompt }), sendTimeout]);
@@ -163,7 +182,15 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
     clearTimeout(sendTimerId);
   }
 
-  await turnDone;
+  await turnDone.catch((err) => {
+    // Emit error event so the renderer clears the streaming state / active
+    // speaker for the auto-created message placeholder.
+    emitEvent({
+      type: 'error',
+      message: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  });
 
   return { finalContent, messageId };
 }
@@ -182,6 +209,10 @@ export interface SendToAgentOptions {
   orchestrationMode: OrchestrationMode;
   /** Optional content transform (e.g. stripControlJson) applied to display content */
   transformContent?: (raw: string) => string;
+  /** If true, do not persist message or emit done — used for internal coordinator calls */
+  silent?: boolean;
+  /** Max ms to wait for session.idle before rejecting with TurnTimeoutError */
+  turnTimeout?: number;
 }
 
 export interface SendToAgentResult {
@@ -203,6 +234,8 @@ export async function sendToAgentWithRetry(opts: SendToAgentOptions): Promise<Se
       const { finalContent, messageId } = await streamAgentTurn({
         session, mind, prompt, roundId, context,
         abortSignal, unsubs: opts.unsubs, orchestrationMode,
+        silent: opts.silent,
+        turnTimeout: opts.turnTimeout,
       });
 
       if (abortSignal.aborted) return { message: null, rawContent: finalContent };
@@ -218,9 +251,10 @@ export async function sendToAgentWithRetry(opts: SendToAgentOptions): Promise<Se
           roundId,
           orchestrationMode,
         };
-        context.persistMessage(msg);
 
-        const emitDone = () => {
+        if (!opts.silent) {
+          context.persistMessage(msg);
+
           if (!abortSignal.aborted) {
             context.emitEvent({
               mindId: mind.mindId,
@@ -230,8 +264,7 @@ export async function sendToAgentWithRetry(opts: SendToAgentOptions): Promise<Se
               event: { type: 'done' },
             });
           }
-        };
-        emitDone();
+        }
 
         return {
           message: msg,
