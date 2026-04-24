@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext } from '../../../shared/types';
+import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '../../../shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../../../shared/a2a-types';
 import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '../../../shared/chatroom-types';
 
@@ -34,7 +34,7 @@ export interface AppState {
 }
 
 export type AppAction =
-  | { type: 'ADD_USER_MESSAGE'; payload: { id: string; content: string; timestamp: number } }
+  | { type: 'ADD_USER_MESSAGE'; payload: { id: string; content: string; timestamp: number; images?: ImageBlock[] } }
   | { type: 'ADD_ASSISTANT_MESSAGE'; payload: { id: string; timestamp: number } }
   | { type: 'CHAT_EVENT'; payload: { mindId: string; messageId: string; event: ChatEvent } }
   | { type: 'SET_MINDS'; payload: MindContext[] }

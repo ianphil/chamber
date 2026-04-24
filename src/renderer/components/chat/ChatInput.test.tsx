@@ -20,7 +20,7 @@ const defaultProps = {
 describe('ChatInput', () => {
   it('typing updates textarea value', () => {
     render(<ChatInput {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText('Message your agent…');
+    const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hello' } });
     expect((textarea as HTMLTextAreaElement).value).toBe('Hello');
   });
@@ -28,16 +28,16 @@ describe('ChatInput', () => {
   it('Enter key submits non-empty text', () => {
     const onSend = vi.fn();
     render(<ChatInput {...defaultProps} onSend={onSend} />);
-    const textarea = screen.getByPlaceholderText('Message your agent…');
+    const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hello' } });
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-    expect(onSend).toHaveBeenCalledWith('Hello');
+    expect(onSend).toHaveBeenCalledWith('Hello', undefined);
   });
 
   it('Enter on empty text does not submit', () => {
     const onSend = vi.fn();
     render(<ChatInput {...defaultProps} onSend={onSend} />);
-    const textarea = screen.getByPlaceholderText('Message your agent…');
+    const textarea = screen.getByRole('textbox');
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -45,7 +45,7 @@ describe('ChatInput', () => {
   it('Shift+Enter does not submit', () => {
     const onSend = vi.fn();
     render(<ChatInput {...defaultProps} onSend={onSend} />);
-    const textarea = screen.getByPlaceholderText('Message your agent…');
+    const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hello' } });
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
     expect(onSend).not.toHaveBeenCalled();
@@ -53,7 +53,7 @@ describe('ChatInput', () => {
 
   it('disabled prop disables textarea', () => {
     render(<ChatInput {...defaultProps} disabled={true} />);
-    const textarea = screen.getByPlaceholderText('Select a mind directory to start…');
+    const textarea = screen.getByRole('textbox');
     expect(textarea).toHaveProperty('disabled', true);
   });
 

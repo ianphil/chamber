@@ -2,15 +2,15 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { ChatService } from '../services/chat/ChatService';
 import type { MindManager } from '../services/mind';
-import type { ChatEvent } from '../../shared/types';
+import type { ChatEvent, ChatImageAttachment } from '../../shared/types';
 
 export function setupChatIPC(chatService: ChatService, mindManager: MindManager): void {
-  ipcMain.handle('chat:send', async (event, mindId: string, message: string, messageId: string, model?: string) => {
+  ipcMain.handle('chat:send', async (event, mindId: string, message: string, messageId: string, model?: string, attachments?: ChatImageAttachment[]) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
 
     const emit = (evt: ChatEvent) => win.webContents.send('chat:event', mindId, messageId, evt);
-    await chatService.sendMessage(mindId, message, messageId, emit, model);
+    await chatService.sendMessage(mindId, message, messageId, emit, model, attachments);
   });
 
   ipcMain.handle('chat:listModels', async (_event, mindId?: string) => {

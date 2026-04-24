@@ -5,8 +5,8 @@ import type { Message, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from './
 
 const electronAPI: ElectronAPI = {
   chat: {
-    send: (mindId, message, messageId, model) =>
-      ipcRenderer.invoke('chat:send', mindId, message, messageId, model),
+    send: (mindId, message, messageId, model, attachments) =>
+      ipcRenderer.invoke('chat:send', mindId, message, messageId, model, attachments),
     stop: (mindId, messageId) =>
       ipcRenderer.invoke('chat:stop', mindId, messageId),
     newConversation: (mindId) =>

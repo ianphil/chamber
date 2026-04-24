@@ -2,7 +2,7 @@
 // Gets sessions from MindManager, streams SDK events via callback.
 
 import type { MindManager } from '../mind';
-import type { ChatEvent, ModelInfo } from '../../../shared/types';
+import type { ChatEvent, ChatImageAttachment, ModelInfo } from '../../../shared/types';
 import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '../../../shared/sessionErrors';
 import { TurnQueue } from './TurnQueue';
@@ -21,6 +21,7 @@ export class ChatService {
     messageId: string,
     emit: (event: ChatEvent) => void,
     _model?: string,
+    attachments?: ChatImageAttachment[],
   ): Promise<void> {
     void _model;
     return this.turnQueue.enqueue(mindId, async () => {
@@ -34,7 +35,7 @@ export class ChatService {
         }
 
         try {
-          await this.streamTurn(context.session, prompt, abortController, emit);
+          await this.streamTurn(context.session, prompt, abortController, emit, attachments);
         } catch (err) {
           if (abortController.signal.aborted) return;
           if (!isStaleSessionError(err)) throw err;
@@ -42,7 +43,7 @@ export class ChatService {
           // Stale session — recreate and retry once
           emit({ type: 'reconnecting' });
           const freshSession = await this.mindManager.recreateSession(mindId);
-          await this.streamTurn(freshSession, prompt, abortController, emit);
+          await this.streamTurn(freshSession, prompt, abortController, emit, attachments);
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
@@ -59,7 +60,8 @@ export class ChatService {
     prompt: string,
     abortController: AbortController,
     emit: (event: ChatEvent) => void,
-  ): Promise<void> {
+    attachments?: ChatImageAttachment[],
+  ): Promise<void>{
     const unsubs: (() => void)[] = [];
     const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
 
@@ -166,7 +168,13 @@ export class ChatService {
         sendTimerId = setTimeout(() => reject(sendTimeoutError()), SEND_TIMEOUT_MS);
       });
       try {
-        await Promise.race([session.send({ prompt }), sendTimeout]);
+        const sdkAttachments = attachments?.map((a) => ({
+          type: 'blob' as const,
+          data: a.data,
+          mimeType: a.mimeType,
+          displayName: a.name,
+        }));
+        await Promise.race([session.send(sdkAttachments ? { prompt, attachments: sdkAttachments } : { prompt }), sendTimeout]);
       } finally {
         if (sendTimerId) clearTimeout(sendTimerId);
       }

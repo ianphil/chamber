@@ -30,7 +30,15 @@ export interface ReasoningBlock {
   content: string;
 }
 
-export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock;
+export interface ImageBlock {
+  type: 'image';
+  name: string;
+  mimeType: string;
+  /** data URL (data:<mime>;base64,<payload>) for renderer display */
+  dataUrl: string;
+}
+
+export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock | ImageBlock;
 
 // ---------------------------------------------------------------------------
 // Chat events — single sequenced IPC channel
@@ -120,9 +128,21 @@ export interface LensViewManifest {
   _basePath?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Chat attachments (renderer → main → SDK)
+// ---------------------------------------------------------------------------
+
+/** A pasted/attached image carried over IPC to ChatService → SDK blob attachment */
+export interface ChatImageAttachment {
+  name: string;
+  mimeType: string;
+  /** base64-encoded payload without data URL prefix */
+  data: string;
+}
+
 export interface ElectronAPI {
   chat: {
-    send: (mindId: string, message: string, messageId: string, model?: string) => Promise<void>;
+    send: (mindId: string, message: string, messageId: string, model?: string, attachments?: ChatImageAttachment[]) => Promise<void>;
     stop: (mindId: string, messageId: string) => Promise<void>;
     newConversation: (mindId: string) => Promise<void>;
     listModels: () => Promise<ModelInfo[]>;

@@ -60,9 +60,23 @@ export function MessageList() {
                   isStreaming={message.isStreaming}
                 />
               ) : (
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {getPlainContent(message)}
-                </p>
+                <div className="space-y-2">
+                  {message.blocks
+                    .filter((b): b is Extract<typeof b, { type: 'image' }> => b.type === 'image')
+                    .map((img, idx) => (
+                      <img
+                        key={`${img.name}-${idx}`}
+                        src={img.dataUrl}
+                        alt={img.name}
+                        className="max-w-sm max-h-80 rounded-lg border border-border object-contain"
+                      />
+                    ))}
+                  {getPlainContent(message) && (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {getPlainContent(message)}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </div>

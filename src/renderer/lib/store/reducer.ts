@@ -122,16 +122,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   };
 
   switch (action.type) {
-    case 'ADD_USER_MESSAGE':
+    case 'ADD_USER_MESSAGE': {
+      const textBlock: ContentBlock = { type: 'text', content: action.payload.content };
+      const blocks: ContentBlock[] = action.payload.images && action.payload.images.length > 0
+        ? [...action.payload.images, textBlock]
+        : [textBlock];
       return {
         ...state,
         messagesByMind: setActiveMsgs([...activeMsgs(), {
           id: action.payload.id,
           role: 'user',
-          blocks: [{ type: 'text', content: action.payload.content }],
+          blocks,
           timestamp: action.payload.timestamp,
         }]),
       };
+    }
 
     case 'ADD_ASSISTANT_MESSAGE':
       return {
