@@ -102,4 +102,40 @@ describe('CronService', () => {
     expect(runs[0].output).toBe('done');
     expect(jobs[0].lastTaskId).toBe('task-1');
   });
+
+  it('rejects notification jobs missing required title or body', () => {
+    const taskManager = new MockTaskManager();
+    const mindPath = makeMindPath();
+    const service = new CronService({
+      getTaskManager: () => taskManager as unknown as TaskManager,
+      showMind: vi.fn(),
+    });
+
+    expect(() =>
+      service.createJob('mind-1', mindPath, {
+        name: 'Bad notification',
+        schedule: '0 9 * * *',
+        type: 'notification',
+        payload: { message: 'hello' } as unknown as { title: string; body: string },
+      }),
+    ).toThrow('notification job payload requires a non-empty "title" string');
+  });
+
+  it('rejects prompt jobs missing required prompt field', () => {
+    const taskManager = new MockTaskManager();
+    const mindPath = makeMindPath();
+    const service = new CronService({
+      getTaskManager: () => taskManager as unknown as TaskManager,
+      showMind: vi.fn(),
+    });
+
+    expect(() =>
+      service.createJob('mind-1', mindPath, {
+        name: 'Bad prompt',
+        schedule: '0 9 * * *',
+        type: 'prompt',
+        payload: {} as unknown as { prompt: string },
+      }),
+    ).toThrow('prompt job payload requires a non-empty "prompt" string');
+  });
 });

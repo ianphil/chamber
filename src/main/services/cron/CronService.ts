@@ -6,9 +6,34 @@ import { JobStore } from './JobStore';
 import { JobRunner } from './JobRunner';
 import { Scheduler, validateSchedule } from './Scheduler';
 import { buildCronTools } from './tools';
-import type { CreateCronJobInput, CronJob, CronJobListEntry, CronJobRunRecord } from './types';
+import type { CreateCronJobInput, CronJob, CronJobListEntry, CronJobPayload, CronJobRunRecord, CronJobType } from './types';
 
 type RunSource = 'scheduled' | 'manual' | 'resume';
+
+function requireString(payload: Record<string, unknown>, field: string, jobType: string): void {
+  if (typeof payload[field] !== 'string' || (payload[field] as string).trim() === '') {
+    throw new Error(`${jobType} job payload requires a non-empty "${field}" string`);
+  }
+}
+
+function validatePayload(type: CronJobType, payload: CronJobPayload): void {
+  const p = payload as unknown as Record<string, unknown>;
+  switch (type) {
+    case 'prompt':
+      requireString(p, 'prompt', 'prompt');
+      break;
+    case 'shell':
+      requireString(p, 'command', 'shell');
+      break;
+    case 'webhook':
+      requireString(p, 'url', 'webhook');
+      break;
+    case 'notification':
+      requireString(p, 'title', 'notification');
+      requireString(p, 'body', 'notification');
+      break;
+  }
+}
 
 interface CronServiceOptions {
   getTaskManager: () => TaskManager;
@@ -55,6 +80,7 @@ export class CronService implements ChamberToolProvider {
 
   createJob(mindId: string, mindPath: string, input: CreateCronJobInput): CronJobListEntry {
     validateSchedule(input.schedule);
+    validatePayload(input.type, input.payload);
     const store = this.ensureStore(mindId, mindPath);
     const job = store.createJob(input);
     this.scheduleJob(mindId, job);
