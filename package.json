@@ -9,6 +9,8 @@
     "start": "electron-forge start",
     "package": "node scripts/prepare-node-runtime.js && electron-forge package",
     "make": "node scripts/prepare-node-runtime.js && electron-forge make",
+    "make:sandbox": "npm run make && node scripts/sandbox-test.js",
+    "sandbox": "node scripts/sandbox-test.js",
     "publish": "node scripts/prepare-node-runtime.js && electron-forge publish",
     "lint": "tsc --noEmit && eslint .",
     "typecheck": "tsc --noEmit",
