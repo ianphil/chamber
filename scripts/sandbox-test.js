@@ -15,6 +15,15 @@ const { spawn } = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const makeDir = path.join(repoRoot, 'out', 'make');
 
+function escapeXml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 if (process.platform !== 'win32') {
   console.error('Windows Sandbox is Windows-only.');
   process.exit(1);
@@ -34,13 +43,13 @@ const wsbXml = `<Configuration>
   <Networking>Enable</Networking>
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>${makeDir}</HostFolder>
+      <HostFolder>${escapeXml(makeDir)}</HostFolder>
       <SandboxFolder>C:\\installer</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
   </MappedFolders>
   <LogonCommand>
-    <Command>explorer.exe ${sandboxOpenTarget}</Command>
+    <Command>explorer.exe ${escapeXml(sandboxOpenTarget)}</Command>
   </LogonCommand>
 </Configuration>
 `;
