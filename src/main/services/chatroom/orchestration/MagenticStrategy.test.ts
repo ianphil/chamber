@@ -560,4 +560,70 @@ describe('MagenticStrategy', () => {
     expect(capturedPrompt).toContain('Respond concisely and directly');
     expect(capturedPrompt).toContain('Limit tool usage');
   });
+
+  // -------------------------------------------------------------------------
+  // formatManagerResponse: synthetic message formatting
+  // -------------------------------------------------------------------------
+
+  it('formats assign action into human-readable assignment message', async () => {
+    const managerSess = createMockSession();
+    const workerSess = createMockSession();
+    sessions.set('manager', managerSess);
+    sessions.set('worker-a', workerSess);
+
+    autoIdleWithSequence(managerSess, [
+      '{"action": "update-plan", "plan": [{"id": "1", "description": "write tests"}]}',
+      '{"action": "assign", "assignee": "Worker A", "task_id": "1", "task_description": "write tests"}',
+      '{"action": "complete", "summary": "done"}',
+    ]);
+    autoIdleWith(workerSess, 'Tests written');
+
+    const strategy = new MagenticStrategy({ managerMindId: 'manager', maxSteps: 10 });
+    const ctx = createContext(sessions);
+    const minds = [makeMind('manager', 'Manager'), makeMind('worker-a', 'Worker A')];
+
+    await strategy.execute('Write tests', minds, 'round-1', ctx);
+
+    const persisted = (ctx as unknown as { _messages: ChatroomMessage[] })._messages;
+    const assignMsg = persisted.find((m) =>
+      m.blocks.some((b) => b.type === 'text' && b.content.includes('**Assigning tasks:**')),
+    );
+    expect(assignMsg).toBeDefined();
+    expect(assignMsg!.blocks[0]).toMatchObject({
+      type: 'text',
+      content: expect.stringContaining('Worker A'),
+    });
+    expect(assignMsg!.blocks[0]).toMatchObject({
+      type: 'text',
+      content: expect.stringContaining('write tests'),
+    });
+  });
+
+  it('does not emit a synthetic message when manager responds with plain text', async () => {
+    const managerSess = createMockSession();
+    const workerSess = createMockSession();
+    sessions.set('manager', managerSess);
+    sessions.set('worker-a', workerSess);
+
+    // Plain-text plan response — no JSON, so formatManagerResponse returns it unchanged
+    // and the guard (planSummary !== planRawContent) prevents synthetic emission
+    autoIdleWithSequence(managerSess, [
+      'I will plan this task carefully.',
+      '{"action": "assign", "assignee": "Worker A", "task_id": "1", "task_description": "do work"}',
+      '{"action": "complete", "summary": "done"}',
+    ]);
+    autoIdleWith(workerSess, 'Done');
+
+    const strategy = new MagenticStrategy({ managerMindId: 'manager', maxSteps: 10 });
+    const ctx = createContext(sessions);
+    const minds = [makeMind('manager', 'Manager'), makeMind('worker-a', 'Worker A')];
+
+    await strategy.execute('Do work', minds, 'round-1', ctx);
+
+    const persisted = (ctx as unknown as { _messages: ChatroomMessage[] })._messages;
+    const planningMsg = persisted.find((m) =>
+      m.blocks.some((b) => b.type === 'text' && b.content.includes('**Planning:**')),
+    );
+    expect(planningMsg).toBeUndefined();
+  });
 });
