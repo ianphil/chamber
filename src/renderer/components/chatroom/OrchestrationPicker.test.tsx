@@ -242,4 +242,44 @@ describe('OrchestrationPicker', () => {
       expect.objectContaining({ managerMindId: 'mind-b' }),
     );
   });
+
+  // -------------------------------------------------------------------------
+  // "Best for" guidance — caption + tooltip
+  // -------------------------------------------------------------------------
+
+  it('renders an inline description for the active mode', () => {
+    renderPicker({ mode: 'concurrent' });
+    // Caption begins with "Concurrent:" and includes the "Best for:" hint.
+    expect(screen.getByText(/Concurrent:/)).toBeTruthy();
+    expect(screen.getByText(/Best for:/)).toBeTruthy();
+  });
+
+  it('updates the inline description when the mode changes', () => {
+    const { rerender } = renderPicker({ mode: 'concurrent' });
+    expect(screen.queryByText(/Sequential:/)).toBeNull();
+
+    rerender(
+      <OrchestrationPicker
+        mode="sequential"
+        groupChatConfig={null}
+        handoffConfig={null}
+        magneticConfig={null}
+        minds={[MIND_A, MIND_B]}
+        disabled={false}
+        onModeChange={vi.fn()}
+        onGroupChatConfigChange={vi.fn()}
+        onHandoffConfigChange={vi.fn()}
+        onMagneticConfigChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Sequential:/)).toBeTruthy();
+  });
+
+  it('exposes "Best for:" in each mode button title for hover tooltips', () => {
+    renderPicker();
+    for (const label of ['Concurrent', 'Sequential', 'Group Chat', 'Handoff', 'Magentic']) {
+      const btn = screen.getByText(label).closest('button');
+      expect(btn?.getAttribute('title')).toMatch(/Best for:/);
+    }
+  });
 });

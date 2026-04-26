@@ -11,14 +11,46 @@ interface ModeOption {
   value: OrchestrationMode;
   label: string;
   enabled: boolean;
+  description: string;
+  bestFor: string;
 }
 
 const MODES: ModeOption[] = [
-  { value: 'concurrent', label: 'Concurrent', enabled: true },
-  { value: 'sequential', label: 'Sequential', enabled: true },
-  { value: 'group-chat', label: 'Group Chat', enabled: true },
-  { value: 'handoff', label: 'Handoff', enabled: true },
-  { value: 'magentic', label: 'Magentic', enabled: true },
+  {
+    value: 'concurrent',
+    label: 'Concurrent',
+    enabled: true,
+    description: 'All agents respond to every message simultaneously, independently.',
+    bestFor: 'Getting multiple perspectives at once, brainstorming, parallel research, comparing approaches across agents.',
+  },
+  {
+    value: 'sequential',
+    label: 'Sequential',
+    enabled: true,
+    description: 'Agents respond in turn, each seeing the previous agent\'s full response.',
+    bestFor: 'Progressive refinement, pipelines where each agent builds on the last (e.g. research → draft → review).',
+  },
+  {
+    value: 'group-chat',
+    label: 'Group Chat',
+    enabled: true,
+    description: 'A designated moderator agent decides who speaks next and steers the discussion.',
+    bestFor: 'Structured debate, role-play, panel discussions, when you need controlled turn-taking with a clear chair.',
+  },
+  {
+    value: 'handoff',
+    label: 'Handoff',
+    enabled: true,
+    description: 'One agent handles the task until it decides to pass control to a more suitable agent.',
+    bestFor: 'Specialised pipelines across distinct domains (e.g. diagnose → fix → document a customer issue).',
+  },
+  {
+    value: 'magentic',
+    label: 'Magentic',
+    enabled: true,
+    description: 'A manager agent decomposes the goal into a task ledger and delegates subtasks to workers.',
+    bestFor: 'Complex multi-step projects, long-running workflows, anything that benefits from explicit task planning and parallel delegation.',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -105,12 +137,25 @@ export function OrchestrationPicker({
               (!opt.enabled || disabled) && 'opacity-50 cursor-not-allowed',
             )}
             aria-pressed={opt.value === mode}
-            title={!opt.enabled ? `${opt.label} — coming soon` : opt.label}
+            title={!opt.enabled ? `${opt.label} — coming soon` : `${opt.description}\n\nBest for: ${opt.bestFor}`}
           >
             {opt.label}
           </button>
         ))}
       </div>
+
+      {/* Active mode description */}
+      {(() => {
+        const active = MODES.find((m) => m.value === mode);
+        if (!active) return null;
+        return (
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            <span className="font-medium text-foreground/70">{active.label}:</span>{' '}
+            {active.description}{' '}
+            <span className="text-muted-foreground/60">Best for: {active.bestFor}</span>
+          </p>
+        );
+      })()}
 
       {/* Group Chat config: moderator selector */}
       {mode === 'group-chat' && readyMinds.length > 0 && (
