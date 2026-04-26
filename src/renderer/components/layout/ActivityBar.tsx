@@ -22,8 +22,9 @@ function getIcon(iconName: string, size = 20): React.ReactNode {
 }
 
 export function ActivityBar() {
-  const { activeView, discoveredViews } = useAppState();
+  const { activeView, discoveredViews, chatroomStreamingByMind } = useAppState();
   const dispatch = useAppDispatch();
+  const isChatroomRunning = Object.values(chatroomStreamingByMind).some(Boolean);
 
   return (
     <div className="w-12 bg-card border border-border rounded-xl flex flex-col items-center py-2 shrink-0">
@@ -54,16 +55,21 @@ export function ActivityBar() {
               aria-label="Chatroom"
               onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chatroom' })}
               className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                'relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
                 activeView === 'chatroom'
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
               )}
             >
               <Users size={20} />
+              {isChatroomRunning && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+              )}
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>Chatroom</TooltipContent>
+          <TooltipContent side="right" sideOffset={8}>
+            {isChatroomRunning ? 'Chatroom — agents running…' : 'Chatroom'}
+          </TooltipContent>
         </Tooltip>
 
         {discoveredViews.length > 0 && <Separator className="my-1 w-8" />}
