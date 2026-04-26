@@ -16,6 +16,9 @@ const DEFAULT_SIDE_EFFECT_PATTERNS: readonly string[] = [
   'email', 'mail', 'calendar', 'teams', 'slack', 'post', 'send',
   'write', 'delete', 'update', 'create', 'deploy', 'publish',
   'notify', 'webhook', 'http_request', 'fetch_external',
+  // M365 Copilot can take actions on the user's behalf via its own tool set,
+  // so gate any chat call into it.
+  'copilot_chat',
 ];
 
 // ---------------------------------------------------------------------------

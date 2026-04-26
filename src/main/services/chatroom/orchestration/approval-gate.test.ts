@@ -34,6 +34,7 @@ describe('ApprovalGate', () => {
     expect(gate.requiresApproval('calendar_create')).toBe(true);
     expect(gate.requiresApproval('delete_resource')).toBe(true);
     expect(gate.requiresApproval('webhook_trigger')).toBe(true);
+    expect(gate.requiresApproval('copilot_chat')).toBe(true);
   });
 
   it('does not require approval for safe tools', () => {
