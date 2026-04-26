@@ -3,9 +3,28 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ChatInput } from './ChatInput';
 import type { ModelInfo } from '../../../shared/types';
+
+// jsdom does not provide ResizeObserver; cmdk needs it.
+class MockResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+(globalThis as unknown as { ResizeObserver: typeof MockResizeObserver }).ResizeObserver =
+  MockResizeObserver;
+// jsdom does not implement Element.scrollIntoView; cmdk calls it on focus.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {};
+}
+
+// Stub the textarea-caret util — jsdom returns 0 for layout, so we provide
+// stable coordinates that the tests can assert against.
+vi.mock('../../lib/textarea-caret', () => ({
+  getTextareaCaretCoords: () => ({ top: 100, left: 50, height: 16 }),
+}));
 
 const defaultProps = {
   onSend: vi.fn(),
@@ -111,6 +130,167 @@ describe('ChatInput', () => {
       const evt = fireEvent.mouseDown(trigger);
       // preventDefault means default action of moving focus is suppressed
       expect(evt).toBe(false); // fireEvent returns false when preventDefault was called
+    });
+  });
+
+  describe(':shortcode autocomplete', () => {
+    function typeWithCaret(textarea: HTMLTextAreaElement, value: string) {
+      // Set caret at the end of the new value so detection sees the trailing token.
+      Object.defineProperty(textarea, 'selectionStart', { configurable: true, value: value.length });
+      Object.defineProperty(textarea, 'selectionEnd', { configurable: true, value: value.length });
+      fireEvent.change(textarea, { target: { value } });
+    }
+
+    async function expectShortcodeOpen() {
+      return await waitFor(() => screen.getByTestId('shortcode-popover'));
+    }
+
+    it('opens popover for ":sm" and shows suggestions', async () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':sm');
+      await expectShortcodeOpen();
+    });
+
+    it('does not open for ":" alone', () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':');
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+    });
+
+    it('does not open for ":30" (no letter)', () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':30');
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+    });
+
+    it('does not open for "12:30" (no boundary before colon)', () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, '12:30am');
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+    });
+
+    it('does not open inside an image token span', () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      // Place caret just after the colon-y char inside a fake image token.
+      const value = '[📷 :sm';
+      typeWithCaret(ta, value);
+      // The token span continues without `]`, so detectShortcode treats the
+      // `:sm` as inside the (unclosed) image span. Closed-token case is
+      // covered explicitly below.
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+    });
+
+    it('does not open inside a closed image token', () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      // Caret positioned within the `[📷 …]` span via selectionStart override.
+      const value = '[📷 :smile.png] after';
+      Object.defineProperty(ta, 'selectionStart', { configurable: true, value: 8 });
+      Object.defineProperty(ta, 'selectionEnd', { configurable: true, value: 8 });
+      fireEvent.change(ta, { target: { value } });
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+    });
+
+    it('Escape closes popover without altering text', async () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':sm');
+      await expectShortcodeOpen();
+      fireEvent.keyDown(ta, { key: 'Escape' });
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+      expect(ta.value).toBe(':sm');
+    });
+
+    it('Enter accepts active suggestion and replaces shortcode token', async () => {
+      const onSend = vi.fn();
+      render(<ChatInput {...defaultProps} onSend={onSend} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':smile');
+      await expectShortcodeOpen();
+      fireEvent.keyDown(ta, { key: 'Enter' });
+      // Should not have submitted the message.
+      expect(onSend).not.toHaveBeenCalled();
+      // The :smile token should be replaced with an emoji char (not start with ':').
+      await waitFor(() => {
+        expect(ta.value.startsWith(':')).toBe(false);
+        expect(ta.value.length).toBeGreaterThan(0);
+      });
+    });
+
+    it('Tab also accepts active suggestion', async () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':smile');
+      await expectShortcodeOpen();
+      fireEvent.keyDown(ta, { key: 'Tab' });
+      await waitFor(() => {
+        expect(ta.value.startsWith(':')).toBe(false);
+      });
+    });
+
+    it('Enter while popover open AND streaming does not call onStop', async () => {
+      const onStop = vi.fn();
+      render(<ChatInput {...defaultProps} isStreaming={true} onStop={onStop} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':smile');
+      await expectShortcodeOpen();
+      fireEvent.keyDown(ta, { key: 'Enter' });
+      expect(onStop).not.toHaveBeenCalled();
+    });
+
+    it('Shift+Enter does not accept; closes/keeps popover and inserts newline-style behavior', async () => {
+      const onSend = vi.fn();
+      render(<ChatInput {...defaultProps} onSend={onSend} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':smile');
+      await expectShortcodeOpen();
+      fireEvent.keyDown(ta, { key: 'Enter', shiftKey: true });
+      // Did not submit, and the colon-token is still in the value (not replaced).
+      expect(onSend).not.toHaveBeenCalled();
+      expect(ta.value).toBe(':smile');
+    });
+
+    it('IME composition suppresses popover and Enter', async () => {
+      const onSend = vi.fn();
+      render(<ChatInput {...defaultProps} onSend={onSend} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      fireEvent.compositionStart(ta);
+      typeWithCaret(ta, ':smile');
+      expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+      fireEvent.keyDown(ta, { key: 'Enter', isComposing: true });
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it('typing past the boundary closes the popover', async () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':smile');
+      await expectShortcodeOpen();
+      typeWithCaret(ta, ':smile ');
+      await waitFor(() => {
+        expect(screen.queryByTestId('shortcode-popover')).toBeNull();
+      });
+    });
+
+    it('clicking a suggestion replaces the token', async () => {
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':smile');
+      const popover = await expectShortcodeOpen();
+      const item = popover.querySelector('[data-slot="command-item"]') as HTMLElement;
+      expect(item).toBeTruthy();
+      // Use mousedown — the handler is on mousedown, not click.
+      act(() => {
+        fireEvent.mouseDown(item);
+      });
+      await waitFor(() => {
+        expect(ta.value.startsWith(':')).toBe(false);
+      });
     });
   });
 });
