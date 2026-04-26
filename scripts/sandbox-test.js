@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const asar = require('@electron/asar');
 
 const repoRoot = path.resolve(__dirname, '..');
 const makeDir = path.join(repoRoot, 'out', 'make');
@@ -31,6 +32,20 @@ if (process.platform !== 'win32') {
 
 if (!fs.existsSync(makeDir)) {
   console.error(`No build output found at ${makeDir}. Run \`npm run make\` first.`);
+  process.exit(1);
+}
+
+const packageDir = path.join(repoRoot, 'out', 'chamber-win32-x64');
+const appAsarPath = path.join(packageDir, 'resources', 'app.asar');
+if (!fs.existsSync(appAsarPath)) {
+  console.error(`No packaged app found at ${appAsarPath}. Run \`npm run make\` first.`);
+  process.exit(1);
+}
+
+const appAsarFiles = asar.listPackage(appAsarPath);
+const rendererEntry = '/.vite/renderer/main_window/index.html';
+if (!appAsarFiles.includes(rendererEntry)) {
+  console.error(`Packaged app is missing renderer entry ${rendererEntry}.`);
   process.exit(1);
 }
 

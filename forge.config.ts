@@ -105,7 +105,7 @@ const config: ForgeConfig = {
       renderer: [
         {
           name: 'main_window',
-          config: 'apps/web/vite.config.ts',
+          config: 'apps/web/vite.electron.config.ts',
         },
       ],
     }),
