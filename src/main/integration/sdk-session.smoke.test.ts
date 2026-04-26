@@ -51,7 +51,13 @@ describeIfEnabled('SDK session smoke test', () => {
   });
 
   it('can read a local file with the real CLI view tool', async () => {
-    const cliPath = path.join(process.cwd(), 'node_modules', '@github', 'copilot', 'npm-loader.js');
+    const cliPath = path.join(
+      process.cwd(),
+      'node_modules',
+      '@github',
+      `copilot-${process.platform}-${process.arch}`,
+      process.platform === 'win32' ? 'copilot.exe' : 'copilot',
+    );
     if (!fs.existsSync(cliPath)) {
       throw new Error(`Local Copilot CLI not found at ${cliPath}`);
     }
@@ -61,11 +67,10 @@ describeIfEnabled('SDK session smoke test', () => {
     fs.writeFileSync(memoryPath, `${sentinel}\nsecond line\n`, 'utf8');
 
     client = new CopilotClient({
-      cliPath: process.execPath,
+      cliPath,
       cwd: tempDir,
       logLevel: 'all',
       cliArgs: [
-        cliPath,
         '--log-dir', logDir,
         '--allow-all-tools',
         '--allow-all-paths',

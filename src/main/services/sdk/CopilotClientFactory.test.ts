@@ -1,29 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock electron app
-vi.mock('electron', () => ({ app: { isPackaged: false, getPath: vi.fn(() => '/tmp') } }));
-
-// Mock SDK bootstrap/discovery
-vi.mock('./SdkBootstrap', () => ({
-  getLocalNodeModulesDir: vi.fn(() => '/local/node_modules'),
-  getBundledNodePath: vi.fn(() => null),
-  getCliPathFromModules: vi.fn(() => '/global/node_modules/@github/copilot/bin/copilot'),
-  isLocalInstallReady: vi.fn(() => false),
-  ensureSdkInstalled: vi.fn(),
-}));
-vi.mock('./SdkDiscovery', () => ({
-  getGlobalNodeModules: vi.fn(() => '/global/node_modules'),
-}));
-vi.mock('./nodeResolver', () => ({
-  findSystemNode: vi.fn(() => '/usr/bin/node'),
-}));
 vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
-  existsSync: vi.fn((candidate: string) =>
-    candidate === 'C:\\src\\chamber\\node_modules\\@github\\copilot-sdk\\package.json'),
 }));
 
-// Mock the dynamic SDK import
+const { mockResolveNodeModulesDir, mockGetPlatformCopilotBinaryPath } = vi.hoisted(() => ({
+  mockResolveNodeModulesDir: vi.fn(() => 'C:\\src\\chamber\\node_modules'),
+  mockGetPlatformCopilotBinaryPath: vi.fn(
+    () => 'C:\\src\\chamber\\node_modules\\@github\\copilot-win32-x64\\copilot.exe'
+  ),
+}));
+
+vi.mock('./sdkPaths', () => ({
+  resolveNodeModulesDir: mockResolveNodeModulesDir,
+}));
+
+vi.mock('./SdkBootstrap', () => ({
+  getPlatformCopilotBinaryPath: mockGetPlatformCopilotBinaryPath,
+}));
+
 const mockStart = vi.fn();
 const mockStop = vi.fn();
 
@@ -31,6 +26,7 @@ class FakeCopilotClient {
   options: Record<string, unknown>;
   start = mockStart;
   stop = mockStop;
+
   constructor(options: Record<string, unknown>) {
     this.options = options;
   }
@@ -63,6 +59,28 @@ describe('CopilotClientFactory', () => {
       expect(client.options.cwd).toBe('C:\\agents\\q');
     });
 
+    it('uses the native platform Copilot binary as cliPath', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+
+      expect(mockResolveNodeModulesDir).toHaveBeenCalledTimes(1);
+      expect(mockGetPlatformCopilotBinaryPath).toHaveBeenCalledWith('C:\\src\\chamber\\node_modules');
+      expect(client.options.cliPath).toBe(
+        'C:\\src\\chamber\\node_modules\\@github\\copilot-win32-x64\\copilot.exe'
+      );
+    });
+
+    it('passes allow-all flags so SDK 0.3.0 server-side rules defer to onPermissionRequest', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const cliArgs = client.options.cliArgs as string[];
+
+      expect(cliArgs).toEqual(expect.arrayContaining([
+        '--allow-all-tools',
+        '--allow-all-paths',
+        '--allow-all-urls',
+      ]));
+      expect(cliArgs).not.toContain(expect.stringMatching(/npm-loader\.js$/));
+    });
+
     it('creates separate clients for different mind paths', async () => {
       const client1 = await factory.createClient('C:\\agents\\q');
       const client2 = await factory.createClient('C:\\agents\\fox');
@@ -74,18 +92,7 @@ describe('CopilotClientFactory', () => {
       const { loadSdkModule } = await import('./sdkImport');
       await factory.createClient('C:\\agents\\q');
       await factory.createClient('C:\\agents\\fox');
-      // SDK module loaded once, cached
       expect(loadSdkModule).toHaveBeenCalledTimes(1);
-    });
-
-    it('passes --allow-all-tools/paths/urls so SDK 0.3.0 server-side rules defer to onPermissionRequest', async () => {
-      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
-      const cliArgs = client.options.cliArgs as string[];
-      expect(cliArgs).toEqual(expect.arrayContaining([
-        '--allow-all-tools',
-        '--allow-all-paths',
-        '--allow-all-urls',
-      ]));
     });
   });
 

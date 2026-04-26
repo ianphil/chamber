@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import * as path from 'node:path';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
@@ -14,11 +16,29 @@ const enableMacOSNotarization =
   Boolean(process.env.APPLE_ID_PASSWORD) &&
   Boolean(process.env.APPLE_TEAM_ID);
 
+function prepareCopilotRuntime(platform: string, arch: string): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-copilot-runtime.js');
+  const result = spawnSync(process.execPath, [
+    scriptPath,
+    '--platform',
+    platform,
+    '--arch',
+    arch,
+  ], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Failed to prepare packaged Copilot runtime for ${platform}-${arch}.`);
+  }
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'chamber',
-    extraResource: ['./resources/node', './src/main/assets', './node_modules/keytar'],
+    extraResource: ['./resources/node', './resources/copilot-runtime', './src/main/assets', './node_modules/keytar'],
     ...(enableMacOSSigning
       ? {
           osxSign: {},
@@ -51,6 +71,11 @@ const config: ForgeConfig = {
     },
   ],
   rebuildConfig: {},
+  hooks: {
+    prePackage: async (_forgeConfig, platform, arch) => {
+      prepareCopilotRuntime(platform, arch);
+    },
+  },
   makers: [
     new MakerSquirrel({
       name: 'chamber',

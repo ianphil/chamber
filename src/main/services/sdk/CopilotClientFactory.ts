@@ -6,16 +6,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { loadSdkModule } from './sdkImport';
 import { resolveNodeModulesDir } from './sdkPaths';
-import { getCliPathFromModules, getBundledNodePath } from './SdkBootstrap';
-import { findSystemNode as findSystemNodeShared } from './nodeResolver';
+import { getPlatformCopilotBinaryPath } from './SdkBootstrap';
 
 import type { CopilotClient } from '@github/copilot-sdk';
-
-function findSystemNode(): string | null {
-  const bundled = getBundledNodePath();
-  if (bundled) return bundled;
-  return findSystemNodeShared();
-}
 
 export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
@@ -23,16 +16,11 @@ export class CopilotClientFactory {
   async createClient(mindPath: string): Promise<CopilotClient> {
     const sdk = await this.getSdk();
     const modulesDir = resolveNodeModulesDir();
-    const cliPath = getCliPathFromModules(modulesDir);
-
-    if (!cliPath) {
-      throw new Error('@github/copilot CLI not found. Install @github/copilot-sdk globally.');
-    }
+    const cliPath = getPlatformCopilotBinaryPath(modulesDir);
 
     const logDir = path.join(os.homedir(), '.chamber', 'logs');
     fs.mkdirSync(logDir, { recursive: true });
 
-    let resolvedCliPath = cliPath;
     // SDK 0.3.0 enforces server-side permission rules (path verification, tool
     // gates, URL gates) that fire before our `onPermissionRequest` handler.
     // Chamber owns the security boundary itself (Electron sandbox + the
@@ -46,16 +34,8 @@ export class CopilotClientFactory {
       '--allow-all-urls',
     ];
 
-    if (cliPath.endsWith('.js')) {
-      const systemNode = findSystemNode();
-      if (systemNode) {
-        resolvedCliPath = systemNode;
-        cliArgs.unshift(cliPath);
-      }
-    }
-
     const client = new sdk.CopilotClient({
-      cliPath: resolvedCliPath,
+      cliPath,
       cwd: mindPath,
       logLevel: 'all',
       cliArgs,

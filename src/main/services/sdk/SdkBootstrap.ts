@@ -1,24 +1,87 @@
-// SDK bootstrap — local install and shim generation for packaged builds.
+// SDK bootstrap — pure runtime path resolution and validation for dev/packaged builds.
 
 import { app } from 'electron';
-import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+type RuntimeVersions = {
+  sdk: string;
+  cli: string;
+};
+
+type RuntimeDetails = {
+  mode: 'dev' | 'packaged';
+  modulesDir: string;
+  manifestDir: string;
+  sdkVersion: string;
+  cliVersion: string;
+  platformPackageName: string;
+  platformPackageVersion: string;
+  sdkEntry: string;
+  cliBinaryPath: string;
+};
+
 const isWindows = process.platform === 'win32';
+let validatedRuntimeSignature: string | null = null;
 
-let bootstrapPromise: Promise<void> | null = null;
-
-// ---------------------------------------------------------------------------
-// Path helpers
-// ---------------------------------------------------------------------------
-
-export function getBootstrapDir(): string {
-  return path.join(app.getPath('userData'), 'copilot');
+function normalizePlatform(platform: NodeJS.Platform = process.platform): 'win32' | 'darwin' | 'linux' {
+  if (platform === 'win32' || platform === 'darwin' || platform === 'linux') {
+    return platform;
+  }
+  throw new Error(`Unsupported Copilot runtime platform: ${platform}`);
 }
 
-export function getLocalNodeModulesDir(): string {
-  return path.join(getBootstrapDir(), 'node_modules');
+function normalizeArch(arch: string = process.arch): 'x64' | 'arm64' {
+  if (arch === 'x64' || arch === 'arm64') {
+    return arch;
+  }
+  throw new Error(`Unsupported Copilot runtime arch: ${arch}`);
+}
+
+function readJsonFile<T>(filePath: string): T {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
+  } catch (error) {
+    throw new Error(
+      `Failed to read JSON file at ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+function readExactDependencyVersion(packageJsonPath: string, packageName: string): string {
+  const pkg = readJsonFile<{ dependencies?: Record<string, string> }>(packageJsonPath);
+  const version = pkg.dependencies?.[packageName];
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(
+      `Chamber Copilot runtime manifest must pin ${packageName} to an exact version. Found ${String(version)} at ${packageJsonPath}.`
+    );
+  }
+  return version;
+}
+
+function readInstalledVersion(packageJsonPath: string, packageName: string): string {
+  if (!fs.existsSync(packageJsonPath)) {
+    throw new Error(`Missing ${packageName} package metadata at ${packageJsonPath}`);
+  }
+
+  const pkg = readJsonFile<{ version?: string }>(packageJsonPath);
+  if (typeof pkg.version !== 'string' || pkg.version.length === 0) {
+    throw new Error(`Invalid ${packageName} package metadata at ${packageJsonPath}`);
+  }
+  return pkg.version;
+}
+
+export function getRuntimeManifestDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'copilot-runtime')
+    : path.join(process.cwd(), 'chamber-copilot-runtime');
+}
+
+export function getRuntimeNodeModulesDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'copilot-runtime', 'node_modules')
+    : path.join(process.cwd(), 'node_modules');
 }
 
 export function getBundledNodeRoot(): string | null {
@@ -30,128 +93,118 @@ export function getBundledNodeRoot(): string | null {
 export function getBundledNodePath(): string | null {
   const root = getBundledNodeRoot();
   if (!root) return null;
-  const p = isWindows
+  const nodePath = isWindows
     ? path.join(root, 'node.exe')
     : path.join(root, 'bin', 'node');
-  return fs.existsSync(p) ? p : null;
+  return fs.existsSync(nodePath) ? nodePath : null;
 }
 
-export function getBundledNpmCliPath(): string | null {
-  const root = getBundledNodeRoot();
-  if (!root) return null;
-  const candidates = [
-    path.join(root, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    path.join(root, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return null;
+export function getPlatformCopilotPackageName(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): string {
+  return `@github/copilot-${normalizePlatform(platform)}-${normalizeArch(arch)}`;
 }
 
-export function getCliPathFromModules(modulesDir: string): string | null {
-  const nestedCli = path.join(
-    modulesDir, '@github', 'copilot-sdk', 'node_modules', '@github', 'copilot', 'npm-loader.js',
+function getPlatformCopilotBinaryName(platform: NodeJS.Platform = process.platform): string {
+  return normalizePlatform(platform) === 'win32' ? 'copilot.exe' : 'copilot';
+}
+
+export function getPlatformCopilotBinaryPath(
+  modulesDir: string = getRuntimeNodeModulesDir(),
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): string {
+  return path.join(
+    modulesDir,
+    '@github',
+    getPlatformCopilotPackageName(platform, arch).split('/')[1],
+    getPlatformCopilotBinaryName(platform),
   );
-  if (fs.existsSync(nestedCli)) return nestedCli;
-
-  const flatCli = path.join(modulesDir, '@github', 'copilot', 'npm-loader.js');
-  if (fs.existsSync(flatCli)) return flatCli;
-
-  return null;
 }
 
-// ---------------------------------------------------------------------------
-// Local (bootstrap) install — used in packaged builds
-// ---------------------------------------------------------------------------
-
-export function isLocalInstallReady(): boolean {
-  const sdkPkg = path.join(getLocalNodeModulesDir(), '@github', 'copilot-sdk', 'package.json');
-  return fs.existsSync(sdkPkg) && Boolean(getCliPathFromModules(getLocalNodeModulesDir()));
+export function getRequiredRuntimeVersions(manifestDir: string = getRuntimeManifestDir()): RuntimeVersions {
+  const packageJsonPath = path.join(manifestDir, 'package.json');
+  return {
+    sdk: readExactDependencyVersion(packageJsonPath, '@github/copilot-sdk'),
+    cli: readExactDependencyVersion(packageJsonPath, '@github/copilot'),
+  };
 }
 
-async function runNpmInstall(): Promise<void> {
-  const nodePath = getBundledNodePath();
-  const npmCliPath = getBundledNpmCliPath();
-  if (!nodePath || !npmCliPath) {
-    throw new Error('Bundled Node runtime not found. Please reinstall Chamber.');
+export function validateRuntime(
+  modulesDir: string = getRuntimeNodeModulesDir(),
+  manifestDir: string = getRuntimeManifestDir(),
+): RuntimeDetails {
+  const required = getRequiredRuntimeVersions(manifestDir);
+  const mode = app.isPackaged ? 'packaged' : 'dev';
+  const sdkPackageJson = path.join(modulesDir, '@github', 'copilot-sdk', 'package.json');
+  const cliPackageJson = path.join(modulesDir, '@github', 'copilot', 'package.json');
+  const platformPackageName = getPlatformCopilotPackageName();
+  const platformPackageJson = path.join(modulesDir, '@github', platformPackageName.split('/')[1], 'package.json');
+  const sdkEntry = path.join(modulesDir, '@github', 'copilot-sdk', 'dist', 'index.js');
+  const cliBinaryPath = getPlatformCopilotBinaryPath(modulesDir);
+
+  const sdkVersion = readInstalledVersion(sdkPackageJson, '@github/copilot-sdk');
+  const cliVersion = readInstalledVersion(cliPackageJson, '@github/copilot');
+  const platformPackageVersion = readInstalledVersion(platformPackageJson, platformPackageName);
+
+  if (sdkVersion !== required.sdk) {
+    throw new Error(`Expected Copilot SDK ${required.sdk}, found ${sdkVersion}.`);
+  }
+  if (cliVersion !== required.cli) {
+    throw new Error(`Expected Copilot CLI ${required.cli}, found ${cliVersion}.`);
+  }
+  if (platformPackageVersion !== required.cli) {
+    throw new Error(`Expected ${platformPackageName} ${required.cli}, found ${platformPackageVersion}.`);
+  }
+  if (!fs.existsSync(sdkEntry)) {
+    throw new Error(`Copilot SDK entry not found at ${sdkEntry}`);
+  }
+  if (!fs.existsSync(cliBinaryPath)) {
+    throw new Error(`Copilot CLI binary not found at ${cliBinaryPath}`);
   }
 
-  const prefixDir = getBootstrapDir();
-  const cacheDir = path.join(prefixDir, '.npm-cache');
-  fs.mkdirSync(prefixDir, { recursive: true });
+  if (!isWindows) {
+    const stat = fs.statSync(cliBinaryPath);
+    if ((stat.mode & 0o111) === 0) {
+      throw new Error(`Copilot CLI binary is not executable: ${cliBinaryPath}`);
+    }
+  }
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(nodePath, [
-      npmCliPath,
-      'install',
-      '--no-fund',
-      '--no-audit',
-      '--loglevel=warn',
-      '--prefix', prefixDir,
-      '@github/copilot-sdk',
-    ], {
-      env: {
-        ...process.env,
-        npm_config_prefix: prefixDir,
-        npm_config_cache: cacheDir,
-        npm_config_update_notifier: 'false',
-      },
-    });
-
-    child.stdout.on('data', (d) => console.log('[SdkLoader]', d.toString().trim()));
-    child.stderr.on('data', (d) => console.warn('[SdkLoader]', d.toString().trim()));
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`npm install exited with code ${code}`));
-    });
-  });
+  return {
+    mode,
+    modulesDir,
+    manifestDir,
+    sdkVersion,
+    cliVersion,
+    platformPackageName,
+    platformPackageVersion,
+    sdkEntry,
+    cliBinaryPath,
+  };
 }
 
-export function ensureCopilotShim(): void {
-  const cliPath = getCliPathFromModules(getLocalNodeModulesDir());
-  const nodePath = getBundledNodePath();
-  if (!cliPath || !nodePath || !fs.existsSync(cliPath) || !fs.existsSync(nodePath)) return;
-
-  const shimPath = path.join(getBootstrapDir(), isWindows ? 'copilot.cmd' : 'copilot');
-  const shimContent = isWindows
-    ? `@echo off\r\n"${nodePath}" "${cliPath}" %*\r\n`
-    : `#!/bin/sh\n"${nodePath}" "${cliPath}" "$@"\n`;
-  const existing = fs.existsSync(shimPath) ? fs.readFileSync(shimPath, 'utf-8') : null;
-  if (existing === shimContent) return;
-
-  fs.mkdirSync(getBootstrapDir(), { recursive: true });
-  fs.writeFileSync(shimPath, shimContent, { encoding: 'utf-8' });
-  if (!isWindows) fs.chmodSync(shimPath, 0o755);
+export function isRuntimeReady(): boolean {
+  try {
+    validateRuntime();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export async function ensureSdkInstalled(): Promise<void> {
-  if (!app.isPackaged) return; // dev mode — use the repo-local install only
-
-  if (isLocalInstallReady()) {
-    ensureCopilotShim();
+export async function ensureSdkRuntime(): Promise<void> {
+  const runtime = validateRuntime();
+  const signature = `${runtime.mode}:${runtime.modulesDir}:${runtime.sdkVersion}:${runtime.cliVersion}`;
+  if (validatedRuntimeSignature === signature) {
     return;
   }
 
-  if (bootstrapPromise) return bootstrapPromise;
-
-  bootstrapPromise = (async () => {
-    console.log('[SdkLoader] SDK not found locally — installing via bundled Node...');
-    await runNpmInstall();
-    if (!isLocalInstallReady()) {
-      throw new Error('SDK installation did not complete.');
-    }
-    ensureCopilotShim();
-    console.log('[SdkLoader] SDK installed successfully.');
-  })();
-
-  try {
-    await bootstrapPromise;
-  } catch (err) {
-    console.error('[SdkLoader] Install failed:', err);
-    throw err;
-  } finally {
-    bootstrapPromise = null;
-  }
+  console.log(
+    `[SdkLoader] Copilot runtime ready mode=${runtime.mode} `
+    + `sdk=${runtime.sdkVersion} cli=${runtime.cliVersion} `
+    + `platformPackage=${runtime.platformPackageName}@${runtime.platformPackageVersion} `
+    + `sdkEntry=${runtime.sdkEntry} cliBinary=${runtime.cliBinaryPath}`
+  );
+  validatedRuntimeSignature = signature;
 }

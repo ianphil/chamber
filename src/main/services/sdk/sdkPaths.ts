@@ -3,7 +3,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { getLocalNodeModulesDir, isLocalInstallReady } from './SdkBootstrap';
+import { getRuntimeNodeModulesDir, isRuntimeReady } from './SdkBootstrap';
 
 function getProjectNodeModulesDir(): string | null {
   const modulesDir = path.join(process.cwd(), 'node_modules');
@@ -25,11 +25,11 @@ export function resolveNodeModulesDir(): string {
     );
   }
 
-  if (app.isPackaged && isLocalInstallReady()) {
-    return getLocalNodeModulesDir();
+  if (app.isPackaged && isRuntimeReady()) {
+    return getRuntimeNodeModulesDir();
   }
 
   throw new Error(
-    'Chamber could not find its packaged Copilot SDK install. Reinstall the app or complete first-run setup.'
+    'Chamber could not find its packaged Copilot runtime. Reinstall the app.'
   );
 }

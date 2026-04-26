@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.29.1 (2026-04-25)
+
+### Packaged Copilot runtime
+
+- **Ship the runtime in the box** — packaged Chamber no longer runs `npm install` into `%APPDATA%\chamber\copilot` on first launch. It now ships a pinned `@github/copilot-sdk` + `@github/copilot` runtime under `resources\copilot-runtime`, so opening a mind works offline and cannot drift against a stale user cache.
+- **Pin SDK + CLI together** — Chamber now treats the SDK/CLI pair as a committed runtime contract in `chamber-copilot-runtime\package.json` + `package-lock.json`, then materializes the packaged runtime with `npm ci` at package time.
+- **Use the native CLI directly** — `CopilotClientFactory` now passes the platform `copilot.exe` binary directly as `cliPath`, removing the bundled-Node/npm-loader trampoline path and matching the real packaged runtime more closely in smoke coverage.
+
 ## v0.29.0 (2026-04-25)
 
 ### SDK 0.3.0 permission compatibility
