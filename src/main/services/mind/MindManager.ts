@@ -334,7 +334,7 @@ export class MindManager extends EventEmitter {
     tools: Tool[],
     onUserInputRequest?: UserInputHandler,
   ): Promise<CopilotSession> {
-    return client.createSession({
+    const session = await client.createSession({
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
       tools,
@@ -345,9 +345,16 @@ export class MindManager extends EventEmitter {
           tone: { action: 'remove' },
         },
       },
-      onPermissionRequest: async () => ({ kind: 'approve-once' }),
+      // Return the old vocabulary ("approved") that CLI 1.0.36 expects.
+      // SDK 0.3.0 renamed to "approve-once" but the CLI's internal
+      // permission evaluator still switches on the pre-0.3.0 names.
+      // The cast is intentional — the JSON-RPC layer doesn't type-check.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onPermissionRequest: async () => ({ kind: 'approved' }) as any,
       onUserInputRequest: onUserInputRequest ?? (async () => ({ answer: 'Not available in this context', wasFreeform: true })),
     });
+
+    return session;
   }
 
   async sendBackgroundPrompt(mindPath: string, prompt: string): Promise<void> {
