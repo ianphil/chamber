@@ -4,7 +4,8 @@
 
 ### Testing
 
-- **Playwright chatroom + chat-input UI smokes** — new `tests/e2e/web/chat-input.spec.ts` drives the real `Message your agent…` textarea + Enter-key path through the fake-chat loopback, and `tests/e2e/web/chatroom-ui.spec.ts` covers the chatroom view + `OrchestrationPicker` mode switching across all five strategies.
+- **Playwright chatroom + chat-input UI smokes** — new `tests/e2e/web/chat-input.spec.ts` drives the real `Message your agent…` textarea + Enter-key path through the fake-chat loopback, and `tests/e2e/web/chatroom-ui.spec.ts` covers the chatroom view + `OrchestrationPicker` mode switching across all five strategies with exclusive-aria-pressed and active-description-text assertions.
+- **`CHAMBER_E2E_FAKE_MINDS` server-side seeding** — `apps/server/src/bin.ts` accepts a comma-separated list of fake mind paths in fake-chat mode and pre-seeds them at boot. Specs no longer need to call `mind.add` + `page.reload()` to get past the first-run gate.
 - **First-run friction removed** — added `scripts/install-playwright-browsers.js` (idempotent Chromium installer) and wired it into every `test:ui:*` script so contributors no longer hit the "Looks like Playwright was just installed" red box on first run.
 - **Live Genesis spec is opt-in** — `tests/e2e/electron/genesis-ernest-chat.spec.ts` now skips unless `CHAMBER_E2E_LIVE_GENESIS=1` is set, so default `test:ui:e2e` runs are deterministic for any contributor (no Copilot login required).
 

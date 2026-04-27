@@ -1,54 +1,43 @@
-import { expect, test } from '@playwright/test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { expect, test, type Locator } from '@playwright/test';
 
 // Smoke for the chatroom view + OrchestrationPicker. Verifies:
 //   1. The Chatroom activity-bar entry navigates to the chatroom view.
 //   2. All five orchestration modes render as toggleable buttons.
-//   3. Switching modes flips aria-pressed on the active button.
+//   3. Switching modes flips aria-pressed exclusively (only one active).
 //   4. Mode-specific config controls (Moderator / Start with / Manager)
 //      surface when their mode is selected.
+//   5. The active-mode description paragraph in the picker updates to
+//      match the selected mode — proves the parent's onModeChange
+//      propagates back into the rendered prop, not just the local
+//      aria-pressed flip.
 //
-// The chatroom send path is intentionally not exercised here — the fake-chat
-// server only stubs single-mind chat (ctx.sendChat) and does not yet stub
-// chatroom orchestration. A follow-up issue should add ctx.sendChatroom and
-// extend this spec with a multi-agent round.
+// Relies on the CHAMBER_E2E_FAKE_MINDS=e2e-monica,e2e-alice,e2e-bob seed
+// configured in config/playwright.config.ts so the picker has multiple
+// ready minds for the Moderator / Start with / Manager dropdowns.
+//
+// The chatroom send round-trip is intentionally NOT exercised here — the
+// browser shell's chatroom API is fully stubbed in apps/web/src/browserApi.ts
+// (returns empty arrays). Adding a real round-trip needs a chatroom transport
+// in the browser API + ctx.sendChatroom in the server, which is a feature
+// PR, not test infrastructure. Tracked as a follow-up.
 
 const MODE_LABELS = ['Concurrent', 'Sequential', 'Group Chat', 'Handoff', 'Magentic'] as const;
+type ModeLabel = typeof MODE_LABELS[number];
+
+// Distinctive snippets from each mode's description paragraph in
+// apps/web/src/renderer/components/chatroom/OrchestrationPicker.tsx. Used
+// to prove the active-mode description re-renders when mode changes.
+const MODE_DESCRIPTION_SNIPPETS: Record<ModeLabel, RegExp> = {
+  Concurrent: /respond to every message simultaneously/,
+  Sequential: /Agents respond in turn/,
+  'Group Chat': /designated moderator agent/,
+  Handoff: /pass control to a more suitable agent/,
+  Magentic: /decomposes the goal into a task ledger/,
+};
 
 test.describe('web chatroom UI smoke', () => {
-  let root = '';
-  const mindPaths: string[] = [];
-
-  test.beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-chatroom-ui-smoke-'));
-    mindPaths.length = 0;
-    for (const name of ['alice', 'bob']) {
-      const mindPath = path.join(root, name);
-      seedMind(mindPath, name);
-      mindPaths.push(mindPath);
-    }
-  });
-
-  test.afterEach(() => {
-    fs.rmSync(root, { recursive: true, force: true });
-  });
-
   test('opens chatroom, lists modes, and switches between strategies', async ({ page }) => {
     await page.goto('/?token=e2e-token');
-    await expect(page.locator('#root')).not.toBeEmpty();
-
-    // Seed the fake-chat server with two minds so the mode-specific
-    // selectors (Moderator / Start with / Manager) have participants to
-    // render. Reload so GenesisGate's mount-time mind.list() picks them up.
-    // (browserApi.ts wires onMindChanged to a no-op, so post-mount add
-    // does not retroactively unblock the gate.)
-    for (const mindPath of mindPaths) {
-      await page.evaluate((pathToMind) => window.electronAPI.mind.add(pathToMind), mindPath);
-    }
-
-    await page.reload();
     await expect(page.locator('#root')).not.toBeEmpty();
 
     await page.getByRole('button', { name: 'Chatroom' }).click();
@@ -56,56 +45,53 @@ test.describe('web chatroom UI smoke', () => {
     const picker = page.getByTestId('orchestration-picker');
     await expect(picker).toBeVisible();
 
-    // Every documented mode renders as a button inside the picker.
+    // Every documented mode renders as a button inside the picker, and the
+    // count matches — guards against a sixth mode landing without test
+    // coverage being updated.
+    await expect(picker.getByRole('button')).toHaveCount(MODE_LABELS.length);
     for (const label of MODE_LABELS) {
       await expect(picker.getByRole('button', { name: label })).toBeVisible();
     }
 
-    // Concurrent is the default — it should report aria-pressed=true.
-    await expect(picker.getByRole('button', { name: 'Concurrent' })).toHaveAttribute('aria-pressed', 'true');
+    // Concurrent is the default — it should be the only pressed button and
+    // its description should be the rendered one.
+    await expectExclusivePressed(picker, 'Concurrent');
+    await expect(picker.getByText(MODE_DESCRIPTION_SNIPPETS.Concurrent)).toBeVisible();
 
-    // Switch to Group Chat — Moderator selector should appear.
+    // Switch to Group Chat — Moderator selector should appear, description
+    // updates, and Concurrent is no longer pressed.
     await picker.getByRole('button', { name: 'Group Chat' }).click();
-    await expect(picker.getByRole('button', { name: 'Group Chat' })).toHaveAttribute('aria-pressed', 'true');
+    await expectExclusivePressed(picker, 'Group Chat');
     await expect(picker.getByText('Moderator:')).toBeVisible();
+    await expect(picker.getByText(MODE_DESCRIPTION_SNIPPETS['Group Chat'])).toBeVisible();
 
-    // Switch to Handoff — initial-agent selector swaps in.
+    // Switch to Handoff — initial-agent selector swaps in, Moderator is gone.
     await picker.getByRole('button', { name: 'Handoff' }).click();
-    await expect(picker.getByRole('button', { name: 'Handoff' })).toHaveAttribute('aria-pressed', 'true');
+    await expectExclusivePressed(picker, 'Handoff');
     await expect(picker.getByText('Start with:')).toBeVisible();
     await expect(picker.getByText('Moderator:')).toHaveCount(0);
+    await expect(picker.getByText(MODE_DESCRIPTION_SNIPPETS.Handoff)).toBeVisible();
 
     // Switch to Magentic — manager selector appears.
     await picker.getByRole('button', { name: 'Magentic' }).click();
-    await expect(picker.getByRole('button', { name: 'Magentic' })).toHaveAttribute('aria-pressed', 'true');
+    await expectExclusivePressed(picker, 'Magentic');
     await expect(picker.getByText('Manager:')).toBeVisible();
+    await expect(picker.getByText(MODE_DESCRIPTION_SNIPPETS.Magentic)).toBeVisible();
 
-    // Sequential and Concurrent have no extra selectors — just verify the
-    // toggle still works and the previous selectors disappear.
+    // Sequential has no extra selectors — verify the toggle still works and
+    // the previous selectors disappear.
     await picker.getByRole('button', { name: 'Sequential' }).click();
-    await expect(picker.getByRole('button', { name: 'Sequential' })).toHaveAttribute('aria-pressed', 'true');
+    await expectExclusivePressed(picker, 'Sequential');
     await expect(picker.getByText('Manager:')).toHaveCount(0);
+    await expect(picker.getByText(MODE_DESCRIPTION_SNIPPETS.Sequential)).toBeVisible();
   });
 });
 
-function seedMind(rootPath: string, name: string): void {
-  fs.mkdirSync(path.join(rootPath, '.github', 'agents'), { recursive: true });
-  fs.writeFileSync(
-    path.join(rootPath, 'SOUL.md'),
-    [`# ${name}`, '', `A deterministic local mind for the chatroom UI smoke.`, ''].join('\n'),
-  );
-  fs.writeFileSync(
-    path.join(rootPath, '.github', 'agents', `${name}.agent.md`),
-    [
-      '---',
-      `name: ${name}`,
-      'description: Chatroom UI smoke persona',
-      '---',
-      '',
-      `# ${name} Agent`,
-      '',
-      'Provide chatroom participants for orchestration picker rendering.',
-      '',
-    ].join('\n'),
-  );
+async function expectExclusivePressed(picker: Locator, expectedLabel: ModeLabel): Promise<void> {
+  for (const label of MODE_LABELS) {
+    await expect(picker.getByRole('button', { name: label })).toHaveAttribute(
+      'aria-pressed',
+      label === expectedLabel ? 'true' : 'false',
+    );
+  }
 }
