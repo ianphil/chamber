@@ -15,9 +15,9 @@ rules:
 
   # Tool access control
   - id: tool-allowlist
-    description: Minds may only invoke tools listed in the MCP allowlist
+    description: "Minds may only invoke tools explicitly approved by the platform (enforced at runtime by the Copilot SDK layer)"
     severity: error
-    check: mcp-allowlist-enforced
+    check: copilot-sdk-tool-filter
 
   # Credential safety
   - id: no-committed-secrets

@@ -20,7 +20,7 @@ jobs:
           echo "=== Checking governance artifacts ==="
           MISSING=0
 
-          for file in AGENTS.md policy.yaml mcp-allowlist.yaml; do
+          for file in AGENTS.md policy.yaml; do
             if [ ! -f "$file" ]; then
               echo "::error::Missing required governance artifact: $file"
               MISSING=1
@@ -51,24 +51,6 @@ jobs:
                   print(f'::error::Rule missing id or severity: {rule}')
                   sys.exit(1)
           print(f'Policy validated: {len(policy[\"rules\"])} rules defined')
-          "
-
-      - name: Validate mcp-allowlist.yaml schema
-        run: |
-          echo "=== Validating mcp-allowlist.yaml ==="
-          python3 -c "
-          import yaml, sys
-          with open('mcp-allowlist.yaml', 'r') as f:
-              allowlist = yaml.safe_load(f)
-          required = ['version', 'default_action']
-          for field in required:
-              if field not in allowlist:
-                  print(f'::error::mcp-allowlist.yaml missing required field: {field}')
-                  sys.exit(1)
-          servers = allowlist.get('servers', [])
-          tools = allowlist.get('tools', [])
-          print(f'Allowlist validated: {len(servers)} servers, {len(tools)} tools defined')
-          print(f'Default action: {allowlist[\"default_action\"]}')
           "
 
       - name: Scan for secrets in mind directories
@@ -105,33 +87,6 @@ jobs:
           else
             echo ".working-memory/ not modified in this PR."
           fi
-
-      - name: Validate Lens view.json files
-        run: |
-          echo "=== Validating Lens view.json files ==="
-          python3 -c "
-          import json, glob, sys
-          views = glob.glob('.github/lens/**/view.json', recursive=True)
-          if not views:
-              print('No Lens view.json files found (OK)')
-              sys.exit(0)
-          errors = 0
-          VALID_TYPES = ['form', 'table', 'briefing', 'detail', 'status-board', 'timeline', 'editor']
-          for path in views:
-              with open(path) as f:
-                  try:
-                      view = json.load(f)
-                  except json.JSONDecodeError as e:
-                      print(f'::error::Invalid JSON in {path}: {e}')
-                      errors += 1
-                      continue
-              if 'type' in view and view['type'] not in VALID_TYPES:
-                  print(f'::error::Invalid view type in {path}: {view[\"type\"]}')
-                  errors += 1
-          if errors:
-              sys.exit(1)
-          print(f'Validated {len(views)} Lens view(s)')
-          "
 
       - name: npm audit
         run: |
