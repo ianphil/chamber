@@ -132,6 +132,20 @@ Observed across the codebase:
   - Inline comments explain *why*, not *what*.
 - **Dependency injection**: constructor injection, no DI container. Prefer interfaces (TypeScript `interface` or `type`) over concrete dependencies in service constructors when a fake will be needed for tests.
 
+## Change Discipline
+
+- **Surgical edits**: every changed line should trace to the request. Don't reformat,
+  rename, or "improve" code you weren't asked to touch. If you notice unrelated dead
+  code or a smell, mention it in the PR body — don't fix it in the same PR.
+- **Clean up your own orphans only**: remove imports/symbols *your* changes made unused;
+  leave pre-existing dead code alone unless the task is cleanup.
+- **No speculative scope**: no abstractions for single-use code, no configurability that
+  wasn't asked for, no error handling for branches that can't execute. Validate at
+  service boundaries, not everywhere.
+- **Define done before coding**: for bugs, write the failing test first. For features,
+  state the verification step ("renderer test for X passes", "`npm run lint` clean",
+  "smoke test still green"). Loop until each step verifies.
+
 ## React / Renderer
 
 - React **19** with the new JSX transform (`react-jsx`) — do not import `React` for JSX; only import it when you actually use it.
