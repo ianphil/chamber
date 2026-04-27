@@ -32,6 +32,7 @@ export function installBrowserApi(): void {
 
   const client = createClient();
   const authProgressHandlers = new Set<(progress: AuthProgress) => void>();
+  const chatEventHandlers = new Set<Parameters<ElectronAPI['chat']['onEvent']>[0]>();
   const accountSwitchStartedHandlers = new Set<(data: { login: string }) => void>();
   const accountSwitchedHandlers = new Set<(data: { login: string }) => void>();
   const loggedOutHandlers = new Set<() => void>();
@@ -40,24 +41,84 @@ export function installBrowserApi(): void {
       handler(progress);
     }
   };
+  let eventSocket: WebSocket | null = null;
+  let openSocketPromise: Promise<WebSocket> | null = null;
+  const pendingSubscriptions = new Map<string, () => void>();
+  const openEventSocket = (): Promise<WebSocket> => {
+    if (eventSocket?.readyState === WebSocket.OPEN) return Promise.resolve(eventSocket);
+    if (openSocketPromise) return openSocketPromise;
+
+    const url = new URL('/events', window.location.origin);
+    url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('token', new URLSearchParams(window.location.search).get('token') ?? '');
+
+    openSocketPromise = new Promise((resolve, reject) => {
+      const ws = new WebSocket(url);
+      eventSocket = ws;
+      ws.addEventListener('open', () => resolve(ws), { once: true });
+      ws.addEventListener('error', () => reject(new Error('Failed to open Chamber event socket.')), { once: true });
+      ws.addEventListener('message', (message) => {
+        const envelope = JSON.parse(String(message.data)) as { type?: string; payload?: unknown };
+        if (envelope.type === 'subscription:ready') {
+          const payload = envelope.payload as { sessionId?: string };
+          if (payload.sessionId) {
+            pendingSubscriptions.get(payload.sessionId)?.();
+            pendingSubscriptions.delete(payload.sessionId);
+          }
+          return;
+        }
+        if (envelope.type === 'chat:event') {
+          const payload = envelope.payload as {
+            mindId: string;
+            messageId: string;
+            event: Parameters<Parameters<ElectronAPI['chat']['onEvent']>[0]>[2];
+          };
+          for (const handler of chatEventHandlers) {
+            handler(payload.mindId, payload.messageId, payload.event);
+          }
+        }
+      });
+      ws.addEventListener('close', () => {
+        if (eventSocket === ws) eventSocket = null;
+        if (openSocketPromise) openSocketPromise = null;
+      });
+    });
+    return openSocketPromise;
+  };
+  const subscribeToChatEvents = async (messageId: string): Promise<void> => {
+    const ws = await openEventSocket();
+    await new Promise<void>((resolve) => {
+      pendingSubscriptions.set(messageId, resolve);
+      ws.send(JSON.stringify({ type: 'subscribe', sessionId: messageId }));
+    });
+  };
   const api: ElectronAPI = {
     chat: {
-      send: async () => undefined,
+      send: async (mindId, message, messageId, model, attachments) => {
+        await subscribeToChatEvents(messageId);
+        await client.sendChat({ mindId, message, messageId, model, attachments });
+      },
       stop: async (_mindId, messageId) => {
         await client.cancelChat(messageId);
       },
-      newConversation: async () => undefined,
-      listModels: async (): Promise<ModelInfo[]> => [],
-      onEvent: () => noopUnsubscribe,
+      newConversation: async (mindId) => {
+        await client.startNewConversation(mindId);
+      },
+      listModels: (): Promise<ModelInfo[]> => client.listModels(),
+      onEvent: (callback) => {
+        chatEventHandlers.add(callback);
+        void openEventSocket();
+        return () => {
+          chatEventHandlers.delete(callback);
+        };
+      },
     },
     mind: {
-      add: async (mindPath): Promise<MindContext> => {
-        throw new Error(`Adding minds is desktop-only in browser mode: ${mindPath}`);
-      },
+      add: (mindPath): Promise<MindContext> => client.addMind(mindPath) as Promise<MindContext>,
       remove: async () => undefined,
       list: () => client.listMinds() as Promise<MindContext[]>,
       setActive: async () => undefined,
-      selectDirectory: async () => null,
+      selectDirectory: async () => window.prompt('Enter a local agent folder path on this computer:')?.trim() || null,
       openWindow: async (mindId) => {
         window.open(`/?mindId=${encodeURIComponent(mindId)}`, '_blank', 'noopener,noreferrer');
       },

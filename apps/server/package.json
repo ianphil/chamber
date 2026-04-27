@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@chamber/services": "file:../../packages/services",
+    "@chamber/wire-contracts": "file:../../packages/wire-contracts",
     "@hono/node-server": "^2.0.0",
     "hono": "^4.10.6",
     "keytar": "^7.9.0",

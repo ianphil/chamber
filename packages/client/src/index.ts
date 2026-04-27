@@ -1,4 +1,12 @@
-import type { CommandResponse, ListMindsResponse, MindDto } from '@chamber/wire-contracts';
+import type {
+  AddMindResponse,
+  CommandResponse,
+  ListModelsResponse,
+  ListMindsResponse,
+  MindDto,
+  ModelDto,
+  SendChatRequest,
+} from '@chamber/wire-contracts';
 
 export interface AuthProgressDto {
   step: string;
@@ -26,6 +34,11 @@ export class ChamberClient {
   async listMinds(): Promise<MindDto[]> {
     const body = await this.get<ListMindsResponse>('/api/mind/list');
     return body.minds;
+  }
+
+  async addMind(mindPath: string): Promise<MindDto> {
+    const body = await this.post<AddMindResponse>('/api/mind/add', { mindPath });
+    return body.mind;
   }
 
   async getConfig(): Promise<unknown> {
@@ -114,6 +127,20 @@ export class ChamberClient {
 
   async cancelChat(sessionId: string): Promise<CommandResponse> {
     return this.post('/api/chat/cancel', { sessionId });
+  }
+
+  async sendChat(request: SendChatRequest): Promise<CommandResponse> {
+    return this.post('/api/chat/send', request);
+  }
+
+  async startNewConversation(mindId: string): Promise<CommandResponse> {
+    return this.post('/api/chat/new', { mindId });
+  }
+
+  async listModels(mindId?: string): Promise<ModelDto[]> {
+    const query = mindId ? `?mindId=${encodeURIComponent(mindId)}` : '';
+    const body = await this.get<ListModelsResponse>(`/api/chat/models${query}`);
+    return body.models;
   }
 
   private async get<TBody = unknown>(path: string): Promise<TBody> {

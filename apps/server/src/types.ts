@@ -28,10 +28,25 @@ export interface ServerAuthLoginResult {
   error?: string;
 }
 
+export interface ServerChatAttachment {
+  name: string;
+  mimeType: string;
+  data: string;
+}
+
+export interface ServerSendChatRequest {
+  mindId: string;
+  message: string;
+  messageId: string;
+  model?: string;
+  attachments?: ServerChatAttachment[];
+}
+
 export interface ChamberCtx {
   token: string;
   allowedOrigins: ReadonlySet<string>;
   listMinds: () => unknown[];
+  addMind?: (mindPath: string) => unknown | Promise<unknown>;
   getConfig?: () => unknown | Promise<unknown>;
   listLensViews?: () => unknown | Promise<unknown>;
   getGenesisStatus?: () => unknown | Promise<unknown>;
@@ -45,6 +60,9 @@ export interface ChamberCtx {
   validatePath?: (candidate: string) => boolean;
   saveAttachment?: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
   cancelChat?: (sessionId: string) => Promise<void> | void;
+  sendChat?: (request: ServerSendChatRequest) => Promise<void> | void;
+  newConversation?: (mindId: string) => Promise<void> | void;
+  listModels?: (mindId?: string) => unknown[] | Promise<unknown[]>;
   shutdown?: () => void;
   handlePrivilegedRequest?: (request: PrivilegedRequest) => Promise<PrivilegedResponse>;
 }

@@ -33,6 +33,41 @@ export interface ListMindsResponse {
   readonly minds: MindDto[];
 }
 
+export interface AddMindRequest {
+  readonly mindPath: string;
+}
+
+export interface AddMindResponse {
+  readonly mind: MindDto;
+}
+
+export interface ChatAttachmentDto {
+  readonly name: string;
+  readonly mimeType: string;
+  readonly data: string;
+}
+
+export interface SendChatRequest {
+  readonly mindId: string;
+  readonly message: string;
+  readonly messageId: string;
+  readonly model?: string;
+  readonly attachments?: ChatAttachmentDto[];
+}
+
+export interface NewConversationRequest {
+  readonly mindId: string;
+}
+
+export interface ModelDto {
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface ListModelsResponse {
+  readonly models: ModelDto[];
+}
+
 export interface CommandResponse {
   readonly ok: true;
 }

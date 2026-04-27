@@ -4,6 +4,7 @@ import { getRequestListener } from '@hono/node-server';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import {
+  addMindHandler,
   cancelChatHandler,
   getAuthStatusHandler,
   getConfigHandler,
@@ -12,14 +13,18 @@ import {
   listAuthAccountsHandler,
   listChamberToolsHandler,
   listLensViewsHandler,
+  listModelsHandler,
   listMindsHandler,
   logoutAuthHandler,
+  newConversationHandler,
+  sendChatHandler,
   switchAuthAccountHandler,
   uploadAttachmentHandler,
 } from './handlers';
 import { isAllowedOrigin, isAuthorized } from './auth';
 import type { ChamberCtx, ChamberRequest, ChamberResponse } from './types';
 import { parsePrivilegedRequest, PrivilegedProtocolError } from './privileged-protocol';
+import { WIRE_PROTOCOL_VERSION } from '@chamber/wire-contracts';
 
 function toRequest(c: Context): ChamberRequest {
   const url = new URL(c.req.url);
@@ -99,6 +104,11 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
   };
 
   app.get('/api/mind/list', authenticated(listMindsHandler));
+  app.post('/api/mind/add', async (c) => {
+    const authFailure = requireAuth(c, ctx);
+    if (authFailure) return authFailure;
+    return send(c, await addMindHandler(await toRequestWithBody(c), ctx));
+  });
   app.get('/api/config', authenticated(getConfigHandler));
   app.get('/api/lens/list', authenticated(listLensViewsHandler));
   app.get('/api/genesis/status', authenticated(getGenesisStatusHandler));
@@ -130,6 +140,17 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
     if (authFailure) return authFailure;
     return send(c, await cancelChatHandler(await toRequestWithBody(c), ctx));
   });
+  app.post('/api/chat/send', async (c) => {
+    const authFailure = requireAuth(c, ctx);
+    if (authFailure) return authFailure;
+    return send(c, await sendChatHandler(await toRequestWithBody(c), ctx));
+  });
+  app.post('/api/chat/new', async (c) => {
+    const authFailure = requireAuth(c, ctx);
+    if (authFailure) return authFailure;
+    return send(c, await newConversationHandler(await toRequestWithBody(c), ctx));
+  });
+  app.get('/api/chat/models', authenticated(listModelsHandler));
   app.post('/api/privileged', async (c) => {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;
@@ -166,10 +187,22 @@ export function createHttpServer(ctx: ChamberCtx) {
   const app = createHonoApp(ctx);
   const server = createServer(getRequestListener((request) => app.fetch(request)));
   const wsServer = new WebSocketServer({ noServer: true });
+  const subscriptions = new Map<string, Set<import('ws').WebSocket>>();
+  const publish = (sessionId: string, event: unknown): void => {
+    ctx.publish?.(sessionId, event);
+    for (const ws of subscriptions.get(sessionId) ?? []) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ version: WIRE_PROTOCOL_VERSION, type: 'chat:event', payload: event }));
+      }
+    }
+  };
 
   server.on('upgrade', (request, socket, head) => {
+    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
     const origin = request.headers.origin ?? null;
-    const authorization = request.headers.authorization ?? null;
+    const authorization = request.headers.authorization ?? (
+      requestUrl.searchParams.has('token') ? `Bearer ${requestUrl.searchParams.get('token')}` : null
+    );
     if (!isAllowedOrigin(origin, ctx.allowedOrigins) || !isAuthorized(authorization, ctx.token)) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
@@ -177,15 +210,26 @@ export function createHttpServer(ctx: ChamberCtx) {
     }
     wsServer.handleUpgrade(request, socket, head, (ws) => {
       ws.send(JSON.stringify({ type: 'hello', version: 1 }));
+      const subscribed = new Set<string>();
       ws.on('message', (data) => {
         const message = JSON.parse(data.toString()) as { type?: string; sessionId?: string; event?: unknown };
         if (message.type === 'subscribe' && message.sessionId) {
-          ctx.publish?.(message.sessionId, { type: 'subscribed' });
+          subscribed.add(message.sessionId);
+          const sockets = subscriptions.get(message.sessionId) ?? new Set();
+          sockets.add(ws);
+          subscriptions.set(message.sessionId, sockets);
           ws.send(JSON.stringify({ version: 1, type: 'subscription:ready', payload: { sessionId: message.sessionId } }));
+        }
+      });
+      ws.on('close', () => {
+        for (const sessionId of subscribed) {
+          const sockets = subscriptions.get(sessionId);
+          sockets?.delete(ws);
+          if (sockets?.size === 0) subscriptions.delete(sessionId);
         }
       });
     });
   });
 
-  return { server, wsServer };
+  return { server, wsServer, publish };
 }

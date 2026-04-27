@@ -12,6 +12,9 @@ export function createServerContext(options: ServerCompositionOptions = {}): Cha
     token,
     allowedOrigins: new Set(options.allowedOrigins ?? [`http://127.0.0.1`]),
     listMinds: () => [],
+    addMind: async () => {
+      throw new Error('Mind loading is unavailable');
+    },
     getConfig: () => ({ version: 1 }),
     listLensViews: () => [],
     getGenesisStatus: () => ({ ready: false }),
@@ -20,6 +23,9 @@ export function createServerContext(options: ServerCompositionOptions = {}): Cha
     listChamberTools: () => [],
     saveAttachment: async ({ name }) => ({ attachmentId: randomUUID(), name }),
     cancelChat: () => undefined,
+    sendChat: () => undefined,
+    newConversation: () => undefined,
+    listModels: () => [],
     validatePath: () => false,
   };
 }

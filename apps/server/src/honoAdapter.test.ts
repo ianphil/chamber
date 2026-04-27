@@ -3,6 +3,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { WebSocketServer } from 'ws';
+import { WebSocket } from 'ws';
 import { createHttpServer } from './honoAdapter';
 import type { ChamberCtx } from './types';
 
@@ -112,6 +113,35 @@ describe('createHttpServer', () => {
 
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body)).toEqual({ error: 'Privileged request body must be valid JSON.' });
+  });
+
+  it('accepts browser WebSocket auth via token query and fans out published chat events', async () => {
+    const { port } = await startServer({});
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/events?token=${TOKEN}`, {
+      headers: { origin: ORIGIN },
+    });
+
+    try {
+      await waitForOpen(ws);
+      const ready = waitForMessage(ws, (message) => message.type === 'subscription:ready');
+      ws.send(JSON.stringify({ type: 'subscribe', sessionId: 'assistant-1' }));
+      await ready;
+
+      currentServer?.publish('assistant-1', {
+        mindId: 'dude-1234',
+        messageId: 'assistant-1',
+        event: { type: 'done' },
+      });
+
+      const event = await waitForMessage(ws, (message) => message.type === 'chat:event');
+      expect(event.payload).toEqual({
+        mindId: 'dude-1234',
+        messageId: 'assistant-1',
+        event: { type: 'done' },
+      });
+    } finally {
+      ws.close();
+    }
   });
 });
 
@@ -232,4 +262,24 @@ async function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> 
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+async function waitForOpen(ws: WebSocket): Promise<void> {
+  if (ws.readyState === WebSocket.OPEN) return;
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', resolve);
+    ws.once('error', reject);
+  });
+}
+
+async function waitForMessage(
+  ws: WebSocket,
+  predicate: (message: { type?: string; payload?: unknown }) => boolean,
+): Promise<{ type?: string; payload?: unknown }> {
+  return withTimeout(new Promise((resolve) => {
+    ws.on('message', (data) => {
+      const message = JSON.parse(String(data)) as { type?: string; payload?: unknown };
+      if (predicate(message)) resolve(message);
+    });
+  }), 'Timed out waiting for WebSocket message');
 }
