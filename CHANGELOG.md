@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.31.5 (2026-04-27)
+
+### Agent lifecycle
+
+- **Prevent duplicate mind sessions** — loading the same mind folder through equivalent path spellings now returns the existing mind instead of creating another SDK client/session that can collide on extension tool names.
+- **Select reopened minds deterministically** — Open Existing and agent directory selection now activate the mind returned by the load call instead of assuming the last item in the refreshed list is the intended agent.
+
 ## v0.31.4 (2026-04-27)
 
 ### Genesis lifecycle
