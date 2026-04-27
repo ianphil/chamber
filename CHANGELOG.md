@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.31.1 (2026-04-26)
+
+### Repo hygiene
+
+- **Ignore generated workspace artifacts** — workspace build outputs under `apps/server/dist/` and `apps/web/dist/` are no longer tracked, and a regression test keeps those generated files ignored. (#141)
+
 ## v0.31.0 (2026-04-26)
 
 ### Web/server transport migration
