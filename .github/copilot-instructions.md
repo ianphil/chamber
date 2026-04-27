@@ -12,7 +12,7 @@ These instructions tell Copilot how to produce code that fits the Chamber codeba
 
 ## Stack & Versions (pinned)
 
-- **Runtime**: Node `20` (`.nvmrc`), Electron `41`
+- **Runtime**: Node `24.15.0` (`.nvmrc`), Electron `41`
 - **Language**: TypeScript `6.0`, ESM source (CommonJS module target in `tsconfig.json`), `target: ESNext`, `strict: true`, `noImplicitAny: true`, `moduleResolution: bundler`, JSX `react-jsx`
 - **Path alias**: `@/*` → `./src/*` (tsconfig + `config/vitest.config.ts` + `components.json`)
 - **UI**: React `19`, Tailwind CSS `4`, shadcn/ui style `radix-nova` (Radix primitives + CVA + `tailwind-merge` + `clsx`), Lucide icons
