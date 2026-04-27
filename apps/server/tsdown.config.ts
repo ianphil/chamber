@@ -6,5 +6,8 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
+  deps: {
+    alwaysBundle: [/^@chamber\//],
+  },
   outExtensions: () => ({ js: '.mjs' }),
 });

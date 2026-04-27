@@ -1,8 +1,8 @@
 import { createHttpServer } from './honoAdapter';
 import { createServerContext } from './composition';
-import { AuthService } from '../../../packages/services/src/auth/AuthService';
-import type { CredentialStore } from '../../../packages/services/src/ports';
+import { AuthService, type CredentialStore } from '@chamber/services';
 import keytar from 'keytar';
+import { createCredentialPrivilegedHandler } from './privileged-protocol';
 
 const port = Number(process.env.CHAMBER_SERVER_PORT ?? 0);
 const allowedOrigin = process.env.CHAMBER_ALLOWED_ORIGIN ?? 'http://127.0.0.1';
@@ -38,7 +38,7 @@ ctx.switchAuthAccount = async (login) => {
 };
 ctx.logoutAuth = () => authService.logout();
 ctx.shutdown = () => shutdown();
-ctx.handlePrivilegedRequest = async (request) => ({ ok: true, request });
+ctx.handlePrivilegedRequest = createCredentialPrivilegedHandler(keytar as CredentialStore);
 
 const { server } = createHttpServer({
   ...ctx,

@@ -25,7 +25,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm --workspace @chamber/server run build && node apps/server/dist/bin.mjs',
+      command: 'npm --workspace @chamber/server run build && node ../apps/server/dist/bin.mjs',
       url: 'http://127.0.0.1:33441/api/health',
       timeout: 120_000,
       reuseExistingServer: !process.env.CI,

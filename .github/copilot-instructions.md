@@ -42,7 +42,7 @@ src/
   renderer/          # React UI
     App.tsx, components/, hooks/, lib/, index.css, env.d.ts
   shared/            # Types and utilities used by both main and renderer
-  test/ (top-level)  # Cross-cutting tests (e.g. packaging scripts)
+  tests/             # Cross-cutting regression tests and Playwright E2E smoke tests
 ```
 
 ### Dependency direction

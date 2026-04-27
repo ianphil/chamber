@@ -50,6 +50,9 @@ if (started) {
 if (process.env.CHAMBER_E2E_CDP_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.CHAMBER_E2E_CDP_PORT);
 }
+if (process.env.CHAMBER_E2E_USER_DATA) {
+  app.setPath('userData', process.env.CHAMBER_E2E_USER_DATA);
+}
 
 const hasSingleInstanceLock = process.env.CHAMBER_DISABLE_SINGLE_INSTANCE_LOCK === '1' || app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -172,7 +175,7 @@ async function startMvpServer(): Promise<string> {
     ? path.join(process.resourcesPath, 'dist', 'bin.mjs')
     : path.join(process.cwd(), 'apps', 'server', 'dist', 'bin.mjs');
   const nodePath = process.execPath;
-  const tokenValue = randomBytes(32).toString('base64url');
+  const tokenValue = process.env.CHAMBER_SERVER_TOKEN ?? randomBytes(32).toString('base64url');
 
   serverChild = spawn(nodePath, [serverEntry], {
     env: {

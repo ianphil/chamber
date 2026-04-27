@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.31.2 (2026-04-27)
+
+### Server
+
+- **Make the privileged loopback channel real** — privileged credential requests now validate protocol payloads strictly and execute supported credential operations through the OS credential store instead of returning fake success with echoed request data. (#140)
+
 ## v0.31.1 (2026-04-26)
 
 ### Repo hygiene

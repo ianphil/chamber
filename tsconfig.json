@@ -12,5 +12,5 @@
       "@chamber/wire-contracts": ["./packages/wire-contracts/src/index.ts"]
     }
   },
-  "include": ["apps/**/*", "packages/**/*", "test/**/*", "forge.env.d.ts"]
+  "include": ["apps/**/*", "packages/**/*", "tests/**/*", "forge.env.d.ts"]
 }

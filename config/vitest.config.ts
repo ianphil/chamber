@@ -9,7 +9,7 @@ export default defineConfig({
     include: [
       'apps/**/*.{test,spec}.{ts,tsx}',
       'packages/**/*.{test,spec}.{ts,tsx}',
-      'test/**/*.{test,spec}.{ts,tsx}',
+      'tests/regression/**/*.{test,spec}.{ts,tsx}',
     ],
     exclude: ['node_modules', 'dist', 'out', '.vite', 'apps/*/dist', 'packages/*/dist'],
     testTimeout: 10_000,

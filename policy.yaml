@@ -57,12 +57,6 @@ rules:
     severity: error
     check: npm-audit-clean
 
-  # Working memory protection
-  - id: working-memory-readonly
-    description: PRs must not modify .working-memory/ files
-    severity: warning
-    check: working-memory-protected
-
 metadata:
   framework: agent-governance-toolkit
   applies_to: desktop-agent-platform

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import packageJson from '../package.json';
+import packageJson from '../../package.json';
 
 describe('packaging scripts', () => {
   it('builds generated server resources before Electron Forge packaging commands', () => {

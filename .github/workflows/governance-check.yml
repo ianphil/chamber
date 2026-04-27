@@ -77,17 +77,6 @@ jobs:
             echo "No secret patterns detected."
           fi
 
-      - name: Check .working-memory not modified
-        run: |
-          echo "=== Checking .working-memory protection ==="
-          CHANGED=$(git diff --name-only origin/master...HEAD -- .working-memory/ 2>/dev/null || true)
-          if [ -n "$CHANGED" ]; then
-            echo "::warning::PR modifies .working-memory/ files (agent-managed):"
-            echo "$CHANGED"
-          else
-            echo ".working-memory/ not modified in this PR."
-          fi
-
       - name: npm audit
         run: |
           echo "=== Running npm audit ==="

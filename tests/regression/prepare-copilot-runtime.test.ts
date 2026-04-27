@@ -4,7 +4,7 @@ async function loadPrepareRuntime(): Promise<{
   assertHostMatchesTarget: (platform: string, arch: string) => void;
   getPlatformPackageName: (platform: string, arch: string) => string;
 }> {
-  const module = await import('../scripts/prepare-copilot-runtime.js');
+  const module = await import('../../scripts/prepare-copilot-runtime.js');
   return ('default' in module ? module.default : module) as {
     assertHostMatchesTarget: (platform: string, arch: string) => void;
     getPlatformPackageName: (platform: string, arch: string) => string;
