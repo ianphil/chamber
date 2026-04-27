@@ -11,7 +11,14 @@ const expectedReply = 'CHAMBER_GENESIS_READY_ACK';
 const ernestName = 'Ernest';
 const memoryInstruction = `When asked for the Genesis smoke acknowledgement, answer exactly ${expectedReply} and no other text.`;
 
+// This spec drives a real Copilot SDK turn end-to-end. It is opt-in because:
+//   - It requires a logged-in Copilot account in the Electron app.
+//   - It takes several minutes (model latency + wizard navigation).
+// Set CHAMBER_E2E_LIVE_GENESIS=1 to enable. Defaults skip in CI and locally.
+const liveGenesisEnabled = process.env.CHAMBER_E2E_LIVE_GENESIS === '1';
+
 test.describe('electron Genesis Ernest chat smoke', () => {
+  test.skip(!liveGenesisEnabled, 'Set CHAMBER_E2E_LIVE_GENESIS=1 to run the live Copilot Genesis smoke.');
   test.setTimeout(360_000);
 
   let app: LaunchedElectronApp | undefined;
