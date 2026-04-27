@@ -4,6 +4,7 @@ import type { MindIdentity } from '@chamber/shared/types';
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const H1_RE = /^#\s+(.+)$/m;
+const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
 export class IdentityLoader {
   load(mindPath: string | null): MindIdentity | null {
@@ -27,6 +28,20 @@ export class IdentityLoader {
           const content = fs.readFileSync(path.join(agentsDir, String(file)), 'utf-8');
           parts.push(content.replace(FRONTMATTER_RE, '').trim());
         }
+      }
+    } catch { /* missing */ }
+
+    try {
+      const memoryDir = path.join(mindPath, '.working-memory');
+      if (!fs.existsSync(memoryDir)) throw new Error('missing working-memory');
+      const files = fs.readdirSync(memoryDir)
+        .map((file) => String(file))
+        .filter((file) => WORKING_MEMORY_FILES.includes(file))
+        .sort((a, b) => WORKING_MEMORY_FILES.indexOf(a) - WORKING_MEMORY_FILES.indexOf(b));
+      for (const file of files) {
+        const filePath = path.join(memoryDir, file);
+        const content = fs.readFileSync(filePath, 'utf-8').trim();
+        if (content.length > 0) parts.push(content);
       }
     } catch { /* missing */ }
 
