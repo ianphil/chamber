@@ -98,9 +98,13 @@ export class MindManager extends EventEmitter {
         this.activateProviders(id, resolvedMindPath),
         this.viewDiscovery.scan(resolvedMindPath),
       ]);
+      this.viewDiscovery.startWatching(resolvedMindPath, () => {
+        this.emit('lens:viewsChanged', this.viewDiscovery.getViews());
+      });
     } catch (err) {
       this.minds.delete(id);
       this.pathToId.delete(resolvedMindPath);
+      this.viewDiscovery.removeMind(resolvedMindPath);
       await this.releaseProviders(id).catch(() => { /* noop */ });
       await this.clientFactory.destroyClient(client);
       throw err;

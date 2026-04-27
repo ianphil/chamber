@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.31.3 (2026-04-27)
+
+### Lens
+
+- **Hot-load Lens create and delete events** — Lens view discovery now debounces watcher events, rescans on view creation and folder removal, and clears pending rescans when watchers stop so the activity bar stays in sync without restarting Chamber. (#29)
+
 ## v0.31.2 (2026-04-27)
 
 ### Server

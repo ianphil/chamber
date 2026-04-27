@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import * as path from 'path';
 
 vi.mock('electron', () => ({
@@ -202,6 +202,7 @@ describe('ViewDiscovery', () => {
     });
 
     it('transitions to lens/ watcher when lens/ appears', async () => {
+      vi.useFakeTimers();
       const mockClose = vi.fn();
       let parentCallback: (event: string, filename: string) => void = () => {};
       vi.mocked(fs.watch).mockImplementation((_path: unknown, ...args: unknown[]) => {
@@ -225,18 +226,144 @@ describe('ViewDiscovery', () => {
       // Simulate lens/ directory appearing
       lensExists = true;
       parentCallback('rename', 'lens');
+      await vi.advanceTimersByTimeAsync(300);
 
-      // Allow the scan promise to resolve
-      await vi.waitFor(() => {
-        expect(onChanged).toHaveBeenCalled();
-      });
+      expect(onChanged).toHaveBeenCalled();
       expect(mockClose).toHaveBeenCalled();
+      vi.useRealTimers();
     });
 
     it('does nothing when .github/ does not exist either', () => {
       mockExistsSync.mockReturnValue(false);
       discovery.startWatching('/tmp/mind', vi.fn());
       expect(fs.watch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('startWatching — lens view hot-load', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('rescans and notifies when a view.json is created under lens/', async () => {
+      let lensCallback: (event: string, filename: string) => void = () => {};
+      vi.mocked(fs.watch).mockImplementation((_path: unknown, ...args: unknown[]) => {
+        const cb = args.find(a => typeof a === 'function') as (event: string, filename: string) => void;
+        if (cb) lensCallback = cb;
+        return { close: vi.fn() } as unknown as fs.FSWatcher;
+      });
+
+      let viewExists = false;
+      mockExistsSync.mockImplementation((p: fs.PathLike) => {
+        const s = String(p);
+        if (s.endsWith(path.join('.github', 'lens'))) return true;
+        if (s.endsWith(path.join('new-view', 'view.json'))) return viewExists;
+        return false;
+      });
+      mockReaddirSync.mockImplementation(() => (
+        viewExists
+          ? [{ name: 'new-view', isDirectory: () => true }]
+          : []
+      ) as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValue(JSON.stringify({ name: 'New View', icon: 'eye', view: 'briefing', source: 'data.json' }));
+
+      const onChanged = vi.fn();
+      await discovery.scan('/tmp/mind');
+      discovery.startWatching('/tmp/mind', onChanged);
+
+      viewExists = true;
+      lensCallback('rename', path.join('new-view', 'view.json'));
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(discovery.getViews('/tmp/mind')).toEqual([
+        expect.objectContaining({ id: 'new-view', name: 'New View' }),
+      ]);
+      expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('rescans and notifies when a view folder is deleted from lens/', async () => {
+      let lensCallback: (event: string, filename: string) => void = () => {};
+      vi.mocked(fs.watch).mockImplementation((_path: unknown, ...args: unknown[]) => {
+        const cb = args.find(a => typeof a === 'function') as (event: string, filename: string) => void;
+        if (cb) lensCallback = cb;
+        return { close: vi.fn() } as unknown as fs.FSWatcher;
+      });
+
+      let viewExists = true;
+      mockExistsSync.mockImplementation((p: fs.PathLike) => {
+        const s = String(p);
+        if (s.endsWith(path.join('.github', 'lens'))) return true;
+        if (s.endsWith(path.join('old-view', 'view.json'))) return viewExists;
+        return false;
+      });
+      mockReaddirSync.mockImplementation(() => (
+        viewExists
+          ? [{ name: 'old-view', isDirectory: () => true }]
+          : []
+      ) as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValue(JSON.stringify({ name: 'Old View', icon: 'eye', view: 'briefing', source: 'data.json' }));
+
+      await discovery.scan('/tmp/mind');
+      expect(discovery.getViews('/tmp/mind')).toHaveLength(1);
+
+      const onChanged = vi.fn();
+      discovery.startWatching('/tmp/mind', onChanged);
+
+      viewExists = false;
+      lensCallback('rename', 'old-view');
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(discovery.getViews('/tmp/mind')).toEqual([]);
+      expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears pending rescans when watching stops', async () => {
+      let lensCallback: (event: string, filename: string) => void = () => {};
+      vi.mocked(fs.watch).mockImplementation((_path: unknown, ...args: unknown[]) => {
+        const cb = args.find(a => typeof a === 'function') as (event: string, filename: string) => void;
+        if (cb) lensCallback = cb;
+        return { close: vi.fn() } as unknown as fs.FSWatcher;
+      });
+
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([]);
+
+      const onChanged = vi.fn();
+      discovery.startWatching('/tmp/mind', onChanged);
+
+      lensCallback('rename', 'new-view');
+      discovery.stopWatching('/tmp/mind');
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(mockReaddirSync).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it('treats disappearing lens directories as empty during watcher rescans', async () => {
+      let lensCallback: (event: string, filename: string) => void = () => {};
+      vi.mocked(fs.watch).mockImplementation((_path: unknown, ...args: unknown[]) => {
+        const cb = args.find(a => typeof a === 'function') as (event: string, filename: string) => void;
+        if (cb) lensCallback = cb;
+        return { close: vi.fn() } as unknown as fs.FSWatcher;
+      });
+
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockImplementation(() => {
+        throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+      });
+
+      const onChanged = vi.fn();
+      discovery.startWatching('/tmp/mind', onChanged);
+
+      lensCallback('rename', 'old-view');
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(discovery.getViews('/tmp/mind')).toEqual([]);
+      expect(onChanged).toHaveBeenCalledTimes(1);
     });
   });
 });

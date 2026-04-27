@@ -5,7 +5,7 @@ import type { IdentityLoader } from '../chat/IdentityLoader';
 import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
-import type { AppConfig } from '@chamber/shared/types';
+import type { AppConfig, LensViewManifest } from '@chamber/shared/types';
 
 // --- Mocks ---
 
@@ -75,9 +75,9 @@ const mockConfigService = {
 };
 
 const mockViewDiscovery = {
-  scan: vi.fn(async () => []),
-  getViews: vi.fn(() => []),
-  startWatching: vi.fn(),
+  scan: vi.fn<(_: string) => Promise<LensViewManifest[]>>(async () => []),
+  getViews: vi.fn<() => LensViewManifest[]>(() => []),
+  startWatching: vi.fn<(_: string, __: () => void) => void>(),
   stopWatching: vi.fn(),
   removeMind: vi.fn(),
   setRefreshHandler: vi.fn(),
@@ -130,6 +130,26 @@ describe('MindManager', () => {
         '/tmp/agents/q',
       );
       expect(mockConfigService.save).toHaveBeenCalled();
+    });
+
+    it('starts Lens watching and emits view changes after watcher rescans', async () => {
+      const listener = vi.fn();
+      const views: LensViewManifest[] = [{
+        id: 'smoke-view',
+        name: 'Smoke View',
+        icon: 'table',
+        view: 'table',
+        source: 'data.json',
+      }];
+      mockViewDiscovery.getViews.mockReturnValue(views);
+      manager.on('lens:viewsChanged', listener);
+
+      await manager.loadMind('/tmp/agents/q');
+      const onChanged = mockViewDiscovery.startWatching.mock.calls[0]?.[1];
+      onChanged?.();
+
+      expect(mockViewDiscovery.startWatching).toHaveBeenCalledWith('/tmp/agents/q', expect.any(Function));
+      expect(listener).toHaveBeenCalledWith(views);
     });
 
     it('generates a stable mind ID from folder name', async () => {

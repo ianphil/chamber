@@ -1,6 +1,7 @@
 // Lens IPC handlers — thin adapters for ViewDiscovery
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 import type { MindManager, ViewDiscovery } from '@chamber/services';
+import type { LensViewManifest } from '@chamber/shared/types';
 
 export function setupLensIPC(viewDiscovery: ViewDiscovery, mindManager: MindManager): void {
   const resolveMindPath = (mindId?: string): string | undefined => {
@@ -26,5 +27,11 @@ export function setupLensIPC(viewDiscovery: ViewDiscovery, mindManager: MindMana
     const mindPath = resolveMindPath(mindId);
     if (!mindPath) return null;
     return viewDiscovery.sendAction(viewId, action, mindPath);
+  });
+
+  mindManager.on('lens:viewsChanged', (views: LensViewManifest[]) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('lens:viewsChanged', views);
+    }
   });
 }

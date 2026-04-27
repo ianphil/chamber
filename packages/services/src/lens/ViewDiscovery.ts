@@ -12,6 +12,7 @@ export interface ViewRefreshHandler {
 export class ViewDiscovery {
   private viewsByMind = new Map<string, LensViewManifest[]>();
   private watchersByMind = new Map<string, fs.FSWatcher[]>();
+  private scanTimersByMind = new Map<string, ReturnType<typeof setTimeout>>();
   private refreshHandler: ViewRefreshHandler | null = null;
 
   constructor(refreshHandler?: ViewRefreshHandler) {
@@ -27,7 +28,14 @@ export class ViewDiscovery {
     const lensDir = path.join(mindPath, '.github', 'lens');
 
     if (fs.existsSync(lensDir)) {
-      const entries = fs.readdirSync(lensDir, { withFileTypes: true });
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(lensDir, { withFileTypes: true });
+      } catch (err) {
+        console.warn(`[ViewDiscovery] Failed to read ${lensDir}:`, err);
+        this.viewsByMind.set(mindPath, views);
+        return views;
+      }
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const viewJsonPath = path.join(lensDir, entry.name, 'view.json');
@@ -120,10 +128,8 @@ export class ViewDiscovery {
         const parentWatcher = fs.watch(githubDir, (_eventType, filename) => {
           if (filename === 'lens' && fs.existsSync(lensDir)) {
             parentWatcher.close();
-            this.scan(mindPath).then(() => {
-              this.watchLensDir(mindPath, lensDir, onChanged);
-              onChanged();
-            });
+            this.watchLensDir(mindPath, lensDir, onChanged);
+            this.scheduleScan(mindPath, onChanged);
           }
         });
         watchers.push(parentWatcher);
@@ -136,13 +142,23 @@ export class ViewDiscovery {
     const watchers: fs.FSWatcher[] = [];
     try {
       const watcher = fs.watch(lensDir, { recursive: true }, (_eventType, filename) => {
-        if (filename && (filename.endsWith('view.json') || filename.endsWith('.json'))) {
-          setTimeout(() => this.scan(mindPath).then(onChanged), 300);
-        }
+        if (filename) this.scheduleScan(mindPath, onChanged);
       });
       watchers.push(watcher);
     } catch { /* watch not supported */ }
     this.watchersByMind.set(mindPath, watchers);
+  }
+
+  private scheduleScan(mindPath: string, onChanged: () => void): void {
+    const existingTimer = this.scanTimersByMind.get(mindPath);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(() => {
+      this.scanTimersByMind.delete(mindPath);
+      void this.scan(mindPath).then(onChanged).catch((err: unknown) => {
+        console.warn(`[ViewDiscovery] Failed to rescan lens views for ${mindPath}:`, err);
+      });
+    }, 300);
+    this.scanTimersByMind.set(mindPath, timer);
   }
 
   stopWatching(mindPath?: string): void {
@@ -150,11 +166,16 @@ export class ViewDiscovery {
       const watchers = this.watchersByMind.get(mindPath) ?? [];
       for (const w of watchers) w.close();
       this.watchersByMind.delete(mindPath);
+      const timer = this.scanTimersByMind.get(mindPath);
+      if (timer) clearTimeout(timer);
+      this.scanTimersByMind.delete(mindPath);
     } else {
       for (const watchers of this.watchersByMind.values()) {
         for (const w of watchers) w.close();
       }
       this.watchersByMind.clear();
+      for (const timer of this.scanTimersByMind.values()) clearTimeout(timer);
+      this.scanTimersByMind.clear();
     }
   }
 
