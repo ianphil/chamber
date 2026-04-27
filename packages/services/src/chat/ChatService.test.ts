@@ -16,6 +16,9 @@ const mockMindManager = {
     if (mindId === 'valid-mind') {
       return { session: mockSession, client: { listModels: vi.fn(async () => [{ id: 'm1', name: 'Model 1' }]) } };
     }
+    if (mindId === 'broken-models') {
+      return { session: mockSession, client: { listModels: vi.fn(async () => { throw new Error('model discovery failed'); }) } };
+    }
     return undefined;
   }),
   recreateSession: vi.fn(),
@@ -80,6 +83,10 @@ describe('ChatService', () => {
     it('returns empty array for invalid mind', async () => {
       const models = await svc.listModels('nonexistent');
       expect(models).toEqual([]);
+    });
+
+    it('surfaces model discovery failures', async () => {
+      await expect(svc.listModels('broken-models')).rejects.toThrow('model discovery failed');
     });
   });
 

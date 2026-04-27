@@ -54,11 +54,7 @@ ctx.listModels = (mindId) => {
   const id = mindId ?? mindManager.getActiveMindId() ?? mindManager.listMinds()[0]?.mindId;
   return id ? chatService.listModels(id) : [];
 };
-ctx.cancelChat = (messageId) => {
-  const mind = mindManager.listMinds().find((candidate) => candidate.mindId === mindManager.getActiveMindId())
-    ?? mindManager.listMinds()[0];
-  return mind ? chatService.cancelMessage(mind.mindId, messageId) : undefined;
-};
+ctx.cancelChat = (mindId, messageId) => chatService.cancelMessage(mindId, messageId);
 
 ctx.getAuthStatus = async () => {
   const credential = await authService.getStoredCredential();
@@ -81,12 +77,16 @@ ctx.switchAuthAccount = async (login) => {
   authService.setActiveLogin(login);
 };
 ctx.logoutAuth = () => authService.logout();
-ctx.shutdown = () => shutdown();
+ctx.shutdown = () => {
+  void shutdown();
+};
 ctx.handlePrivilegedRequest = createCredentialPrivilegedHandler(keytar as CredentialStore);
 
 const serverControls = createHttpServer({
   ...ctx,
-  shutdown: () => shutdown(),
+  shutdown: () => {
+    void shutdown();
+  },
 });
 const { server } = serverControls;
 
@@ -96,9 +96,19 @@ server.listen(port, '127.0.0.1', () => {
   console.log(JSON.stringify({ type: 'ready', host: '127.0.0.1', port: actualPort, token: ctx.token }));
 });
 
-function shutdown(): void {
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await mindManager.shutdown().catch((error: unknown) => {
+    console.error('[server] Mind shutdown failed:', error);
+  });
   server.close(() => process.exit(0));
 }
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => {
+  void shutdown();
+});
+process.on('SIGINT', () => {
+  void shutdown();
+});

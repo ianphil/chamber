@@ -26,6 +26,7 @@ vi.mock('@chamber/client', () => ({
 
 class MockWebSocket extends EventTarget {
   static readonly OPEN = 1;
+  static acknowledgeSubscriptions = true;
   readyState = MockWebSocket.OPEN;
 
   constructor(url: URL) {
@@ -36,7 +37,7 @@ class MockWebSocket extends EventTarget {
 
   send(data: string): void {
     const message = JSON.parse(data) as { type?: string; sessionId?: string };
-    if (message.type === 'subscribe' && message.sessionId) {
+    if (MockWebSocket.acknowledgeSubscriptions && message.type === 'subscribe' && message.sessionId) {
       queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', {
         data: JSON.stringify({ type: 'subscription:ready', payload: { sessionId: message.sessionId } }),
       })));
@@ -61,6 +62,7 @@ describe('installBrowserApi', () => {
     listMinds.mockResolvedValue([mind]);
     listModels.mockResolvedValue([{ id: 'claude-sonnet', name: 'Claude Sonnet' }]);
     startNewConversation.mockResolvedValue({ ok: true });
+    MockWebSocket.acknowledgeSubscriptions = true;
     vi.stubGlobal('WebSocket', MockWebSocket);
     Reflect.deleteProperty(window, 'electronAPI');
     const { installBrowserApi } = await import('./browserApi');
@@ -81,5 +83,25 @@ describe('installBrowserApi', () => {
       model: 'claude-sonnet',
       attachments: undefined,
     });
+  });
+
+  it('cancels chat with the requested mind id', async () => {
+    await window.electronAPI.chat.stop('dude-1234', 'assistant-1');
+    expect(cancelChat).toHaveBeenCalledWith('dude-1234', 'assistant-1');
+  });
+
+  it('rejects chat send when the event subscription is not acknowledged', async () => {
+    vi.useFakeTimers();
+    try {
+      MockWebSocket.acknowledgeSubscriptions = false;
+
+      const sendPromise = window.electronAPI.chat.send('dude-1234', 'Hello', 'assistant-1');
+      const rejection = expect(sendPromise).rejects.toThrow('Timed out waiting for Chamber event subscription.');
+      await vi.advanceTimersByTimeAsync(10_000);
+      await rejection;
+      expect(sendChat).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

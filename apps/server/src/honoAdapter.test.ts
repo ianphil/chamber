@@ -118,7 +118,7 @@ describe('createHttpServer', () => {
   it('accepts browser WebSocket auth via token query and fans out published chat events', async () => {
     const { port } = await startServer({});
     const ws = new WebSocket(`ws://127.0.0.1:${port}/events?token=${TOKEN}`, {
-      headers: { origin: ORIGIN },
+      headers: { origin: `${ORIGIN}:${port}` },
     });
 
     try {

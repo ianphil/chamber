@@ -10,7 +10,14 @@ export function isLoopbackHost(host: string | undefined): boolean {
 
 export function isAllowedOrigin(origin: string | null, allowedOrigins: ReadonlySet<string>): boolean {
   if (origin === null) return true;
-  return allowedOrigins.has(origin);
+  if (allowedOrigins.has(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    const withoutPort = `${parsed.protocol}//${parsed.hostname}`;
+    return isLoopbackHost(parsed.hostname) && allowedOrigins.has(withoutPort);
+  } catch {
+    return false;
+  }
 }
 
 export function isAuthorized(authorization: string | null, token: string): boolean {

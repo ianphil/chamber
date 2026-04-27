@@ -59,6 +59,11 @@ export interface NewConversationRequest {
   readonly mindId: string;
 }
 
+export interface CancelChatRequest {
+  readonly mindId: string;
+  readonly messageId: string;
+}
+
 export interface ModelDto {
   readonly id: string;
   readonly name: string;

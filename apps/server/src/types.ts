@@ -59,7 +59,7 @@ export interface ChamberCtx {
   publish?: (sessionId: string, event: unknown) => void;
   validatePath?: (candidate: string) => boolean;
   saveAttachment?: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
-  cancelChat?: (sessionId: string) => Promise<void> | void;
+  cancelChat?: (mindId: string, messageId: string) => Promise<void> | void;
   sendChat?: (request: ServerSendChatRequest) => Promise<void> | void;
   newConversation?: (mindId: string) => Promise<void> | void;
   listModels?: (mindId?: string) => unknown[] | Promise<unknown[]>;

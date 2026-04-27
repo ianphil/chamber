@@ -4,6 +4,7 @@ import type { AgentCard, ListTasksResponse, Task } from './shared/a2a-types';
 import type { ChatroomAPI, ChatroomMessage, TaskLedgerItem } from './shared/chatroom-types';
 
 const noopUnsubscribe = () => undefined;
+const SUBSCRIPTION_TIMEOUT_MS = 10_000;
 
 type AuthProgress = Parameters<ElectronAPI['auth']['onProgress']>[0] extends (progress: infer TProgress) => void
   ? TProgress
@@ -43,7 +44,11 @@ export function installBrowserApi(): void {
   };
   let eventSocket: WebSocket | null = null;
   let openSocketPromise: Promise<WebSocket> | null = null;
-  const pendingSubscriptions = new Map<string, () => void>();
+  const pendingSubscriptions = new Map<string, {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
   const openEventSocket = (): Promise<WebSocket> => {
     if (eventSocket?.readyState === WebSocket.OPEN) return Promise.resolve(eventSocket);
     if (openSocketPromise) return openSocketPromise;
@@ -62,7 +67,11 @@ export function installBrowserApi(): void {
         if (envelope.type === 'subscription:ready') {
           const payload = envelope.payload as { sessionId?: string };
           if (payload.sessionId) {
-            pendingSubscriptions.get(payload.sessionId)?.();
+            const pending = pendingSubscriptions.get(payload.sessionId);
+            if (pending) {
+              clearTimeout(pending.timer);
+              pending.resolve();
+            }
             pendingSubscriptions.delete(payload.sessionId);
           }
           return;
@@ -81,15 +90,31 @@ export function installBrowserApi(): void {
       ws.addEventListener('close', () => {
         if (eventSocket === ws) eventSocket = null;
         if (openSocketPromise) openSocketPromise = null;
+        const error = new Error('Chamber event socket closed before subscription was ready.');
+        for (const [sessionId, pending] of pendingSubscriptions) {
+          clearTimeout(pending.timer);
+          pending.reject(error);
+          pendingSubscriptions.delete(sessionId);
+        }
       });
     });
     return openSocketPromise;
   };
   const subscribeToChatEvents = async (messageId: string): Promise<void> => {
     const ws = await openEventSocket();
-    await new Promise<void>((resolve) => {
-      pendingSubscriptions.set(messageId, resolve);
-      ws.send(JSON.stringify({ type: 'subscribe', sessionId: messageId }));
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingSubscriptions.delete(messageId);
+        reject(new Error('Timed out waiting for Chamber event subscription.'));
+      }, SUBSCRIPTION_TIMEOUT_MS);
+      pendingSubscriptions.set(messageId, { resolve, reject, timer });
+      try {
+        ws.send(JSON.stringify({ type: 'subscribe', sessionId: messageId }));
+      } catch (error) {
+        clearTimeout(timer);
+        pendingSubscriptions.delete(messageId);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   };
   const api: ElectronAPI = {
@@ -98,8 +123,8 @@ export function installBrowserApi(): void {
         await subscribeToChatEvents(messageId);
         await client.sendChat({ mindId, message, messageId, model, attachments });
       },
-      stop: async (_mindId, messageId) => {
-        await client.cancelChat(messageId);
+      stop: async (mindId, messageId) => {
+        await client.cancelChat(mindId, messageId);
       },
       newConversation: async (mindId) => {
         await client.startNewConversation(mindId);

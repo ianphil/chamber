@@ -125,8 +125,8 @@ export class ChamberClient {
     return readJson(response, 'upload attachment');
   }
 
-  async cancelChat(sessionId: string): Promise<CommandResponse> {
-    return this.post('/api/chat/cancel', { sessionId });
+  async cancelChat(mindId: string, messageId: string): Promise<CommandResponse> {
+    return this.post('/api/chat/cancel', { mindId, messageId });
   }
 
   async sendChat(request: SendChatRequest): Promise<CommandResponse> {
@@ -169,7 +169,17 @@ export class ChamberClient {
 
 async function readJson<TBody>(response: Response, operation: string): Promise<TBody> {
   if (!response.ok) {
-    throw new Error(`Failed to ${operation}: ${response.status}`);
+    const body = await response.text();
+    let message = body.trim();
+    try {
+      const parsed = JSON.parse(body) as { error?: unknown };
+      if (typeof parsed.error === 'string' && parsed.error.trim()) {
+        message = parsed.error;
+      }
+    } catch {
+      // Non-JSON response bodies are still useful as-is.
+    }
+    throw new Error(`Failed to ${operation}: ${response.status}${message ? ` - ${message}` : ''}`);
   }
   return response.json() as Promise<TBody>;
 }

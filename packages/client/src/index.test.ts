@@ -31,4 +31,22 @@ describe('ChamberClient', () => {
       body: JSON.stringify({ mindId: 'dude-1234', message: 'Hello', messageId: 'assistant-1' }),
     }));
   });
+
+  it('cancels chat with the target mind and message id', async () => {
+    const client = new ChamberClient({ baseUrl: 'http://127.0.0.1:3000', token: 'token', origin: 'http://127.0.0.1' });
+
+    await client.cancelChat('dude-1234', 'assistant-1');
+
+    expect(fetch).toHaveBeenCalledWith(new URL('/api/chat/cancel', 'http://127.0.0.1:3000'), expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ mindId: 'dude-1234', messageId: 'assistant-1' }),
+    }));
+  });
+
+  it('includes server error messages in thrown errors', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Invalid mind directory' }), { status: 400 }));
+    const client = new ChamberClient({ baseUrl: 'http://127.0.0.1:3000', token: 'token', origin: 'http://127.0.0.1' });
+
+    await expect(client.addMind('C:\\bad')).rejects.toThrow('Invalid mind directory');
+  });
 });

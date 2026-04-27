@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   addMindHandler,
+  cancelChatHandler,
   listModelsHandler,
   newConversationHandler,
   sendChatHandler,
@@ -21,6 +22,22 @@ describe('server handlers', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ mind: { mindId: 'dude-1234', mindPath: 'C:\\agents\\dude' } });
     expect(addMind).toHaveBeenCalledWith('C:\\agents\\dude');
+  });
+
+  it('surfaces local mind load failures with the original message', async () => {
+    const addMind = vi.fn(async () => {
+      throw new Error('Invalid mind directory');
+    });
+
+    const response = await addMindHandler({
+      method: 'POST',
+      path: '/api/mind/add',
+      headers: new Headers(),
+      body: { mindPath: 'C:\\agents\\bad' },
+    }, makeContext({ addMind }));
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'Invalid mind directory' });
   });
 
   it('sends chat through the server context', async () => {
@@ -62,6 +79,21 @@ describe('server handlers', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(newConversation).toHaveBeenCalledWith('dude-1234');
+  });
+
+  it('cancels chat for the requested mind', async () => {
+    const cancelChat = vi.fn(async () => undefined);
+
+    const response = await cancelChatHandler({
+      method: 'POST',
+      path: '/api/chat/cancel',
+      headers: new Headers(),
+      body: { mindId: 'dude-1234', messageId: 'assistant-1' },
+    }, makeContext({ cancelChat }));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(cancelChat).toHaveBeenCalledWith('dude-1234', 'assistant-1');
   });
 
   it('lists models through the server context', async () => {

@@ -18,7 +18,11 @@ export async function addMindHandler(request: ChamberRequest, ctx: ChamberCtx): 
   if (!ctx.addMind) {
     return { status: 503, body: { error: 'Mind loading is unavailable' } };
   }
-  return { status: 200, body: { mind: await ctx.addMind(mindPath) } };
+  try {
+    return { status: 200, body: { mind: await ctx.addMind(mindPath) } };
+  } catch (error) {
+    return { status: 400, body: { error: error instanceof Error ? error.message : String(error) } };
+  }
 }
 
 export async function getConfigHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
@@ -80,13 +84,15 @@ export async function uploadAttachmentHandler(request: ChamberRequest, ctx: Cham
 }
 
 export async function cancelChatHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  const sessionId = typeof request.body === 'object' && request.body !== null && 'sessionId' in request.body
-    ? String((request.body as { sessionId: unknown }).sessionId)
+  const mindId = typeof request.body === 'object' && request.body !== null && 'mindId' in request.body
+    ? String((request.body as { mindId: unknown }).mindId).trim()
     : '';
-  if (!sessionId) {
-    return { status: 400, body: { error: 'sessionId is required' } };
-  }
-  await ctx.cancelChat?.(sessionId);
+  const messageId = typeof request.body === 'object' && request.body !== null && 'messageId' in request.body
+    ? String((request.body as { messageId: unknown }).messageId).trim()
+    : '';
+  if (!mindId) return { status: 400, body: { error: 'mindId is required' } };
+  if (!messageId) return { status: 400, body: { error: 'messageId is required' } };
+  await ctx.cancelChat?.(mindId, messageId);
   return { status: 200, body: { ok: true } };
 }
 
