@@ -50,6 +50,9 @@ if (started) {
 if (process.env.CHAMBER_E2E_CDP_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.CHAMBER_E2E_CDP_PORT);
 }
+if (process.env.CHAMBER_E2E_USER_DATA) {
+  app.setPath('userData', process.env.CHAMBER_E2E_USER_DATA);
+}
 
 const hasSingleInstanceLock = process.env.CHAMBER_DISABLE_SINGLE_INSTANCE_LOCK === '1' || app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {

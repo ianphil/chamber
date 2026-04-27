@@ -93,6 +93,9 @@ apps/web/dist/
 # Electron-Forge
 out/
 
+# Playwright
+test-results/
+
 # Bundled Node runtime (downloaded by scripts/prepare-node-runtime.js)
 resources/node/
 

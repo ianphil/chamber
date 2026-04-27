@@ -11,6 +11,7 @@ describe('.gitignore', () => {
         'check-ignore',
         'apps/server/dist/bin.mjs',
         'apps/web/dist/index.html',
+        'test-results/e2e-smoke/trace.zip',
       ])
     ).resolves.toBeDefined();
   });
