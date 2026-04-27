@@ -6,12 +6,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from './electronApp';
 
-const runLiveSmoke = process.env.CHAMBER_E2E_MONEYPENNY_SMOKE === '1';
 const cdpPort = Number(process.env.CHAMBER_E2E_MONEYPENNY_CDP_PORT ?? 9335);
 const expectedReply = 'CHAMBER_SMOKE_MONEYPENNY_ACK';
 
 test.describe('electron Moneypenny chat smoke', () => {
-  test.skip(!runLiveSmoke, 'Set CHAMBER_E2E_MONEYPENNY_SMOKE=1 to run the live Moneypenny chat smoke.');
   test.setTimeout(240_000);
 
   let app: LaunchedElectronApp | undefined;
