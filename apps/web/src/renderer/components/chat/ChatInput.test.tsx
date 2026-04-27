@@ -1,11 +1,15 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ChatInput } from './ChatInput';
 import type { ModelInfo } from '../../../shared/types';
+
+const caretCoords = vi.hoisted(() => ({
+  current: { top: 100, left: 50, height: 16 },
+}));
 
 // jsdom does not provide ResizeObserver; cmdk needs it.
 class MockResizeObserver {
@@ -23,7 +27,7 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
 // Stub the textarea-caret util — jsdom returns 0 for layout, so we provide
 // stable coordinates that the tests can assert against.
 vi.mock('../../lib/textarea-caret', () => ({
-  getTextareaCaretCoords: () => ({ top: 100, left: 50, height: 16 }),
+  getTextareaCaretCoords: () => caretCoords.current,
 }));
 
 const defaultProps = {
@@ -134,6 +138,12 @@ describe('ChatInput', () => {
   });
 
   describe(':shortcode autocomplete', () => {
+    afterEach(() => {
+      caretCoords.current = { top: 100, left: 50, height: 16 };
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 });
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+    });
+
     function typeWithCaret(textarea: HTMLTextAreaElement, value: string) {
       // Set caret at the end of the new value so detection sees the trailing token.
       Object.defineProperty(textarea, 'selectionStart', { configurable: true, value: value.length });
@@ -150,6 +160,17 @@ describe('ChatInput', () => {
       const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
       typeWithCaret(ta, ':sm');
       await expectShortcodeOpen();
+    });
+
+    it('opens shortcode suggestions above the caret when the bottom viewport edge would clip them', async () => {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 180 });
+      caretCoords.current = { top: 150, left: 50, height: 16 };
+      render(<ChatInput {...defaultProps} />);
+      const ta = screen.getByRole('textbox') as HTMLTextAreaElement;
+      typeWithCaret(ta, ':sm');
+      const popover = await expectShortcodeOpen();
+      expect(popover.style.top).toBe('8px');
+      expect(popover.getAttribute('data-side')).toBe('top');
     });
 
     it('does not open for ":" alone', () => {

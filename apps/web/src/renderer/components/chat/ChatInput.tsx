@@ -39,6 +39,10 @@ interface Props {
 }
 
 const IMAGE_TOKEN_RE = /\[📷 ([^\]]+)\]/g;
+const SHORTCODE_POPOVER_GAP = 4;
+const SHORTCODE_POPOVER_MARGIN = 8;
+const SHORTCODE_POPOVER_MAX_HEIGHT = 240;
+const SHORTCODE_POPOVER_MIN_WIDTH = 220;
 
 // Boundary-aware shortcode detector. Matches a `:foo` token at the caret
 // where:
@@ -52,6 +56,17 @@ interface ShortcodeMatch {
   start: number;
   /** Query text minus the leading colon. */
   query: string;
+}
+
+interface ShortcodeAnchor {
+  top: number;
+  left: number;
+  height: number;
+}
+
+interface ShortcodePopoverPlacement {
+  side: 'top' | 'bottom';
+  style: React.CSSProperties;
 }
 
 function detectShortcode(text: string, caret: number): ShortcodeMatch | null {
@@ -101,6 +116,35 @@ function readAsBase64(file: Blob): Promise<string> {
   });
 }
 
+function getShortcodePopoverPlacement(anchor: ShortcodeAnchor): ShortcodePopoverPlacement {
+  const viewportHeight = typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerHeight;
+  const viewportWidth = typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth;
+  const maxHeight = Math.min(
+    SHORTCODE_POPOVER_MAX_HEIGHT,
+    Math.max(0, viewportHeight - SHORTCODE_POPOVER_MARGIN * 2),
+  );
+  const bottomTop = anchor.top + anchor.height + SHORTCODE_POPOVER_GAP;
+  const wouldClipBottom = bottomTop + maxHeight > viewportHeight - SHORTCODE_POPOVER_MARGIN;
+  const top = wouldClipBottom
+    ? Math.max(SHORTCODE_POPOVER_MARGIN, anchor.top - maxHeight - SHORTCODE_POPOVER_GAP)
+    : bottomTop;
+  const left = Math.min(
+    Math.max(SHORTCODE_POPOVER_MARGIN, anchor.left),
+    Math.max(SHORTCODE_POPOVER_MARGIN, viewportWidth - SHORTCODE_POPOVER_MIN_WIDTH - SHORTCODE_POPOVER_MARGIN),
+  );
+
+  return {
+    side: wouldClipBottom ? 'top' : 'bottom',
+    style: {
+      position: 'fixed',
+      top,
+      left,
+      zIndex: 60,
+      maxHeight,
+    },
+  };
+}
+
 export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder }: Props) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<ChatImageAttachment[]>([]);
@@ -108,7 +152,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   const [shortcodeMatch, setShortcodeMatch] = useState<ShortcodeMatch | null>(null);
   const [shortcodeResults, setShortcodeResults] = useState<EmojiRecord[]>([]);
   const [shortcodeIndex, setShortcodeIndex] = useState(0);
-  const [shortcodeAnchor, setShortcodeAnchor] = useState<{ top: number; left: number; height: number } | null>(null);
+  const [shortcodeAnchor, setShortcodeAnchor] = useState<ShortcodeAnchor | null>(null);
   const isComposingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pastedSeq = useRef(0);
@@ -353,6 +397,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   };
 
   const canSubmit = (input.trim().length > 0 || attachments.length > 0) && !disabled;
+  const shortcodePopoverPlacement = shortcodeAnchor
+    ? getShortcodePopoverPlacement(shortcodeAnchor)
+    : null;
 
   return (
     <div className="border-t border-border px-4 py-3">
@@ -475,13 +522,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               role="listbox"
               aria-label="Emoji shortcode suggestions"
               data-testid="shortcode-popover"
-              style={{
-                position: 'fixed',
-                top: shortcodeAnchor.top + shortcodeAnchor.height + 4,
-                left: shortcodeAnchor.left,
-                zIndex: 60,
-              }}
-              className="min-w-[220px] rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
+              data-side={shortcodePopoverPlacement?.side}
+              style={shortcodePopoverPlacement?.style}
+              className="min-w-[220px] overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
             >
               <Command shouldFilter={false}>
                 <CommandList>
