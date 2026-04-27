@@ -1,13 +1,13 @@
 ---
 name: issue-slate
-description: Batch workflow for Chamber issue slates. Use this when the user asks to work through a group of GitHub issues by label, priority, milestone, or explicit issue list. It triages the slate, groups issues into small PRs/stacks, creates a roadmap and todos, then executes each item with a TDD mini-plan and the Chamber PR skill.
+description: Batch workflow for Chamber issue slates. Use this when the user asks to work through a group of GitHub issues by label, priority, milestone, or explicit issue list. It triages the slate, groups issues into small PRs/stacks, creates a roadmap and todos, then executes each item with a TDD mini-plan and the Chamber ship skill.
 ---
 
 # Issue Slate Skill
 
 Drive a labeled or explicitly supplied GitHub issue slate from triage through reviewable PRs.
 
-This skill coordinates the existing Chamber `pr` skill. Use `gh` for all GitHub operations. Never use MCP. The default base branch is `master`, and the default repository is `ianphil/chamber`.
+This skill coordinates the Chamber `ship` skill. Use `gh` for all GitHub operations. Never use MCP. The default base branch is `master`, and the default repository is `ianphil/chamber`.
 
 ## When to use
 
@@ -16,10 +16,10 @@ Use this skill when the user asks to:
 1. Work through all issues with a label such as `now`, `next`, or `later`.
 2. Turn a set of GitHub issues into an execution plan.
 3. Create several PRs from an issue batch.
-4. Run the Chamber loop of **plan -> do -> PR** repeatedly.
+4. Run the Chamber loop of **plan -> do -> ship** repeatedly.
 5. Generalize, replay, or continue a prior issue-slate workflow.
 
-Do not use this skill for a single already-scoped PR. Use the `pr` skill directly for that.
+Do not use this skill for a single already-scoped PR. Use the `ship` skill directly for that.
 
 ## Defaults
 
@@ -33,13 +33,28 @@ Do not use this skill for a single already-scoped PR. Use the `pr` skill directl
 - Never use MCP.
 - Do not run `npm run make:sandbox`.
 - If packaging/runtime smoke is needed, use `npm run package` instead.
-- Run `npm run lint` and `npm test` for each PR through the `pr` skill.
+- Run `npm run lint` and `npm test` for each PR through the `ship` skill.
 - Use the narrowest existing runtime smoke that proves the changed surface still runs.
 - Run Uncle Bob for non-trivial, runtime, architectural, or security-sensitive PRs, and fix critical findings.
 - Include `Closes #NNN` or `Fixes #NNN` for every issue intentionally addressed by a PR.
-- Let the `pr` skill recommend the version bump, then accept the recommendation unless the user gives a reason to override. For a stack, apply sequential version bumps down the stack so child PRs do not duplicate parent release metadata.
+- Let the `ship` skill recommend the version bump, then accept the recommendation unless the user gives a reason to override. For a stack, apply sequential version bumps down the stack so child PRs do not duplicate parent release metadata.
 - Draft and apply a matching `CHANGELOG.md` entry for every non-trivial PR.
 - Do not merge PRs unless the user explicitly asks. Creating reviewable PRs is the default end state.
+
+## Autopilot defaults
+
+Issue-slate work is intended to run without repeated user intervention after the slate is confirmed. Record these defaults in the roadmap and pass them to the `ship` skill for every PR:
+
+| Prompt area | Default answer |
+|---|---|
+| Version bump | Accept the LLM/agent recommendation; in stacks, use the next sequential version after the parent branch. |
+| Changelog | Draft and apply automatically using the existing format. |
+| Closing issue | Include all issues covered by the PR group. |
+| Uncle Bob | Run automatically for non-trivial/runtime/security/architecture changes; skip for docs/tests/simple UI fixes. |
+| Packaging sandbox | Never run `npm run make:sandbox`; use `npm run package` only when packaging/startup paths changed. |
+| PR base | Use the stack parent branch for child PRs, otherwise `master`. |
+
+Do not ask these questions again per PR unless the implementation discovers ambiguity, failures, or a scope change. Merging remains a human gate unless Ian explicitly says to merge approved PRs as they pass.
 
 ## Smoke-test defaults
 
@@ -106,7 +121,7 @@ Create or update the session roadmap at the current session plan path. The roadm
    - Base branch.
    - Covered issue numbers.
    - Scope.
-   - PR skill notes.
+   - Ship skill notes.
    - TDD mini-plan placeholder.
 5. Execution workflow.
 6. Open questions.
@@ -205,7 +220,7 @@ Implement surgically until the focused test passes. Keep changes limited to the 
 
 Run focused tests during development, then run the appropriate smoke command for changed runtime surfaces.
 
-The `pr` skill will run the full required checks, but do not hand it a known-broken branch.
+The `ship` skill will run the full required checks, but do not hand it a known-broken branch.
 
 ### 8. Commit
 
@@ -215,9 +230,9 @@ Commit with a conventional title and the required trailer:
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
 
-### 9. Invoke the PR skill
+### 9. Invoke the ship skill
 
-Run the Chamber `pr` skill for the current branch. Carry forward these answers unless the user overrides them:
+Run the Chamber `ship` skill for the current branch in autopilot mode. Carry forward these answers unless the user overrides them:
 
 | Prompt area | Default answer |
 |---|---|
@@ -227,7 +242,7 @@ Run the Chamber `pr` skill for the current branch. Carry forward these answers u
 | Uncle Bob | Yes for non-trivial/runtime/security/architecture changes |
 | Packaging sandbox | No; use `npm run package` when packaging smoke is needed |
 
-For child branches, explicitly tell the `pr` skill that the PR base is the parent branch, not `master`. If the skill still creates the PR against `master`, immediately fix the base with:
+For child branches, explicitly tell the `ship` skill that the PR base is the parent branch, not `master`. If the skill still creates the PR against `master`, immediately fix the base with:
 
 ```powershell
 gh pr edit <pr-number> --repo ianphil/chamber --base <parent-branch>
