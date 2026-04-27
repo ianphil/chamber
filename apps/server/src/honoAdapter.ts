@@ -19,7 +19,7 @@ import {
 } from './handlers';
 import { isAllowedOrigin, isAuthorized } from './auth';
 import type { ChamberCtx, ChamberRequest, ChamberResponse } from './types';
-import { parsePrivilegedRequest } from './privileged-protocol';
+import { parsePrivilegedRequest, PrivilegedProtocolError } from './privileged-protocol';
 
 function toRequest(c: Context): ChamberRequest {
   const url = new URL(c.req.url);
@@ -134,7 +134,15 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;
     if (!ctx.handlePrivilegedRequest) return c.json({ error: 'Privileged channel unavailable' }, 503);
-    const request = parsePrivilegedRequest(await c.req.json());
+    let request;
+    try {
+      request = parsePrivilegedRequest(await c.req.json());
+    } catch (error) {
+      if (error instanceof PrivilegedProtocolError) {
+        return c.json({ error: error.message }, 400);
+      }
+      throw error;
+    }
     return c.json(await ctx.handlePrivilegedRequest(request));
   });
   app.post('/api/shutdown', async (c) => {

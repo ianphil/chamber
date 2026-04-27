@@ -76,6 +76,27 @@ describe('createHttpServer', () => {
       loginCompletion.finish?.();
     }
   });
+
+  it('returns 400 for malformed privileged requests', async () => {
+    const { port } = await startServer({
+      handlePrivilegedRequest: async () => ({ ok: true }),
+    });
+
+    const response = await httpRequest(port, {
+      method: 'POST',
+      path: '/api/privileged',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        protoVersion: 1,
+        type: 'credential.setPassword',
+        requestId: 'r1',
+        payload: { service: 'copilot-cli', account: 'octocat' },
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({ error: 'credential.setPassword requires payload.password.' });
+  });
 });
 
 function makeContext(overrides: Partial<ChamberCtx> = {}): ChamberCtx {
