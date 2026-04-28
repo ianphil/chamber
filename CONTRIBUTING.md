@@ -39,6 +39,30 @@ npm run test:ui       # interactive test UI
 
 All tests must pass before merging. If you change behavior, update or add tests to cover it.
 
+### End-to-end tests (Playwright)
+
+Two Playwright projects live under [tests/e2e/](tests/e2e):
+
+| Script | What it runs | Needs |
+|---|---|---|
+| `npm run test:ui:web` | Vite web shell + fake-chat server | nothing extra |
+| `npm run test:ui:electron` | Spawns `npm start`, connects via CDP | working Electron build |
+| `npm run test:ui:e2e` | Both projects, serially | both of the above |
+
+All three auto-install the Chromium headless shell on first run via `npm run test:ui:install` (idempotent — fast no-op once the binary is present).
+
+Useful environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `CHAMBER_E2E_USER_DATA` | Override Electron's `userData` dir for test isolation. Honored by `apps/desktop/src/main.ts`. |
+| `CHAMBER_E2E_FAKE_CHAT=1` | Make the server short-circuit `chat.send` to a deterministic reply. Set automatically by the web project. |
+| `CHAMBER_E2E_FAKE_CHAT_REPLY` | Override the deterministic reply (default `CHAMBER_BROWSER_LOOPBACK_ACK`). |
+| `CHAMBER_E2E_GENESIS_BASE_PATH` | Force the Genesis wizard to write new minds under a temp dir. |
+| `CHAMBER_E2E_GENESIS_MEMORY_APPEND` | Inject text into a freshly-created mind's working memory before the first turn. |
+| `CHAMBER_E2E_LIVE_GENESIS=1` | Opt in to the live Copilot Genesis spec (requires a logged-in account, several minutes per run). Default off. |
+| `CHAMBER_E2E_*_CDP_PORT` | Per-spec CDP port overrides (default 9333–9337). |
+
 ### Type Checking
 
 TypeScript strict mode. Run the compiler to catch type issues:

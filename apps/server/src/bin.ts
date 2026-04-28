@@ -92,8 +92,7 @@ if (process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_FAKE_CHAT === '1'
   }>();
   const fakeReply = process.env.CHAMBER_E2E_FAKE_CHAT_REPLY ?? 'CHAMBER_BROWSER_LOOPBACK_ACK';
 
-  ctx.listMinds = () => Array.from(fakeMinds.values());
-  ctx.addMind = (mindPath) => {
+  const seedFakeMind = (mindPath: string) => {
     const existing = fakeMinds.get(mindPath);
     if (existing) return existing;
     const basename = path.basename(mindPath) || 'browser-smoke';
@@ -109,6 +108,22 @@ if (process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_FAKE_CHAT === '1'
     fakeMinds.set(mindPath, mind);
     return mind;
   };
+
+  // Pre-seed minds at boot so the renderer's mount-time mind.list() picks
+  // them up without the test having to add + reload. Honors a comma-separated
+  // CHAMBER_E2E_FAKE_MINDS list of mind paths; the basename becomes the mind
+  // name. Paths are treated as opaque labels — they do not need to exist on
+  // disk in fake-chat mode.
+  const seedList = process.env.CHAMBER_E2E_FAKE_MINDS;
+  if (seedList) {
+    for (const raw of seedList.split(',')) {
+      const trimmed = raw.trim();
+      if (trimmed) seedFakeMind(trimmed);
+    }
+  }
+
+  ctx.listMinds = () => Array.from(fakeMinds.values());
+  ctx.addMind = (mindPath) => seedFakeMind(mindPath);
   ctx.sendChat = ({ mindId, messageId }) => {
     serverControls.publish(messageId, {
       mindId,
