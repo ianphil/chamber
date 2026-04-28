@@ -69,6 +69,8 @@ describe('setupGenesisIPC', () => {
   it('installs a predefined template and activates the loaded mind', async () => {
     const mindManager = createMindManager();
     const installer = createInstaller();
+    const mockSend = vi.fn();
+    vi.mocked(BrowserWindow.fromWebContents).mockReturnValue({ webContents: { send: mockSend } } as never);
     setupGenesisIPC(mindManager, createScaffold(), createCatalog(), installer);
 
     await expect(getHandler('genesis:createFromTemplate')(EVT, { templateId: 'lucy', basePath: 'C:\\agents' })).resolves.toEqual({
@@ -80,6 +82,7 @@ describe('setupGenesisIPC', () => {
     expect(installer.install).toHaveBeenCalledWith({ templateId: 'lucy', basePath: 'C:\\agents' });
     expect(mindManager.loadMind).toHaveBeenCalledWith('C:\\agents\\lucy');
     expect(mindManager.setActiveMind).toHaveBeenCalledWith('lucy-1234');
+    expect(mockSend).toHaveBeenCalledWith('genesis:progress', { step: 'complete', detail: 'Genesis template install complete.' });
   });
 
   it('returns a clear error when predefined template install fails without generating a custom mind', async () => {

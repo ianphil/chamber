@@ -74,7 +74,9 @@ export function setupGenesisIPC(
     try {
       if (win) win.webContents.send('genesis:progress', { step: 'template', detail: 'Installing Genesis mind template...' });
       const mindPath = await templateInstaller.install(request);
-      return await activateCreatedMind(mindManager, mindPath);
+      const result = await activateCreatedMind(mindManager, mindPath);
+      if (win) win.webContents.send('genesis:progress', { step: 'complete', detail: 'Genesis template install complete.' });
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (win) win.webContents.send('genesis:progress', { step: 'error', detail: message });
