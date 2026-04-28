@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { createIpcListener } from '@chamber/shared';
-import type { ElectronAPI } from '@chamber/shared/types';
+import type { A2AIncomingPayload, ElectronAPI } from '@chamber/shared/types';
 import type { Message, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
 const electronAPI: ElectronAPI = {
@@ -74,6 +74,14 @@ const electronAPI: ElectronAPI = {
     close: () => ipcRenderer.send('window:close'),
   },
 };
+
+if (ipcRenderer.sendSync('e2e:is-enabled') === true) {
+  electronAPI.e2e = {
+    emitA2AIncoming: async (payload: A2AIncomingPayload) => {
+      await ipcRenderer.invoke('e2e:a2a:incoming', payload);
+    },
+  };
+}
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.33.2 (2026-04-28)
+
+### Chat
+
+- **Show A2A senders in recipient chats** — inbound agent-to-agent messages now render with the sending agent's name and avatar color instead of appearing as `You`, with Electron smoke coverage for Ernest messaging Monica.
+
+### Startup
+
+- **Restore the minimal app shell** — the web/Electron entry point now starts from an empty dark mount node so the marketing landing page no longer flashes before React loads.
+
 ## v0.33.1 (2026-04-28)
 
 ### Testing

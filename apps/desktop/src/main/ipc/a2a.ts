@@ -1,6 +1,12 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { EventEmitter } from 'events';
-import type { AgentCardRegistry, TaskArtifactUpdateEvent, TaskManager, TaskState, TaskStatusUpdateEvent } from '@chamber/services';
+import type { AgentCardRegistry, Message, TaskArtifactUpdateEvent, TaskManager, TaskState, TaskStatusUpdateEvent } from '@chamber/services';
+
+interface A2AIncomingPayload {
+  targetMindId: string;
+  message: Message;
+  replyMessageId: string;
+}
 
 const VALID_TASK_STATES: ReadonlySet<TaskState> = new Set([
   'submitted',
@@ -19,13 +25,31 @@ function narrowTaskState(value: unknown): TaskState | undefined {
     : undefined;
 }
 
+function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<A2AIncomingPayload>;
+  const message = payload.message as Partial<Message> | undefined;
+  return (
+    typeof payload.targetMindId === 'string' &&
+    typeof payload.replyMessageId === 'string' &&
+    !!message &&
+    typeof message.messageId === 'string' &&
+    (message.role === 'user' || message.role === 'agent') &&
+    Array.isArray(message.parts)
+  );
+}
+
 export function setupA2AIPC(
   ipcEmitter: EventEmitter,
   agentCardRegistry: AgentCardRegistry,
   taskManager: TaskManager,
 ): void {
+  ipcMain.on('e2e:is-enabled', (event) => {
+    event.returnValue = process.env.CHAMBER_E2E === '1';
+  });
+
   // Forward a2a:incoming events to all renderer windows
-  ipcEmitter.on('a2a:incoming', (payload) => {
+  ipcEmitter.on('a2a:incoming', (payload: A2AIncomingPayload) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('a2a:incoming', payload);
     }
@@ -69,4 +93,13 @@ export function setupA2AIPC(
   ipcMain.handle('a2a:cancelTask', async (_, taskId: string) => {
     return taskManager.cancelTask(taskId);
   });
+
+  if (process.env.CHAMBER_E2E === '1') {
+    ipcMain.handle('e2e:a2a:incoming', async (_, payload: unknown) => {
+      if (!isA2AIncomingPayload(payload)) {
+        throw new Error('Invalid E2E A2A incoming payload');
+      }
+      ipcEmitter.emit('a2a:incoming', payload);
+    });
+  }
 }

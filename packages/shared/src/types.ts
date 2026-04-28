@@ -185,7 +185,7 @@ export interface ElectronAPI {
   };
   chatroom: ChatroomAPI;
   a2a: {
-    onIncoming:(callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => () => void;
+    onIncoming:(callback: (payload: A2AIncomingPayload) => void) => () => void;
     listAgents: () => Promise<AgentCard[]>;
     onTaskStatusUpdate: (callback: (payload: TaskStatusUpdateEvent & { targetMindId: string }) => void) => () => void;
     onTaskArtifactUpdate: (callback: (payload: TaskArtifactUpdateEvent & { targetMindId: string }) => void) => () => void;
@@ -193,11 +193,20 @@ export interface ElectronAPI {
     listTasks: (filter?: { contextId?: string; status?: string }) => Promise<ListTasksResponse>;
     cancelTask: (taskId: string) => Promise<Task | { error: string }>;
   };
+  e2e?: {
+    emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;
+  };
   window: {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
   };
+}
+
+export interface A2AIncomingPayload {
+  targetMindId: string;
+  message: Message;
+  replyMessageId: string;
 }
 
 export interface GenesisMindTemplate {

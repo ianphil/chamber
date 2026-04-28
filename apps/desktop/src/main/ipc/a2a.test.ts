@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 
 vi.mock('electron', () => ({
-  ipcMain: { handle: vi.fn() },
+  ipcMain: { handle: vi.fn(), on: vi.fn() },
   BrowserWindow: {
     getAllWindows: vi.fn(() => []),
   },
@@ -82,6 +82,34 @@ describe('A2A IPC', () => {
     expect(sent[1]).toHaveProperty('message');
     expect(sent[1]).toHaveProperty('replyMessageId', 'reply-msg-1');
     expect(sent[1]).toHaveProperty('targetMindId', 'agent-b');
+  });
+
+  it('e2e:a2a:incoming emits incoming payload only when E2E mode is enabled', async () => {
+    const previous = process.env.CHAMBER_E2E;
+    process.env.CHAMBER_E2E = '1';
+    vi.clearAllMocks();
+    ipcEmitter = new EventEmitter();
+    setupA2AIPC(ipcEmitter, mockRegistry as unknown as AgentCardRegistry, mockTaskManager as unknown as TaskManager);
+
+    const payload = {
+      targetMindId: 'agent-b',
+      message: { messageId: 'msg-1', role: 'user' as const, parts: [{ text: 'Test' }], metadata: { fromId: 'agent-a', fromName: 'Agent A' } },
+      replyMessageId: 'reply-msg-1',
+    };
+    const incoming = new Promise((resolve) => {
+      ipcEmitter.once('a2a:incoming', resolve);
+    });
+
+    try {
+      await getHandler('e2e:a2a:incoming')(EVT, payload);
+      await expect(incoming).resolves.toEqual(payload);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CHAMBER_E2E;
+      } else {
+        process.env.CHAMBER_E2E = previous;
+      }
+    }
   });
 
   it('a2a:listAgents returns cards from registry', async () => {

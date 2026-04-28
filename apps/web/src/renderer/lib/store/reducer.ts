@@ -12,6 +12,10 @@ export function getPlainContent(message: ChatMessage): string {
     .join('');
 }
 
+function nonEmptyString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+}
+
 export function handleChatEvent(messages: ChatMessage[], messageId: string, event: ChatEvent): ChatMessage[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m;
@@ -287,8 +291,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         })),
         timestamp: Date.now(),
         sender: {
-          mindId: (message.metadata?.fromId as string) ?? 'unknown',
-          name: (message.metadata?.fromName as string) ?? 'Unknown Agent',
+          mindId: nonEmptyString(message.metadata?.fromId, 'unknown'),
+          name: nonEmptyString(message.metadata?.fromName, 'Unknown Agent'),
         },
       };
       const replyPlaceholder: ChatMessage = {

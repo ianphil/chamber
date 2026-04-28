@@ -386,6 +386,23 @@ describe('appReducer', () => {
       expect(msgs[0].blocks[0]).toMatchObject({ type: 'text', content: 'Hello from Agent A' });
     });
 
+    it('falls back when A2A sender metadata is not a non-empty string', () => {
+      const state = appReducer(withActiveMind, {
+        type: 'A2A_INCOMING',
+        payload: a2aPayload({
+          message: {
+            messageId: 'msg-a2a-1',
+            role: 'user' as const,
+            parts: [{ text: 'Hello from unknown agent', mediaType: 'text/plain' }],
+            metadata: { fromId: '', fromName: 42, hopCount: 1 },
+          },
+        }),
+      });
+      const msgs = state.messagesByMind[mindId];
+      if (!msgs) throw new Error('expected messages for mind');
+      expect(msgs[0].sender).toEqual({ mindId: 'unknown', name: 'Unknown Agent' });
+    });
+
     it('inserts assistant reply placeholder', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
       const msgs = state.messagesByMind[mindId];
