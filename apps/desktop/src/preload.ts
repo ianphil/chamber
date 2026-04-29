@@ -59,6 +59,13 @@ const electronAPI: ElectronAPI = {
     getOrchestration: () => ipcRenderer.invoke('chatroom:get-orchestration'),
     onEvent: (callback) => createIpcListener(ipcRenderer, 'chatroom:event', callback),
   },
+  updater: {
+    getState: () => ipcRenderer.invoke('updater:get-state'),
+    check: () => ipcRenderer.invoke('updater:check'),
+    download: () => ipcRenderer.invoke('updater:download'),
+    installAndRestart: () => ipcRenderer.invoke('updater:install-and-restart'),
+    onStateChanged: (callback) => createIpcListener(ipcRenderer, 'updater:state-changed', callback),
+  },
   a2a: {
     onIncoming: (callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => createIpcListener(ipcRenderer, 'a2a:incoming', callback),
     listAgents: () => ipcRenderer.invoke('a2a:listAgents'),

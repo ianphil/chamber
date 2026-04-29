@@ -9,6 +9,7 @@ import type {
   ModelInfo,
   LensViewManifest,
   ElectronAPI,
+  DesktopUpdateState,
 } from '../shared/types';
 import type {
   ChatroomMessage,
@@ -158,6 +159,13 @@ export function mockElectronAPI(): ElectronAPI {
       setOrchestration: vi.fn().mockResolvedValue(undefined),
       getOrchestration: vi.fn().mockResolvedValue({ mode: 'concurrent', config: null }),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
+    },
+    updater: {
+      getState: vi.fn((): Promise<DesktopUpdateState> => new Promise<DesktopUpdateState>(() => {})),
+      check: vi.fn().mockResolvedValue({ success: false }),
+      download: vi.fn().mockResolvedValue({ success: false }),
+      installAndRestart: vi.fn().mockResolvedValue({ success: false }),
+      onStateChanged: vi.fn().mockReturnValue(vi.fn()),
     },
     a2a: {
       onIncoming: vi.fn().mockReturnValue(vi.fn()),

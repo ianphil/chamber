@@ -5,6 +5,7 @@ import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, type Luc
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
 import type { LensViewManifest } from '../../../shared/types';
+import { UpdateIndicator } from './UpdateIndicator';
 
 const iconMap: Record<string, LucideIcon> = {
   zap: Zap,
@@ -97,7 +98,8 @@ export function ActivityBar() {
       </div>
 
       {/* Bottom-pinned settings */}
-      <div data-testid="activity-bar-footer">
+      <div data-testid="activity-bar-footer" className="flex flex-col items-center gap-1">
+        <UpdateIndicator />
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <button

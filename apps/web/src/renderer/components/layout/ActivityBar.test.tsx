@@ -1,14 +1,14 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { ActivityBar } from './ActivityBar';
 import { AppStateProvider } from '../../lib/store';
 import type { AppState } from '../../lib/store/state';
 import { TooltipProvider } from '../ui/tooltip';
-import { installElectronAPI } from '../../../test/helpers';
+import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
 function renderActivityBar(testInitialState?: Partial<AppState>) {
   return render(
@@ -42,6 +42,26 @@ describe('ActivityBar', () => {
     expect(screen.getByLabelText('Chatroom')).toBeTruthy();
   });
 
+  it('renders the updater action when an update is available', async () => {
+    const api = mockElectronAPI();
+    api.updater.getState = vi.fn().mockResolvedValue({
+      enabled: true,
+      status: 'available',
+      currentVersion: '0.33.2',
+      availableVersion: '0.33.3',
+      downloadPercent: null,
+      message: 'Update 0.33.3 is available.',
+      canRetry: false,
+    });
+    installElectronAPI(api);
+
+    renderActivityBar();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Download Chamber 0.33.3')).toBeTruthy();
+    });
+  });
+
   // -------------------------------------------------------------------------
   // Running indicator — yellow dot when any chatroom mind is streaming
   // -------------------------------------------------------------------------
@@ -65,4 +85,3 @@ describe('ActivityBar', () => {
     expect(chatroomBtn.querySelector('.animate-pulse')).toBeNull();
   });
 });
-

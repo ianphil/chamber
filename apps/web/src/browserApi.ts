@@ -221,6 +221,20 @@ export function installBrowserApi(): void {
       onProgress: () => noopUnsubscribe,
     },
     chatroom: createBrowserChatroomApi(),
+    updater: {
+      getState: async () => ({
+        enabled: false,
+        status: 'disabled',
+        currentVersion: 'browser',
+        downloadPercent: null,
+        message: 'Desktop updates are unavailable in browser mode.',
+        canRetry: false,
+      }),
+      check: async () => ({ success: false, message: 'Desktop updates are unavailable in browser mode.' }),
+      download: async () => ({ success: false, message: 'Desktop updates are unavailable in browser mode.' }),
+      installAndRestart: async () => ({ success: false, message: 'Desktop updates are unavailable in browser mode.' }),
+      onStateChanged: () => noopUnsubscribe,
+    },
     a2a: {
       onIncoming: () => noopUnsubscribe,
       listAgents: async (): Promise<AgentCard[]> => [],

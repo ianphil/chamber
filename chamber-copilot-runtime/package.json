@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "description": "Pinned packaged runtime for Chamber Copilot SDK + CLI",
   "dependencies": {
-    "@github/copilot": "1.0.36",
+    "@github/copilot": "1.0.39",
     "@github/copilot-sdk": "0.3.0"
   }
 }

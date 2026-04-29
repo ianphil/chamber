@@ -100,14 +100,15 @@ React Renderer
 ```bash
 npm start          # Launch with hot reload
 npm run lint       # TypeScript + ESLint
-npm run make       # Build distributable
+npm run make       # Build NSIS installer + updater metadata
+npm run make:forge # Legacy Forge/Squirrel distributable fallback
 npm run make:sandbox  # Build + launch Windows Sandbox to test the installer
-npm run sandbox       # Launch sandbox using existing out/make artifacts
+npm run sandbox       # Launch sandbox using existing out/builder artifacts
 ```
 
 `make:sandbox` rebuilds chamber, then opens a fresh Windows Sandbox with
-`out/make` mapped read-only to `C:\installer`. Explorer auto-opens to the
-Squirrel installer so you can simulate a clean first-run install. Requires
+`out/builder` mapped read-only to `C:\installer`. Explorer auto-opens to the
+NSIS installer so you can simulate a clean first-run install. Requires
 Windows Pro/Enterprise/Education with the Windows Sandbox feature enabled.
 
 ## License

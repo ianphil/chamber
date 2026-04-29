@@ -20,7 +20,7 @@ These instructions tell Copilot how to produce code that fits the Chamber codeba
 - **Build**: Electron Forge `7.11` + `@electron-forge/plugin-vite` + Vite `8`
 - **Testing**: Vitest `4`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`
 - **Lint**: ESLint `10` flat config, `typescript-eslint` `8`, `eslint-plugin-import-x`
-- **Copilot SDK**: `@github/copilot-sdk@0.3.0` and `@github/copilot@1.0.36` — both **pinned exactly**, not ranged. The runtime is committed under `chamber-copilot-runtime/` and shipped in the package; do not bump either without a coordinated changelog entry.
+- **Copilot SDK**: `@github/copilot-sdk@0.3.0` and `@github/copilot@1.0.39` — both **pinned exactly**, not ranged. The runtime is committed under `chamber-copilot-runtime/` and shipped in the package; do not bump either without a coordinated changelog entry.
 - **Other**: `keytar@7` (credentials), `croner@10` (cron), `radix-ui@1`, `class-variance-authority@0.7`
 
 > **Invariant**: `tsconfig.json` deliberately leaves `ignoreDeprecations` disabled. Fix deprecation warnings, do not suppress them.

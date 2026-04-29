@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.34.0 (2026-04-28)
+
+### Desktop updates
+
+- **Migrate Windows releases to electron-builder updates** — Windows packaging now produces NSIS updater artifacts with `electron-updater` support, preserves Azure Trusted Signing inside the release pipeline, cleans up legacy Squirrel installs on first NSIS launch, and includes a local auto-update click-through runbook.
+- **Refresh the packaged Copilot CLI pin** — the committed desktop runtime now pins `@github/copilot@1.0.39` so packaged runtime smoke checks match the CLI binary shipped by the npm package.
+
 ## v0.33.2 (2026-04-28)
 
 ### Chat

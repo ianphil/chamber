@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 /**
- * Launch a Windows Sandbox that maps the latest `out/make` build into the
- * sandbox and opens Explorer at the Squirrel installer folder. Use to
+ * Launch a Windows Sandbox that maps the latest `out/builder` build into the
+ * sandbox and opens Explorer at the NSIS installer folder. Use to
  * exercise the zero-deps first-run install experience on a clean machine.
  *
  * Usage: npm run make:sandbox  (which runs `npm run make` first)
@@ -14,7 +14,7 @@ const { spawn } = require('child_process');
 const asar = require('@electron/asar');
 
 const repoRoot = path.resolve(__dirname, '..');
-const makeDir = path.join(repoRoot, 'out', 'make');
+const builderDir = path.join(repoRoot, 'out', 'builder');
 
 function escapeXml(value) {
   return value
@@ -30,12 +30,12 @@ if (process.platform !== 'win32') {
   process.exit(1);
 }
 
-if (!fs.existsSync(makeDir)) {
-  console.error(`No build output found at ${makeDir}. Run \`npm run make\` first.`);
+if (!fs.existsSync(builderDir)) {
+  console.error(`No build output found at ${builderDir}. Run \`npm run make\` first.`);
   process.exit(1);
 }
 
-const packageDir = path.join(repoRoot, 'out', 'chamber-win32-x64');
+const packageDir = path.join(repoRoot, 'out', 'Chamber-win32-x64');
 const appAsarPath = path.join(packageDir, 'resources', 'app.asar');
 if (!fs.existsSync(appAsarPath)) {
   console.error(`No packaged app found at ${appAsarPath}. Run \`npm run make\` first.`);
@@ -50,16 +50,13 @@ if (!normalizedAppAsarFiles.includes(rendererEntry)) {
   process.exit(1);
 }
 
-const squirrelDir = path.join(makeDir, 'squirrel.windows', 'x64');
-const sandboxOpenTarget = fs.existsSync(squirrelDir)
-  ? 'C:\\installer\\squirrel.windows\\x64'
-  : 'C:\\installer';
+const sandboxOpenTarget = 'C:\\installer';
 
 const wsbXml = `<Configuration>
   <Networking>Enable</Networking>
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>${escapeXml(makeDir)}</HostFolder>
+      <HostFolder>${escapeXml(builderDir)}</HostFolder>
       <SandboxFolder>C:\\installer</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
@@ -73,7 +70,7 @@ const wsbXml = `<Configuration>
 const wsbPath = path.join(os.tmpdir(), `chamber-sandbox-${process.pid}.wsb`);
 fs.writeFileSync(wsbPath, wsbXml, 'utf8');
 
-console.log(`Mapping ${makeDir} -> C:\\installer (read-only)`);
+console.log(`Mapping ${builderDir} -> C:\\installer (read-only)`);
 console.log(`Launching Windows Sandbox via ${wsbPath}`);
 
 const child = spawn('cmd.exe', ['/c', 'start', '""', wsbPath], {

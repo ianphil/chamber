@@ -140,6 +140,35 @@ export interface ChatImageAttachment {
   data: string;
 }
 
+export type DesktopUpdateStatus =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'installing'
+  | 'error';
+
+export interface DesktopUpdateState {
+  enabled: boolean;
+  status: DesktopUpdateStatus;
+  currentVersion: string;
+  availableVersion?: string;
+  downloadedVersion?: string;
+  downloadPercent: number | null;
+  checkedAt?: string;
+  message: string | null;
+  errorContext?: string;
+  canRetry: boolean;
+}
+
+export interface DesktopUpdateActionResult {
+  success: boolean;
+  message?: string;
+}
+
 export interface ElectronAPI {
   chat: {
     send: (mindId: string, message: string, messageId: string, model?: string, attachments?: ChatImageAttachment[]) => Promise<void>;
@@ -184,6 +213,13 @@ export interface ElectronAPI {
     onProgress: (callback: (progress: { step: string; detail: string }) => void) => () => void;
   };
   chatroom: ChatroomAPI;
+  updater: {
+    getState: () => Promise<DesktopUpdateState>;
+    check: () => Promise<DesktopUpdateActionResult>;
+    download: () => Promise<DesktopUpdateActionResult>;
+    installAndRestart: () => Promise<DesktopUpdateActionResult>;
+    onStateChanged: (callback: (state: DesktopUpdateState) => void) => () => void;
+  };
   a2a: {
     onIncoming:(callback: (payload: A2AIncomingPayload) => void) => () => void;
     listAgents: () => Promise<AgentCard[]>;

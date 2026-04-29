@@ -126,11 +126,13 @@ All work is tracked via [GitHub Issues](https://github.com/ianphil/chamber/issue
 4. Merge the PR to `master`.
 5. Tag the release: `git tag vX.Y.Z && git push --tags`.
 6. Build the distributable: `npm run make`.
+7. Confirm the release artifacts include `Chamber-X.Y.Z-x64.exe`, the matching `.blockmap`, and `latest.yml`.
 
 ## Stack
 
-- **Electron 41** + Forge + Vite
+- **Electron 41** + Forge/Vite bundling + electron-builder NSIS packaging
 - **React 19**, TypeScript, Tailwind CSS v4
 - **shadcn/ui** (Radix + CVA)
 - **@github/copilot-sdk**
+- **electron-updater** for desktop auto-update
 - **Vitest** for testing

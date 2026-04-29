@@ -34,7 +34,7 @@ Chamber is a desktop application where AI agents ("minds") operate as a Chief of
 
 ### Desktop Considerations
 - Close-to-tray means agents may run unattended
-- Squirrel auto-updates verify Azure Trusted Signing signatures
+- electron-builder/electron-updater releases must verify Azure Trusted Signing signatures and `latest.yml` must match the final signed installer bytes
 - Mind directories are user-local; do not share across untrusted users
 
 ## Coding Agent Instructions

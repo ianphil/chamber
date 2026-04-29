@@ -39,9 +39,13 @@ import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupAuthIPC } from './main/ipc/auth';
 import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
+import { setupUpdaterIPC } from './main/ipc/updater';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
+import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
+import { runUpdaterSmoke } from './main/updaterSmoke';
+import { UpdaterService } from './main/updater/UpdaterService';
 
 if (started) {
   app.quit();
@@ -158,13 +162,24 @@ let serverChild: ChildProcessWithoutNullStreams | null = null;
 let mvpServerUrl: string | null = null;
 const shouldMinimizeToTray = process.platform === 'win32';
 const useMvpServer = process.env.CHAMBER_MVP_SERVER === '1';
+const updaterService = new UpdaterService({
+  currentVersion: app.getVersion(),
+  isPackaged: app.isPackaged,
+  allowDevUpdates: process.env.CHAMBER_UPDATER_ALLOW_DEV === '1',
+  setQuitting: () => {
+    isQuitting = true;
+  },
+});
 
 const requestQuit = () => {
   if (isQuitting) return;
   isQuitting = true;
 
   mindManager.shutdown()
-    .then(() => stopMvpServer())
+    .then(() => {
+      updaterService.stop();
+      return stopMvpServer();
+    })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
 };
@@ -305,6 +320,19 @@ const createWindow = () => {
 
 app.on('ready', async () => {
   windowIcon = await loadAppIcon();
+  if (runUpdaterSmoke(app)) {
+    return;
+  }
+  cleanupLegacySquirrelInstall({ isPackaged: app.isPackaged })
+    .then((result) => {
+      if (result.status !== 'skipped') {
+        console.info(`[squirrel-migration] ${result.status}`, result);
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn('[squirrel-migration] Unexpected cleanup failure:', error);
+    });
+
   if (useMvpServer) {
     await startMvpServer();
   }
@@ -322,6 +350,7 @@ app.on('ready', async () => {
   setupAuthIPC(authService, mindManager);
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
   setupChatroomIPC(chatroomService);
+  setupUpdaterIPC(updaterService);
 
   // Window controls
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
@@ -355,6 +384,7 @@ app.on('ready', async () => {
   powerMonitor.on('resume', () => {
     void cronService.handlePowerResume();
   });
+  updaterService.start();
 
   // Restore minds async — awaitRestore() lets IPC handlers wait for completion
   mindManager.restoreFromConfig().catch((err: unknown) => {

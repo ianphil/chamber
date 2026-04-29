@@ -86,9 +86,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build and package
-        run: npm run make
-
       - name: Azure login
         uses: azure/login@v2
         with:
@@ -96,25 +93,29 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign with Trusted Signing
-        uses: azure/artifact-signing-action@v1
-        with:
-          endpoint: https://eus.codesigning.azure.net/
-          signing-account-name: chamber-signing
-          certificate-profile-name: chamber-public
-          files-folder: ${{ github.workspace }}/out/make/
-          files-folder-filter: exe
-          files-folder-recurse: true
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
+      - name: Build signed NSIS package
+        run: npm run make:builder
+        env:
+          CHAMBER_WINDOWS_SIGNING: 'true'
+          AZURE_TRUSTED_SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: chamber-signing
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: chamber-public
+          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME }}
+
+      - name: Validate updater artifacts
+        run: node scripts/validate-builder-release.js --artifacts-dir=out/builder --version=${{ needs.check-version.outputs.version }}
+        env:
+          CHAMBER_REQUIRE_WINDOWS_SIGNATURE: 'true'
+          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME }}
 
       - name: Stage artifacts
         shell: pwsh
         run: |
+          $version = "${{ needs.check-version.outputs.version }}"
           New-Item -ItemType Directory -Force -Path staged
-          Get-ChildItem -Path out/make -Recurse -Include *.exe,*.nupkg | Copy-Item -Destination staged/
-          Get-ChildItem -Path out/make -Recurse -Filter "RELEASES" | Copy-Item -Destination staged/
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe.blockmap" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/latest.yml" -Destination staged/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
