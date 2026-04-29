@@ -17,7 +17,7 @@ function psQuote(value) {
 
 function runPowerShell(script, label) {
   const result = spawnSync(
-    'powershell.exe',
+    process.env.CHAMBER_SIGN_POWERSHELL || 'pwsh',
     ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
     {
       encoding: 'utf8',
@@ -40,6 +40,7 @@ function ensureTrustedSigningModule() {
   runPowerShell(
     [
       '$ErrorActionPreference = "Stop"',
+      'Import-Module PowerShellGet -ErrorAction Stop',
       'try { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null } catch { Write-Verbose $_ }',
       'Install-Module -Name TrustedSigning -MinimumVersion 0.5.0 -Force -Repository PSGallery -Scope CurrentUser -ErrorAction Stop | Out-Null',
     ].join('; '),
