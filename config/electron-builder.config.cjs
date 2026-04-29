@@ -1,4 +1,5 @@
 const path = require('node:path');
+const { WINDOWS_PUBLISHER_NAME } = require('./windows-publisher.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const signingEnabled = process.env.CHAMBER_WINDOWS_SIGNING === 'true';
@@ -9,6 +10,10 @@ function requireEnv(name) {
     throw new Error(`Missing required environment variable for Windows signing: ${name}`);
   }
   return value;
+}
+
+function resolvePublisherName() {
+  return process.env.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME?.trim() || WINDOWS_PUBLISHER_NAME;
 }
 
 const config = {
@@ -31,7 +36,7 @@ const config = {
     ...(signingEnabled
       ? {
           signtoolOptions: {
-            publisherName: requireEnv('AZURE_TRUSTED_SIGNING_PUBLISHER_NAME'),
+            publisherName: resolvePublisherName(),
             signingHashAlgorithms: ['sha256'],
             sign: path.join(repoRoot, 'scripts', 'sign-windows-trusted-signing.js'),
           },

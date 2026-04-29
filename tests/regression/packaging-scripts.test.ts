@@ -36,10 +36,12 @@ describe('packaging scripts', () => {
     const prepareBuilder = readFileSync('scripts/prepare-builder-prepackaged.js', 'utf-8');
     const validateBuilder = readFileSync('scripts/validate-builder-release.js', 'utf-8');
     const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf-8');
+    const windowsPublisher = readFileSync('config/windows-publisher.cjs', 'utf-8');
 
     expect(builderConfig).toContain('signtoolOptions');
     expect(builderConfig).toContain('sign-windows-trusted-signing.js');
     expect(builderConfig).not.toContain('azureSignOptions');
+    expect(windowsPublisher).toContain('CN=Ian Philpot');
     expect(prepareBuilder).toContain('publisherName:');
     expect(prepareBuilder).toContain('CHAMBER_WINDOWS_SIGNING');
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');

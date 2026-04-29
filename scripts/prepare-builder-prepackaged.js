@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 const fs = require('node:fs');
 const path = require('node:path');
+const { WINDOWS_PUBLISHER_NAME } = require('../config/windows-publisher.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const prepackagedDir = path.join(repoRoot, 'out', 'Chamber-win32-x64');
@@ -14,14 +15,6 @@ function requireDir(dir) {
   }
 }
 
-function requireEnv(name) {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Missing required environment variable for Windows signing: ${name}`);
-  }
-  return value;
-}
-
 function yamlString(value) {
   return JSON.stringify(value);
 }
@@ -32,7 +25,7 @@ function resolvePublisherName() {
     return publisherName;
   }
 
-  return signingEnabled ? requireEnv('AZURE_TRUSTED_SIGNING_PUBLISHER_NAME') : null;
+  return signingEnabled ? WINDOWS_PUBLISHER_NAME : null;
 }
 
 function appendPublisherName(lines) {

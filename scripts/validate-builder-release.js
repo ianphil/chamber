@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { parseDn } = require('builder-util-runtime');
+const { WINDOWS_PUBLISHER_NAME } = require('../config/windows-publisher.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 
@@ -108,10 +109,8 @@ function readAppUpdatePublisherName(appUpdatePath) {
 }
 
 function assertAppUpdatePublisherName() {
-  const expectedPublisherName = process.env.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME?.trim();
-  if (!expectedPublisherName) {
-    throw new Error('Missing AZURE_TRUSTED_SIGNING_PUBLISHER_NAME for signed release validation.');
-  }
+  const expectedPublisherName =
+    process.env.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME?.trim() || WINDOWS_PUBLISHER_NAME;
 
   const appUpdatePath = path.join(repoRoot, 'out', 'Chamber-win32-x64', 'resources', 'app-update.yml');
   const actualPublisherName = readAppUpdatePublisherName(appUpdatePath);
