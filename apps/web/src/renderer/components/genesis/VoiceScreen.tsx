@@ -88,10 +88,10 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
                 )}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium">{template.displayName}</span>
-                  <span className="text-xs text-muted-foreground">{template.role}</span>
+                  <span className="text-base font-semibold text-foreground">{template.displayName}</span>
+                  <span className="text-sm text-muted-foreground">{template.role}</span>
                 </div>
-                <p className="text-xs text-muted-foreground italic">{template.description}</p>
+                <p className="text-sm text-muted-foreground/80 italic">{template.description}</p>
               </button>
             ))}
 
@@ -109,10 +109,10 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
               )}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium">✏️ Someone else...</span>
-                <span className="text-xs text-muted-foreground">Describe a character or energy</span>
+                <span className="text-base font-semibold text-foreground">✏️ Someone else...</span>
+                <span className="text-sm text-muted-foreground">Describe a character or energy</span>
               </div>
-              <p className="text-xs text-muted-foreground italic">"Tell me who inspires the voice and I'll research them."</p>
+              <p className="text-sm text-muted-foreground/80 italic">"Tell me who inspires the voice and I'll research them."</p>
             </button>
 
             {/* Custom input */}
