@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.34.2 (2026-04-29)
+
+### Genesis
+
+- **Improve voice card readability** — bump card text sizes and use explicit foreground color with semibold weight on mind names so they stand out against the dark background.
+
 ## v0.34.1 (2026-04-28)
 
 ### Packaging
