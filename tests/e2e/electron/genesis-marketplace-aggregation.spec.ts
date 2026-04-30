@@ -11,10 +11,6 @@ const publicMarketplaceId = 'github:ianphil/genesis-minds';
 const internalMarketplaceId = 'github:agency-microsoft/genesis-minds';
 
 test.describe('electron Genesis marketplace aggregation smoke', () => {
-  test.skip(
-    process.env.CHAMBER_E2E_INTERNAL_MARKETPLACE !== '1',
-    'Set CHAMBER_E2E_INTERNAL_MARKETPLACE=1 with gh access to agency-microsoft/genesis-minds to run this smoke.'
-  );
   test.setTimeout(240_000);
 
   let app: LaunchedElectronApp | undefined;
