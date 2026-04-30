@@ -5,6 +5,9 @@ export interface GenesisMindTemplateSource {
   plugin: string;
   manifestPath: string;
   rootPath: string;
+  marketplaceId?: string;
+  marketplaceLabel?: string;
+  marketplaceUrl?: string;
 }
 
 export interface GenesisMindTemplate {
@@ -20,8 +23,29 @@ export interface GenesisMindTemplate {
 }
 
 export interface GenesisMindTemplateMarketplaceSource {
+  id?: string;
+  label?: string;
+  url?: string;
   owner: string;
   repo: string;
   ref: string;
   plugin: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+}
+
+export type GenesisMindTemplateMarketplaceStatusKind = 'ok' | 'disabled' | 'error';
+
+export interface GenesisMindTemplateMarketplaceStatus {
+  id: string;
+  label: string;
+  url: string;
+  status: GenesisMindTemplateMarketplaceStatusKind;
+  templateCount: number;
+  message?: string;
+}
+
+export interface GenesisMindTemplateMarketplaceResult {
+  templates: GenesisMindTemplate[];
+  sources: GenesisMindTemplateMarketplaceStatus[];
 }

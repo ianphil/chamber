@@ -12,7 +12,27 @@ import * as fs from 'fs';
 import { ConfigService } from './ConfigService';
 import type { AppConfig } from '@chamber/shared/types';
 
-const DEFAULT_CONFIG: AppConfig = { version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' };
+const DEFAULT_MARKETPLACES = [
+  {
+    id: 'github:ianphil/genesis-minds',
+    label: 'Public Genesis Minds',
+    url: 'https://github.com/ianphil/genesis-minds',
+    owner: 'ianphil',
+    repo: 'genesis-minds',
+    ref: 'master',
+    plugin: 'genesis-minds',
+    enabled: true,
+    isDefault: true,
+  },
+];
+const DEFAULT_CONFIG: AppConfig = {
+  version: 2,
+  minds: [],
+  activeMindId: null,
+  activeLogin: null,
+  theme: 'dark',
+  marketplaceRegistries: DEFAULT_MARKETPLACES,
+};
 
 describe('ConfigService', () => {
   let svc: ConfigService;
@@ -22,13 +42,33 @@ describe('ConfigService', () => {
   });
 
   describe('load', () => {
-    it('returns v2 config as-is', () => {
-      const v2: AppConfig = { version: 2, minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }], activeMindId: 'q-a1b2', activeLogin: 'alice', theme: 'light' };
+    it('returns v2 marketplace registries as-is when the default is present', () => {
+      const v2: AppConfig = {
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: 'alice',
+        theme: 'light',
+        marketplaceRegistries: [
+          ...DEFAULT_MARKETPLACES,
+          {
+            id: 'github:contoso/genesis-minds',
+            label: 'Contoso',
+            url: 'https://github.com/contoso/genesis-minds',
+            owner: 'contoso',
+            repo: 'genesis-minds',
+            ref: 'main',
+            plugin: 'genesis-minds',
+            enabled: true,
+            isDefault: false,
+          },
+        ],
+      };
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(v2));
       expect(svc.load()).toEqual(v2);
     });
 
-    it('backfills activeLogin for legacy v2 configs', () => {
+    it('backfills activeLogin and the default public marketplace for legacy v2 configs', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,
         minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
@@ -42,6 +82,7 @@ describe('ConfigService', () => {
         activeMindId: 'q-a1b2',
         activeLogin: null,
         theme: 'light',
+        marketplaceRegistries: DEFAULT_MARKETPLACES,
       });
     });
 
@@ -88,6 +129,7 @@ describe('ConfigService', () => {
         activeMindId: 'q-a1b2',
         activeLogin: 'alice',
         theme: 'dark',
+        marketplaceRegistries: DEFAULT_MARKETPLACES,
       };
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(v2));
       const result = svc.load();
@@ -99,7 +141,14 @@ describe('ConfigService', () => {
 
   describe('save', () => {
     it('creates directory and writes v2 JSON', () => {
-      const config: AppConfig = { version: 2, minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }], activeMindId: 'q-a1b2', activeLogin: 'alice', theme: 'dark' };
+      const config: AppConfig = {
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: 'alice',
+        theme: 'dark',
+        marketplaceRegistries: DEFAULT_MARKETPLACES,
+      };
       svc.save(config);
       expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalledWith(expect.any(String), {
         recursive: true,
@@ -113,7 +162,7 @@ describe('ConfigService', () => {
 
     it('writes config under an injected config directory', () => {
       const configDir = path.join('tmp', 'chamber-e2e-user-data');
-      const config: AppConfig = { version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' };
+      const config: AppConfig = { ...DEFAULT_CONFIG };
       new ConfigService(configDir).save(config);
 
       expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalledWith(configDir, {

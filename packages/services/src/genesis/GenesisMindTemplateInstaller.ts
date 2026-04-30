@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { CopilotClientFactory } from '../sdk/CopilotClientFactory';
-import { GenesisMindTemplateCatalog } from './GenesisMindTemplateCatalog';
+import { DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE, GenesisMindTemplateCatalog } from './GenesisMindTemplateCatalog';
+import { GenesisMindTemplateMarketplaceCatalog } from './GenesisMindTemplateMarketplaceCatalog';
 import { GitHubRegistryClient, type TreeEntry } from './GitHubRegistryClient';
 import { MindScaffold } from './MindScaffold';
 import type { GenesisMindTemplate, GenesisMindTemplateMarketplaceSource } from './templateTypes';
@@ -17,6 +18,10 @@ interface RegistryClient {
 }
 
 type ClientFactory = Pick<CopilotClientFactory, 'createClient' | 'destroyClient'>;
+type SourceProvider =
+  | GenesisMindTemplateMarketplaceSource
+  | GenesisMindTemplateMarketplaceSource[]
+  | (() => GenesisMindTemplateMarketplaceSource[]);
 
 export interface GenesisMindTemplateInstallRequest {
   templateId: string;
@@ -27,12 +32,11 @@ export class GenesisMindTemplateInstaller {
   constructor(
     private readonly registryClient: RegistryClient = new GitHubRegistryClient(),
     public readonly clientFactory: ClientFactory = new CopilotClientFactory(),
-    private readonly source?: GenesisMindTemplateMarketplaceSource,
+    private readonly sourceProvider: SourceProvider = DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE,
   ) {}
 
   async install(request: GenesisMindTemplateInstallRequest): Promise<string> {
-    const catalog = new GenesisMindTemplateCatalog(this.registryClient, this.source);
-    const template = catalog.listTemplates().find((item) => item.id === request.templateId);
+    const template = this.listTemplates().find((item) => item.id === request.templateId);
     if (!template) {
       throw new Error(`Genesis mind template not found: ${request.templateId}`);
     }
@@ -88,6 +92,13 @@ export class GenesisMindTemplateInstaller {
     execSync('git init', { cwd: mindPath, stdio: 'ignore' });
     execSync('git add -A', { cwd: mindPath, stdio: 'ignore' });
     execSync('git commit -m "Genesis template install"', { cwd: mindPath, stdio: 'ignore' });
+  }
+
+  private listTemplates(): GenesisMindTemplate[] {
+    if (typeof this.sourceProvider === 'function' || Array.isArray(this.sourceProvider)) {
+      return new GenesisMindTemplateMarketplaceCatalog(this.registryClient, this.sourceProvider).listTemplates().templates;
+    }
+    return new GenesisMindTemplateCatalog(this.registryClient, this.sourceProvider).listTemplates();
   }
 }
 

@@ -96,6 +96,18 @@ export interface MindRecord {
   path: string;
 }
 
+export interface MarketplaceRegistry {
+  id: string;
+  label: string;
+  url: string;
+  owner: string;
+  repo: string;
+  ref: string;
+  plugin: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
@@ -113,6 +125,7 @@ export interface AppConfig {
   activeMindId: string | null;
   activeLogin: string | null;
   theme: 'light' | 'dark' | 'system';
+  marketplaceRegistries?: MarketplaceRegistry[];
 }
 
 export interface LensViewManifest {
@@ -261,6 +274,9 @@ export interface GenesisMindTemplate {
     plugin: string;
     manifestPath: string;
     rootPath: string;
+    marketplaceId?: string;
+    marketplaceLabel?: string;
+    marketplaceUrl?: string;
   };
 }
 

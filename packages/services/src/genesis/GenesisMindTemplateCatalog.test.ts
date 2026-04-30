@@ -36,14 +36,17 @@ describe('GenesisMindTemplateCatalog', () => {
         role: 'Chief of Staff',
         voice: 'Vanilla, calm, helpful, and precise',
         templateVersion: '0.1.0',
-        source: {
+        source: expect.objectContaining({
           owner: 'ianphil',
           repo: 'genesis-minds',
           ref: 'master',
           plugin: 'genesis-minds',
           manifestPath: 'plugins/genesis-minds/minds/lucy/mind.json',
           rootPath: 'plugins/genesis-minds/minds/lucy',
-        },
+          marketplaceId: 'github:ianphil/genesis-minds',
+          marketplaceLabel: 'Public Genesis Minds',
+          marketplaceUrl: 'https://github.com/ianphil/genesis-minds',
+        }),
         requiredFiles: [
           'SOUL.md',
           'mind-index.md',

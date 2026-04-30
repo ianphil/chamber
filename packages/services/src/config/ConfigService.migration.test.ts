@@ -10,6 +10,20 @@ vi.mock('fs', () => ({
 import * as fs from 'fs';
 import { ConfigService } from './ConfigService';
 
+const DEFAULT_MARKETPLACES = [
+  {
+    id: 'github:ianphil/genesis-minds',
+    label: 'Public Genesis Minds',
+    url: 'https://github.com/ianphil/genesis-minds',
+    owner: 'ianphil',
+    repo: 'genesis-minds',
+    ref: 'master',
+    plugin: 'genesis-minds',
+    enabled: true,
+    isDefault: true,
+  },
+];
+
 const mockReadFileSync = vi.mocked(fs.readFileSync);
 const mockWriteFileSync = vi.mocked(fs.writeFileSync);
 const mockMkdirSync = vi.mocked(fs.mkdirSync);
@@ -34,13 +48,27 @@ describe('ConfigService (v1→v2 migration)', () => {
   it('returns default v2 config when file is missing', () => {
     mockReadFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
     const config = svc.load();
-    expect(config).toEqual({ version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' });
+    expect(config).toEqual({
+      version: 2,
+      minds: [],
+      activeMindId: null,
+      activeLogin: null,
+      theme: 'dark',
+      marketplaceRegistries: DEFAULT_MARKETPLACES,
+    });
   });
 
   it('returns default v2 config for invalid JSON', () => {
     mockReadFileSync.mockReturnValue('not json');
     const config = svc.load();
-    expect(config).toEqual({ version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' });
+    expect(config).toEqual({
+      version: 2,
+      minds: [],
+      activeMindId: null,
+      activeLogin: null,
+      theme: 'dark',
+      marketplaceRegistries: DEFAULT_MARKETPLACES,
+    });
   });
 
   it('creates directory and writes v2 config', () => {

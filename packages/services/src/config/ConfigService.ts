@@ -2,12 +2,31 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { generateMindId } from '../mind';
-import type { AppConfig, AppConfigV1, MindRecord } from '@chamber/shared/types';
+import type { AppConfig, AppConfigV1, MarketplaceRegistry, MindRecord } from '@chamber/shared/types';
 
 const CONFIG_DIR = path.join(os.homedir(), '.chamber');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
-const DEFAULT_CONFIG: AppConfig = { version: 2, minds: [], activeMindId: null, activeLogin: null, theme: 'dark' };
+export const DEFAULT_MARKETPLACE_REGISTRY: MarketplaceRegistry = {
+  id: 'github:ianphil/genesis-minds',
+  label: 'Public Genesis Minds',
+  url: 'https://github.com/ianphil/genesis-minds',
+  owner: 'ianphil',
+  repo: 'genesis-minds',
+  ref: 'master',
+  plugin: 'genesis-minds',
+  enabled: true,
+  isDefault: true,
+};
+
+const DEFAULT_CONFIG: AppConfig = {
+  version: 2,
+  minds: [],
+  activeMindId: null,
+  activeLogin: null,
+  theme: 'dark',
+  marketplaceRegistries: [DEFAULT_MARKETPLACE_REGISTRY],
+};
 
 export class ConfigService {
   /** @deprecated Use generateMindId() from mind/generateMindId instead */
@@ -54,6 +73,7 @@ export class ConfigService {
       activeMindId: typeof raw.activeMindId === 'string' ? raw.activeMindId : null,
       activeLogin: typeof raw.activeLogin === 'string' ? raw.activeLogin : null,
       theme,
+      marketplaceRegistries: this.normalizeMarketplaceRegistries(raw.marketplaceRegistries),
     });
   }
 
@@ -68,7 +88,15 @@ export class ConfigService {
       activeMindId: id,
       activeLogin: null,
       theme: v1.theme ?? 'dark',
+      marketplaceRegistries: [DEFAULT_MARKETPLACE_REGISTRY],
     };
+  }
+
+  private normalizeMarketplaceRegistries(raw: unknown): MarketplaceRegistry[] {
+    const registries = Array.isArray(raw)
+      ? raw.filter(isMarketplaceRegistry)
+      : [];
+    return deduplicateRegistries([DEFAULT_MARKETPLACE_REGISTRY, ...registries]);
   }
 
   private deduplicateMinds(config: AppConfig): AppConfig {
@@ -82,4 +110,31 @@ export class ConfigService {
     }
     return { ...config, minds: deduped };
   }
+}
+
+function isMarketplaceRegistry(value: unknown): value is MarketplaceRegistry {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return typeof record.id === 'string'
+    && typeof record.label === 'string'
+    && typeof record.url === 'string'
+    && typeof record.owner === 'string'
+    && typeof record.repo === 'string'
+    && typeof record.ref === 'string'
+    && typeof record.plugin === 'string'
+    && typeof record.enabled === 'boolean'
+    && typeof record.isDefault === 'boolean';
+}
+
+function deduplicateRegistries(registries: MarketplaceRegistry[]): MarketplaceRegistry[] {
+  const seen = new Set<string>();
+  const deduped: MarketplaceRegistry[] = [];
+  for (const registry of registries) {
+    if (seen.has(registry.id)) continue;
+    seen.add(registry.id);
+    deduped.push({ ...registry });
+  }
+  return deduped;
 }

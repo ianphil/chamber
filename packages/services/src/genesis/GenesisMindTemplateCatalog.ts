@@ -6,10 +6,15 @@ import type {
 } from './templateTypes';
 
 export const DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE: GenesisMindTemplateMarketplaceSource = {
+  id: 'github:ianphil/genesis-minds',
+  label: 'Public Genesis Minds',
+  url: 'https://github.com/ianphil/genesis-minds',
   owner: 'ianphil',
   repo: 'genesis-minds',
   ref: 'master',
   plugin: 'genesis-minds',
+  enabled: true,
+  isDefault: true,
 };
 
 interface RegistryClient {
@@ -86,6 +91,9 @@ export class GenesisMindTemplateCatalog {
         plugin: this.source.plugin,
         manifestPath,
         rootPath,
+        marketplaceId: this.source.id ?? marketplaceId(this.source),
+        marketplaceLabel: this.source.label ?? `${this.source.owner}/${this.source.repo}`,
+        marketplaceUrl: this.source.url ?? `https://github.com/${this.source.owner}/${this.source.repo}`,
       },
     };
   }
@@ -166,4 +174,8 @@ function isSafeRelativePath(value: string): boolean {
   if (!value || path.posix.isAbsolute(value)) return false;
   const normalized = path.posix.normalize(value);
   return normalized === '.' || (!normalized.startsWith('..') && !normalized.includes('/../'));
+}
+
+function marketplaceId(source: GenesisMindTemplateMarketplaceSource): string {
+  return `github:${source.owner}/${source.repo}`;
 }

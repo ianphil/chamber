@@ -15,6 +15,9 @@ import {
   ChatService,
   ConfigService,
   CopilotClientFactory,
+  DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE,
+  GenesisMindTemplateInstaller,
+  GenesisMindTemplateMarketplaceCatalog,
   CronService,
   IdentityLoader,
   MessageRouter,
@@ -26,6 +29,7 @@ import {
   configureSdkRuntimeLayout,
   type AppPaths,
   type CredentialStore,
+  type GenesisMindTemplateMarketplaceSource,
   type Notifier,
 } from '@chamber/services';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
@@ -103,6 +107,8 @@ const notifier: Notifier = {
 const clientFactory = new CopilotClientFactory();
 const identityLoader = new IdentityLoader();
 const configService = new ConfigService();
+const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
+  configService.load().marketplaceRegistries ?? [DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE];
 const saveActiveLogin = (login: string | null) => {
   const config = configService.load();
   configService.save({ ...config, activeLogin: login });
@@ -114,6 +120,8 @@ const authService = new AuthService(
   `Chamber/${app.getVersion()}`,
 );
 const scaffold = new MindScaffold();
+const genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(undefined, getGenesisMarketplaceSources);
+const genesisTemplateInstaller = new GenesisMindTemplateInstaller(undefined, clientFactory, getGenesisMarketplaceSources);
 const viewDiscovery = new ViewDiscovery();
 
 // --- Services (business rules, all dependencies injected) ---
@@ -346,7 +354,12 @@ app.on('ready', async () => {
     windowIcon,
   });
   setupLensIPC(viewDiscovery, mindManager);
-  setupGenesisIPC(mindManager, scaffold);
+  setupGenesisIPC(
+    mindManager,
+    scaffold,
+    { listTemplates: () => genesisTemplateCatalog.listTemplates().templates },
+    genesisTemplateInstaller,
+  );
   setupAuthIPC(authService, mindManager);
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
   setupChatroomIPC(chatroomService);
