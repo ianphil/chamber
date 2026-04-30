@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.36.0 (2026-04-30)
+
+### Genesis marketplace
+
+- **Add first-run marketplace enrollment** — the Genesis landing screen now includes an Add Marketplace path backed by desktop IPC and validation so users can enroll internal Genesis marketplace repositories by URL without editing config files. (#170)
+
 ## v0.35.0 (2026-04-30)
 
 ### Genesis marketplace
