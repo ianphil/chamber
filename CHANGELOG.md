@@ -8,7 +8,7 @@
 
 ### Packaging
 
-- **Refresh the packaged Copilot CLI pin** — the committed desktop runtime now pins `@github/copilot@1.0.40-1` so package smoke checks match the CLI binary shipped by the runtime package.
+- **Refresh the Copilot CLI pin** — the development and committed desktop runtimes now pin `@github/copilot@1.0.40-1` so Electron smoke and package smoke checks match the CLI binary shipped by the runtime package.
 
 ## v0.37.0 (2026-04-30)
 
