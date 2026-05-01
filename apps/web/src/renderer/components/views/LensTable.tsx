@@ -26,7 +26,7 @@ export function LensTable({ data, schema }: Props) {
     : Object.keys(rows[0]);
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden">
+    <div className="rounded-xl border border-border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>

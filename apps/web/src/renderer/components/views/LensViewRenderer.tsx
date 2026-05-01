@@ -61,9 +61,13 @@ export function LensViewRenderer({ view }: Props) {
     }
   }, [view.id, actionInput, loading]);
 
+  const isWideView = view.view === 'table' || view.view === 'status-board' || view.view === 'timeline';
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-6">
-      <div className="max-w-2xl mx-auto w-full space-y-6">
+      {/* Wide views (table/status-board/timeline) fill the pane.
+          Prose views cap at max-w-2xl so paragraphs stay readable. */}
+      <div className={cn('mx-auto w-full space-y-6', isWideView ? 'max-w-none' : 'max-w-2xl')}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
