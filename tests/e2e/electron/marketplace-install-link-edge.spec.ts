@@ -23,14 +23,18 @@ test.describe('Edge marketplace install link smoke', () => {
 
     const backupPath = backupConfig();
     try {
-      runPlaywrightCli(['open', '--extension', '--browser=msedge']);
+      await demoPause('Connecting playwright-cli to the running Edge browser.');
+      runPlaywrightCli(['config', '--extension', '--browser=msedge']);
+      await demoPause('Opening the internal Genesis marketplace README in Edge.');
       runPlaywrightCli(['open', internalMarketplaceRepoUrl]);
       runPlaywrightCli(['snapshot']);
       const badgeRef = findLatestSnapshotRef(/link "Add to Chamber"/);
 
       console.log('Clicking the internal marketplace Add to Chamber badge in Edge.');
       console.log('Approve the Edge external-protocol prompt and the Chamber add-marketplace confirmation if they appear.');
+      await demoPause('Ready to click the Add to Chamber badge.');
       runPlaywrightCli(['click', badgeRef]);
+      await demoPause('Badge clicked; approve any Edge or Chamber prompts now.');
 
       await expect.poll(() => readInternalMarketplaceEnabled(), {
         timeout: 120_000,
@@ -43,13 +47,30 @@ test.describe('Edge marketplace install link smoke', () => {
   });
 });
 
+async function demoPause(message: string): Promise<void> {
+  const delayMs = Number(process.env.CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK_SLOW_MS ?? 0);
+  if (!Number.isFinite(delayMs) || delayMs <= 0) return;
+  console.log(`[edge-marketplace-smoke] ${message} Pausing ${delayMs}ms for demo.`);
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 function runPlaywrightCli(args: string[]): string {
-  return execFileSync('playwright-cli', args, {
+  return execFileSync('powershell', [
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-Command',
+    `playwright-cli ${args.map(quotePowerShellArg).join(' ')}`,
+  ], {
     cwd: process.cwd(),
     env: process.env,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+function quotePowerShellArg(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function hasCommand(command: string): boolean {

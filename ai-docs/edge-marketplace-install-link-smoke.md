@@ -27,7 +27,7 @@ This smoke intentionally crosses outside the hermetic Playwright Electron test h
 - The internal marketplace README contains the badge:
 
   ```markdown
-  [![Add to Chamber](https://img.shields.io/badge/Add%20to-Chamber-7c3aed)](chamber://install?registry=https%3A%2F%2Fgithub.com%2Fagency-microsoft%2Fgenesis-minds)
+  [![Add to Chamber](https://img.shields.io/badge/Add%20to-Chamber-7c3aed)](https://chmbr.dev/install.html?registry=https%3A%2F%2Fgithub.com%2Fagency-microsoft%2Fgenesis-minds)
   ```
 
 ## Build and install Chamber
@@ -66,13 +66,23 @@ npm run test:ui:electron -- tests/e2e/electron/marketplace-install-link-edge.spe
 Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK
 ```
 
+For demos, add a pause between each browser handoff step:
+
+```powershell
+$env:CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK = '1'
+$env:CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK_SLOW_MS = '5000'
+npm run test:ui:electron -- tests/e2e/electron/marketplace-install-link-edge.spec.ts
+Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK
+Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK_SLOW_MS
+```
+
 The test connects to the running Edge browser with:
 
 ```powershell
-playwright-cli open --extension --browser=msedge
+playwright-cli config --extension --browser=msedge
 ```
 
-It then opens the internal repo, snapshots the page, finds the `Add to Chamber` badge, clicks it, and waits for Chamber's persisted config to include `github:agency-microsoft/genesis-minds`.
+It then opens the internal repo, snapshots the page, finds the `Add to Chamber` badge, clicks it, follows the GitHub Pages interstitial to `chamber://`, and waits for Chamber's persisted config to include `github:agency-microsoft/genesis-minds`.
 
 ## During the test
 

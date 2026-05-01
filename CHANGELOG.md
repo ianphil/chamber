@@ -5,10 +5,11 @@
 ### Genesis marketplace
 
 - **Enroll marketplaces from install links** — Chamber now registers the `chamber://install?registry=...` protocol, handles cold-start and already-running app links, and documents README badge/fallback URLs for one-click Genesis marketplace enrollment. (#172)
+- **Guide private marketplace setup** — marketplace access failures now identify the active GitHub CLI account and explain how to switch or log in, while GitHub-safe README badges can route through the hosted `install.html` interstitial before opening Chamber. (#172)
 
 ### Packaging
 
-- **Refresh the Copilot CLI pin** — the development and committed desktop runtimes now pin `@github/copilot@1.0.40-1` so Electron smoke and package smoke checks match the CLI binary shipped by the runtime package.
+- **Refresh the Copilot CLI pin** — the development and committed desktop runtimes now pin `@github/copilot@1.0.40-2` so Electron smoke and package smoke checks match the CLI binary shipped by the runtime package.
 
 ## v0.37.0 (2026-04-30)
 

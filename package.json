@@ -50,7 +50,7 @@
     "@electron-forge/publisher-github": "^7.11.1",
     "@electron/fuses": "^2.1.1",
     "@eslint/js": "^10.0.1",
-    "@github/copilot": "1.0.40-1",
+    "@github/copilot": "1.0.40-2",
     "@github/copilot-sdk": "0.3.0",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/typography": "^0.5.19",

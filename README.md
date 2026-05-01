@@ -52,10 +52,10 @@ Select a mind directory from the sidebar. The agent connects, views appear, and 
 Marketplace maintainers can add a click-to-enroll link to a README or internal portal:
 
 ```markdown
-[Add this marketplace to Chamber](chamber://install?registry=https%3A%2F%2Fgithub.com%2Fagency-microsoft%2Fgenesis-minds)
+[![Add to Chamber](https://img.shields.io/badge/Add%20to-Chamber-7c3aed)](https://chmbr.dev/install.html?registry=https%3A%2F%2Fgithub.com%2Fagency-microsoft%2Fgenesis-minds)
 ```
 
-If you host a browser-friendly fallback page such as `https://chmbr.dev/install?registry=<encoded registry URL>`, make that page open the same `chamber://install?registry=...` URL and show the registry URL for manual copy if Chamber is not installed.
+The GitHub Pages interstitial at `https://chmbr.dev/install.html?registry=<encoded registry URL>` opens the matching `chamber://install?registry=...` URL and shows a fallback copy button if Chamber is not installed.
 
 ## Architecture
 
