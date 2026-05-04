@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.39.0 (2026-05-04)
+
+### macOS
+
+- **Add macOS build support** — Chamber can now build macOS dmg/zip artifacts with platform-aware builder resources, optional signing/notarization settings, a macOS tray fallback icon path, and a draggable hidden-inset titlebar strip. (#177)
+
+### Genesis
+
+- **Keep generated mind paths safe** — Genesis now shortens long custom voice-derived directory names and refuses to create a mind over an existing target directory. (#177)
+
+### Lens
+
+- **Let wide Lens views use the full pane** — table, status-board, and timeline views now avoid the prose-width cap, and tables can scroll horizontally when columns overflow. (#177)
+
 ## v0.38.2 (2026-05-04)
 
 ### Lens

@@ -23,16 +23,9 @@ function getIcon(iconName: string, size = 20): React.ReactNode {
 }
 
 export function ActivityBar() {
-  const { activeView, discoveredViews, chatroomStreamingByMind, minds, activeMindId } = useAppState();
+  const { activeView, discoveredViews, chatroomStreamingByMind } = useAppState();
   const dispatch = useAppDispatch();
   const isChatroomRunning = Object.values(chatroomStreamingByMind).some(Boolean);
-
-  // ViewDiscovery emits the union of every loaded mind's views. Filter to the
-  // active mind's views only — otherwise minds' views accumulate in the bar.
-  const activeMind = minds.find((m) => m.mindId === activeMindId);
-  const activeMindViews = activeMind
-    ? discoveredViews.filter((v) => v._basePath?.startsWith(activeMind.mindPath))
-    : [];
 
   return (
     <div className="w-12 bg-card border border-border rounded-xl flex flex-col items-center py-2 shrink-0">
@@ -80,10 +73,10 @@ export function ActivityBar() {
           </TooltipContent>
         </Tooltip>
 
-        {activeMindViews.length > 0 && <Separator className="my-1 w-8" />}
+        {discoveredViews.length > 0 && <Separator className="my-1 w-8" />}
 
-        {/* Discovered views — scoped to the active mind */}
-        {activeMindViews.map((view: LensViewManifest) => (
+        {/* Discovered views */}
+        {discoveredViews.map((view: LensViewManifest) => (
           <Tooltip key={view.id} delayDuration={300}>
             <TooltipTrigger asChild>
               <button
