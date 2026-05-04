@@ -10,12 +10,6 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { PACKAGED_RENDERER_NAME } from './config/packaged-renderer.cjs';
 
-const enableMacOSSigning = process.platform === 'darwin' && process.env.ENABLE_MACOS_SIGNING === 'true';
-const enableMacOSNotarization =
-  enableMacOSSigning &&
-  Boolean(process.env.APPLE_ID) &&
-  Boolean(process.env.APPLE_ID_PASSWORD) &&
-  Boolean(process.env.APPLE_TEAM_ID);
 const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'app');
 const WINDOWS_ICON_PATH = `${APP_ICON_PATH}.ico`;
 
@@ -49,23 +43,6 @@ const config: ForgeConfig = {
       },
     ],
     extraResource: ['./resources/node', './resources/copilot-runtime', './apps/server/dist', './node_modules/keytar'],
-    ...(enableMacOSSigning
-      ? {
-          osxSign: {},
-          ...(enableMacOSNotarization
-            ? {
-                osxNotarize: {
-                   
-                  appleId: process.env.APPLE_ID!,
-                   
-                  appleIdPassword: process.env.APPLE_ID_PASSWORD!,
-                   
-                  teamId: process.env.APPLE_TEAM_ID!,
-                },
-              }
-            : {}),
-        }
-      : {}),
   },
   publishers: [
     {
