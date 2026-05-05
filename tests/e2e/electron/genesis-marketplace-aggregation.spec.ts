@@ -4,13 +4,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from './electronApp';
+import { findRendererPage, launchElectronApp, type LaunchedElectronApp, canAccessRepo } from './electronApp';
 
 const cdpPort = Number(process.env.CHAMBER_E2E_MARKETPLACE_AGGREGATION_CDP_PORT ?? 9340);
 const publicMarketplaceId = 'github:ianphil/genesis-minds';
 const internalMarketplaceId = 'github:agency-microsoft/genesis-minds';
 
+const hasAccess = canAccessRepo('agency-microsoft/genesis-minds');
+
 test.describe('electron Genesis marketplace aggregation smoke', () => {
+  test.skip(!hasAccess, 'Active gh account cannot access agency-microsoft/genesis-minds — run "gh auth switch" to an account with access.');
   test.setTimeout(240_000);
 
   let app: LaunchedElectronApp | undefined;

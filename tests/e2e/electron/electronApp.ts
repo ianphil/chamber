@@ -1,5 +1,5 @@
 import { chromium, type Browser, type Page } from '@playwright/test';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -94,4 +94,17 @@ async function waitForCdp(url: string, logs: string[]): Promise<void> {
 
 function logsPreview(logs: string[]): string {
   return logs.slice(-80).join('\n');
+}
+
+/**
+ * Returns true when the active `gh` account can access the given repo.
+ * Use with `test.skip()` to skip marketplace tests that need a private repo.
+ */
+export function canAccessRepo(nwo: string): boolean {
+  try {
+    execFileSync('gh', ['api', `repos/${nwo}`, '--silent'], { stdio: 'ignore', timeout: 15_000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
