@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.40.2 (2026-05-05)
+
+### Chatroom
+
+- **Align renderer and service roundIds** - The `chatroom:send` IPC handler now accepts an optional `roundId` and forwards it to `ChatroomService.broadcast`, which uses it for the persisted user message and emitted stream events. The renderer's optimistic `roundId` and the service-side identifier therefore agree, eliminating duplicate-round drift in the chatroom UI. (#50)
+
 ## v0.40.1 (2026-05-05)
 
 ### Security

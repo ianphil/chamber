@@ -115,7 +115,7 @@ describe('ChatroomPanel', () => {
       fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
     });
 
-    expect(api.chatroom.send).toHaveBeenCalledWith('hello all', undefined);
+    expect(api.chatroom.send).toHaveBeenCalledWith('hello all', undefined, expect.any(String));
   });
 
   // 7. Disabled when no agents

@@ -58,7 +58,7 @@ const electronAPI: ElectronAPI = {
     removeGenesisRegistry: (id) => ipcRenderer.invoke('marketplace:removeGenesisRegistry', id),
   },
   chatroom: {
-    send: (message: string, model?: string) => ipcRenderer.invoke('chatroom:send', message, model),
+    send: (message: string, model?: string, roundId?: string) => ipcRenderer.invoke('chatroom:send', message, model, roundId),
     history: () => ipcRenderer.invoke('chatroom:history'),
     taskLedger: () => ipcRenderer.invoke('chatroom:task-ledger'),
     clear: () => ipcRenderer.invoke('chatroom:clear'),

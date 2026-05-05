@@ -630,6 +630,68 @@ describe('ChatroomService', () => {
       expect(chunkEvent.roundId).toBeTruthy();
       expect(chunkEvent.messageId).toBeTruthy();
     });
+
+    it('honors the caller-supplied roundId so renderer and service agree', async () => {
+      const sess = createMockSession();
+      sessions.set('dude', sess);
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+
+      const events: ChatroomStreamEvent[] = [];
+      svc.on('chatroom:event', (event: ChatroomStreamEvent) => events.push(event));
+
+      sess.send.mockImplementation(async () => {
+        setTimeout(() => {
+          sess._emit('assistant.message_delta', {
+            data: { messageId: 'sdk-1', deltaContent: 'Hi' },
+          });
+          sess._emit('session.idle', {});
+        }, 0);
+      });
+
+      const supplied = 'renderer-round-12345';
+      await svc.broadcast('Hi', undefined, supplied);
+
+      const persisted = svc.getHistory();
+      const userMsg = persisted.find((m) => m.role === 'user');
+      expect(userMsg?.roundId).toBe(supplied);
+
+      const chunkEvent = events.find((e) => e.event.type === 'chunk');
+      expect(chunkEvent?.roundId).toBe(supplied);
+    });
+
+    it('falls back to a generated roundId when caller omits one', async () => {
+      const sess = createMockSession();
+      sessions.set('dude', sess);
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+      autoIdle(sess);
+
+      await svc.broadcast('Hi');
+
+      const persisted = svc.getHistory();
+      const userMsg = persisted.find((m) => m.role === 'user');
+      expect(userMsg?.roundId).toBeTruthy();
+      expect(typeof userMsg?.roundId).toBe('string');
+    });
+
+    it('regenerates roundId when caller supplies a duplicate', async () => {
+      const sess = createMockSession();
+      sessions.set('dude', sess);
+      minds.length = 0;
+      minds.push(makeMind('dude', 'The Dude'));
+      autoIdle(sess);
+
+      const dup = 'renderer-dup-id';
+      await svc.broadcast('first', undefined, dup);
+      await svc.broadcast('second', undefined, dup);
+
+      const userMsgs = svc.getHistory().filter((m) => m.role === 'user');
+      expect(userMsgs).toHaveLength(2);
+      expect(userMsgs[0].roundId).toBe(dup);
+      expect(userMsgs[1].roundId).not.toBe(dup);
+      expect(userMsgs[1].roundId).toBeTruthy();
+    });
   });
 
   describe('approval gate', () => {

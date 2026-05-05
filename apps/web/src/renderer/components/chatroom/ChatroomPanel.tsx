@@ -487,7 +487,7 @@ export function ChatroomPanel() {
         roundId,
       },
     });
-    await window.electronAPI.chatroom.send(content, selectedModel ?? undefined);
+    await window.electronAPI.chatroom.send(content, selectedModel ?? undefined, roundId);
   }, [dispatch, selectedModel]);
 
   const handleStop = useCallback(async () => {
