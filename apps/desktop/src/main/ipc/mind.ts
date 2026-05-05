@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import type { MindManager } from '@chamber/services';
 import type { MindContext } from '@chamber/shared/types';
+import { installExternalNavigationGuard } from '../navigationGuard';
 
 export interface MindIPCConfig {
   preloadPath: string;
@@ -86,6 +87,7 @@ export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): v
         sandbox: false,
       },
     });
+    installExternalNavigationGuard(win.webContents);
 
     // Load same renderer with popout query params
     if (config.devServerUrl) {

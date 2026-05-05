@@ -242,6 +242,21 @@ describe('appReducer', () => {
     expect(state.isStreaming).toBe(false);
   });
 
+  it('HYDRATE_CHAT_STATE restores messages and active streaming state', () => {
+    const messages = [makeMessage([makeTextBlock('from popout')], { id: 'msg-1' })];
+    const state = appReducer(withActiveMind, {
+      type: 'HYDRATE_CHAT_STATE',
+      payload: {
+        messagesByMind: { [mindId]: messages },
+        streamingByMind: { [mindId]: true },
+      },
+    });
+
+    expect(state.messagesByMind[mindId]).toEqual(messages);
+    expect(state.streamingByMind[mindId]).toBe(true);
+    expect(state.isStreaming).toBe(true);
+  });
+
   it('SET_MINDS updates minds array', () => {
     const minds = [{ mindId: 'a', mindPath: '/a', identity: { name: 'A', systemMessage: '' }, status: 'ready' as const }];
     const state = appReducer(initialState, { type: 'SET_MINDS', payload: minds });

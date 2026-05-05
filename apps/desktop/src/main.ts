@@ -38,6 +38,7 @@ import {
 import { Logger } from '@chamber/services';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
 import { installContextMenu } from './main/contextMenu/ContextMenu';
+import { installExternalNavigationGuard } from './main/navigationGuard';
 
 const log = Logger.create('main');
 import { enrollMarketplaceFromProtocolUrl, findMarketplaceInstallUrl, parseMarketplaceInstallUrl } from './main/protocol/marketplaceProtocol';
@@ -372,6 +373,7 @@ const createWindow = () => {
   });
 
   installContextMenu(mainWindow.webContents);
+  installExternalNavigationGuard(mainWindow.webContents);
 
   if (mvpServerUrl) {
     mainWindow.loadURL(mvpServerUrl);

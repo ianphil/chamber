@@ -180,6 +180,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'HYDRATE_CHAT_STATE': {
+      const isActiveMindStreaming = state.activeMindId
+        ? Boolean(action.payload.streamingByMind[state.activeMindId])
+        : Object.values(action.payload.streamingByMind).some(Boolean);
+      return {
+        ...state,
+        messagesByMind: action.payload.messagesByMind,
+        streamingByMind: action.payload.streamingByMind,
+        isStreaming: isActiveMindStreaming,
+      };
+    }
+
     case 'SET_MINDS':
       return { ...state, minds: action.payload };
 
