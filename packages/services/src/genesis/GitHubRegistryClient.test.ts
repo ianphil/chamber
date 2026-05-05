@@ -23,6 +23,7 @@ describe('GitHubRegistryClient', () => {
             'Accept': 'application/vnd.github+json',
             'User-Agent': expect.any(String),
           }),
+          signal: expect.any(AbortSignal),
         }),
       );
     });
@@ -59,6 +60,30 @@ describe('GitHubRegistryClient', () => {
         }),
       );
     });
+
+    it('does not read stored credentials when anonymous access succeeds', async () => {
+      const credentialProvider = vi.fn(async () => [{ login: 'ianphil_microsoft', token: 'secret-token' }]);
+      client = new GitHubRegistryClient({ fetch: fetchMock, credentialProvider });
+      fetchMock.mockResolvedValueOnce(jsonResponse({ tree: [] }));
+
+      await client.fetchTree('ianphil', 'genesis-minds', 'master');
+
+      expect(credentialProvider).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the anonymous error when credential lookup fails', async () => {
+      client = new GitHubRegistryClient({
+        fetch: fetchMock,
+        credentialProvider: async () => {
+          throw new Error('keychain locked');
+        },
+      });
+      fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404, statusText: 'Not Found' }));
+
+      await expect(client.fetchTree('agency-microsoft', 'genesis-minds', 'main'))
+        .rejects.toThrow('GitHub API request failed anonymously: 404 Not Found');
+    });
   });
 
   describe('fetchBlob', () => {
@@ -71,6 +96,17 @@ describe('GitHubRegistryClient', () => {
       const content = await client.fetchBlob('ianphil', 'genesis', 'abc123');
 
       expect(content.toString()).toBe('Hello World');
+    });
+
+    it('rejects blobs over the configured size limit', async () => {
+      client = new GitHubRegistryClient({ fetch: fetchMock, maxBlobBytes: 4 });
+      fetchMock.mockResolvedValueOnce(jsonResponse({
+        content: Buffer.from('Hello').toString('base64'),
+        encoding: 'base64',
+      }));
+
+      await expect(client.fetchBlob('ianphil', 'genesis', 'abc123'))
+        .rejects.toThrow('exceeds the 4 byte limit');
     });
   });
 

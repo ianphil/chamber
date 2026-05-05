@@ -145,6 +145,14 @@ describe('GenesisMindTemplateInstaller', () => {
     expect(mindPath).toBe(path.join(basePath, 'internal-lucy'));
     expect(readFileSync(path.join(mindPath, 'SOUL.md'), 'utf8')).toBe('# Internal Lucy\n');
   });
+
+  it('rejects templates that exceed the total install size limit', async () => {
+    registryClient.blobs.set('soul', Buffer.alloc(51 * 1024 * 1024));
+    const installer = new GenesisMindTemplateInstaller(registryClient);
+
+    await expect(installer.install({ templateId: 'lucy', basePath }))
+      .rejects.toThrow('Template lucy exceeds the 52428800 byte install limit');
+  });
 });
 
 function seedLucyMarketplace(registryClient: FakeRegistryClient): void {

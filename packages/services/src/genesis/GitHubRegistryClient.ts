@@ -17,6 +17,8 @@ export type GitHubRegistryCredentialProvider = () => Promise<GitHubRegistryCrede
 export interface GitHubRegistryClientOptions {
   fetch?: typeof fetch;
   credentialProvider?: GitHubRegistryCredentialProvider;
+  requestTimeoutMs?: number;
+  maxBlobBytes?: number;
 }
 
 interface GitHubTreeResponse {
@@ -34,10 +36,14 @@ interface GitHubContentResponse {
 export class GitHubRegistryClient {
   private readonly fetchImpl: typeof fetch;
   private readonly credentialProvider: GitHubRegistryCredentialProvider;
+  private readonly requestTimeoutMs: number;
+  private readonly maxBlobBytes: number;
 
   constructor(options: GitHubRegistryClientOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.credentialProvider = options.credentialProvider ?? (() => Promise.resolve([]));
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.maxBlobBytes = options.maxBlobBytes ?? DEFAULT_MAX_BLOB_BYTES;
   }
 
   static withCredentialStore(credentials: CredentialStore): GitHubRegistryClient {
@@ -64,7 +70,15 @@ export class GitHubRegistryClient {
     if (typeof response.content !== 'string') {
       throw new Error(`GitHub blob response for ${owner}/${repo}@${sha} did not include content`);
     }
-    return Buffer.from(response.content, 'base64');
+    const encodedContent = response.content.replace(/\s/g, '');
+    if (encodedContent.length > maxBase64Length(this.maxBlobBytes)) {
+      throw new Error(`GitHub blob ${owner}/${repo}@${sha} exceeds the ${this.maxBlobBytes} byte limit`);
+    }
+    const content = Buffer.from(encodedContent, 'base64');
+    if (content.length > this.maxBlobBytes) {
+      throw new Error(`GitHub blob ${owner}/${repo}@${sha} exceeds the ${this.maxBlobBytes} byte limit`);
+    }
+    return content;
   }
 
   async fetchJsonContent(owner: string, repo: string, filePath: string, ref: string): Promise<unknown> {
@@ -78,28 +92,61 @@ export class GitHubRegistryClient {
   }
 
   private async requestJson<T>(pathAndQuery: string): Promise<T> {
-    const attempts = [
-      { login: null, token: null },
-      ...(await this.credentialProvider()).map((credential) => ({
-        login: credential.login,
-        token: credential.token,
-      })),
-    ];
-    let lastError: Error | null = null;
+    const anonymousAttempt = await this.fetchJsonAttempt<T>(pathAndQuery, null, null);
+    if (anonymousAttempt.ok) {
+      return anonymousAttempt.value;
+    }
 
-    for (const attempt of attempts) {
-      const response = await this.fetchImpl(`https://api.github.com${pathAndQuery}`, {
-        headers: requestHeaders(attempt.token),
-      });
-      if (response.ok) {
-        return await response.json() as T;
+    let lastError = anonymousAttempt.error;
+    for (const credential of await this.safeCredentials()) {
+      const credentialAttempt = await this.fetchJsonAttempt<T>(pathAndQuery, credential.token, credential.login);
+      if (credentialAttempt.ok) {
+        return credentialAttempt.value;
       }
-      lastError = await registryRequestError(response, attempt.login);
+      lastError = credentialAttempt.error;
     }
 
     throw lastError ?? new Error('GitHub API request failed');
   }
+
+  private async fetchJsonAttempt<T>(
+    pathAndQuery: string,
+    token: string | null,
+    login: string | null,
+  ): Promise<{ ok: true; value: T } | { ok: false; error: Error }> {
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), this.requestTimeoutMs);
+    try {
+      const response = await this.fetchImpl(`https://api.github.com${pathAndQuery}`, {
+        headers: requestHeaders(token),
+        signal: abort.signal,
+      });
+      if (response.ok) {
+        return { ok: true, value: await response.json() as T };
+      }
+      return { ok: false, error: await registryRequestError(response, login) };
+    } catch (error) {
+      const account = login ? ` using stored credential "${login}"` : ' anonymously';
+      return {
+        ok: false,
+        error: new Error(`GitHub API request failed${account}: ${error instanceof Error ? error.message : String(error)}`),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async safeCredentials(): Promise<GitHubRegistryCredential[]> {
+    try {
+      return await this.credentialProvider();
+    } catch {
+      return [];
+    }
+  }
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024;
 
 function requestHeaders(token: string | null): HeadersInit {
   return {
@@ -107,6 +154,10 @@ function requestHeaders(token: string | null): HeadersInit {
     'User-Agent': AuthService.userAgent,
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
   };
+}
+
+function maxBase64Length(maxBytes: number): number {
+  return Math.ceil(maxBytes / 3) * 4;
 }
 
 async function registryRequestError(response: Response, login: string | null): Promise<Error> {

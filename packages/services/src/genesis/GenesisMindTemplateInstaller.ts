@@ -10,6 +10,7 @@ import type { GenesisMindTemplate, GenesisMindTemplateMarketplaceSource } from '
 
 const IDEA_FOLDERS = ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
+const MAX_TEMPLATE_INSTALL_BYTES = 50 * 1024 * 1024;
 
 interface RegistryClient {
   fetchTree(owner: string, repo: string, branch: string): Promise<TreeEntry[]>;
@@ -78,6 +79,7 @@ export class GenesisMindTemplateInstaller {
     const tree = await this.registryClient.fetchTree(template.source.owner, template.source.repo, template.source.ref);
     const templatePrefix = `${template.source.rootPath}/`;
     const entries = tree.filter((entry) => entry.type === 'blob' && entry.path.startsWith(templatePrefix));
+    let totalBytes = 0;
 
     for (const entry of entries) {
       const relativePath = path.posix.relative(template.source.rootPath, entry.path);
@@ -86,6 +88,10 @@ export class GenesisMindTemplateInstaller {
       }
 
       const content = await this.registryClient.fetchBlob(template.source.owner, template.source.repo, entry.sha);
+      totalBytes += content.length;
+      if (totalBytes > MAX_TEMPLATE_INSTALL_BYTES) {
+        throw new Error(`Template ${template.id} exceeds the ${MAX_TEMPLATE_INSTALL_BYTES} byte install limit`);
+      }
       const localPath = path.join(mindPath, ...relativePath.split('/'));
       fs.mkdirSync(path.dirname(localPath), { recursive: true });
       fs.writeFileSync(localPath, content);
