@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.39.4 (2026-05-05)
+
+### Chat
+
+- **Disable hidden ask_user prompts** - Mind and Genesis SDK sessions no longer enable `ask_user` until Chamber has a UI flow to surface and answer those questions. (#58)
+
+### Testing
+
+- **Add live Monica chat smoke** - The existing-mind Electron smoke now sends a real Monica chat turn by default and verifies the live response path.
+
 ## v0.39.3 (2026-05-04)
 
 ### Genesis
