@@ -92,6 +92,20 @@ describe('GenesisMindTemplateInstaller', () => {
     expect(installer.clientFactory.createClient).not.toHaveBeenCalled();
   });
 
+  it('still installs the template when git is unavailable', async () => {
+    vi.mocked(execSync).mockImplementationOnce(() => {
+      throw new Error('git not found');
+    });
+    const installer = new GenesisMindTemplateInstaller(registryClient);
+
+    const mindPath = await installer.install({ templateId: 'lucy', basePath });
+
+    expect(mindPath).toBe(path.join(basePath, 'lucy'));
+    expect(readFileSync(path.join(mindPath, 'SOUL.md'), 'utf8')).toBe('# Lucy\n');
+    expect(execSync).toHaveBeenCalledWith('git init', { cwd: mindPath, stdio: 'ignore' });
+    expect(execSync).not.toHaveBeenCalledWith('git add -A', { cwd: mindPath, stdio: 'ignore' });
+  });
+
   it('installs the selected marketplace when template ids overlap', async () => {
     seedMarketplace(registryClient, {
       owner: 'ianphil',

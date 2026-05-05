@@ -7,10 +7,12 @@ import { GenesisMindTemplateMarketplaceCatalog } from './GenesisMindTemplateMark
 import { GitHubRegistryClient, type TreeEntry } from './GitHubRegistryClient';
 import { MindScaffold } from './MindScaffold';
 import type { GenesisMindTemplate, GenesisMindTemplateMarketplaceSource } from './templateTypes';
+import { Logger } from '../logger';
 
 const IDEA_FOLDERS = ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 const MAX_TEMPLATE_INSTALL_BYTES = 50 * 1024 * 1024;
+const log = Logger.create('GenesisMindTemplateInstaller');
 
 interface RegistryClient {
   fetchTree(owner: string, repo: string, branch: string): Promise<TreeEntry[]>;
@@ -99,9 +101,13 @@ export class GenesisMindTemplateInstaller {
   }
 
   private initGit(mindPath: string): void {
-    execSync('git init', { cwd: mindPath, stdio: 'ignore' });
-    execSync('git add -A', { cwd: mindPath, stdio: 'ignore' });
-    execSync('git commit -m "Genesis template install"', { cwd: mindPath, stdio: 'ignore' });
+    try {
+      execSync('git init', { cwd: mindPath, stdio: 'ignore' });
+      execSync('git add -A', { cwd: mindPath, stdio: 'ignore' });
+      execSync('git commit -m "Genesis template install"', { cwd: mindPath, stdio: 'ignore' });
+    } catch (error) {
+      log.warn('Git init failed for Genesis template install (non-fatal):', error);
+    }
   }
 
   private async listTemplates(): Promise<GenesisMindTemplate[]> {
