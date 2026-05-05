@@ -357,11 +357,12 @@ export class ChatroomService extends EventEmitter {
   }
 
   private getLastNRounds(n: number): ChatroomMessage[] {
-    // Collect unique roundIds in reverse order, take last n
+    const seen = new Set<string>();
     const roundIds: string[] = [];
     for (let i = this.messages.length - 1; i >= 0; i--) {
       const rid = this.messages[i].roundId;
-      if (!roundIds.includes(rid)) {
+      if (!seen.has(rid)) {
+        seen.add(rid);
         roundIds.unshift(rid);
       }
     }
@@ -369,10 +370,11 @@ export class ChatroomService extends EventEmitter {
     // Exclude the current round (it's being built now — its user msg is already in this.messages)
     // The last roundId is the current round, so take n rounds before it
     const currentRoundId = roundIds[roundIds.length - 1];
-    const previousRoundIds = roundIds.filter((r) => r !== currentRoundId);
-    const targetRoundIds = previousRoundIds.slice(-n);
+    const targetRoundIds = new Set(
+      roundIds.filter((r) => r !== currentRoundId).slice(-n),
+    );
 
-    return this.messages.filter((m) => targetRoundIds.includes(m.roundId));
+    return this.messages.filter((m) => targetRoundIds.has(m.roundId));
   }
 
   // -------------------------------------------------------------------------

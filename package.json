@@ -1,7 +1,7 @@
 {
   "name": "chamber",
   "productName": "Chamber",
-  "version": "0.40.2",
+  "version": "0.40.3",
   "description": "Genesis Mind Interface — desktop chat UI for Genesis agents",
   "main": ".vite/build/main.js",
   "private": true,

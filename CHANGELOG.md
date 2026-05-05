@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.40.3 (2026-05-05)
+
+### Performance
+
+- **Use `Set` for round-id lookups in chatroom history** - `ChatroomService.getLastNRounds` now collects unique round ids with a `Set<string>` instead of `Array.includes`, replacing the O(n·r) inner loop with O(n+r) for chatrooms with deep history. (#54)
+
 ## v0.40.2 (2026-05-05)
 
 ### Chatroom
