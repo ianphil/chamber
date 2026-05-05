@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.39.5 (2026-05-05)
+
+### SDK
+
+- **Validate SDK chat event contracts** - Chat streaming now validates the SDK event fields Chamber consumes before mapping them into UI events, surfacing clear contract mismatch errors when SDK drift would otherwise produce broken chat output.
+
 ## v0.39.4 (2026-05-05)
 
 ### Chat

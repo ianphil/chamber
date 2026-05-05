@@ -5,7 +5,21 @@ import type { MindManager } from '../mind';
 import type { ChatEvent, ChatImageAttachment, ModelInfo } from '@chamber/shared/types';
 import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
+import { Logger } from '../logger';
+import {
+  SdkChatEventContractError,
+  getSdkSessionErrorMessage,
+  mapSdkAssistantMessage,
+  mapSdkAssistantMessageDelta,
+  mapSdkAssistantReasoningDelta,
+  mapSdkToolExecutionComplete,
+  mapSdkToolExecutionPartialResult,
+  mapSdkToolExecutionProgress,
+  mapSdkToolExecutionStart,
+} from '../sdk/sdkChatEventMapper';
 import { TurnQueue } from './TurnQueue';
+
+const log = Logger.create('ChatService');
 
 export class ChatService {
   private abortControllers = new Map<string, AbortController>();
@@ -64,74 +78,57 @@ export class ChatService {
   ): Promise<void>{
     const unsubs: (() => void)[] = [];
     const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
+    let sdkContractFailed = false;
+    const failSdkContract = (error: unknown) => {
+      if (abortController.signal.aborted || sdkContractFailed) return;
+      sdkContractFailed = true;
+      const message = error instanceof SdkChatEventContractError
+        ? error.message
+        : 'SDK contract mismatch while streaming chat';
+      log.error(message, error);
+      emit({ type: 'error', message });
+      abortController.abort();
+    };
+    const emitMapped = (mapper: () => ChatEvent | null) => {
+      try {
+        const mapped = mapper();
+        if (mapped) guard(() => emit(mapped));
+      } catch (error) {
+        failSdkContract(error);
+      }
+    };
 
     try {
       // Text streaming
       unsubs.push(session.on('assistant.message_delta', (event) => {
-        guard(() => emit({
-          type: 'chunk',
-          sdkMessageId: event.data.messageId,
-          content: event.data.deltaContent,
-        }));
+        emitMapped(() => mapSdkAssistantMessageDelta(event));
       }));
 
       // Final assistant message
       unsubs.push(session.on('assistant.message', (event) => {
-        guard(() => {
-          if (event.data.content) {
-            emit({
-              type: 'message_final',
-              sdkMessageId: event.data.messageId,
-              content: event.data.content,
-            });
-          }
-        });
+        emitMapped(() => mapSdkAssistantMessage(event));
       }));
 
       // Reasoning
       unsubs.push(session.on('assistant.reasoning_delta', (event) => {
-        guard(() => emit({
-          type: 'reasoning',
-          reasoningId: event.data.reasoningId,
-          content: event.data.deltaContent,
-        }));
+        emitMapped(() => mapSdkAssistantReasoningDelta(event));
       }));
 
       // Tool execution
       unsubs.push(session.on('tool.execution_start', (event) => {
-        guard(() => emit({
-          type: 'tool_start',
-          toolCallId: event.data.toolCallId,
-          toolName: event.data.toolName,
-          args: event.data.arguments as Record<string, unknown> | undefined,
-          parentToolCallId: event.data.parentToolCallId,
-        }));
+        emitMapped(() => mapSdkToolExecutionStart(event));
       }));
 
       unsubs.push(session.on('tool.execution_progress', (event) => {
-        guard(() => emit({
-          type: 'tool_progress',
-          toolCallId: event.data.toolCallId,
-          message: event.data.progressMessage,
-        }));
+        emitMapped(() => mapSdkToolExecutionProgress(event));
       }));
 
       unsubs.push(session.on('tool.execution_partial_result', (event) => {
-        guard(() => emit({
-          type: 'tool_output',
-          toolCallId: event.data.toolCallId,
-          output: event.data.partialOutput,
-        }));
+        emitMapped(() => mapSdkToolExecutionPartialResult(event));
       }));
 
       unsubs.push(session.on('tool.execution_complete', (event) => {
-        guard(() => emit({
-          type: 'tool_done',
-          toolCallId: event.data.toolCallId,
-          success: event.data.success,
-          result: event.data.result?.content,
-          error: event.data.error?.message,
-        }));
+        emitMapped(() => mapSdkToolExecutionComplete(event));
       }));
 
       // Set up idle/error listeners BEFORE send to avoid missing events
@@ -150,7 +147,12 @@ export class ChatService {
         const unsubError = session.on('session.error', (event) => {
           if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           unsubError();
-          reject(new Error(event.data.message));
+          try {
+            reject(new Error(getSdkSessionErrorMessage(event)));
+          } catch (error) {
+            failSdkContract(error);
+            resolve();
+          }
         });
         unsubs.push(unsubError);
 

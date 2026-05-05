@@ -57,6 +57,37 @@ describe('ChatService', () => {
       await svc.sendMessage('nonexistent', 'hello', 'msg-1', emit);
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     });
+
+    it('emits a clear error when the SDK chat event contract drifts', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      let deltaListener: ((event: unknown) => void) | undefined;
+
+      mockSession.on.mockImplementation(
+        (event: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+          if (event === 'assistant.message_delta' && cb) {
+            deltaListener = cb as (event: unknown) => void;
+          }
+          return vi.fn();
+        },
+      );
+      mockSession.send.mockImplementation(async () => {
+        deltaListener?.({ data: { id: 'sdk-message-1', text: 'hello' } });
+      });
+
+      try {
+        const emit = vi.fn();
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        expect(emit).toHaveBeenCalledWith({
+          type: 'error',
+          message: 'SDK contract mismatch for assistant.message_delta',
+        });
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        consoleError.mockRestore();
+        mockSession.send.mockResolvedValue(undefined);
+      }
+    });
   });
 
   describe('cancelMessage', () => {
