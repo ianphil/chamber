@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { Logger } from '../logger';
 import { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { approveAllCompat } from '../sdk/approveAllCompat';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import { buildGenesisPrompt } from './genesisPrompt';
 import { GitHubRegistryClient } from './GitHubRegistryClient';
 
@@ -163,7 +164,7 @@ export class MindScaffold {
     await session.rpc.permissions.setApproveAll({ enabled: true });
 
     try {
-      await session.send({ prompt });
+      await session.send({ prompt: injectCurrentDateTimeContext(prompt, getCurrentDateTimeContext()) });
 
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(resolve, 180_000);

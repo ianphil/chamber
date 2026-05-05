@@ -12,6 +12,7 @@ import type {
   Message,
 } from './types';
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 
 const log = Logger.create('TaskManager');
 
@@ -216,6 +217,7 @@ export class TaskManager extends EventEmitter {
     // c. Serialize message
     const deliveryMessage: Message = { ...message, contextId: task.contextId, taskId: task.id };
     const xmlPrompt = serializeMessageToXml(deliveryMessage);
+    const prompt = injectCurrentDateTimeContext(xmlPrompt, getCurrentDateTimeContext());
 
     let session = await this.sessionFactory.createTaskSession(targetMindId, task.id, onUserInputRequest);
     this.sessions.set(task.id, session);
@@ -225,7 +227,7 @@ export class TaskManager extends EventEmitter {
 
     // e. Send prompt, with stale-session retry
     try {
-      await session.send({ prompt: xmlPrompt });
+      await session.send({ prompt });
     } catch (err) {
       if (!isStaleSessionError(err)) throw err;
 
@@ -234,7 +236,7 @@ export class TaskManager extends EventEmitter {
       session = await this.sessionFactory.createTaskSession(targetMindId, task.id, onUserInputRequest);
       this.sessions.set(task.id, session);
       this.bindTaskSessionListeners(session, task, targetMindId);
-      await session.send({ prompt: xmlPrompt });
+      await session.send({ prompt });
     }
   }
 

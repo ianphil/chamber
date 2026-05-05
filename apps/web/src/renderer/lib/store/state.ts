@@ -78,7 +78,7 @@ export const initialState: AppState = {
   isStreaming: false,
   streamingByMind: {},
   availableModels: [],
-  selectedModel: localStorage.getItem('chamber:selectedModel'),
+  selectedModel: null,
   activeView: 'chat',
   discoveredViews: [],
   showLanding: false,

@@ -14,6 +14,7 @@ import { generateMindId } from './generateMindId';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { approveAllCompat } from '../sdk/approveAllCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
@@ -85,14 +86,26 @@ export class MindManager extends EventEmitter {
 
     const sessionTools = this.getSessionTools(id, resolvedMindPath);
 
+    const selectedModel = this.knownMindRecords.get(id)?.selectedModel;
+
     // Create session
-    const session = await this.createSessionForMind(client, resolvedMindPath, identity.systemMessage, sessionTools);
+    const session = await this.createSessionForMind(
+      client,
+      resolvedMindPath,
+      identity.systemMessage,
+      sessionTools,
+      undefined,
+      approveAllCompat,
+      true,
+      selectedModel,
+    );
 
     const context: InternalMindContext = {
       mindId: id,
       mindPath: resolvedMindPath,
       identity,
       status: 'ready',
+      selectedModel,
       client,
       session,
     };
@@ -117,7 +130,7 @@ export class MindManager extends EventEmitter {
       throw err;
     }
 
-    this.knownMindRecords.set(id, { id, path: resolvedMindPath });
+    this.knownMindRecords.set(id, { id, path: resolvedMindPath, ...(selectedModel ? { selectedModel } : {}) });
 
     // Persist
     this.persistConfig();
@@ -192,9 +205,62 @@ export class MindManager extends EventEmitter {
 
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
     context.session = await this.createSessionForMind(
-      context.client, context.mindPath, context.identity.systemMessage, sessionTools,
+      context.client,
+      context.mindPath,
+      context.identity.systemMessage,
+      sessionTools,
+      undefined,
+      approveAllCompat,
+      true,
+      context.selectedModel,
     );
     return context.session;
+  }
+
+  async setMindModel(mindId: string, model: string | null): Promise<MindContext | null> {
+    const context = this.minds.get(mindId);
+    const selectedModel = model && model.trim().length > 0 ? model.trim() : undefined;
+
+    if (!context) {
+      const existingRecord = this.knownMindRecords.get(mindId);
+      if (!existingRecord) return null;
+      this.knownMindRecords.set(mindId, {
+        id: existingRecord.id,
+        path: existingRecord.path,
+        ...(selectedModel ? { selectedModel } : {}),
+      });
+      this.persistConfig();
+      return null;
+    }
+
+    if (context.selectedModel === selectedModel) return this.toExternalContext(context);
+
+    const previousSession = context.session;
+    const sessionTools = this.getSessionTools(mindId, context.mindPath);
+    const nextSession = await this.createSessionForMind(
+      context.client,
+      context.mindPath,
+      context.identity.systemMessage,
+      sessionTools,
+      undefined,
+      approveAllCompat,
+      true,
+      selectedModel,
+    );
+
+    context.selectedModel = selectedModel;
+    context.session = nextSession;
+    this.knownMindRecords.set(mindId, {
+      id: mindId,
+      path: context.mindPath,
+      ...(selectedModel ? { selectedModel } : {}),
+    });
+    this.persistConfig();
+    await previousSession?.disconnect().catch(() => { /* session already disconnected */ });
+
+    const external = this.toExternalContext(context);
+    this.emit('mind:loaded', external);
+    return external;
   }
 
   awaitRestore(): Promise<void> {
@@ -307,6 +373,7 @@ export class MindManager extends EventEmitter {
       identity: ctx.identity,
       status: ctx.status,
       error: ctx.error,
+      selectedModel: ctx.selectedModel,
       windowed: false,
     };
   }
@@ -367,6 +434,7 @@ export class MindManager extends EventEmitter {
     onUserInputRequest?: UserInputHandler,
     onPermissionRequest: PermissionHandler = approveAllCompat,
     approveAll = true,
+    model?: string,
   ): Promise<CopilotSession> {
     const sessionConfig: SessionConfig = {
       workingDirectory: mindPath,
@@ -380,6 +448,7 @@ export class MindManager extends EventEmitter {
         },
       },
       onPermissionRequest,
+      ...(model ? { model } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };
     const session = await client.createSession(sessionConfig);
@@ -398,7 +467,7 @@ export class MindManager extends EventEmitter {
     const context = this.minds.get(mind.mindId);
     if (!context?.session) return;
 
-    await context.session.send({ prompt });
+    await context.session.send({ prompt: injectCurrentDateTimeContext(prompt, getCurrentDateTimeContext()) });
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(resolve, 120_000);
       const unsub = context.session?.on('session.idle', () => {
@@ -428,6 +497,7 @@ export class MindManager extends EventEmitter {
       records.set(mind.mindId, {
         id: mind.mindId,
         path: mind.mindPath,
+        ...(mind.selectedModel ? { selectedModel: mind.selectedModel } : {}),
       });
     }
     return Array.from(records.values());

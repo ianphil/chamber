@@ -120,6 +120,7 @@ export function mockElectronAPI(): ElectronAPI {
       remove: vi.fn().mockResolvedValue(undefined),
       list: vi.fn().mockResolvedValue([]),
       setActive: vi.fn().mockResolvedValue(undefined),
+      setModel: vi.fn().mockResolvedValue(null),
       selectDirectory: vi.fn().mockResolvedValue(null),
       openWindow: vi.fn().mockResolvedValue(undefined),
       onMindChanged: vi.fn().mockReturnValue(vi.fn()),

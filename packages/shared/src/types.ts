@@ -88,6 +88,7 @@ export interface MindContext {
   readonly identity: MindIdentity;
   readonly status: MindStatus;
   readonly error?: string;
+  selectedModel?: string;
   readonly windowed?: boolean;
 }
 
@@ -95,6 +96,7 @@ export interface MindContext {
 export interface MindRecord {
   id: string;
   path: string;
+  selectedModel?: string;
 }
 
 export interface MarketplaceRegistry {
@@ -192,7 +194,7 @@ export interface ElectronAPI {
     send: (mindId: string, message: string, messageId: string, model?: string, attachments?: ChatImageAttachment[]) => Promise<void>;
     stop: (mindId: string, messageId: string) => Promise<void>;
     newConversation: (mindId: string) => Promise<void>;
-    listModels: () => Promise<ModelInfo[]>;
+    listModels: (mindId?: string) => Promise<ModelInfo[]>;
     onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent) => void) => () => void;
   };
   mind: {
@@ -200,6 +202,7 @@ export interface ElectronAPI {
     remove: (mindId: string) => Promise<void>;
     list: () => Promise<MindContext[]>;
     setActive: (mindId: string) => Promise<void>;
+    setModel: (mindId: string, model: string | null) => Promise<MindContext | null>;
     selectDirectory: () => Promise<string | null>;
     openWindow: (mindId: string) => Promise<void>;
     onMindChanged: (callback: (minds: MindContext[]) => void) => () => void;

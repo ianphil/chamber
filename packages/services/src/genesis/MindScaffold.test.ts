@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MindScaffold } from './MindScaffold';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -71,6 +71,44 @@ describe('MindScaffold.create', () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it('injects current datetime context into the genesis prompt', async () => {
+    const session = {
+      send: vi.fn<(_: { prompt: string }) => Promise<void>>(async () => undefined),
+      destroy: vi.fn(async () => undefined),
+      on: vi.fn((event: string, callback: () => void) => {
+        if (event === 'session.idle') setTimeout(callback, 0);
+        return vi.fn();
+      }),
+      rpc: { permissions: { setApproveAll: vi.fn(async () => ({ success: true })) } },
+    };
+    const client = { createSession: vi.fn(async () => session) };
+    const clientFactory = {
+      createClient: vi.fn(async () => client),
+      destroyClient: vi.fn(async () => undefined),
+    } as unknown as CopilotClientFactory;
+    const scaffold = new MindScaffold(
+      {} as unknown as GitHubRegistryClient,
+      clientFactory,
+    );
+
+    const generateSoul = scaffold as unknown as {
+      generateSoul(mindPath: string, config: Parameters<MindScaffold['create']>[0], slug: string): Promise<void>;
+    };
+    const promise = generateSoul.generateSoul('/tmp/minds/bob', {
+      name: 'Bob',
+      role: 'reviewer',
+      voice: 'direct',
+      voiceDescription: 'direct',
+      basePath: '/tmp/minds',
+    }, 'bob');
+    await promise;
+
+    const sentPrompt = session.send.mock.calls[0]?.[0]?.prompt;
+    expect(sentPrompt).toEqual(expect.stringContaining('<current_datetime>'));
+    expect(sentPrompt).toEqual(expect.stringContaining('<timezone>'));
+    expect(sentPrompt).toEqual(expect.stringContaining('Bob'));
   });
 });
 

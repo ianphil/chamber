@@ -39,6 +39,10 @@ export function setupMindIPC(mindManager: MindManager, config: MindIPCConfig): v
     mindManager.setActiveMind(mindId);
   });
 
+  ipcMain.handle('mind:setModel', async (_event, mindId: string, model: string | null) => {
+    return mindManager.setMindModel(mindId, model);
+  });
+
   ipcMain.handle('mind:selectDirectory', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return null;

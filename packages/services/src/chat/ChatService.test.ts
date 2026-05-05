@@ -27,6 +27,7 @@ const mockMindManager = {
     return undefined;
   }),
   recreateSession: vi.fn(),
+  setMindModel: vi.fn(async () => null),
 };
 
 describe('ChatService', () => {
@@ -37,7 +38,10 @@ describe('ChatService', () => {
     vi.clearAllMocks();
     validModelClient.modelsCache = {};
     turnQueue = new TurnQueue();
-    svc = new ChatService(mockMindManager as unknown as MindManager, turnQueue);
+    svc = new ChatService(mockMindManager as unknown as MindManager, turnQueue, () => ({
+      currentDateTime: '2026-05-05T15:37:12.065Z',
+      timezone: 'America/New_York',
+    }));
   });
 
   describe('sendMessage', () => {
@@ -54,8 +58,26 @@ describe('ChatService', () => {
       await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
 
       expect(mockMindManager.getMind).toHaveBeenCalledWith('valid-mind');
-      expect(mockSession.send).toHaveBeenCalledWith({ prompt: 'hello' });
+      expect(mockSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+      });
       expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('persists model selection before sending with the mind session', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit, 'gpt-5.4');
+
+      expect(mockMindManager.setMindModel).toHaveBeenCalledWith('valid-mind', 'gpt-5.4');
+      expect(mockSession.send).toHaveBeenCalledWith(expect.objectContaining({
+        prompt: expect.stringContaining('hello'),
+      }));
     });
 
     it('throws for invalid mindId', async () => {
@@ -155,7 +177,9 @@ describe('ChatService', () => {
 
       expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
       expect(mockMindManager.recreateSession).toHaveBeenCalledWith('valid-mind');
-      expect(freshSession.send).toHaveBeenCalledWith({ prompt: 'hello' });
+      expect(freshSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+      });
       expect(emit).toHaveBeenCalledWith({ type: 'done' });
     });
 
@@ -258,7 +282,9 @@ describe('ChatService', () => {
 
         expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
         expect(mockMindManager.recreateSession).toHaveBeenCalledWith('valid-mind');
-        expect(freshSession.send).toHaveBeenCalledWith({ prompt: 'hello' });
+        expect(freshSession.send).toHaveBeenCalledWith({
+          prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+        });
       } finally {
         vi.useRealTimers();
         // Restore default impl so subsequent tests aren't left with a hung send.
@@ -303,14 +329,16 @@ describe('ChatService', () => {
 
       // Let microtasks settle so first send starts
       await new Promise((r) => setTimeout(r, 10));
-      expect(order).toEqual(['send-first']);
+      expect(order).toHaveLength(1);
+      expect(order[0]).toContain('\n\nfirst');
 
       // Complete first message
       idleCallbacks.shift()?.();
       await new Promise((r) => setTimeout(r, 10));
 
       // Now second should have started
-      expect(order).toEqual(['send-first', 'send-second']);
+      expect(order).toHaveLength(2);
+      expect(order[1]).toContain('\n\nsecond');
 
       // Complete second message
       idleCallbacks.shift()?.();

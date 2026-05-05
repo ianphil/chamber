@@ -257,6 +257,16 @@ describe('TaskManager', () => {
     );
   });
 
+  it('sendTask() injects current datetime context into the task prompt', async () => {
+    await tm.sendTask(makeRequest('target-1', 'hello'));
+    await flushPromises();
+
+    const sentPrompt = latestMockSession.send.mock.calls[0]?.[0]?.prompt;
+    expect(sentPrompt).toEqual(expect.stringContaining('<current_datetime>'));
+    expect(sentPrompt).toEqual(expect.stringContaining('<timezone>'));
+    expect(sentPrompt).toEqual(expect.stringContaining('hello'));
+  });
+
 
   it('getTask() returns current task state', async () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));

@@ -458,6 +458,10 @@ describe('sendToAgentWithRetry', () => {
 
     expect(ctx.getOrCreateSession).toHaveBeenCalledWith('dude');
     expect(sess.send).toHaveBeenCalledTimes(1);
+    const sentPrompt = sess.send.mock.calls[0]?.[0]?.prompt;
+    expect(sentPrompt).toEqual(expect.stringContaining('<current_datetime>'));
+    expect(sentPrompt).toEqual(expect.stringContaining('<timezone>'));
+    expect(sentPrompt).toEqual(expect.stringContaining('Hello'));
     expect(ctx.persistMessage).toHaveBeenCalledTimes(1);
     expect(result.message).not.toBeNull();
     expect(result.message!.role).toBe('assistant');

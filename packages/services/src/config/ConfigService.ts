@@ -63,7 +63,9 @@ export class ConfigService {
     const theme = raw.theme === 'light' || raw.theme === 'dark' || raw.theme === 'system'
       ? raw.theme
       : 'dark';
-    const minds = Array.isArray(raw.minds) ? raw.minds as MindRecord[] : [];
+    const minds = Array.isArray(raw.minds)
+      ? raw.minds.map(normalizeMindRecord).filter((record): record is MindRecord => record !== null)
+      : [];
     return this.deduplicateMinds({
       version: 2,
       minds,
@@ -102,11 +104,24 @@ export class ConfigService {
     for (const mind of config.minds) {
       if (!seen.has(mind.path)) {
         seen.add(mind.path);
-        deduped.push(mind);
+        deduped.push({ ...mind });
       }
     }
     return { ...config, minds: deduped };
   }
+}
+
+function normalizeMindRecord(value: unknown): MindRecord | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== 'string' || typeof record.path !== 'string') return null;
+  return {
+    id: record.id,
+    path: record.path,
+    ...(typeof record.selectedModel === 'string' && record.selectedModel.trim().length > 0
+      ? { selectedModel: record.selectedModel.trim() }
+      : {}),
+  };
 }
 
 function isMarketplaceRegistry(value: unknown): value is MarketplaceRegistry {

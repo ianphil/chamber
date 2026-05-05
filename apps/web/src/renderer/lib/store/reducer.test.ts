@@ -317,17 +317,19 @@ describe('appReducer', () => {
     expect(state.availableModels).toEqual(models);
   });
 
-  it('SET_SELECTED_MODEL updates selection and persists to localStorage', () => {
-    const state = appReducer(initialState, { type: 'SET_SELECTED_MODEL', payload: 'model-1' });
+  it('SET_SELECTED_MODEL updates selection for the active mind', () => {
+    const state = appReducer(withActiveMind, { type: 'SET_SELECTED_MODEL', payload: 'model-1' });
     expect(state.selectedModel).toBe('model-1');
-    expect(localStorage.getItem('chamber:selectedModel')).toBe('model-1');
+    expect(state.minds[0].selectedModel).toBe('model-1');
   });
 
   it('SET_SELECTED_MODEL with null clears selection', () => {
-    localStorage.setItem('chamber:selectedModel', 'old');
-    const state = appReducer(initialState, { type: 'SET_SELECTED_MODEL', payload: null });
+    const state = appReducer({
+      ...withActiveMind,
+      minds: [{ ...withActiveMind.minds[0], selectedModel: 'old' }],
+    }, { type: 'SET_SELECTED_MODEL', payload: null });
     expect(state.selectedModel).toBeNull();
-    expect(localStorage.getItem('chamber:selectedModel')).toBeNull();
+    expect(state.minds[0].selectedModel).toBeUndefined();
   });
 
   it('SET_ACTIVE_VIEW updates activeView', () => {

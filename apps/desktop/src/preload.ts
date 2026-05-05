@@ -11,7 +11,7 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('chat:stop', mindId, messageId),
     newConversation: (mindId) =>
       ipcRenderer.invoke('chat:newConversation', mindId),
-    listModels: () => ipcRenderer.invoke('chat:listModels'),
+    listModels: (mindId?) => ipcRenderer.invoke('chat:listModels', mindId),
     onEvent: (callback) => createIpcListener(ipcRenderer, 'chat:event', callback),
   },
   mind: {
@@ -19,6 +19,7 @@ const electronAPI: ElectronAPI = {
     remove: (mindId) => ipcRenderer.invoke('mind:remove', mindId),
     list: () => ipcRenderer.invoke('mind:list'),
     setActive: (mindId) => ipcRenderer.invoke('mind:setActive', mindId),
+    setModel: (mindId, model) => ipcRenderer.invoke('mind:setModel', mindId, model),
     selectDirectory: () => ipcRenderer.invoke('mind:selectDirectory'),
     openWindow: (mindId) => ipcRenderer.invoke('mind:openWindow', mindId),
     onMindChanged: (callback) => createIpcListener(ipcRenderer, 'mind:changed', callback),

@@ -19,6 +19,7 @@ import {
 } from '../sdk/sdkChatEventMapper';
 import { clearCopilotModelsCache } from '../sdk/modelCacheCompat';
 import { TurnQueue } from './TurnQueue';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext, type DateTimeContextProvider } from './currentDateTimeContext';
 
 const log = Logger.create('ChatService');
 
@@ -28,6 +29,7 @@ export class ChatService {
   constructor(
     private readonly mindManager: MindManager,
     private readonly turnQueue: TurnQueue,
+    private readonly dateTimeContextProvider: DateTimeContextProvider = getCurrentDateTimeContext,
   ) {}
 
   async sendMessage(
@@ -35,10 +37,9 @@ export class ChatService {
     prompt: string,
     messageId: string,
     emit: (event: ChatEvent) => void,
-    _model?: string,
+    model?: string,
     attachments?: ChatImageAttachment[],
   ): Promise<void> {
-    void _model;
     return this.turnQueue.enqueue(mindId, async () => {
       const abortController = new AbortController();
       this.abortControllers.set(mindId, abortController);
@@ -50,7 +51,10 @@ export class ChatService {
         }
 
         try {
-          await this.streamTurn(context.session, prompt, abortController, emit, attachments);
+          const session = model ? await this.mindManager.setMindModel(mindId, model) : null;
+          const currentSession = session ? this.mindManager.getMind(mindId)?.session : context.session;
+          if (!currentSession) throw new Error(`Mind ${mindId} not found or has no session`);
+          await this.streamTurn(currentSession, prompt, abortController, emit, attachments);
         } catch (err) {
           if (abortController.signal.aborted) return;
           if (!isStaleSessionError(err)) throw err;
@@ -177,7 +181,8 @@ export class ChatService {
           mimeType: a.mimeType,
           displayName: a.name,
         }));
-        await Promise.race([session.send(sdkAttachments ? { prompt, attachments: sdkAttachments } : { prompt }), sendTimeout]);
+        const promptWithDateTime = injectCurrentDateTimeContext(prompt, this.dateTimeContextProvider());
+        await Promise.race([session.send(sdkAttachments ? { prompt: promptWithDateTime, attachments: sdkAttachments } : { prompt: promptWithDateTime }), sendTimeout]);
       } finally {
         if (sendTimerId) clearTimeout(sendTimerId);
       }

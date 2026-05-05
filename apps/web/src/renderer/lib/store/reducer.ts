@@ -233,12 +233,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, availableModels: action.payload };
 
     case 'SET_SELECTED_MODEL':
-      if (action.payload) {
-        localStorage.setItem('chamber:selectedModel', action.payload);
-      } else {
-        localStorage.removeItem('chamber:selectedModel');
+      if (
+        state.selectedModel === action.payload
+        && (!state.activeMindId || state.minds.find((mind) => mind.mindId === state.activeMindId)?.selectedModel === (action.payload ?? undefined))
+      ) {
+        return state;
       }
-      return { ...state, selectedModel: action.payload };
+      return {
+        ...state,
+        selectedModel: action.payload,
+        minds: state.activeMindId
+          ? state.minds.map((mind) => mind.mindId === state.activeMindId
+            ? { ...mind, selectedModel: action.payload ?? undefined }
+            : mind)
+          : state.minds,
+      };
 
     case 'SET_ACTIVE_VIEW':
       return { ...state, activeView: action.payload };

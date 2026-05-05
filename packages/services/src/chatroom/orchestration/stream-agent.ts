@@ -4,6 +4,7 @@ import type { ChatroomStreamEvent, OrchestrationMode, ChatroomMessage } from '@c
 import type { OrchestrationContext } from './types';
 import type { CopilotSession } from '../../mind';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../../chat/currentDateTimeContext';
 
 // ---------------------------------------------------------------------------
 // TurnTimeoutError — distinguishable timeout for callers
@@ -173,7 +174,7 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
     sendTimerId = setTimeout(() => reject(sendTimeoutError()), SEND_TIMEOUT_MS);
   });
   try {
-    await Promise.race([session.send({ prompt }), sendTimeout]);
+    await Promise.race([session.send({ prompt: injectCurrentDateTimeContext(prompt, getCurrentDateTimeContext()) }), sendTimeout]);
   } catch (err) {
     // Send failed (e.g. 30s timeout) — clear the turnDone timer to prevent leak
     clearTimeout(turnDoneTimeoutId);

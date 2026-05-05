@@ -30,7 +30,10 @@ export function ChatPanel() {
         disabled={!connected}
         availableModels={availableModels}
         selectedModel={selectedModel}
-        onModelChange={(model) => dispatch({ type: 'SET_SELECTED_MODEL', payload: model })}
+        onModelChange={(model) => {
+          if (activeMindId) void window.electronAPI.mind.setModel(activeMindId, model);
+          dispatch({ type: 'SET_SELECTED_MODEL', payload: model });
+        }}
       />
     </div>
   );
