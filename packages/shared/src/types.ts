@@ -55,6 +55,7 @@ export type ChatEvent =
   | { type: 'message_final'; sdkMessageId: string; content: string }
   | { type: 'reconnecting' }
   | { type: 'done' }
+  | { type: 'timeout'; timeoutMs: number }
   | { type: 'error'; message: string };
 
 // ---------------------------------------------------------------------------

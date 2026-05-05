@@ -307,7 +307,7 @@ describe('streamAgentTurn', () => {
     expect(errorEvents[0].messageId).not.toBe('');
   });
 
-  it('emits error event on turn timeout so renderer clears streaming state', async () => {
+  it('emits distinguishable timeout event on turn timeout so renderer can show timeout-specific UI', async () => {
     vi.useFakeTimers();
     const sess = createMockSession();
     const ctx = createContext(sessions);
@@ -325,12 +325,15 @@ describe('streamAgentTurn', () => {
     const events = (ctx.emitEvent as ReturnType<typeof vi.fn>).mock.calls.map(
       (c) => c[0] as ChatroomStreamEvent,
     );
-    const errorEvents = events.filter((e) => e.event.type === 'error');
-    expect(errorEvents).toHaveLength(1);
-    expect(errorEvents[0].event).toMatchObject({
-      type: 'error',
-      message: expect.stringContaining('timed out'),
+    const timeoutEvents = events.filter((e) => e.event.type === 'timeout');
+    expect(timeoutEvents).toHaveLength(1);
+    expect(timeoutEvents[0].event).toMatchObject({
+      type: 'timeout',
+      timeoutMs: 5_000,
     });
+    // No generic error event for timeouts — the renderer needs to distinguish them
+    expect(events.filter((e) => e.event.type === 'error')).toHaveLength(0);
+    expect(timeoutEvents[0].messageId).not.toBe('');
 
     process.removeListener('unhandledRejection', swallow);
   });

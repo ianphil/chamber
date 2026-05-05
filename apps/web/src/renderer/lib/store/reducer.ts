@@ -126,6 +126,12 @@ export function handleChatEvent<T extends ChatMessage>(messages: T[], messageId:
           blocks: [...blocks, { type: 'text' as const, content: `Error: ${event.message}` }],
         });
 
+      case 'timeout':
+        return updateChatMessage(m, {
+          isStreaming: false,
+          blocks: [...blocks, { type: 'text' as const, content: `Agent timed out after ${Math.round(event.timeoutMs / 1000)}s` }],
+        });
+
       default:
         return m;
     }
@@ -177,7 +183,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const { mindId, messageId, event } = action.payload;
       const mindMsgs = state.messagesByMind[mindId] ?? [];
       const newMessages = handleChatEvent(mindMsgs, messageId, event);
-      const isDone = event.type === 'done' || event.type === 'error';
+      const isDone = event.type === 'done' || event.type === 'error' || event.type === 'timeout';
       const newStreamingByMind = isDone
         ? { ...state.streamingByMind, [mindId]: false }
         : state.streamingByMind;
@@ -533,7 +539,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
 
       const newMessages = handleChatEvent(messages, messageId, chatEvent);
-      const isDone = chatEvent.type === 'done' || chatEvent.type === 'error';
+      const isDone = chatEvent.type === 'done' || chatEvent.type === 'error' || chatEvent.type === 'timeout';
       return {
         ...state,
         chatroomMessages: newMessages,
