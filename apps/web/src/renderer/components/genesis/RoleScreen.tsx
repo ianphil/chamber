@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TypeWriter } from './TypeWriter';
 import { cn } from '../../lib/utils';
 
@@ -17,13 +17,33 @@ const ROLES = [
 export function RoleScreen({ name, onSelect }: Props) {
   const [showCards, setShowCards] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [customRole, setCustomRole] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!showCustomInput) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [showCustomInput]);
 
   const handleSelect = (roleId: string) => {
+    if (roleId === 'custom') {
+      setSelected('custom');
+      setShowCustomInput(true);
+      return;
+    }
     setSelected(roleId);
     setTimeout(() => {
       const role = ROLES.find(r => r.id === roleId);
       onSelect(role?.label ?? roleId);
     }, 300);
+  };
+
+  const handleCustomSubmit = () => {
+    const role = customRole.trim();
+    if (!role) return;
+    onSelect(role);
   };
 
   return (
@@ -37,26 +57,51 @@ export function RoleScreen({ name, onSelect }: Props) {
         />
 
         {showCards && (
-          <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-500">
-            {ROLES.map((role, i) => (
-              <button
-                key={role.id}
-                onClick={() => handleSelect(role.id)}
-                style={{ animationDelay: `${i * 100}ms` }}
-                className={cn(
-                  'text-left p-4 rounded-xl border transition-all duration-300 animate-in fade-in slide-in-from-bottom-2',
-                  selected === role.id
-                    ? 'border-primary bg-primary/10 scale-105'
-                    : selected
-                      ? 'border-border opacity-40 scale-95'
-                      : 'border-border hover:border-muted-foreground hover:bg-accent'
+          <div className="space-y-3 animate-in fade-in duration-500">
+            <div className="grid grid-cols-2 gap-3">
+              {ROLES.map((role, i) => (
+                <button
+                  key={role.id}
+                  onClick={() => handleSelect(role.id)}
+                  style={{ animationDelay: `${i * 100}ms` }}
+                  className={cn(
+                    'text-left p-4 rounded-xl border transition-all duration-300 animate-in fade-in slide-in-from-bottom-2',
+                    selected === role.id
+                      ? 'border-primary bg-primary/10 scale-105'
+                      : selected
+                        ? 'border-border opacity-40 scale-95'
+                        : 'border-border hover:border-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  <span className="text-2xl block mb-2">{role.emoji}</span>
+                  <span className="text-sm font-medium block">{role.label}</span>
+                  <span className="text-xs text-muted-foreground">{role.description}</span>
+                </button>
+              ))}
+            </div>
+
+            {showCustomInput && (
+              <div className="animate-in fade-in duration-300 space-y-3 pt-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={customRole}
+                  onChange={(e) => setCustomRole(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCustomSubmit(); }}
+                  placeholder="e.g. Creative Director, Debate Coach, Writing Partner..."
+                  className="w-full bg-transparent border-b-2 border-muted-foreground/30 focus:border-foreground
+                             text-lg text-center text-foreground py-2 outline-none transition-colors placeholder:text-muted-foreground/30"
+                />
+                {customRole.trim() && (
+                  <button
+                    onClick={handleCustomSubmit}
+                    className="px-6 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-80 transition-opacity"
+                  >
+                    That's my purpose
+                  </button>
                 )}
-              >
-                <span className="text-2xl block mb-2">{role.emoji}</span>
-                <span className="text-sm font-medium block">{role.label}</span>
-                <span className="text-xs text-muted-foreground">{role.description}</span>
-              </button>
-            ))}
+              </div>
+            )}
           </div>
         )}
       </div>

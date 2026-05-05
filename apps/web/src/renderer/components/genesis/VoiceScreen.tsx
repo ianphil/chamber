@@ -13,16 +13,17 @@ interface Props {
 export function VoiceScreen({ templates, templateError, onSelect, onSelectTemplate }: Props) {
   const [showCards, setShowCards] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [customInput, setCustomInput] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [customBackstory, setCustomBackstory] = useState('');
   const [showCustom, setShowCustom] = useState(false);
   const [researching, setResearching] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!showCustom) return;
     // Wait for the parent's fade-in animation to settle before focusing,
     // otherwise the focus call lands while the element is still being painted.
-    const t = setTimeout(() => inputRef.current?.focus(), 350);
+    const t = setTimeout(() => nameRef.current?.focus(), 350);
     return () => clearTimeout(t);
   }, [showCustom]);
 
@@ -40,29 +41,24 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
   };
 
   const handleCustomSubmit = async () => {
-    const input = customInput.trim();
-    if (!input) return;
+    const name = customName.trim();
+    if (!name) return;
     setResearching(true);
 
-    // Derive a short display/dir name from the input. Take the text up to the
-    // first sentence/clause boundary, then cap at 30 chars. This protects the
-    // filesystem from long, paragraph-style descriptions while keeping the
-    // full text as the voice description.
-    const firstClause = input.split(/[.,;:\n]/)[0].trim();
-    const shortName = (firstClause || input).slice(0, 30).trim();
+    const backstory = customBackstory.trim();
+    const description = backstory
+      ? `Character/voice: "${name}" — ${backstory}. Research this character or persona — their communication style, catchphrases, values, how they handle pressure. Capture the energy.`
+      : `Character/voice: "${name}". Research this character or persona — their communication style, catchphrases, values, how they handle pressure. Capture the energy.`;
 
-    // Ask the SDK to research this voice
     try {
       await window.electronAPI.genesis.getDefaultPath();
-      // Use a lightweight approach — just pass the description through with a research note
-      const description = `Character/voice: "${input}". Research this character or persona — their communication style, catchphrases, values, how they handle pressure. Capture the energy.`;
       setTimeout(() => {
         setResearching(false);
-        onSelect(shortName, description);
+        onSelect(name, description);
       }, 500);
     } catch {
       setResearching(false);
-      onSelect(shortName, `Voice energy: ${input}`);
+      onSelect(name, backstory ? `Voice energy: ${name} — ${backstory}` : `Voice energy: ${name}`);
     }
   };
 
@@ -136,16 +132,27 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
             {showCustom && (
               <div className="animate-in fade-in duration-300 space-y-3 pt-2">
                 <input
-                  ref={inputRef}
+                  ref={nameRef}
                   type="text"
-                  value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleCustomSubmit(); }}
-                  placeholder="e.g. Tony Stark, Gandalf, your cool aunt..."
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder="e.g. Tony Stark, Moneypenny, Gandalf..."
                   className="w-full bg-transparent border-b-2 border-muted-foreground/30 focus:border-foreground
                              text-lg text-center text-foreground py-2 outline-none transition-colors placeholder:text-muted-foreground/30"
                 />
-                {customInput.trim() && (
+                {customName.trim() && (
+                  <input
+                    type="text"
+                    value={customBackstory}
+                    onChange={(e) => setCustomBackstory(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleCustomSubmit(); }}
+                    placeholder="Backstory — e.g. from Iron Man 1, the Connery Bond era..."
+                    className="w-full bg-transparent border-b-2 border-muted-foreground/30 focus:border-foreground
+                               text-base text-center text-foreground py-2 outline-none transition-colors placeholder:text-muted-foreground/30
+                               animate-in fade-in duration-300"
+                  />
+                )}
+                {customName.trim() && (
                   <button
                     onClick={handleCustomSubmit}
                     disabled={researching}
