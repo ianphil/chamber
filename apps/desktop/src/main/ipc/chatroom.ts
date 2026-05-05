@@ -2,8 +2,29 @@ import { ipcMain, BrowserWindow } from 'electron';
 import type { ChatroomService } from '@chamber/services';
 import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '@chamber/shared/chatroom-types';
 
+function assertSendArgs(
+  message: unknown,
+  model: unknown,
+): asserts message is string {
+  if (typeof message !== 'string') {
+    throw new TypeError(`chatroom:send: 'message' must be a string, got ${typeof message}`);
+  }
+  if (message.length === 0) {
+    throw new TypeError(`chatroom:send: 'message' must be a non-empty string`);
+  }
+  assertModel(model);
+}
+
+function assertModel(model: unknown): asserts model is string | undefined {
+  if (model !== undefined && typeof model !== 'string') {
+    throw new TypeError(`chatroom:send: 'model' must be a string or undefined, got ${typeof model}`);
+  }
+}
+
 export function setupChatroomIPC(chatroomService: ChatroomService): void {
-  ipcMain.handle('chatroom:send', async (_event, message: string, model?: string) => {
+  ipcMain.handle('chatroom:send', async (_event, message: unknown, model?: unknown) => {
+    assertSendArgs(message, model);
+    assertModel(model);
     await chatroomService.broadcast(message, model);
   });
 

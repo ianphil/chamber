@@ -56,6 +56,51 @@ describe('Chatroom IPC', () => {
     expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined);
   });
 
+  describe('chatroom:send input validation', () => {
+    const invalidMessages: Array<[string, unknown]> = [
+      ['number', 42],
+      ['null', null],
+      ['undefined', undefined],
+      ['object', { text: 'hi' }],
+      ['array', ['hi']],
+      ['boolean', true],
+    ];
+
+    for (const [label, value] of invalidMessages) {
+      it(`rejects ${label} message without invoking broadcast`, async () => {
+        const handler = getHandler('chatroom:send');
+        await expect(handler(EVT, value)).rejects.toThrow(TypeError);
+        expect(mockService.broadcast).not.toHaveBeenCalled();
+      });
+    }
+
+    it('rejects empty-string message without invoking broadcast', async () => {
+      const handler = getHandler('chatroom:send');
+      await expect(handler(EVT, '')).rejects.toThrow(TypeError);
+      expect(mockService.broadcast).not.toHaveBeenCalled();
+    });
+
+    const invalidModels: Array<[string, unknown]> = [
+      ['number', 7],
+      ['null', null],
+      ['object', {}],
+    ];
+
+    for (const [label, value] of invalidModels) {
+      it(`rejects ${label} model without invoking broadcast`, async () => {
+        const handler = getHandler('chatroom:send');
+        await expect(handler(EVT, 'hello', value)).rejects.toThrow(TypeError);
+        expect(mockService.broadcast).not.toHaveBeenCalled();
+      });
+    }
+
+    it('accepts undefined model', async () => {
+      const handler = getHandler('chatroom:send');
+      await handler(EVT, 'hello', undefined);
+      expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined);
+    });
+  });
+
   it('chatroom:history returns result from getHistory', async () => {
     const messages = [{ id: 'msg-1', role: 'user', blocks: [], timestamp: 1 }];
     mockService.getHistory.mockReturnValue(messages);
