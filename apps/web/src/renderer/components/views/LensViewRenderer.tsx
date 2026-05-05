@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LensViewManifest } from '../../../shared/types';
+import type { LensViewManifest } from '@chamber/shared/types';
 import { RefreshCw, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Logger } from '../../lib/logger';

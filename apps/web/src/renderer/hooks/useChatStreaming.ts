@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useAppState, useAppDispatch } from '../lib/store';
 import { generateId } from '../lib/utils';
-import type { ChatImageAttachment, ImageBlock } from '../../shared/types';
+import type { ChatImageAttachment, ImageBlock } from '@chamber/shared/types';
 
 export function useChatStreaming() {
   const { activeMindId, isStreaming, selectedModel } = useAppState();

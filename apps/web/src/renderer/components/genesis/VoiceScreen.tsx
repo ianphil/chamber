@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TypeWriter } from './TypeWriter';
 import { cn } from '../../lib/utils';
-import type { GenesisMindTemplate } from '../../../shared/types';
+import type { GenesisMindTemplate } from '@chamber/shared/types';
 
 interface Props {
   templates: GenesisMindTemplate[];

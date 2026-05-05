@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AppStateProvider } from '../../lib/store';
 import { MessageList } from './MessageList';
-import type { ChatMessage, MindContext } from '../../../shared/types';
+import type { ChatMessage, MindContext } from '@chamber/shared/types';
 
 const Q: MindContext = {
   mindId: 'q',

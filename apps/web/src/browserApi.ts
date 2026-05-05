@@ -1,7 +1,7 @@
 import { ChamberClient } from '@chamber/client';
-import type { ElectronAPI, LensViewManifest, MindContext, ModelInfo } from './shared/types';
-import type { AgentCard, ListTasksResponse, Task } from './shared/a2a-types';
-import type { ChatroomAPI, ChatroomMessage, TaskLedgerItem } from './shared/chatroom-types';
+import type { ElectronAPI, LensViewManifest, MindContext, ModelInfo } from '@chamber/shared/types';
+import type { AgentCard, ListTasksResponse, Task } from '@chamber/shared/a2a-types';
+import type { ChatroomAPI, ChatroomMessage, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 
 const noopUnsubscribe = () => undefined;
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;

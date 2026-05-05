@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Task, TaskState } from '../../../shared/a2a-types';
+import type { Task, TaskState } from '@chamber/shared/a2a-types';
 
 export interface TaskPanelProps {
   tasksByMind: Record<string, Task[]>;

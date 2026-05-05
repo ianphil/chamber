@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.39.6 (2026-05-05)
+
+### Code Health
+
+- **Deduplicate shared web contracts** - The web app now imports shared contracts from `@chamber/shared` instead of carrying local duplicate copies, keeping renderer, desktop, server, and package consumers on one contract surface.
+- **Clarify validation scripts** - Smoke tests now use intent-based script names (`smoke:sdk`, `smoke:server-sdk`, `smoke:web`, `smoke:desktop`, and `smoke:packaged-runtime`), while unused watch/interactive aliases were removed and Playwright browser installation is exposed as a helper.
+- **Tighten typed boundaries** - A2A payload predicates moved into shared contracts, Genesis IPC now requires explicit service dependencies, SDK model-cache clearing is isolated behind a compatibility helper, and server chat attachments validate against the wire DTO before dispatch.
+
+### Lens
+
+- **Validate Lens manifests before rendering** - View discovery now skips malformed or unsafe Lens manifests and rejects non-object view data instead of casting agent-authored JSON directly into app contracts.
+
 ## v0.39.5 (2026-05-05)
 
 ### SDK

@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils';
 import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
-import type { LensViewManifest } from '../../../shared/types';
+import type { LensViewManifest } from '@chamber/shared/types';
 import { UpdateIndicator } from './UpdateIndicator';
 
 const iconMap: Record<string, LucideIcon> = {

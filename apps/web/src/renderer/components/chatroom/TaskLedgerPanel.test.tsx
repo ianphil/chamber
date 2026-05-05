@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { TaskLedgerPanel } from './TaskLedgerPanel';
-import type { TaskLedgerItem } from '../../../shared/chatroom-types';
+import type { TaskLedgerItem } from '@chamber/shared/chatroom-types';
 
 describe('TaskLedgerPanel', () => {
   const minds = [

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MindContext } from './shared/types';
+import type { MindContext } from '@chamber/shared/types';
 
 const addMind = vi.fn();
 const sendChat = vi.fn();

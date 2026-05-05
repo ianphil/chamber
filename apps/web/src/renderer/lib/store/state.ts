@@ -1,6 +1,6 @@
-import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '../../../shared/types';
-import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../../../shared/a2a-types';
-import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '../../../shared/chatroom-types';
+import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '@chamber/shared/types';
+import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@chamber/shared/a2a-types';
+import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 
 export type LensView = 'chat' | string;
 

@@ -1,4 +1,5 @@
 import type { PrivilegedRequest, PrivilegedResponse } from './privileged-protocol';
+import type { ModelDto, SendChatRequest } from '@chamber/wire-contracts';
 
 export interface ChamberRequest {
   method: string;
@@ -28,20 +29,6 @@ export interface ServerAuthLoginResult {
   error?: string;
 }
 
-export interface ServerChatAttachment {
-  name: string;
-  mimeType: string;
-  data: string;
-}
-
-export interface ServerSendChatRequest {
-  mindId: string;
-  message: string;
-  messageId: string;
-  model?: string;
-  attachments?: ServerChatAttachment[];
-}
-
 export interface ChamberCtx {
   token: string;
   allowedOrigins: ReadonlySet<string>;
@@ -60,9 +47,9 @@ export interface ChamberCtx {
   validatePath?: (candidate: string) => boolean;
   saveAttachment?: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
   cancelChat?: (mindId: string, messageId: string) => Promise<void> | void;
-  sendChat?: (request: ServerSendChatRequest) => Promise<void> | void;
+  sendChat?: (request: SendChatRequest) => Promise<void> | void;
   newConversation?: (mindId: string) => Promise<void> | void;
-  listModels?: (mindId?: string) => unknown[] | Promise<unknown[]>;
+  listModels?: (mindId?: string) => ModelDto[] | Promise<ModelDto[]>;
   shutdown?: () => void;
   handlePrivilegedRequest?: (request: PrivilegedRequest) => Promise<PrivilegedResponse>;
 }

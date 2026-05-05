@@ -61,6 +61,25 @@ export type TaskState =
   | 'rejected'
   | 'auth-required';
 
+const VALID_TASK_STATES: ReadonlySet<string> = new Set<TaskState>([
+  'submitted',
+  'working',
+  'completed',
+  'failed',
+  'canceled',
+  'input-required',
+  'rejected',
+  'auth-required',
+]);
+
+export function isTaskState(value: unknown): value is TaskState {
+  return typeof value === 'string' && VALID_TASK_STATES.has(value);
+}
+
+export function narrowTaskState(value: unknown): TaskState | undefined {
+  return isTaskState(value) ? value : undefined;
+}
+
 export interface TaskStatus {
   state: TaskState;
   message?: Message;
@@ -165,4 +184,27 @@ export interface ListTasksResponse {
 export interface CancelTaskRequest {
   id: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface A2AIncomingPayload {
+  targetMindId: string;
+  message: Message;
+  replyMessageId: string;
+}
+
+export function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayload {
+  if (!isRecord(value)) return false;
+  const message = value.message;
+  if (!isRecord(message)) return false;
+  return (
+    typeof value.targetMindId === 'string' &&
+    typeof value.replyMessageId === 'string' &&
+    typeof message.messageId === 'string' &&
+    (message.role === 'user' || message.role === 'agent') &&
+    Array.isArray(message.parts)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

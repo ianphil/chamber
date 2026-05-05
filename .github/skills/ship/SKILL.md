@@ -149,19 +149,19 @@ npm test
 If an SDK-touching path was modified, also run:
 
 ```powershell
-npm run test:sdk-smoke
+npm run smoke:sdk
 ```
 
 If server SDK paths changed, also run:
 
 ```powershell
-npm run test:server-sdk-smoke
+npm run smoke:server-sdk
 ```
 
 If browser UI routing/chat paths changed and existing coverage applies, run:
 
 ```powershell
-npm run test:ui:web
+npm run smoke:web
 ```
 
 ### 7. ASK/AUTOPILOT - Packaging smoke

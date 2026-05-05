@@ -11,10 +11,15 @@ const mockSession = {
   on: vi.fn((_event: string, _cb?: (...args: unknown[]) => void) => vi.fn()),
 };
 
+const validModelClient = {
+  modelsCache: {} as unknown,
+  listModels: vi.fn(async () => [{ id: 'm1', name: 'Model 1' }]),
+};
+
 const mockMindManager = {
   getMind: vi.fn((mindId: string) => {
     if (mindId === 'valid-mind') {
-      return { session: mockSession, client: { listModels: vi.fn(async () => [{ id: 'm1', name: 'Model 1' }]) } };
+      return { session: mockSession, client: validModelClient };
     }
     if (mindId === 'broken-models') {
       return { session: mockSession, client: { listModels: vi.fn(async () => { throw new Error('model discovery failed'); }) } };
@@ -30,6 +35,7 @@ describe('ChatService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    validModelClient.modelsCache = {};
     turnQueue = new TurnQueue();
     svc = new ChatService(mockMindManager as unknown as MindManager, turnQueue);
   });
@@ -109,6 +115,11 @@ describe('ChatService', () => {
     it('returns models from the minds client', async () => {
       const models = await svc.listModels('valid-mind');
       expect(models).toEqual([{ id: 'm1', name: 'Model 1' }]);
+    });
+
+    it('clears the SDK model cache before listing models', async () => {
+      await svc.listModels('valid-mind');
+      expect(validModelClient.modelsCache).toBeNull();
     });
 
     it('returns empty array for invalid mind', async () => {

@@ -7,7 +7,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { GenesisFlow } from './GenesisFlow';
 import { AppStateProvider, useAppState } from '../../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
-import type { GenesisMindTemplate, MindContext } from '../../../shared/types';
+import type { GenesisMindTemplate, MindContext } from '@chamber/shared/types';
 
 vi.mock('./VoidScreen', () => ({
   VoidScreen: ({

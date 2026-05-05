@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useAppState, getPlainContent } from '../../lib/store';
 import { StreamingMessage } from './StreamingMessage';
 import { cn, formatTime } from '../../lib/utils';
-import type { ChatMessage, MindContext } from '../../../shared/types';
+import type { ChatMessage, MindContext } from '@chamber/shared/types';
 
 const AGENT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 

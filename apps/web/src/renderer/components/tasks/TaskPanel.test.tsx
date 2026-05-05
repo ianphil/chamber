@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TaskPanel } from './TaskPanel';
-import type { Task } from '../../../shared/a2a-types';
+import type { Task } from '@chamber/shared/a2a-types';
 
 function makeTask(overrides: Partial<Task> & { id: string; contextId: string }): Task {
   return {

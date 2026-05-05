@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
-import type { ModelInfo, ChatImageAttachment } from '../../../shared/types';
+import type { ModelInfo, ChatImageAttachment } from '@chamber/shared/types';
 import {
   Select,
   SelectContent,

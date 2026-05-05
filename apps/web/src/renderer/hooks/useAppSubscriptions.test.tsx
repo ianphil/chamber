@@ -5,7 +5,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { LensViewManifest, MindContext } from '../../shared/types';
+import type { LensViewManifest, MindContext } from '@chamber/shared/types';
 import { installElectronAPI, mockElectronAPI } from '../../test/helpers';
 import { AppStateProvider, useAppState } from '../lib/store';
 import type { AppState } from '../lib/store/state';

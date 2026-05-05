@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut } from 'lucide-react';
-import type { MarketplaceRegistry } from '../../../shared/types';
+import type { MarketplaceRegistry } from '@chamber/shared/types';
 import {
   Select,
   SelectContent,

@@ -8,7 +8,7 @@ import {
   workGroupLabel,
   type WorkEntry,
 } from './WorkGroup.logic';
-import type { ContentBlock, ToolCallBlock } from '../../../shared/types';
+import type { ContentBlock, ToolCallBlock } from '@chamber/shared/types';
 
 function text(content: string): ContentBlock {
   return { type: 'text', content };

@@ -1,43 +1,8 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { EventEmitter } from 'events';
-import type { AgentCardRegistry, Message, TaskArtifactUpdateEvent, TaskManager, TaskState, TaskStatusUpdateEvent } from '@chamber/services';
-
-interface A2AIncomingPayload {
-  targetMindId: string;
-  message: Message;
-  replyMessageId: string;
-}
-
-const VALID_TASK_STATES: ReadonlySet<TaskState> = new Set([
-  'submitted',
-  'working',
-  'completed',
-  'failed',
-  'canceled',
-  'input-required',
-  'rejected',
-  'auth-required',
-]);
-
-function narrowTaskState(value: unknown): TaskState | undefined {
-  return typeof value === 'string' && VALID_TASK_STATES.has(value as TaskState)
-    ? (value as TaskState)
-    : undefined;
-}
-
-function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayload {
-  if (!value || typeof value !== 'object') return false;
-  const payload = value as Partial<A2AIncomingPayload>;
-  const message = payload.message as Partial<Message> | undefined;
-  return (
-    typeof payload.targetMindId === 'string' &&
-    typeof payload.replyMessageId === 'string' &&
-    !!message &&
-    typeof message.messageId === 'string' &&
-    (message.role === 'user' || message.role === 'agent') &&
-    Array.isArray(message.parts)
-  );
-}
+import type { AgentCardRegistry, TaskManager } from '@chamber/services';
+import { isA2AIncomingPayload, narrowTaskState } from '@chamber/shared/a2a-types';
+import type { A2AIncomingPayload, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
 export function setupA2AIPC(
   ipcEmitter: EventEmitter,

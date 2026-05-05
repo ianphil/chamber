@@ -8,6 +8,7 @@
     "dev": "vite --host 127.0.0.1"
   },
   "dependencies": {
-    "@chamber/client": "file:../../packages/client"
+    "@chamber/client": "file:../../packages/client",
+    "@chamber/shared": "file:../../packages/shared"
   }
 }

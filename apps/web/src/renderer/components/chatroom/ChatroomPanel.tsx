@@ -5,8 +5,8 @@ import { StreamingMessage } from '../chat/StreamingMessage';
 import { OrchestrationPicker } from './OrchestrationPicker';
 import { TaskLedgerPanel } from './TaskLedgerPanel';
 import { cn, formatTime } from '../../lib/utils';
-import type { MindContext } from '../../../shared/types';
-import type { ChatroomMessage } from '../../../shared/chatroom-types';
+import type { MindContext } from '@chamber/shared/types';
+import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // Colour palette for agent badges

@@ -1,7 +1,7 @@
-import type { ChatMessage, ChatEvent, ContentBlock } from '../../../shared/types';
-import type { Task, TaskState } from '../../../shared/a2a-types';
-import type { ChatroomMessage, TaskLedgerItem } from '../../../shared/chatroom-types';
-import { isOrchestrationEvent } from '../../../shared/chatroom-types';
+import type { ChatMessage, ChatEvent, ContentBlock } from '@chamber/shared/types';
+import type { Task, TaskState } from '@chamber/shared/a2a-types';
+import type { ChatroomMessage, TaskLedgerItem } from '@chamber/shared/chatroom-types';
+import { isOrchestrationEvent } from '@chamber/shared/chatroom-types';
 import type { AppState, AppAction } from './state';
 
 /** Extract plain text from content blocks (for search, accessibility, etc.) */

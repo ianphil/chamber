@@ -8,7 +8,7 @@ import { GenesisGate } from './GenesisGate';
 import { AppStateProvider, useAppState } from '../../lib/store';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
-import type { MindContext } from '../../../shared/types';
+import type { MindContext } from '@chamber/shared/types';
 
 function TestWrapper({ children }: { children: React.ReactNode }) {
   useAgentStatus();

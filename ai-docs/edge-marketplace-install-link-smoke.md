@@ -62,7 +62,7 @@ Get-Content .env | ForEach-Object {
 }
 
 $env:CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK = '1'
-npm run test:ui:electron -- tests/e2e/electron/marketplace-install-link-edge.spec.ts
+npm run smoke:desktop -- tests/e2e/electron/marketplace-install-link-edge.spec.ts
 Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK
 ```
 
@@ -71,7 +71,7 @@ For demos, add a pause between each browser handoff step:
 ```powershell
 $env:CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK = '1'
 $env:CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK_SLOW_MS = '5000'
-npm run test:ui:electron -- tests/e2e/electron/marketplace-install-link-edge.spec.ts
+npm run smoke:desktop -- tests/e2e/electron/marketplace-install-link-edge.spec.ts
 Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK
 Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK_SLOW_MS
 ```

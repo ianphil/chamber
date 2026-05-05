@@ -1,4 +1,4 @@
-import type { MindContext } from '../../shared/types';
+import type { MindContext } from '@chamber/shared/types';
 
 interface PreferredMind {
   readonly mindId?: string;

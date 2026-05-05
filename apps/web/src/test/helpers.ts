@@ -10,7 +10,7 @@ import type {
   LensViewManifest,
   ElectronAPI,
   DesktopUpdateState,
-} from '../shared/types';
+} from '@chamber/shared/types';
 import type {
   ChatroomMessage,
   ChatroomStreamEvent,
@@ -19,7 +19,7 @@ import type {
   MagenticConfig,
   OrchestrationEvent,
   OrchestrationEventType,
-} from '../shared/chatroom-types';
+} from '@chamber/shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // ContentBlock factories

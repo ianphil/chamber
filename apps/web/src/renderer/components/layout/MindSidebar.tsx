@@ -3,7 +3,7 @@ import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
 import { Plus, X, Bot, MessageSquarePlus, ExternalLink } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import type { MindContext } from '../../../shared/types';
+import type { MindContext } from '@chamber/shared/types';
 
 const MIN_WIDTH = 140;
 const MAX_WIDTH = 400;

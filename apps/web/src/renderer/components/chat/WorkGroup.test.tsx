@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { WorkGroup } from './WorkGroup';
 import { groupBlocksIntoChunks, type WorkEntry } from './WorkGroup.logic';
-import type { ContentBlock, ToolCallBlock } from '../../../shared/types';
+import type { ContentBlock, ToolCallBlock } from '@chamber/shared/types';
 
 function tool(id: string, overrides: Partial<ToolCallBlock> = {}): ContentBlock {
   return {

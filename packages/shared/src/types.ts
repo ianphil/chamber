@@ -1,5 +1,6 @@
-import type { Message, AgentCard, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, ListTasksResponse } from './a2a-types';
+import type { A2AIncomingPayload, AgentCard, Task, TaskArtifactUpdateEvent, TaskStatusUpdateEvent, ListTasksResponse } from './a2a-types';
 import type { ChatroomAPI } from './chatroom-types';
+export type { A2AIncomingPayload } from './a2a-types';
 
 // Shared types across main, preload, and renderer processes
 
@@ -261,12 +262,6 @@ export interface ElectronAPI {
     maximize: () => void;
     close: () => void;
   };
-}
-
-export interface A2AIncomingPayload {
-  targetMindId: string;
-  message: Message;
-  replyMessageId: string;
 }
 
 export interface GenesisMindTemplate {

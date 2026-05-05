@@ -5,7 +5,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ChatInput } from './ChatInput';
-import type { ModelInfo } from '../../../shared/types';
+import type { ModelInfo } from '@chamber/shared/types';
 
 const caretCoords = vi.hoisted(() => ({
   current: { top: 100, left: 50, height: 16 },

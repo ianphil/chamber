@@ -6,7 +6,7 @@ import { RoleScreen } from './RoleScreen';
 import { VoiceScreen } from './VoiceScreen';
 import { BootScreen } from './BootScreen';
 import { selectPreferredMind } from '../../lib/mindSelection';
-import type { GenesisMindTemplate } from '../../../shared/types';
+import type { GenesisMindTemplate } from '@chamber/shared/types';
 
 type Stage = 'void' | 'role' | 'voice' | 'boot' | 'done';
 type GenesisCreateResult = Awaited<ReturnType<typeof window.electronAPI.genesis.create>>;

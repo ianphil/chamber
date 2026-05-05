@@ -18,9 +18,9 @@ npm start        # launch with hot reload
 
 ## Code Quality
 
-### Lint
+### Static validation
 
-ESLint runs on every commit via a pre-commit hook.
+Static validation runs TypeScript, ESLint, and dependency boundary checks.
 
 ```bash
 npm run lint
@@ -31,10 +31,8 @@ Zero errors, zero warnings. Fix lint issues before pushing.
 ### Tests
 
 ```bash
-npm test              # run all tests once
-npm run test:watch    # re-run on file changes
+npm test              # run all Vitest tests once
 npm run test:coverage # generate coverage report
-npm run test:ui       # interactive test UI
 ```
 
 All tests must pass before merging. If you change behavior, update or add tests to cover it.
@@ -45,11 +43,22 @@ Two Playwright projects live under [tests/e2e/](tests/e2e):
 
 | Script | What it runs | Needs |
 |---|---|---|
-| `npm run test:ui:web` | Vite web shell + fake-chat server | nothing extra |
-| `npm run test:ui:electron` | Spawns `npm start`, connects via CDP | working Electron build |
-| `npm run test:ui:e2e` | Both projects, serially | both of the above |
+| `npm run smoke:web` | Vite web shell + fake-chat server | nothing extra |
+| `npm run smoke:desktop` | Spawns the Electron desktop app, connects via CDP | working Electron build |
 
-All three auto-install the Chromium headless shell on first run via `npm run test:ui:install` (idempotent — fast no-op once the binary is present).
+Both auto-install the Chromium headless shell on first run via `npm run playwright:install` (idempotent — fast no-op once the binary is present).
+
+### Smoke tests
+
+Run the smoke test that matches the surface you touched:
+
+| Script | Purpose |
+|---|---|
+| `npm run smoke:sdk` | Copilot SDK runtime smoke |
+| `npm run smoke:server-sdk` | Loopback server SDK smoke |
+| `npm run smoke:web` | Browser app smoke |
+| `npm run smoke:desktop` | Electron desktop app smoke |
+| `npm run smoke:packaged-runtime` | Packaged app/runtime smoke |
 
 Useful environment variables:
 

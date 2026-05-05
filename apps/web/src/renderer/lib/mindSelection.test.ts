@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MindContext } from '../../shared/types';
+import type { MindContext } from '@chamber/shared/types';
 import { normalizeMindPath, selectPreferredMind } from './mindSelection';
 
 const upperPosixMind: MindContext = {

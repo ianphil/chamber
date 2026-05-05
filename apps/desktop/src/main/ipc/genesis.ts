@@ -3,8 +3,6 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  GenesisMindTemplateCatalog,
-  GenesisMindTemplateInstaller,
   MindManager,
   MindScaffold,
   installLensSkill,
@@ -25,8 +23,8 @@ interface GenesisMindTemplateInstallerPort {
 export function setupGenesisIPC(
   mindManager: MindManager,
   scaffold: MindScaffold,
-  templateCatalog: GenesisMindTemplateCatalogPort = new GenesisMindTemplateCatalog(),
-  templateInstaller: GenesisMindTemplateInstallerPort = new GenesisMindTemplateInstaller(),
+  templateCatalog: GenesisMindTemplateCatalogPort,
+  templateInstaller: GenesisMindTemplateInstallerPort,
 ): void {
 
   ipcMain.handle('genesis:getDefaultPath', async () => {

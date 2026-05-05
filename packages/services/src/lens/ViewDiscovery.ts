@@ -8,6 +8,18 @@ import { Logger } from '../logger';
 
 const log = Logger.create('ViewDiscovery');
 
+const SUPPORTED_LENS_VIEWS = new Set<LensViewManifest['view']>([
+  'form',
+  'table',
+  'briefing',
+  'status-board',
+  'list',
+  'monitor',
+  'detail',
+  'timeline',
+  'editor',
+]);
+
 export interface ViewRefreshHandler {
   sendBackgroundPrompt(mindPath: string, prompt: string): Promise<void>;
 }
@@ -46,10 +58,13 @@ export class ViewDiscovery {
 
         try {
           const raw = fs.readFileSync(viewJsonPath, 'utf-8');
-          const manifest = JSON.parse(raw) as LensViewManifest;
-          manifest.id = entry.name;
-          manifest._basePath = path.join(lensDir, entry.name);
-          views.push(manifest);
+          const basePath = path.join(lensDir, entry.name);
+          const manifest = parseLensViewManifest(JSON.parse(raw), entry.name, basePath);
+          if (manifest) {
+            views.push(manifest);
+          } else {
+            log.warn(`Skipping invalid Lens manifest ${viewJsonPath}`);
+          }
         } catch (err) {
           log.error(`Failed to parse ${viewJsonPath}:`, err);
         }
@@ -77,7 +92,8 @@ export class ViewDiscovery {
     if (!fs.existsSync(dataPath)) return null;
 
     try {
-      return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      return isRecord(data) ? data : null;
     } catch {
       return null;
     }
@@ -186,4 +202,35 @@ export class ViewDiscovery {
     this.stopWatching(mindPath);
     this.viewsByMind.delete(mindPath);
   }
+}
+
+function parseLensViewManifest(value: unknown, id: string, basePath: string): LensViewManifest | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.name !== 'string' || typeof value.icon !== 'string') return null;
+  if (!isLensViewType(value.view)) return null;
+  if (!isSafeRelativeSource(value.source)) return null;
+
+  return {
+    ...value,
+    id,
+    name: value.name,
+    icon: value.icon,
+    view: value.view,
+    source: value.source,
+    _basePath: basePath,
+  };
+}
+
+function isLensViewType(value: unknown): value is LensViewManifest['view'] {
+  return typeof value === 'string' && SUPPORTED_LENS_VIEWS.has(value as LensViewManifest['view']);
+}
+
+function isSafeRelativeSource(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  if (path.isAbsolute(value) || path.win32.isAbsolute(value) || path.posix.isAbsolute(value)) return false;
+  return !value.split(/[\\/]+/).includes('..');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

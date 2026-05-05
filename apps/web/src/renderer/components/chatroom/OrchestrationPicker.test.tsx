@@ -5,8 +5,8 @@ import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { OrchestrationPicker } from './OrchestrationPicker';
-import type { MindContext } from '../../../shared/types';
-import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../../shared/chatroom-types';
+import type { MindContext } from '@chamber/shared/types';
+import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '@chamber/shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
 // Helpers

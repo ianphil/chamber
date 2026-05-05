@@ -1,4 +1,5 @@
 import type { ChamberCtx, ChamberRequest, ChamberResponse } from './types';
+import type { ChatAttachmentDto, CommandResponse, ListModelsResponse, SendChatRequest } from '@chamber/wire-contracts';
 
 export async function healthHandler(): Promise<ChamberResponse> {
   return { status: 200, body: { ok: true } };
@@ -107,16 +108,21 @@ export async function sendChatHandler(request: ChamberRequest, ctx: ChamberCtx):
   if (!messageId) return { status: 400, body: { error: 'messageId is required' } };
   if (!ctx.sendChat) return { status: 503, body: { error: 'Chat is unavailable' } };
 
-  await ctx.sendChat({
+  const attachments = parseChatAttachments(body.attachments);
+  if (attachments === null) {
+    return { status: 400, body: { error: 'attachments must be valid chat attachments' } };
+  }
+
+  const chatRequest: SendChatRequest = {
     mindId,
     message,
     messageId,
     model: typeof body.model === 'string' ? body.model : undefined,
-    attachments: Array.isArray(body.attachments)
-      ? body.attachments as never
-      : undefined,
-  });
-  return { status: 200, body: { ok: true } };
+    attachments,
+  };
+
+  await ctx.sendChat(chatRequest);
+  return commandResponse();
 }
 
 export async function newConversationHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
@@ -132,5 +138,31 @@ export async function newConversationHandler(request: ChamberRequest, ctx: Chamb
 
 export async function listModelsHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
   if (!ctx.listModels) return { status: 503, body: { error: 'Model listing is unavailable' } };
-  return { status: 200, body: { models: await ctx.listModels(request.query?.get('mindId') ?? undefined) } };
+  const body: ListModelsResponse = {
+    models: await ctx.listModels(request.query?.get('mindId') ?? undefined),
+  };
+  return { status: 200, body };
+}
+
+function commandResponse(): ChamberResponse {
+  const body: CommandResponse = { ok: true };
+  return { status: 200, body };
+}
+
+function parseChatAttachments(value: unknown): ChatAttachmentDto[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  return value.every(isChatAttachment) ? value : null;
+}
+
+function isChatAttachment(value: unknown): value is ChatAttachmentDto {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const attachment = value as Record<string, unknown>;
+  return (
+    typeof attachment.name === 'string' &&
+    typeof attachment.mimeType === 'string' &&
+    typeof attachment.data === 'string'
+  );
 }

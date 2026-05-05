@@ -4,9 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import { handleChatEvent, appReducer, initialState } from '.';
 import type { AppState, AppAction } from '.';
-import type { ChatMessage } from '../../../shared/types';
-import type { ChatroomMessage } from '../../../shared/chatroom-types';
-import type { Message, Task, TaskStatus, Artifact } from '../../../shared/a2a-types';
+import type { ChatMessage } from '@chamber/shared/types';
+import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
+import type { Message, Task, TaskStatus, Artifact } from '@chamber/shared/a2a-types';
 import {
   makeMessage,
   makeTextBlock,

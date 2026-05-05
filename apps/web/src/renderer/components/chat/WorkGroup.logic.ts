@@ -1,4 +1,4 @@
-import type { ContentBlock, TextBlock, ToolCallBlock, ReasoningBlock } from '../../../shared/types';
+import type { ContentBlock, TextBlock, ToolCallBlock, ReasoningBlock } from '@chamber/shared/types';
 
 export type WorkEntry =
   | {

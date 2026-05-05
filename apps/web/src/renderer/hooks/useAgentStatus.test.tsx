@@ -7,7 +7,7 @@ import { act, waitFor, renderHook } from '@testing-library/react';
 import { AppStateProvider, useAppState } from '../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../test/helpers';
 import { useAgentStatus } from './useAgentStatus';
-import type { MindContext } from '../../shared/types';
+import type { MindContext } from '@chamber/shared/types';
 
 const fakeMind: MindContext = {
   mindId: 'test-1234',

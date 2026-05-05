@@ -29,9 +29,6 @@ const DEFAULT_CONFIG: AppConfig = {
 };
 
 export class ConfigService {
-  /** @deprecated Use generateMindId() from mind/generateMindId instead */
-  static generateMindId = generateMindId;
-
   private readonly configDir: string;
   private readonly configPath: string;
 
@@ -81,7 +78,7 @@ export class ConfigService {
     if (!v1.mindPath) {
       return { ...DEFAULT_CONFIG, theme: v1.theme ?? 'dark' };
     }
-    const id = ConfigService.generateMindId(v1.mindPath);
+    const id = generateMindId(v1.mindPath);
     return {
       version: 2,
       minds: [{ id, path: v1.mindPath }],

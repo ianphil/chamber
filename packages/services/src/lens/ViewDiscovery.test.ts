@@ -97,6 +97,39 @@ describe('ViewDiscovery', () => {
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });
+
+    it('skips manifests with unsupported view types', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'bad-view', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValue(JSON.stringify({ name: 'Bad', icon: 'eye', view: 'dashboard', source: 'data.json' }));
+
+      await expect(discovery.scan('/tmp/test/mind')).resolves.toEqual([]);
+    });
+
+    it('skips manifests with missing source', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'bad-view', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValue(JSON.stringify({ name: 'Bad', icon: 'eye', view: 'briefing' }));
+
+      await expect(discovery.scan('/tmp/test/mind')).resolves.toEqual([]);
+    });
+
+    it('skips manifests with unsafe source paths', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'absolute-view', isDirectory: () => true },
+        { name: 'traversal-view', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync
+        .mockReturnValueOnce(JSON.stringify({ name: 'Absolute', icon: 'eye', view: 'briefing', source: 'C:\\secrets\\data.json' }))
+        .mockReturnValueOnce(JSON.stringify({ name: 'Traversal', icon: 'eye', view: 'briefing', source: '..\\data.json' }));
+
+      await expect(discovery.scan('/tmp/test/mind')).resolves.toEqual([]);
+    });
   });
 
   describe('getViews', () => {
@@ -137,6 +170,21 @@ describe('ViewDiscovery', () => {
 
     it('returns null for unknown viewId', () => {
       expect(discovery.getViewData('nonexistent', '/tmp/mind')).toBeNull();
+    });
+
+    it('returns null when view data is not an object', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'test', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValueOnce(JSON.stringify({
+        name: 'Test', icon: 'eye', view: 'briefing', source: 'data.json',
+      }));
+
+      await discovery.scan('/tmp/test/mind');
+
+      mockReadFileSync.mockReturnValueOnce(JSON.stringify(['not', 'an', 'object']));
+      expect(discovery.getViewData('test', '/tmp/test/mind')).toBeNull();
     });
   });
 

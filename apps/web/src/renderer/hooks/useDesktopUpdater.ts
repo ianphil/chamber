@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { DesktopUpdateState } from '../../shared/types';
+import type { DesktopUpdateState } from '@chamber/shared/types';
 
 export function useDesktopUpdater() {
   const [state, setState] = useState<DesktopUpdateState | null>(null);

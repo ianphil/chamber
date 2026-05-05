@@ -1,5 +1,5 @@
 import React from 'react';
-import type { TaskLedgerItem } from '../../../shared/chatroom-types';
+import type { TaskLedgerItem } from '@chamber/shared/chatroom-types';
 
 interface TaskLedgerPanelProps {
   ledger: TaskLedgerItem[];

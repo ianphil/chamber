@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '../../../shared/chatroom-types';
-import type { MindContext } from '../../../shared/types';
+import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '@chamber/shared/chatroom-types';
+import type { MindContext } from '@chamber/shared/types';
 
 // ---------------------------------------------------------------------------
 // Mode metadata

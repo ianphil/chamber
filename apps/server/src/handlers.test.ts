@@ -66,6 +66,48 @@ describe('server handlers', () => {
     });
   });
 
+  it('passes valid chat attachments through the server context', async () => {
+    const sendChat = vi.fn(async () => undefined);
+    const attachment = { name: 'image.png', mimeType: 'image/png', data: 'abc123' };
+
+    const response = await sendChatHandler({
+      method: 'POST',
+      path: '/api/chat/send',
+      headers: new Headers(),
+      body: {
+        mindId: 'dude-1234',
+        message: 'Hello',
+        messageId: 'assistant-1',
+        attachments: [attachment],
+      },
+    }, makeContext({ sendChat }));
+
+    expect(response.status).toBe(200);
+    expect(sendChat).toHaveBeenCalledWith(expect.objectContaining({
+      attachments: [attachment],
+    }));
+  });
+
+  it('rejects invalid chat attachments', async () => {
+    const sendChat = vi.fn(async () => undefined);
+
+    const response = await sendChatHandler({
+      method: 'POST',
+      path: '/api/chat/send',
+      headers: new Headers(),
+      body: {
+        mindId: 'dude-1234',
+        message: 'Hello',
+        messageId: 'assistant-1',
+        attachments: [{ name: 'image.png', data: 'abc123' }],
+      },
+    }, makeContext({ sendChat }));
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'attachments must be valid chat attachments' });
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
   it('starts a new conversation through the server context', async () => {
     const newConversation = vi.fn(async () => undefined);
 

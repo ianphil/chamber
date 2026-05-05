@@ -5,7 +5,7 @@ import rehypeHighlight from 'rehype-highlight';
 import { cn } from '../../lib/utils';
 import { WorkGroup, hasRunningTool } from './WorkGroup';
 import { groupBlocksIntoChunks } from './WorkGroup.logic';
-import type { ContentBlock, TextBlock } from '../../../shared/types';
+import type { ContentBlock, TextBlock } from '@chamber/shared/types';
 
 interface Props {
   blocks: ContentBlock[];
