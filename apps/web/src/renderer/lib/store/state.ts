@@ -37,6 +37,7 @@ export type AppAction =
   | { type: 'ADD_USER_MESSAGE'; payload: { id: string; content: string; timestamp: number; images?: ImageBlock[] } }
   | { type: 'ADD_ASSISTANT_MESSAGE'; payload: { id: string; timestamp: number } }
   | { type: 'CHAT_EVENT'; payload: { mindId: string; messageId: string; event: ChatEvent } }
+  | { type: 'HYDRATE_CHAT_STATE'; payload: { messagesByMind: Record<string, ChatMessage[]>; streamingByMind: Record<string, boolean> } }
   | { type: 'SET_MINDS'; payload: MindContext[] }
   | { type: 'SET_ACTIVE_MIND'; payload: string | null }
   | { type: 'ADD_MIND'; payload: MindContext }

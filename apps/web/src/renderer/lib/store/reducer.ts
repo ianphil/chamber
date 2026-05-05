@@ -180,11 +180,28 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'HYDRATE_CHAT_STATE': {
+      const isActiveMindStreaming = state.activeMindId
+        ? Boolean(action.payload.streamingByMind[state.activeMindId])
+        : Object.values(action.payload.streamingByMind).some(Boolean);
+      return {
+        ...state,
+        messagesByMind: action.payload.messagesByMind,
+        streamingByMind: action.payload.streamingByMind,
+        isStreaming: isActiveMindStreaming,
+      };
+    }
+
     case 'SET_MINDS':
       return { ...state, minds: action.payload };
 
     case 'SET_ACTIVE_MIND':
-      return { ...state, activeMindId: action.payload, isStreaming: false, streamingByMind: state.streamingByMind };
+      return {
+        ...state,
+        activeMindId: action.payload,
+        isStreaming: action.payload ? Boolean(state.streamingByMind[action.payload]) : false,
+        streamingByMind: state.streamingByMind,
+      };
 
     case 'ADD_MIND': {
       const exists = state.minds.some(m => m.mindId === action.payload.mindId);

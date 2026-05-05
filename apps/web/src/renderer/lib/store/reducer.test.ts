@@ -242,6 +242,21 @@ describe('appReducer', () => {
     expect(state.isStreaming).toBe(false);
   });
 
+  it('HYDRATE_CHAT_STATE restores messages and active streaming state', () => {
+    const messages = [makeMessage([makeTextBlock('from popout')], { id: 'msg-1' })];
+    const state = appReducer(withActiveMind, {
+      type: 'HYDRATE_CHAT_STATE',
+      payload: {
+        messagesByMind: { [mindId]: messages },
+        streamingByMind: { [mindId]: true },
+      },
+    });
+
+    expect(state.messagesByMind[mindId]).toEqual(messages);
+    expect(state.streamingByMind[mindId]).toBe(true);
+    expect(state.isStreaming).toBe(true);
+  });
+
   it('SET_MINDS updates minds array', () => {
     const minds = [{ mindId: 'a', mindPath: '/a', identity: { name: 'A', systemMessage: '' }, status: 'ready' as const }];
     const state = appReducer(initialState, { type: 'SET_MINDS', payload: minds });
@@ -251,6 +266,15 @@ describe('appReducer', () => {
   it('SET_ACTIVE_MIND switches active mind', () => {
     const state = appReducer(withActiveMind, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
     expect(state.activeMindId).toBe('other-mind');
+  });
+
+  it('SET_ACTIVE_MIND preserves the selected mind streaming state', () => {
+    const state = appReducer({
+      ...withActiveMind,
+      streamingByMind: { 'other-mind': true },
+    }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
+
+    expect(state.isStreaming).toBe(true);
   });
 
   it('ADD_MIND appends a new mind and sets it active if none active', () => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.39.9 (2026-05-05)
+
+### Desktop
+
+- **Keep agent chat when popping out windows** - Desktop popout windows now synchronize chat state in memory with the main renderer so conversations continue when opened separately and return when the popout closes. (#39)
+- **Open agent links externally** - Desktop windows now send external web and mail links to the OS browser instead of navigating Chamber away from the app. (#37)
+
 ## v0.39.8 (2026-05-05)
 
 ### Lens
