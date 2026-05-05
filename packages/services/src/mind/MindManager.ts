@@ -29,6 +29,7 @@ export class MindManager extends EventEmitter {
   private restorePromise: Promise<void> | null = null;
   private reloading = false;
   private providers: ChamberToolProvider[] = [];
+  private modelUpdates = new Map<string, Promise<void>>();
 
   constructor(
     private readonly clientFactory: CopilotClientFactory,
@@ -218,6 +219,26 @@ export class MindManager extends EventEmitter {
   }
 
   async setMindModel(mindId: string, model: string | null): Promise<MindContext | null> {
+    const previousUpdate = this.modelUpdates.get(mindId) ?? Promise.resolve();
+    let releaseUpdate: () => void;
+    const currentUpdate = new Promise<void>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    const queuedUpdate = previousUpdate.then(() => currentUpdate, () => currentUpdate);
+    this.modelUpdates.set(mindId, queuedUpdate);
+    await previousUpdate.catch(() => { /* previous caller observes its own failure */ });
+
+    try {
+      return await this.setMindModelUnlocked(mindId, model);
+    } finally {
+      releaseUpdate!();
+      if (this.modelUpdates.get(mindId) === queuedUpdate) {
+        this.modelUpdates.delete(mindId);
+      }
+    }
+  }
+
+  private async setMindModelUnlocked(mindId: string, model: string | null): Promise<MindContext | null> {
     const context = this.minds.get(mindId);
     const selectedModel = model && model.trim().length > 0 ? model.trim() : undefined;
 

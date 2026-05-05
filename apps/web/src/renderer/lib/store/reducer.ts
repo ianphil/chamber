@@ -23,6 +23,15 @@ function updateChatMessage<T extends ChatMessage>(
   return { ...message, ...updates };
 }
 
+function selectedModelForActiveMind(state: AppState, activeMindId: string | null, minds = state.minds): string | null {
+  if (!activeMindId) return null;
+  const selectedModel = minds.find((mind) => mind.mindId === activeMindId)?.selectedModel;
+  if (selectedModel && (state.availableModels.length === 0 || state.availableModels.some((model) => model.id === selectedModel))) {
+    return selectedModel;
+  }
+  return state.availableModels[0]?.id ?? null;
+}
+
 export function handleChatEvent<T extends ChatMessage>(messages: T[], messageId: string, event: ChatEvent): T[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m;
@@ -193,12 +202,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'SET_MINDS':
-      return { ...state, minds: action.payload };
+      return {
+        ...state,
+        minds: action.payload,
+        selectedModel: selectedModelForActiveMind(state, state.activeMindId, action.payload),
+      };
 
     case 'SET_ACTIVE_MIND':
       return {
         ...state,
         activeMindId: action.payload,
+        selectedModel: selectedModelForActiveMind(state, action.payload),
         isStreaming: action.payload ? Boolean(state.streamingByMind[action.payload]) : false,
         streamingByMind: state.streamingByMind,
       };
@@ -229,8 +243,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
-    case 'SET_AVAILABLE_MODELS':
-      return { ...state, availableModels: action.payload };
+    case 'SET_AVAILABLE_MODELS': {
+      const nextState = { ...state, availableModels: action.payload };
+      return {
+        ...nextState,
+        selectedModel: selectedModelForActiveMind(nextState, nextState.activeMindId),
+      };
+    }
 
     case 'SET_SELECTED_MODEL':
       if (

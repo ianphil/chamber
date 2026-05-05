@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.40.0 (2026-05-05)
+
+### Chat
+
+- **Persist model choices per agent** - Agent chat now stores each mind's selected model in its config and recreates the SDK session with that model so switching minds no longer shares one global picker value. (#46)
+- **Inject local datetime context** - SDK prompts now include the current local datetime and timezone across chat, A2A tasks, chatroom orchestration, Genesis, and background prompt sends. (#32)
+
 ## v0.39.9 (2026-05-05)
 
 ### Desktop

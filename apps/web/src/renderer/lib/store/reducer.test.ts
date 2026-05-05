@@ -263,9 +263,36 @@ describe('appReducer', () => {
     expect(state.minds).toEqual(minds);
   });
 
+  it('SET_MINDS syncs the selected model for the active mind', () => {
+    const state = appReducer({
+      ...withActiveMind,
+      availableModels: [makeModelInfo('model-1', 'Model 1'), makeModelInfo('model-2', 'Model 2')],
+      selectedModel: 'model-1',
+    }, {
+      type: 'SET_MINDS',
+      payload: [{ ...withActiveMind.minds[0], selectedModel: 'model-2' }],
+    });
+
+    expect(state.selectedModel).toBe('model-2');
+  });
+
   it('SET_ACTIVE_MIND switches active mind', () => {
     const state = appReducer(withActiveMind, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
     expect(state.activeMindId).toBe('other-mind');
+  });
+
+  it('SET_ACTIVE_MIND selects that mind persisted model', () => {
+    const state = appReducer({
+      ...withActiveMind,
+      availableModels: [makeModelInfo('model-1', 'Model 1'), makeModelInfo('model-2', 'Model 2')],
+      minds: [
+        { ...withActiveMind.minds[0], selectedModel: 'model-1' },
+        { mindId: 'other-mind', mindPath: '/other', identity: { name: 'Other', systemMessage: '' }, status: 'ready', selectedModel: 'model-2' },
+      ],
+      selectedModel: 'model-1',
+    }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
+
+    expect(state.selectedModel).toBe('model-2');
   });
 
   it('SET_ACTIVE_MIND preserves the selected mind streaming state', () => {
@@ -315,6 +342,16 @@ describe('appReducer', () => {
     const models = [makeModelInfo('m1', 'Model 1'), makeModelInfo('m2', 'Model 2')];
     const state = appReducer(initialState, { type: 'SET_AVAILABLE_MODELS', payload: models });
     expect(state.availableModels).toEqual(models);
+  });
+
+  it('SET_AVAILABLE_MODELS falls back when the active mind model is unavailable', () => {
+    const models = [makeModelInfo('model-1', 'Model 1'), makeModelInfo('model-2', 'Model 2')];
+    const state = appReducer({
+      ...withActiveMind,
+      minds: [{ ...withActiveMind.minds[0], selectedModel: 'missing-model' }],
+    }, { type: 'SET_AVAILABLE_MODELS', payload: models });
+
+    expect(state.selectedModel).toBe('model-1');
   });
 
   it('SET_SELECTED_MODEL updates selection for the active mind', () => {

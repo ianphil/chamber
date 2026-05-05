@@ -22,15 +22,19 @@ import * as fs from 'fs';
 
 const mockStart = vi.fn();
 const mockStop = vi.fn();
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const mockCreateSession = vi.fn((_config: Record<string, unknown>) => ({
+function createSessionStub() {
+  return {
   send: vi.fn(),
   sendAndWait: vi.fn(),
   on: vi.fn(),
   off: vi.fn(),
   disconnect: vi.fn(async () => undefined),
   rpc: { permissions: { setApproveAll: vi.fn(async () => ({ success: true })) } },
-}));
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const mockCreateSession = vi.fn((_config: Record<string, unknown>) => createSessionStub());
 
 function makeMockClient() {
   return {
@@ -186,6 +190,53 @@ describe('MindManager', () => {
       expect(updated?.selectedModel).toBe('claude-opus');
       expect(lastSavedConfig().minds[0].selectedModel).toBe('claude-opus');
       expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus' }));
+    });
+
+    it('serializes concurrent per-mind model changes', async () => {
+      const originalSession = createSessionStub();
+      const firstModelSession = createSessionStub();
+      const secondModelSession = createSessionStub();
+      let resolveFirstModelSession: (() => void) | undefined;
+      const createSession = vi.fn((config: Record<string, unknown>) => {
+        if (config.model === 'model-a') {
+          return new Promise((resolve) => {
+            resolveFirstModelSession = () => resolve(firstModelSession);
+          });
+        }
+        if (config.model === 'model-b') return Promise.resolve(secondModelSession);
+        return Promise.resolve(originalSession);
+      });
+      const clientFactory = {
+        createClient: vi.fn(async () => ({ start: vi.fn(), stop: vi.fn(), createSession })),
+        destroyClient: vi.fn(),
+      };
+      const localManager = new MindManager(
+        clientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+      );
+
+      const mind = await localManager.loadMind('/tmp/agents/q');
+      createSession.mockClear();
+
+      const firstChange = localManager.setMindModel(mind.mindId, 'model-a');
+      const secondChange = localManager.setMindModel(mind.mindId, 'model-b');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(createSession).toHaveBeenCalledTimes(1);
+      expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ model: 'model-a' }));
+
+      resolveFirstModelSession?.();
+      await Promise.all([firstChange, secondChange]);
+
+      expect(createSession).toHaveBeenCalledTimes(2);
+      expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'model-b' }));
+      expect(localManager.getMind(mind.mindId)?.selectedModel).toBe('model-b');
+      expect(localManager.getMind(mind.mindId)?.session).toBe(secondModelSession);
+      expect(originalSession.disconnect).toHaveBeenCalledTimes(1);
+      expect(firstModelSession.disconnect).toHaveBeenCalledTimes(1);
     });
 
     it('starts Lens watching and emits view changes after watcher rescans', async () => {
