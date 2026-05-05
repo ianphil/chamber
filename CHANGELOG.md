@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.39.7 (2026-05-05)
+
+### Chat
+
+- **Preserve chatroom message types** - Chat event reduction now keeps extended chatroom message fields without casts when streaming events update messages. (#49)
+
 ## v0.39.6 (2026-05-05)
 
 ### Code Health
