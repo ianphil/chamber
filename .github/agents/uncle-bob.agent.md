@@ -50,7 +50,7 @@ In chamber:
 - No `// Arrange // Act // Assert` comments. The structure should be obvious from the code.
 - Use fakes over mocks when possible. A queue of known responses tells you exactly what happens, in order, with no framework magic hiding the intent.
 - The test pyramid matters. Many unit tests, fewer integration tests, fewer still end-to-end tests.
-- In chamber, run `npm run lint` and `npm test` (vitest). SDK-touching changes also run `npm run test:sdk-smoke`. Packaging-touching changes run `npm run make:sandbox`.
+- In chamber, run `npm run lint` and `npm test` (vitest). SDK-touching changes also run `npm run smoke:sdk`. Packaging-touching changes run `npm run smoke:packaged` or `npm run make:sandbox` when installer behavior needs sandbox validation.
 
 ## Codebase Rules (chamber)
 

@@ -110,7 +110,10 @@ React Renderer
 
 ```bash
 npm start          # Launch with hot reload
-npm run lint       # TypeScript + ESLint
+npm run lint       # TypeScript + ESLint + dependency boundaries
+npm test           # Unit, integration, regression, and component tests
+npm run smoke:web      # Browser app Playwright smoke
+npm run smoke:desktop  # Electron desktop Playwright smoke
 npm run make       # Build NSIS installer + updater metadata
 npm run make:forge # Legacy Forge/Squirrel distributable fallback
 npm run make:sandbox  # Build + launch Windows Sandbox to test the installer

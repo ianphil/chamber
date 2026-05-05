@@ -7,7 +7,7 @@
 //
 // Usage:
 //   node scripts/install-playwright-browsers.js
-//   npm run test:ui:install
+//   npm run smoke:install
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');

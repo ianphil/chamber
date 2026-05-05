@@ -170,12 +170,12 @@ Vitest is the test runner. Configuration is in `config/vitest.config.ts`.
 - **Mocks/fakes**: prefer fakes (lambdas, in-memory stubs) over `vi.mock` of whole modules. Use `vi.fn()` for spies. Match the dependency-injection style — pass fakes through constructors.
 - **Renderer tests**: use `@testing-library/react` and `@testing-library/jest-dom`. Set `environment: 'jsdom'` per-file via `// @vitest-environment jsdom` when needed (the global default is `node`).
 - **Integration tests**: live in `src/main/integration/`.
-- **Smoke**: `npm run test:sdk-smoke` exercises the live SDK runtime via `scripts/run-sdk-smoke-test.js`. Run when SDK paths change.
+- **Smoke**: `npm run smoke:sdk` exercises the live SDK runtime via `scripts/run-sdk-smoke-test.js`; `npm run smoke:server` validates the server SDK path; `npm run smoke:web` and `npm run smoke:desktop` run browser and Electron Playwright smokes. Run the smoke that matches the changed surface.
 - **Packaging sandbox**: `npm run make:sandbox` builds the installer and runs `scripts/sandbox-test.js`. Run when packaging, runtime resolution, or first-launch behavior changes.
 
 ## Lint, Type-Check, Build
 
-- `npm run lint` — `tsc --noEmit && eslint .` (zero warnings, zero errors).
+- `npm run lint` — `tsc --noEmit && eslint . && npm run deps:check` (zero warnings, zero errors).
 - `npm run typecheck` — `tsc --noEmit` only.
 - `npm test` — Vitest run.
 - `npm start` — Electron Forge dev with hot reload.
@@ -208,7 +208,7 @@ The packaged app ships its own `@github/copilot` + `@github/copilot-sdk` under `
 
 - `chamber-copilot-runtime/package.json` and `package-lock.json` define the pinned pair.
 - `scripts/prepare-node-runtime.js` materializes it into the package via `npm ci` at package time.
-- Bumping either dependency requires updating both files and validating with `npm run test:sdk-smoke` and `npm run make:sandbox`.
+- Bumping either dependency requires updating both files and validating with `npm run smoke:sdk` and `npm run make:sandbox`.
 
 ## Versioning, Changelog, PRs
 

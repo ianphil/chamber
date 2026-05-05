@@ -11,8 +11,8 @@ Read `AGENTS.md` and `.github/copilot-instructions.md` first. Chamber security b
 
 ## Primary Responsibilities
 
-1. **Web UI validation** — Run and extend Playwright tests against `apps/web` through `npm run test:ui:web`.
-2. **Electron UI validation** — Run and extend Playwright tests against the Electron shell through `npm run test:ui:electron`.
+1. **Web UI validation** — Run and extend Playwright tests against `apps/web` through `npm run smoke:web`.
+2. **Electron UI validation** — Run and extend Playwright tests against the Electron shell through `npm run smoke:desktop`.
 3. **Black-screen detection** — Fail fast on blank `#root`, missing preload bridges, failed Vite assets, console errors, or failed network requests.
 4. **Agent chat validation** — Drive the chat UI like a user: select/create a mind when fixtures allow, type prompts, send messages, wait for streaming output, and verify transcript/tool-call UI state.
 5. **Evidence capture** — Preserve useful failure context: Playwright traces/screenshots, console errors, network failures, Forge/Electron logs, and exact repro commands.
@@ -22,9 +22,8 @@ Read `AGENTS.md` and `.github/copilot-instructions.md` first. Chamber security b
 Use these repo scripts before inventing new commands:
 
 ```powershell
-npm run test:ui:web
-npm run test:ui:electron
-npm run test:ui:e2e
+npm run smoke:web
+npm run smoke:desktop
 npm run typecheck
 npm run lint
 ```
@@ -58,16 +57,16 @@ Decide which runtime the task needs:
 Prefer the narrowest command:
 
 ```powershell
-npm run test:ui:web
+npm run smoke:web
 ```
 
 or:
 
 ```powershell
-npm run test:ui:electron
+npm run smoke:desktop
 ```
 
-Run `npm run test:ui:e2e` when validating cross-runtime changes.
+Run both `npm run smoke:web` and `npm run smoke:desktop` when validating cross-runtime changes.
 
 ### 3. Observe before interacting
 

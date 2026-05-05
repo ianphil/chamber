@@ -5,6 +5,7 @@
 ### Code Health
 
 - **Deduplicate shared web contracts** - The web app now imports shared contracts from `@chamber/shared` instead of carrying local duplicate copies, keeping renderer, desktop, server, and package consumers on one contract surface.
+- **Clarify validation scripts** - Smoke tests now use intent-based script names (`smoke:sdk`, `smoke:server`, `smoke:web`, `smoke:desktop`, and `smoke:packaged`), while unused watch/interactive aliases were removed.
 - **Tighten typed boundaries** - A2A payload predicates moved into shared contracts, Genesis IPC now requires explicit service dependencies, SDK model-cache clearing is isolated behind a compatibility helper, and server chat attachments validate against the wire DTO before dispatch.
 
 ### Lens
