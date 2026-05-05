@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { LensViewManifest } from '@chamber/shared/types';
 import { RefreshCw, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -17,22 +17,61 @@ interface Props {
 
 const log = Logger.create('LensView');
 
+const pendingRefreshes = new Map<string, Promise<Record<string, unknown> | null>>();
+
+function refreshLensView(viewId: string): Promise<Record<string, unknown> | null> {
+  const existing = pendingRefreshes.get(viewId);
+  if (existing) return existing;
+
+  const refresh = window.electronAPI.lens.refreshView(viewId)
+    .finally(() => {
+      if (pendingRefreshes.get(viewId) === refresh) {
+        pendingRefreshes.delete(viewId);
+      }
+    });
+  pendingRefreshes.set(viewId, refresh);
+  return refresh;
+}
+
 export function LensViewRenderer({ view }: Props) {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionInput, setActionInput] = useState('');
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     const load = async () => {
+      const pendingRefresh = pendingRefreshes.get(view.id);
+      if (pendingRefresh) setLoading(true);
       try {
         const result = await window.electronAPI.lens.getViewData(view.id);
+        if (cancelled) return;
         setData(result);
+        if (pendingRefresh) {
+          const refreshed = await pendingRefresh;
+          if (cancelled) return;
+          setData(refreshed);
+        }
       } catch (err) {
         log.error(`Failed to load data for ${view.id}:`, err);
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load view data');
+      } finally {
+        if (!cancelled && pendingRefresh) setLoading(false);
       }
     };
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [view.id]);
 
   const handleRefresh = useCallback(async () => {
@@ -40,12 +79,12 @@ export function LensViewRenderer({ view }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const result = await window.electronAPI.lens.refreshView(view.id);
-      setData(result);
+      const result = await refreshLensView(view.id);
+      if (mountedRef.current) setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Refresh failed');
+      if (mountedRef.current) setError(err instanceof Error ? err.message : 'Refresh failed');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [view.id, loading]);
 

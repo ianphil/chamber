@@ -8,6 +8,7 @@ import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from '.
 
 const cdpPort = Number(process.env.CHAMBER_E2E_LENS_CDP_PORT ?? 9336);
 const smokeViewId = 'smoke-hotload';
+const refreshViewId = 'smoke-refresh-continuity';
 
 test.describe('electron Lens hot-load smoke', () => {
   test.setTimeout(180_000);
@@ -32,6 +33,8 @@ test.describe('electron Lens hot-load smoke', () => {
       cdpPort,
       env: {
         CHAMBER_E2E_USER_DATA: userDataPath,
+        CHAMBER_E2E_LENS_REFRESH_DELAY_MS: '1000',
+        CHAMBER_E2E_LENS_REFRESH_JSON: JSON.stringify({ status: 'fresh' }),
       },
     });
   });
@@ -111,6 +114,51 @@ test.describe('electron Lens hot-load smoke', () => {
 
     await expect(page.getByRole('button', { name: 'Smoke Hotload' })).toHaveCount(0);
   });
+
+  test('applies Lens refresh results after switching away and returning', async () => {
+    const page = await findRendererPage(app?.browser, app?.logs ?? []);
+    await page.waitForLoadState('domcontentloaded');
+
+    writeLensView(mindPath, {
+      id: refreshViewId,
+      name: 'Smoke Refresh Continuity',
+      prompt: 'Refresh this deterministic smoke Lens view.',
+      status: 'stale',
+    });
+
+    const mind = await page.evaluate(async ({ pathToMind }) => {
+      const loaded = await window.electronAPI.mind.add(pathToMind);
+      await window.electronAPI.mind.setActive(loaded.mindId);
+      return loaded;
+    }, { pathToMind: mindPath });
+
+    await expect.poll(
+      () => page.evaluate(async ({ mindId, viewId }) => {
+        const views = await window.electronAPI.lens.getViews(mindId);
+        return views.some((view) => view.id === viewId);
+      }, { mindId: mind.mindId, viewId: refreshViewId }),
+      { timeout: 10_000 },
+    ).toBe(true);
+    await page.getByRole('button', { name: /Active Lens Smoke Mind/ }).click();
+    await expect(page.getByRole('button', { name: 'Smoke Refresh Continuity' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Smoke Refresh Continuity' }).click();
+    await expect(page.getByRole('heading', { name: 'Smoke Refresh Continuity' })).toBeVisible();
+    await expect(page.getByText('stale', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Refreshing…', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Chat', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Smoke Refresh Continuity' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Smoke Refresh Continuity' }).click();
+    await expect(page.getByRole('heading', { name: 'Smoke Refresh Continuity' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refreshing…', exact: true })).toBeVisible();
+
+    await expect(page.getByText('fresh', { exact: true })).toBeVisible();
+    await expect(page.getByText('stale', { exact: true })).toHaveCount(0);
+  });
 });
 
 function seedMind(root: string, name: string): void {
@@ -126,19 +174,25 @@ function seedMind(root: string, name: string): void {
   );
 }
 
-function writeLensView(root: string): void {
-  const viewDir = path.join(root, '.github', 'lens', smokeViewId);
+function writeLensView(
+  root: string,
+  options: { id?: string; name?: string; prompt?: string; status?: string } = {},
+): void {
+  const id = options.id ?? smokeViewId;
+  const viewDir = path.join(root, '.github', 'lens', id);
   fs.mkdirSync(viewDir, { recursive: true });
   fs.writeFileSync(
     path.join(viewDir, 'view.json'),
     JSON.stringify({
-      name: 'Smoke Hotload',
+      name: options.name ?? 'Smoke Hotload',
       icon: 'table',
       view: 'table',
       source: 'data.json',
+      ...(options.prompt ? { prompt: options.prompt } : {}),
     }, null, 2),
   );
-  fs.writeFileSync(path.join(viewDir, 'data.json'), JSON.stringify({ rows: [{ status: 'ok' }] }, null, 2));
+  const data = options.status ? { status: options.status } : { rows: [{ status: 'ok' }] };
+  fs.writeFileSync(path.join(viewDir, 'data.json'), JSON.stringify(data, null, 2));
 }
 
 async function removeTempRoot(root: string): Promise<void> {

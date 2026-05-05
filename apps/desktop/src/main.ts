@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell, Notification, type MessageBoxOptions, type NativeImage, type Tray as ElectronTray } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -168,9 +169,7 @@ mindManager.setProviders([cronService, canvasService, a2aToolProvider]);
 wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
 
 // Wire Lens refresh to use the mind's session
-viewDiscovery.setRefreshHandler({
-  sendBackgroundPrompt: (path, prompt) => mindManager.sendBackgroundPrompt(path, prompt),
-});
+viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
 
 let mainWindow: BrowserWindow | null = null;
 let appTray: ElectronTray | null = null;
@@ -533,3 +532,27 @@ app.on('will-quit', () => {
   appTray?.destroy();
   appTray = null;
 });
+
+function createLensRefreshHandler(sendBackgroundPrompt: (mindPath: string, prompt: string) => Promise<void>) {
+  const e2eRefreshJson = process.env.CHAMBER_E2E_LENS_REFRESH_JSON;
+  if (process.env.CHAMBER_E2E !== '1' || !e2eRefreshJson) {
+    return { sendBackgroundPrompt };
+  }
+
+  const refreshData = JSON.parse(e2eRefreshJson) as unknown;
+  const delayMs = Number(process.env.CHAMBER_E2E_LENS_REFRESH_DELAY_MS ?? 0);
+  return {
+    sendBackgroundPrompt: async (_mindPath: string, prompt: string) => {
+      if (Number.isFinite(delayMs) && delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      fs.writeFileSync(parseLensRefreshOutputPath(prompt), `${JSON.stringify(refreshData, null, 2)}\n`);
+    },
+  };
+}
+
+function parseLensRefreshOutputPath(prompt: string): string {
+  const match = /Write the JSON output to:\s*(.+)\s*$/m.exec(prompt);
+  if (!match?.[1]) throw new Error('E2E Lens refresh prompt did not include an output path.');
+  return match[1].trim();
+}

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.39.8 (2026-05-05)
+
+### Lens
+
+- **Keep Lens refresh results across view switches** - In-flight Lens refreshes now survive renderer remounts so returning to a view applies the completed data instead of leaving stale content visible. (#38)
+
 ## v0.39.7 (2026-05-05)
 
 ### Chat
