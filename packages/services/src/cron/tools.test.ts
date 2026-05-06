@@ -41,6 +41,23 @@ describe('buildCronTools', () => {
     expect(mockService.createJob).toHaveBeenCalledWith('mind-1', '/path', input);
   });
 
+  it('cron_create documents and requires the payload object with visible payload fields', () => {
+    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
+    const create = tools.find((t) => t.name === 'cron_create')!;
+    const parameters = create.parameters as {
+      required?: string[];
+      properties: Record<string, { description?: string; properties?: Record<string, unknown> }>;
+    };
+
+    expect(create.description).toContain('Always include a payload object');
+    expect(parameters.properties.payload.description).toContain('notification use { "title": string, "body": string }');
+    expect(parameters.properties.payload.properties).toMatchObject({
+      title: { type: 'string', description: 'Notification title.' },
+      body: { description: 'Notification body string or webhook JSON body.' },
+    });
+    expect(parameters.required).toEqual(['name', 'schedule', 'type', 'payload']);
+  });
+
   it('cron_list dispatches to cronService.listJobs', async () => {
     const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
     const list = tools.find((t) => t.name === 'cron_list')!;

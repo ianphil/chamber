@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.42.0 (2026-05-05)
+
+### Cron
+
+- **Fix cron job creation guidance** - `cron_create` now exposes a visible required payload shape, returns a specific missing-payload validation error, and has Electron smoke coverage for the create/list/run/history/remove lifecycle. (#210)
+
 ## v0.41.0 (2026-05-05)
 
 ### Lens

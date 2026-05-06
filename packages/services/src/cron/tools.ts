@@ -10,7 +10,8 @@ export function buildCronTools(
   return [
     {
       name: 'cron_create',
-      description: 'Create a scheduled cron job for this mind. Prompt jobs can optionally target another agent by recipient.',
+      description:
+        'Create a scheduled cron job for this mind. Always include a payload object. Payload examples: prompt { "prompt": "Summarize today", "recipient": "optional-mind-id" }; shell { "command": "node", "args": ["script.js"] }; webhook { "url": "https://example.com/hook", "body": {} }; notification { "title": "Reminder", "body": "Standup starts now." }.',
       parameters: {
         type: 'object',
         properties: {
@@ -21,7 +22,21 @@ export function buildCronTools(
             enum: ['prompt', 'shell', 'webhook', 'notification'],
             description: 'The job type to run.',
           },
-          payload: { type: 'object', description: 'Type-specific job payload.' },
+          payload: {
+            type: 'object',
+            properties: {
+              prompt: { type: 'string', description: 'Prompt job text.' },
+              recipient: { type: 'string', description: 'Optional target mind id for prompt jobs.' },
+              command: { type: 'string', description: 'Shell job executable.' },
+              args: { type: 'array', items: { type: 'string' }, description: 'Optional shell job arguments.' },
+              url: { type: 'string', description: 'Webhook job URL.' },
+              headers: { type: 'object', description: 'Optional webhook headers.' },
+              title: { type: 'string', description: 'Notification title.' },
+              body: { description: 'Notification body string or webhook JSON body.' },
+            },
+            description:
+              'Required type-specific payload. For prompt use { "prompt": string, "recipient"?: string }; shell use { "command": string, "args"?: string[] }; webhook use { "url": string, "body"?: unknown, "headers"?: object }; notification use { "title": string, "body": string }.',
+          },
           enabled: { type: 'boolean', description: 'Whether the job starts enabled. Defaults to true.' },
           timeoutMs: { type: 'number', description: 'Optional timeout for prompt, shell, or webhook jobs.' },
         },

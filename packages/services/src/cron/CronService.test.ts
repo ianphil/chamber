@@ -125,6 +125,24 @@ describe('CronService', () => {
     ).toThrow('notification job payload requires a non-empty "title" string');
   });
 
+  it('rejects jobs missing payload with a specific cron_create error', () => {
+    const taskManager = new MockTaskManager();
+    const mindPath = makeMindPath();
+    const service = new CronService({
+      getTaskManager: () => taskManager as unknown as TaskManager,
+      showMind: vi.fn(),
+      notifier,
+    });
+
+    expect(() =>
+      service.createJob('mind-1', mindPath, {
+        name: 'Bad notification',
+        schedule: '0 9 * * *',
+        type: 'notification',
+      } as unknown as Parameters<CronService['createJob']>[2]),
+    ).toThrow('cron_create requires payload for notification jobs');
+  });
+
   it('rejects prompt jobs missing required prompt field', () => {
     const taskManager = new MockTaskManager();
     const mindPath = makeMindPath();

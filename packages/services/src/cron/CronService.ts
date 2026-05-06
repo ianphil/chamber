@@ -18,8 +18,15 @@ function requireString(payload: Record<string, unknown>, field: string, jobType:
   }
 }
 
+function requirePayload(type: CronJobType, payload: CronJobPayload): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(`cron_create requires payload for ${type} jobs`);
+  }
+  return payload as unknown as Record<string, unknown>;
+}
+
 function validatePayload(type: CronJobType, payload: CronJobPayload): void {
-  const p = payload as unknown as Record<string, unknown>;
+  const p = requirePayload(type, payload);
   switch (type) {
     case 'prompt':
       requireString(p, 'prompt', 'prompt');
