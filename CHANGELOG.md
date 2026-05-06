@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.41.0 (2026-05-05)
+
+### Lens
+
+- **Add Canvas-backed Lens views** - Lens manifests can now declare `view: "canvas"` with an HTML source that renders inside Chamber through the Canvas server, preserving Activity Bar discovery while enabling richer Chamber-native UI.
+- **Bridge Canvas Lens actions to minds** - Embedded Canvas Lens pages can call `window.canvas.sendAction(...)`, and Chamber routes token-gated actions back to the owning mind without exposing Electron or SDK access to generated HTML.
+- **Upgrade the managed Lens skill** - Chamber now installs and upgrades the mind-local Lens skill to the Canvas Lens contract, clobbering exact old bundled skills while preserving locally edited managed or legacy-looking copies.
+
+### SDK
+
+- **Accept string tool arguments** - SDK tool execution events now tolerate object, JSON-string, and raw-string argument payloads, preventing contract mismatch failures for tools such as apply-patch.
+- **Align the packaged Copilot runtime** - Chamber now pins `@github/copilot` to `1.0.42-0` so the packaged runtime smoke matches the CLI binary version bundled by npm.
+
+### Testing
+
+- **Smoke Canvas Lens rendering and actions** - Electron Lens smoke coverage now verifies Canvas Lens discovery, in-app rendering, and the iframe action bridge.
+
 ## v0.40.0 (2026-05-05)
 
 ### Chat

@@ -77,7 +77,7 @@ describe('CanvasService', () => {
     const content = fs.readFileSync(contentPath, 'utf8');
 
     expect(server.start).toHaveBeenCalledOnce();
-    expect(openedUrls).toContain('http://127.0.0.1:4312/mind-1/daily-plan.html');
+    expect(openedUrls[0]).toMatch(/^http:\/\/127\.0\.0\.1:4312\/mind-1\/daily-plan\.html\?token=[A-Za-z0-9_-]+$/);
     expect(content).toContain('<!DOCTYPE html>');
     expect(content).toContain('<h1>Plan</h1>');
     expect(result).toContain('opened in browser');
@@ -98,7 +98,32 @@ describe('CanvasService', () => {
     const copied = fs.readFileSync(path.join(mindPath, '.chamber', 'canvas', 'copied.html'), 'utf8');
     expect(copied).toBe('<html><body>From file</body></html>');
     expect(openedUrls).toHaveLength(0);
-    expect(result).toContain('http://127.0.0.1:4312/mind-1/copied.html');
+    expect(result).toMatch(/http:\/\/127\.0\.0\.1:4312\/mind-1\/copied\.html\?token=[A-Za-z0-9_-]+/);
+  });
+
+  it('serves a Lens html source as an embedded canvas without opening the browser', async () => {
+    const mindPath = makeMindPath();
+    const sourceFile = path.join(mindPath, '.github', 'lens', 'command-center', 'index.html');
+    fs.mkdirSync(path.dirname(sourceFile), { recursive: true });
+    fs.writeFileSync(sourceFile, '<html><body>Command</body></html>', 'utf8');
+
+    const url = await service.showLensCanvas('mind-1', mindPath, 'command-center', sourceFile);
+
+    expect(server.start).toHaveBeenCalledOnce();
+    expect(openedUrls).toHaveLength(0);
+    const servedFilename = new URL(url).pathname.split('/').pop();
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:4312\/mind-1\/lens-[a-f0-9]{16}\.html\?token=[A-Za-z0-9_-]+$/);
+    expect(fs.readFileSync(path.join(mindPath, '.chamber', 'canvas', servedFilename ?? ''), 'utf8')).toContain('Command');
+    expect(server.reload).toHaveBeenCalledWith('mind-1', servedFilename);
+  });
+
+  it('rejects embedded Lens canvas sources outside the mind lens directory', async () => {
+    const mindPath = makeMindPath();
+    const sourceFile = path.join(mindPath, 'outside.html');
+    fs.writeFileSync(sourceFile, '<html><body>Outside</body></html>', 'utf8');
+
+    await expect(service.showLensCanvas('mind-1', mindPath, 'outside', sourceFile))
+      .rejects.toThrow('inside the mind .github/lens directory');
   });
 
   it('updates an existing canvas and triggers targeted reload', async () => {

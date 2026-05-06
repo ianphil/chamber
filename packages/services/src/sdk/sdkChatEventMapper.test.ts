@@ -65,6 +65,38 @@ describe('sdkChatEventMapper', () => {
     expect(getSdkSessionErrorMessage({ data: { message: 'SDK session failed' } })).toBe('SDK session failed');
   });
 
+  it('maps JSON-string tool arguments emitted by the SDK into Chamber argument records', () => {
+    expect(mapSdkToolExecutionStart({
+      data: {
+        toolCallId: 'tool-1',
+        toolName: 'powershell',
+        arguments: '{"command":"git status","description":"Check status"}',
+      },
+    })).toEqual({
+      type: 'tool_start',
+      toolCallId: 'tool-1',
+      toolName: 'powershell',
+      args: { command: 'git status', description: 'Check status' },
+      parentToolCallId: undefined,
+    });
+  });
+
+  it('preserves non-JSON string tool arguments without failing chat streaming', () => {
+    expect(mapSdkToolExecutionStart({
+      data: {
+        toolCallId: 'tool-1',
+        toolName: 'apply_patch',
+        arguments: '*** Begin Patch\n*** End Patch',
+      },
+    })).toEqual({
+      type: 'tool_start',
+      toolCallId: 'tool-1',
+      toolName: 'apply_patch',
+      args: { input: '*** Begin Patch\n*** End Patch' },
+      parentToolCallId: undefined,
+    });
+  });
+
   it('rejects SDK event drift that would break chat streaming assumptions', () => {
     expect(() => mapSdkAssistantMessageDelta({
       data: { id: 'sdk-message-1', text: 'hello' },
@@ -79,4 +111,3 @@ describe('sdkChatEventMapper', () => {
     })).toThrow('SDK contract mismatch for session.error');
   });
 });
-

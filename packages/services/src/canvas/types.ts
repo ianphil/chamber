@@ -4,12 +4,14 @@ export interface CanvasAction {
   action: string;
   data: unknown;
   timestamp: number;
+  lensViewId?: string;
 }
 
 export interface CanvasEntry {
   name: string;
   filename: string;
   url: string;
+  token: string;
 }
 
 export interface CanvasShowInput {

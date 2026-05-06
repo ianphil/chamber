@@ -18,6 +18,7 @@ import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat
 import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
+import { bootstrapMindCapabilities } from '../lens/MindBootstrap';
 
 export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
@@ -80,6 +81,12 @@ export class MindManager extends EventEmitter {
     const identity = this.identityLoader.load(resolvedMindPath);
     if (!identity) {
       throw new Error(`Failed to load identity from ${resolvedMindPath}`);
+    }
+
+    try {
+      bootstrapMindCapabilities(resolvedMindPath);
+    } catch (err) {
+      log.warn('Mind capability bootstrap failed (non-fatal):', err);
     }
 
     // Create client

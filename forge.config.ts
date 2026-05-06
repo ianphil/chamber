@@ -42,7 +42,13 @@ const config: ForgeConfig = {
         schemes: ['chamber'],
       },
     ],
-    extraResource: ['./resources/node', './resources/copilot-runtime', './apps/server/dist', './node_modules/keytar'],
+    extraResource: [
+      './resources/node',
+      './resources/copilot-runtime',
+      './apps/server/dist',
+      './node_modules/keytar',
+      './apps/desktop/src/main/assets/lens-skill',
+    ],
   },
   publishers: [
     {

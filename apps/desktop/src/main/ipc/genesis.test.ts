@@ -10,15 +10,14 @@ vi.mock('@chamber/services', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@chamber/services')>();
   return {
     ...actual,
-    seedLensDefaults: vi.fn(),
-    installLensSkill: vi.fn(),
+    bootstrapMindCapabilities: vi.fn(),
   };
 });
 
 import { ipcMain, BrowserWindow } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { setupGenesisIPC } from './genesis';
-import type { GenesisMindTemplate, MindManager, MindScaffold } from '@chamber/services';
+import { bootstrapMindCapabilities, type GenesisMindTemplate, type MindManager, type MindScaffold } from '@chamber/services';
 
 type InvokeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 
@@ -80,6 +79,7 @@ describe('setupGenesisIPC', () => {
     });
 
     expect(installer.install).toHaveBeenCalledWith({ templateId: 'lucy', basePath: 'C:\\agents' });
+    expect(bootstrapMindCapabilities).toHaveBeenCalledWith('C:\\agents\\lucy');
     expect(mindManager.loadMind).toHaveBeenCalledWith('C:\\agents\\lucy');
     expect(mindManager.setActiveMind).toHaveBeenCalledWith('lucy-1234');
     expect(mockSend).toHaveBeenCalledWith('genesis:progress', { step: 'complete', detail: 'Genesis template install complete.' });

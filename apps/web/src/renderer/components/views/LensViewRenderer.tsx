@@ -10,6 +10,7 @@ import { LensStatusBoard } from './LensStatusBoard';
 import { LensTimeline } from './LensTimeline';
 import { LensEditor } from './LensEditor';
 import { LensForm } from './LensForm';
+import { CanvasLensView } from './CanvasLensView';
 
 interface Props {
   view: LensViewManifest;
@@ -34,6 +35,10 @@ function refreshLensView(viewId: string): Promise<Record<string, unknown> | null
 }
 
 export function LensViewRenderer({ view }: Props) {
+  if (view.view === 'canvas') {
+    return <CanvasLensView view={view} />;
+  }
+
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createHash, randomBytes } from 'node:crypto';
 import { Logger } from '../logger';
 import type { ChamberToolProvider } from '../chamberTools';
 
@@ -36,6 +37,17 @@ function validateCanvasName(name: string): void {
   }
 }
 
+function normalizePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const normalizedParent = normalizePath(parent);
+  const normalizedChild = normalizePath(child);
+  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}${path.sep}`);
+}
+
 function wrapHtml(name: string, html: string, title?: string): string {
   const lowerCaseHtml = html.toLowerCase();
   if (!lowerCaseHtml.includes('<!doctype') && !lowerCaseHtml.includes('<html')) {
@@ -63,17 +75,20 @@ ${html}
 export class CanvasService implements ChamberToolProvider {
   private readonly mindPaths = new Map<string, string>();
   private readonly canvases = new Map<string, Map<string, CanvasEntry>>();
+  private readonly lensViewIdsByCanvas = new Map<string, Map<string, string>>();
   private readonly server: CanvasServerLike;
   private readonly openExternal: ExternalOpener;
+  private readonly onAction: (action: CanvasAction) => void;
 
   constructor(options: CanvasServiceOptions = {}) {
-    const onAction = options.onAction ?? ((action: CanvasAction) => {
+    this.onAction = options.onAction ?? ((action: CanvasAction) => {
       log.info('Action received:', action);
     });
 
     this.server = options.server ?? new CanvasServer({
       resolveContentDir: (mindId) => this.getContentDirForMind(mindId),
-      onAction,
+      onAction: (action) => this.onAction(this.decorateCanvasAction(action)),
+      authorizeRequest: (mindId, filename, token) => this.isAuthorizedCanvasRequest(mindId, filename, token),
     });
     this.openExternal = options.openExternal ?? {
       open: () => {
@@ -93,6 +108,7 @@ export class CanvasService implements ChamberToolProvider {
   async releaseMind(mindId: string): Promise<void> {
     this.server.closeClients(mindId);
     this.canvases.delete(mindId);
+    this.lensViewIdsByCanvas.delete(mindId);
     this.mindPaths.delete(mindId);
     await this.stopServerIfIdle();
   }
@@ -120,11 +136,13 @@ export class CanvasService implements ChamberToolProvider {
     }
 
     const port = await this.server.start();
-    const url = this.buildCanvasUrl(mindId, filename, port);
+    const token = this.getExistingToken(mindId, input.name) ?? createCanvasToken();
+    const url = this.buildCanvasUrl(mindId, filename, port, token);
     this.upsertCanvas(mindId, {
       filename,
       name: input.name,
       url,
+      token,
     });
 
     if (input.open_browser !== false) {
@@ -133,6 +151,41 @@ export class CanvasService implements ChamberToolProvider {
     }
 
     return `Canvas **${input.name}** is live at ${url}`;
+  }
+
+  async showLensCanvas(mindId: string, mindPath: string, viewId: string, sourcePath: string): Promise<string> {
+    if (!path.isAbsolute(sourcePath)) {
+      throw new Error('Canvas Lens source path must be absolute');
+    }
+    const lensDir = path.join(mindPath, '.github', 'lens');
+    if (!isPathInside(lensDir, sourcePath)) {
+      throw new Error('Canvas Lens source path must be inside the mind .github/lens directory');
+    }
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Canvas Lens source file not found: ${sourcePath}`);
+    }
+
+    const contentDir = this.ensureMind(mindId, mindPath);
+    const name = this.getLensCanvasName(viewId);
+    const filename = `${name}.html`;
+    fs.copyFileSync(sourcePath, path.join(contentDir, filename));
+
+    const port = await this.server.start();
+    const token = this.getExistingToken(mindId, name) ?? createCanvasToken();
+    const url = this.buildCanvasUrl(mindId, filename, port, token);
+    this.upsertCanvas(mindId, {
+      filename,
+      name,
+      url,
+      token,
+    });
+
+    const lensViews = this.lensViewIdsByCanvas.get(mindId) ?? new Map<string, string>();
+    lensViews.set(filename, viewId);
+    this.lensViewIdsByCanvas.set(mindId, lensViews);
+    this.server.reload(mindId, filename);
+
+    return url;
   }
 
   updateCanvas(mindId: string, mindPath: string, input: CanvasUpdateInput): string {
@@ -160,6 +213,7 @@ export class CanvasService implements ChamberToolProvider {
 
     const canvases = this.canvases.get(mindId);
     canvases?.delete(input.name);
+    this.removeLensCanvasMapping(mindId, existing.filename);
     if (canvases && canvases.size === 0) {
       this.canvases.delete(mindId);
     }
@@ -202,6 +256,7 @@ export class CanvasService implements ChamberToolProvider {
     const count = canvases.size;
     for (const entry of canvases.values()) {
       this.deleteCanvasFile(mindId, entry.filename);
+      this.removeLensCanvasMapping(mindId, entry.filename);
     }
     this.canvases.delete(mindId);
 
@@ -240,8 +295,43 @@ export class CanvasService implements ChamberToolProvider {
     this.canvases.set(mindId, canvases);
   }
 
-  private buildCanvasUrl(mindId: string, filename: string, port: number): string {
-    return `http://127.0.0.1:${port}/${encodeURIComponent(mindId)}/${encodeURIComponent(filename)}`;
+  private buildCanvasUrl(mindId: string, filename: string, port: number, token: string): string {
+    return `http://127.0.0.1:${port}/${encodeURIComponent(mindId)}/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+  }
+
+  private getLensCanvasName(viewId: string): string {
+    const digest = createHash('sha256').update(viewId).digest('hex').slice(0, 16);
+    return `lens-${digest}`;
+  }
+
+  private decorateCanvasAction(action: CanvasAction): CanvasAction {
+    const lensViewId = this.lensViewIdsByCanvas.get(action.mindId)?.get(action.canvas);
+    return lensViewId ? { ...action, lensViewId } : action;
+  }
+
+  private getExistingToken(mindId: string, name: string): string | null {
+    return this.canvases.get(mindId)?.get(name)?.token ?? null;
+  }
+
+  private isAuthorizedCanvasRequest(mindId: string, filename: string, token: string | null): boolean {
+    if (!token) return false;
+    const canvases = this.canvases.get(mindId);
+    if (!canvases) return false;
+    const normalizedFilename = filename.replace(/\\/g, '/');
+    for (const canvas of canvases.values()) {
+      if (canvas.filename === normalizedFilename && canvas.token === token) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private removeLensCanvasMapping(mindId: string, filename: string): void {
+    const lensViews = this.lensViewIdsByCanvas.get(mindId);
+    lensViews?.delete(filename);
+    if (lensViews?.size === 0) {
+      this.lensViewIdsByCanvas.delete(mindId);
+    }
   }
 
   private deleteCanvasFile(mindId: string, filename: string): void {
@@ -266,4 +356,8 @@ export class CanvasService implements ChamberToolProvider {
       await this.server.stop();
     }
   }
+}
+
+function createCanvasToken(): string {
+  return randomBytes(32).toString('base64url');
 }

@@ -159,6 +159,7 @@ export function installBrowserApi(): void {
       getViewData: async () => null,
       refreshView: async () => null,
       sendAction: async () => unavailable('Lens write actions'),
+      getCanvasUrl: async () => null,
       onViewsChanged: () => noopUnsubscribe,
     },
     auth: {

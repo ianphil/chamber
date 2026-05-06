@@ -1,2 +1,2 @@
 export { ViewDiscovery } from './ViewDiscovery';
-export { seedLensDefaults, installLensSkill } from './MindBootstrap';
+export { bootstrapMindCapabilities, seedLensDefaults, installLensSkill } from './MindBootstrap';

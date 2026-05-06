@@ -25,14 +25,17 @@ async function readChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Promi
 describe('CanvasServer', () => {
   let server: CanvasServer;
   const mindDirs = new Map<string, string>();
+  const tokens = new Map<string, string>();
   const onAction = vi.fn();
 
   beforeEach(() => {
     mindDirs.clear();
+    tokens.clear();
     onAction.mockReset();
     server = new CanvasServer({
       resolveContentDir: (mindId) => mindDirs.get(mindId) ?? null,
       onAction,
+      authorizeRequest: (mindId, filename, token) => tokens.get(`${mindId}:${filename}`) === token,
     });
   });
 
@@ -54,23 +57,28 @@ describe('CanvasServer', () => {
       '<!DOCTYPE html><html><body><h1>Hello</h1></body></html>',
       'utf8',
     );
+    tokens.set('mind-1:report.html', 'secret-token');
 
     const port = await server.start();
-    const response = await fetch(`http://127.0.0.1:${port}/mind-1/report.html`);
+    const response = await fetch(`http://127.0.0.1:${port}/mind-1/report.html?token=secret-token`);
     const html = await response.text();
 
     expect(response.status).toBe(200);
-    expect(html).toContain("new EventSource('_sse?canvas=' + encodeURIComponent(canvasFile))");
-    expect(html).toContain("fetch('_action?canvas=' + encodeURIComponent(canvasFile)");
+    expect(html).toContain('--ch-background');
+    expect(html).toContain('.ch-card');
+    expect(html).toContain("new URLSearchParams(location.search).get('token')");
+    expect(html).toContain("new EventSource('_sse?canvas=' + encodeURIComponent(canvasFile) + '&token='");
+    expect(html).toContain("fetch('_action?canvas=' + encodeURIComponent(canvasFile) + '&token='");
   });
 
   it('supports targeted reload and close events over SSE', async () => {
     const mindDir = makeMindDir();
     mindDirs.set('mind-1', mindDir);
+    tokens.set('mind-1:report.html', 'secret-token');
     fs.writeFileSync(path.join(mindDir, 'report.html'), '<html><body>Hi</body></html>', 'utf8');
 
     const port = await server.start();
-    const response = await fetch(`http://127.0.0.1:${port}/mind-1/_sse?canvas=report.html`);
+    const response = await fetch(`http://127.0.0.1:${port}/mind-1/_sse?canvas=report.html&token=secret-token`);
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('Expected SSE response body');
@@ -94,9 +102,10 @@ describe('CanvasServer', () => {
   it('routes browser actions back to the callback', async () => {
     const mindDir = makeMindDir();
     mindDirs.set('mind-1', mindDir);
+    tokens.set('mind-1:report.html', 'secret-token');
 
     const port = await server.start();
-    const response = await fetch(`http://127.0.0.1:${port}/mind-1/_action?canvas=report.html`, {
+    const response = await fetch(`http://127.0.0.1:${port}/mind-1/_action?canvas=report.html&token=secret-token`, {
       body: JSON.stringify({
         action: 'button-clicked',
         data: { id: 'approve' },
@@ -117,6 +126,24 @@ describe('CanvasServer', () => {
       mindId: 'mind-1',
       timestamp: 123,
     });
+  });
+
+  it('rejects Canvas actions without the canvas token', async () => {
+    const mindDir = makeMindDir();
+    mindDirs.set('mind-1', mindDir);
+    tokens.set('mind-1:report.html', 'secret-token');
+
+    const port = await server.start();
+    const response = await fetch(`http://127.0.0.1:${port}/mind-1/_action?canvas=report.html`, {
+      body: JSON.stringify({ action: 'button-clicked' }),
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(403);
+    expect(onAction).not.toHaveBeenCalled();
   });
 
   it('rejects path traversal outside the mind content directory', async () => {

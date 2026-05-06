@@ -130,6 +130,7 @@ export function mockElectronAPI(): ElectronAPI {
       getViewData: vi.fn().mockResolvedValue(null),
       refreshView: vi.fn().mockResolvedValue(null),
       sendAction: vi.fn().mockResolvedValue(null),
+      getCanvasUrl: vi.fn().mockResolvedValue(null),
       onViewsChanged: vi.fn().mockReturnValue(vi.fn()),
     },
     auth: {

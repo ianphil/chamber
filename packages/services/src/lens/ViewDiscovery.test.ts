@@ -108,6 +108,45 @@ describe('ViewDiscovery', () => {
       await expect(discovery.scan('/tmp/test/mind')).resolves.toEqual([]);
     });
 
+    it('accepts Canvas Lens manifests with html sources', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'command-center', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValue(JSON.stringify({
+        name: 'Command Center',
+        icon: 'layout',
+        view: 'canvas',
+        source: 'index.html',
+      }));
+
+      const views = await discovery.scan('/tmp/test/mind');
+
+      expect(views).toEqual([
+        expect.objectContaining({
+          id: 'command-center',
+          name: 'Command Center',
+          view: 'canvas',
+          source: 'index.html',
+        }),
+      ]);
+    });
+
+    it('skips Canvas Lens manifests with non-html sources', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'bad-canvas', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValue(JSON.stringify({
+        name: 'Bad Canvas',
+        icon: 'layout',
+        view: 'canvas',
+        source: 'data.json',
+      }));
+
+      await expect(discovery.scan('/tmp/test/mind')).resolves.toEqual([]);
+    });
+
     it('skips manifests with missing source', async () => {
       mockExistsSync.mockReturnValue(true);
       mockReaddirSync.mockReturnValue([
@@ -185,6 +224,23 @@ describe('ViewDiscovery', () => {
 
       mockReadFileSync.mockReturnValueOnce(JSON.stringify(['not', 'an', 'object']));
       expect(discovery.getViewData('test', '/tmp/test/mind')).toBeNull();
+    });
+
+    it('does not parse Canvas Lens html as JSON data', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReaddirSync.mockReturnValue([
+        { name: 'canvas', isDirectory: () => true },
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+      mockReadFileSync.mockReturnValueOnce(JSON.stringify({
+        name: 'Canvas',
+        icon: 'layout',
+        view: 'canvas',
+        source: 'index.html',
+      }));
+
+      await discovery.scan('/tmp/test/mind');
+
+      expect(discovery.getViewData('canvas', '/tmp/test/mind')).toBeNull();
     });
   });
 

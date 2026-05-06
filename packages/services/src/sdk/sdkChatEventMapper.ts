@@ -32,7 +32,7 @@ const sdkAssistantReasoningDeltaEvent = sdkEvent({
 const sdkToolExecutionStartEvent = sdkEvent({
   toolCallId: z.string(),
   toolName: z.string(),
-  arguments: z.record(z.string(), z.unknown()).optional(),
+  arguments: z.union([z.record(z.string(), z.unknown()), z.string()]).optional(),
   parentToolCallId: z.string().optional(),
 });
 
@@ -69,6 +69,22 @@ function parseSdkEvent<Schema extends z.ZodTypeAny>(
   return parsed.data;
 }
 
+function normalizeToolArguments(value: Record<string, unknown> | string | undefined): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return value;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return { input: value };
+  }
+
+  return { input: value };
+}
+
 export function mapSdkAssistantMessageDelta(event: unknown): Extract<ChatEvent, { type: 'chunk' }> {
   const parsed = parseSdkEvent('assistant.message_delta', sdkAssistantMessageDeltaEvent, event);
   return {
@@ -103,7 +119,7 @@ export function mapSdkToolExecutionStart(event: unknown): Extract<ChatEvent, { t
     type: 'tool_start',
     toolCallId: parsed.data.toolCallId,
     toolName: parsed.data.toolName,
-    args: parsed.data.arguments,
+    args: normalizeToolArguments(parsed.data.arguments),
     parentToolCallId: parsed.data.parentToolCallId,
   };
 }
@@ -141,4 +157,3 @@ export function getSdkSessionErrorMessage(event: unknown): string {
   const parsed = parseSdkEvent('session.error', sdkSessionErrorEvent, event);
   return parsed.data.message;
 }
-

@@ -5,8 +5,7 @@ import * as path from 'node:path';
 import {
   MindManager,
   MindScaffold,
-  installLensSkill,
-  seedLensDefaults,
+  bootstrapMindCapabilities,
   type GenesisConfig,
   type GenesisMindTemplate,
   type GenesisMindTemplateInstallRequest,
@@ -85,8 +84,7 @@ export function setupGenesisIPC(
 
 async function activateCreatedMind(mindManager: MindManager, mindPath: string): Promise<{ success: true; mindId: string; mindPath: string }> {
   appendE2EGenesisMemory(mindPath);
-  seedLensDefaults(mindPath);
-  installLensSkill(mindPath);
+  bootstrapMindCapabilities(mindPath);
 
   const mind = await mindManager.loadMind(mindPath);
   mindManager.setActiveMind(mind.mindId);

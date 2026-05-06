@@ -3,7 +3,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { LensViewManifest } from '@chamber/shared/types';
+import type { CanvasLensAction, LensViewManifest } from '@chamber/shared/types';
 import { Logger } from '../logger';
 
 const log = Logger.create('ViewDiscovery');
@@ -18,6 +18,7 @@ const SUPPORTED_LENS_VIEWS = new Set<LensViewManifest['view']>([
   'detail',
   'timeline',
   'editor',
+  'canvas',
 ]);
 
 export interface ViewRefreshHandler {
@@ -87,6 +88,7 @@ export class ViewDiscovery {
     const views = mindPath ? this.getViews(mindPath) : this.getViews();
     const view = views.find(v => v.id === viewId);
     if (!view || !view._basePath) return null;
+    if (view.view === 'canvas') return null;
 
     const dataPath = path.join(view._basePath, view.source);
     if (!fs.existsSync(dataPath)) return null;
@@ -99,13 +101,22 @@ export class ViewDiscovery {
     }
   }
 
+  getViewSourcePath(viewId: string, mindPath: string): string | null {
+    const view = this.getViews(mindPath).find(v => v.id === viewId);
+    if (!view || !view._basePath) return null;
+    return path.join(view._basePath, view.source);
+  }
+
   async refreshView(viewId: string, mindPath: string): Promise<Record<string, unknown> | null> {
     const views = this.getViews(mindPath);
     const view = views.find(v => v.id === viewId);
     if (!view || !view.prompt || !view._basePath) return this.getViewData(viewId, mindPath);
 
     const dataPath = path.join(view._basePath, view.source);
-    const fullPrompt = `${view.prompt}\n\nWrite the JSON output to: ${dataPath}`;
+    const outputInstruction = view.view === 'canvas'
+      ? `Write the Chamber-branded HTML output to: ${dataPath}`
+      : `Write the JSON output to: ${dataPath}`;
+    const fullPrompt = `${view.prompt}\n\n${outputInstruction}`;
 
     try {
       await this.refreshHandler?.sendBackgroundPrompt(mindPath, fullPrompt);
@@ -129,6 +140,26 @@ export class ViewDiscovery {
     } catch {
       return this.getViewData(viewId, mindPath);
     }
+  }
+
+  async sendCanvasAction(viewId: string, action: CanvasLensAction, mindPath: string): Promise<void> {
+    const views = this.getViews(mindPath);
+    const view = views.find(v => v.id === viewId);
+    if (!view || view.view !== 'canvas' || !view._basePath) return;
+
+    const sourcePath = path.join(view._basePath, view.source);
+    const fullPrompt = [
+      `The user interacted with the Canvas Lens view "${view.name}" (source: ${sourcePath}).`,
+      '',
+      `Action: ${action.action}`,
+      action.intent ? `Intent: ${action.intent}` : null,
+      action.correlationId ? `Correlation ID: ${action.correlationId}` : null,
+      `Data: ${JSON.stringify(action.data ?? {})}`,
+      '',
+      'Use your normal Chamber tools and context to satisfy the action. If the UI should change, update the Canvas Lens HTML source file at the path above.',
+    ].filter((line): line is string => line !== null).join('\n');
+
+    await this.refreshHandler?.sendBackgroundPrompt(mindPath, fullPrompt);
   }
 
   startWatching(mindPath: string, onChanged: () => void): void {
@@ -209,6 +240,7 @@ function parseLensViewManifest(value: unknown, id: string, basePath: string): Le
   if (typeof value.name !== 'string' || typeof value.icon !== 'string') return null;
   if (!isLensViewType(value.view)) return null;
   if (!isSafeRelativeSource(value.source)) return null;
+  if (value.view === 'canvas' && !isHtmlSource(value.source)) return null;
 
   return {
     ...value,
@@ -229,6 +261,10 @@ function isSafeRelativeSource(value: unknown): value is string {
   if (typeof value !== 'string' || value.trim() === '') return false;
   if (path.isAbsolute(value) || path.win32.isAbsolute(value) || path.posix.isAbsolute(value)) return false;
   return !value.split(/[\\/]+/).includes('..');
+}
+
+function isHtmlSource(value: string): boolean {
+  return path.extname(value).toLowerCase() === '.html';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

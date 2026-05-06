@@ -29,6 +29,7 @@ const electronAPI: ElectronAPI = {
     getViewData: (viewId, mindId?) => ipcRenderer.invoke('lens:getViewData', viewId, mindId),
     refreshView: (viewId, mindId?) => ipcRenderer.invoke('lens:refreshView', viewId, mindId),
     sendAction: (viewId, action, mindId?) => ipcRenderer.invoke('lens:sendAction', viewId, action, mindId),
+    getCanvasUrl: (viewId, mindId?) => ipcRenderer.invoke('lens:getCanvasUrl', viewId, mindId),
     onViewsChanged: (callback) => createIpcListener(ipcRenderer, 'lens:viewsChanged', callback),
   },
   auth: {

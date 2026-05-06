@@ -22,7 +22,7 @@ export function ViewRouter() {
 
   const view = discoveredViews.find(v => v.id === activeView);
   if (view) {
-    return <LensViewRenderer key={view.id} view={view} />;
+    return <LensViewRenderer key={`${view.id}:${view.view}`} view={view} />;
   }
 
   // Fallback to chat if view not found

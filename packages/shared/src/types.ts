@@ -139,13 +139,20 @@ export interface LensViewManifest {
   id: string;
   name: string;
   icon: string;
-  view: 'form' | 'table' | 'briefing' | 'status-board' | 'list' | 'monitor' | 'detail' | 'timeline' | 'editor';
+  view: 'form' | 'table' | 'briefing' | 'status-board' | 'list' | 'monitor' | 'detail' | 'timeline' | 'editor' | 'canvas';
   source: string;
   schema?: Record<string, unknown>;
   prompt?: string;
   refreshOn?: 'click' | 'interval';
   /** Resolved absolute path to the view.json directory */
   _basePath?: string;
+}
+
+export interface CanvasLensAction {
+  action: string;
+  data?: unknown;
+  intent?: string;
+  correlationId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +219,7 @@ export interface ElectronAPI {
     getViewData: (viewId: string, mindId?: string) => Promise<Record<string, unknown> | null>;
     refreshView: (viewId: string, mindId?: string) => Promise<Record<string, unknown> | null>;
     sendAction: (viewId: string, action: string, mindId?: string) => Promise<Record<string, unknown> | null>;
+    getCanvasUrl: (viewId: string, mindId?: string) => Promise<string | null>;
     onViewsChanged: (callback: (views: LensViewManifest[], mindId?: string) => void) => () => void;
   };
   auth: {

@@ -154,7 +154,28 @@ chatroomApprovalGate.setApprovalHandler(async (request) => ({
   reason: 'Chatroom approval UI is not wired yet; side-effect tools are blocked.',
 }));
 const chatroomService = new ChatroomService(mindManager, appPaths, chatroomApprovalGate);
-const canvasService = new CanvasService({ openExternal: { open: (url) => shell.openExternal(url) } });
+const canvasService = new CanvasService({
+  onAction: (action) => {
+    if (!action.lensViewId) {
+      log.info('Canvas action received:', action);
+      return;
+    }
+
+    const mindPath = mindManager.getMind(action.mindId)?.mindPath;
+    if (!mindPath) {
+      log.warn(`Canvas Lens action for unknown mind: ${action.mindId}`);
+      return;
+    }
+
+    void viewDiscovery.sendCanvasAction(action.lensViewId, {
+      action: action.action,
+      data: action.data,
+    }, mindPath).catch((error: unknown) => {
+      log.warn('Canvas Lens action failed:', error);
+    });
+  },
+  openExternal: { open: (url) => shell.openExternal(url) },
+});
 const cronService = new CronService({
   getTaskManager: () => taskManager,
   showMind: (mindId) => {
@@ -435,7 +456,7 @@ app.on('ready', async () => {
     rendererPath: MAIN_WINDOW_VITE_DEV_SERVER_URL ? undefined : path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     windowIcon,
   });
-  setupLensIPC(viewDiscovery, mindManager);
+  setupLensIPC(viewDiscovery, mindManager, canvasService);
   setupGenesisIPC(
     mindManager,
     scaffold,

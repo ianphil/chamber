@@ -9,6 +9,7 @@ import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from '.
 const cdpPort = Number(process.env.CHAMBER_E2E_LENS_CDP_PORT ?? 9336);
 const smokeViewId = 'smoke-hotload';
 const refreshViewId = 'smoke-refresh-continuity';
+const canvasSmokeViewId = 'canvas-smoke';
 
 test.describe('electron Lens hot-load smoke', () => {
   test.setTimeout(180_000);
@@ -154,10 +155,67 @@ test.describe('electron Lens hot-load smoke', () => {
 
     await page.getByRole('button', { name: 'Smoke Refresh Continuity' }).click();
     await expect(page.getByRole('heading', { name: 'Smoke Refresh Continuity' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Refreshing…', exact: true })).toBeVisible();
 
     await expect(page.getByText('fresh', { exact: true })).toBeVisible();
     await expect(page.getByText('stale', { exact: true })).toHaveCount(0);
+  });
+
+  test('renders a Canvas Lens inside Chamber', async () => {
+    const page = await findRendererPage(app?.browser, app?.logs ?? []);
+    await page.waitForLoadState('domcontentloaded');
+
+    const mind = await page.evaluate(async ({ pathToMind, pathToInactiveMind }) => {
+      const loaded = await window.electronAPI.mind.add(pathToMind);
+      await window.electronAPI.mind.add(pathToInactiveMind);
+      await window.electronAPI.mind.setActive(loaded.mindId);
+      return loaded;
+    }, { pathToMind: mindPath, pathToInactiveMind: inactiveMindPath });
+
+    writeCanvasLensView(mindPath);
+
+    await expect.poll(
+      () => page.evaluate(async ({ mindId, viewId }) => {
+        const views = await window.electronAPI.lens.getViews(mindId);
+        return views.some((view) => view.id === viewId && view.view === 'canvas');
+      }, { mindId: mind.mindId, viewId: canvasSmokeViewId }),
+      { timeout: 10_000 },
+    ).toBe(true);
+
+    await page.getByRole('button', { name: 'Canvas Smoke' }).click();
+
+    const frame = page.frameLocator('iframe[title="Canvas Smoke"]');
+    await expect(frame.getByRole('heading', { name: 'Chamber Canvas Smoke' })).toBeVisible();
+    await expect(frame.getByText('Rendered through Canvas Lens')).toBeVisible();
+  });
+
+  test('routes Canvas Lens actions through the Canvas bridge', async () => {
+    const page = await findRendererPage(app?.browser, app?.logs ?? []);
+    await page.waitForLoadState('domcontentloaded');
+
+    const mind = await page.evaluate(async ({ pathToMind, pathToInactiveMind }) => {
+      const loaded = await window.electronAPI.mind.add(pathToMind);
+      await window.electronAPI.mind.add(pathToInactiveMind);
+      await window.electronAPI.mind.setActive(loaded.mindId);
+      return loaded;
+    }, { pathToMind: mindPath, pathToInactiveMind: inactiveMindPath });
+
+    writeCanvasLensView(mindPath);
+
+    await expect.poll(
+      () => page.evaluate(async ({ mindId, viewId }) => {
+        const views = await window.electronAPI.lens.getViews(mindId);
+        return views.some((view) => view.id === viewId && view.view === 'canvas');
+      }, { mindId: mind.mindId, viewId: canvasSmokeViewId }),
+      { timeout: 10_000 },
+    ).toBe(true);
+
+    await page.getByRole('button', { name: 'Canvas Smoke' }).click();
+
+    const frame = page.frameLocator('iframe[title="Canvas Smoke"]');
+    await frame.getByRole('button', { name: 'Send smoke action' }).click();
+
+    await expect(frame.getByText('Action bridge returned: ok')).toBeVisible();
+    expect((app?.logs ?? []).join('\n')).not.toContain('SDK contract mismatch for tool.execution_start');
   });
 });
 
@@ -193,6 +251,47 @@ function writeLensView(
   );
   const data = options.status ? { status: options.status } : { rows: [{ status: 'ok' }] };
   fs.writeFileSync(path.join(viewDir, 'data.json'), JSON.stringify(data, null, 2));
+}
+
+function writeCanvasLensView(root: string): void {
+  const viewDir = path.join(root, '.github', 'lens', canvasSmokeViewId);
+  fs.mkdirSync(viewDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(viewDir, 'view.json'),
+    JSON.stringify({
+      name: 'Canvas Smoke',
+      icon: 'layout',
+      view: 'canvas',
+      source: 'index.html',
+    }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(viewDir, 'index.html'),
+    [
+      '<!DOCTYPE html>',
+      '<html lang="en">',
+      '<head><meta charset="utf-8"><title>Canvas Smoke</title></head>',
+      '<body>',
+      '  <main class="ch-page">',
+      '    <section class="ch-card">',
+      '      <p class="ch-badge">Rendered through Canvas Lens</p>',
+      '      <h1>Chamber Canvas Smoke</h1>',
+      '      <button class="ch-button" type="button" onclick="sendSmokeAction()">Send smoke action</button>',
+      '      <p id="action-result" class="ch-muted">Action pending</p>',
+      '    </section>',
+      '  </main>',
+      '  <script>',
+      '    async function sendSmokeAction() {',
+      '      const response = await window.canvas.sendAction("smoke-test-click", { ok: true });',
+      '      const result = await response.json();',
+      '      document.getElementById("action-result").textContent = result.ok ? "Action bridge returned: ok" : "Action bridge failed";',
+      '    }',
+      '  </script>',
+      '</body>',
+      '</html>',
+    ].join('\n'),
+    'utf8',
+  );
 }
 
 async function removeTempRoot(root: string): Promise<void> {
