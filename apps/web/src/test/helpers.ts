@@ -74,6 +74,7 @@ export function makeChatEvent<T extends ChatEvent['type']>(
     reasoning: { reasoningId: 'r-1', content: 'thinking' },
     message_final: { sdkMessageId: 'sdk-1', content: 'final' },
     done: {},
+    timeout: { timeoutMs: 30_000 },
     error: { message: 'something went wrong' },
   };
   return { type, ...defaults[type], ...overrides } as Extract<ChatEvent, { type: T }>;

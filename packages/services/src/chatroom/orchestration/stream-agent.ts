@@ -184,12 +184,16 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
   }
 
   await turnDone.catch((err) => {
-    // Emit error event so the renderer clears the streaming state / active
-    // speaker for the auto-created message placeholder.
-    emitEvent({
-      type: 'error',
-      message: err instanceof Error ? err.message : String(err),
-    });
+    // Emit a discriminated event so the renderer clears the streaming state and
+    // can render timeout-specific UI without parsing error messages.
+    if (err instanceof TurnTimeoutError) {
+      emitEvent({ type: 'timeout', timeoutMs: err.timeoutMs });
+    } else {
+      emitEvent({
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     throw err;
   });
 

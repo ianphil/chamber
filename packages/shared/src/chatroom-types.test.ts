@@ -105,6 +105,7 @@ describe('chatroom-types', () => {
       { type: 'chunk', content: 'hello' },
       { type: 'done' },
       { type: 'error', message: 'fail' },
+      { type: 'timeout', timeoutMs: 30_000 },
       { type: 'reconnecting' },
       { type: 'tool_start', toolCallId: 't1', toolName: 'read' },
       { type: 'reasoning', reasoningId: 'r1', content: 'thinking' },

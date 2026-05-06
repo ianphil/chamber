@@ -176,6 +176,18 @@ describe('handleChatEvent', () => {
     });
   });
 
+  describe('timeout', () => {
+    it('adds a timeout text block, sets isStreaming false, and reports the timeout in seconds', () => {
+      const initial = [makeMessage([], { id: 'msg-1', isStreaming: true })];
+      const msgs = handleChatEvent(initial, 'msg-1', makeChatEvent('timeout', { timeoutMs: 30_000 }));
+      expect(msgs[0].isStreaming).toBe(false);
+      const last = msgs[0].blocks[msgs[0].blocks.length - 1];
+      expect(last).toMatchObject({ type: 'text' });
+      expect(last.type === 'text' && last.content).toContain('timed out');
+      expect(last.type === 'text' && last.content).toContain('30s');
+    });
+  });
+
   it('ignores events for unknown messageId', () => {
     const initial = assistantMsg();
     const msgs = handleChatEvent(initial, 'wrong-id', makeChatEvent('chunk', { content: 'x' }));
@@ -832,6 +844,27 @@ describe('appReducer — chatroom actions', () => {
     expect(state.chatroomMessages[0].isStreaming).toBe(false);
     const textBlocks = state.chatroomMessages[0].blocks.filter(b => b.type === 'text');
     expect(textBlocks.some(b => b.type === 'text' && b.content.includes('boom'))).toBe(true);
+  });
+
+  it('CHATROOM_EVENT timeout sets streaming false, clears active speaker, and surfaces a timeout message', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [
+        makeChatroomMessage({ id: 'a1', role: 'assistant', blocks: [], isStreaming: true, sender: { mindId: 'mind-1', name: 'Agent A' } }),
+      ],
+      chatroomStreamingByMind: { 'mind-1': true },
+      chatroomActiveSpeaker: { mindId: 'mind-1', mindName: 'Agent A', phase: 'speaking' },
+    };
+    const state = appReducer(base, {
+      type: 'CHATROOM_EVENT',
+      payload: { mindId: 'mind-1', mindName: 'Agent A', messageId: 'a1', roundId: 'r1', event: { type: 'timeout', timeoutMs: 5_000 } },
+    });
+    expect(state.chatroomStreamingByMind['mind-1']).toBe(false);
+    expect(state.chatroomActiveSpeaker).toBeNull();
+    expect(state.chatroomMessages[0].isStreaming).toBe(false);
+    const textBlocks = state.chatroomMessages[0].blocks.filter(b => b.type === 'text');
+    expect(textBlocks.some(b => b.type === 'text' && b.content.includes('timed out'))).toBe(true);
+    expect(textBlocks.some(b => b.type === 'text' && b.content.includes('5s'))).toBe(true);
   });
 
   it('multi-agent interleave — two agents streaming simultaneously, events update correct messages', () => {

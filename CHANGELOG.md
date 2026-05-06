@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.40.4 (2026-05-05)
+
+### Chatroom
+
+- **Surface agent turn timeouts as a distinguishable event** - `streamAgentTurn` now emits `{ type: 'timeout', timeoutMs }` when an agent turn rejects with `TurnTimeoutError`, instead of a generic `error` event. The renderer reducer renders an "Agent timed out after `<s>`s" message and clears the streaming/active-speaker state, so the chatroom no longer goes silent when the 5-minute send timer fires. (#53)
+
 ## v0.40.3 (2026-05-05)
 
 ### Performance
