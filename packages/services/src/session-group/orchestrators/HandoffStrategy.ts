@@ -4,11 +4,11 @@ import type {
   HandoffConfig,
   HandoffTerminationReason,
 } from '@chamber/shared/chatroom-types';
-import type { OrchestrationContext } from './types';
-import { BaseStrategy } from './types';
-import { ObservabilityEmitter } from './observability';
-import { escapeXml, extractJsonObject, stripControlJson } from './shared';
-import { sendToAgentWithRetry } from './stream-agent';
+import type { OrchestrationContext } from './legacy-types';
+import { BaseStrategy } from './legacy-types';
+import { ObservabilityEmitter } from '../observability';
+import { escapeXml, extractJsonObject, stripControlJson } from '../shared';
+import { sendToAgentWithRetry } from '../stream-session';
 
 // ---------------------------------------------------------------------------
 // Handoff response parsing

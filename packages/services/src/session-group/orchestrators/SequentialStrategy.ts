@@ -1,9 +1,9 @@
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
-import type { OrchestrationContext } from './types';
-import { BaseStrategy } from './types';
-import { sendToAgentWithRetry } from './stream-agent';
-import { escapeXml, textContent } from './shared';
+import type { OrchestrationContext } from './legacy-types';
+import { BaseStrategy } from './legacy-types';
+import { sendToAgentWithRetry } from '../stream-session';
+import { escapeXml, textContent } from '../shared';
 import { Logger } from '../../logger';
 
 const log = Logger.create('Chatroom:Sequential');

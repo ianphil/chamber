@@ -7,7 +7,7 @@ vi.mock('node:crypto', () => ({
 }));
 
 import { SequentialStrategy } from './SequentialStrategy';
-import type { OrchestrationContext } from './types';
+import type { OrchestrationContext } from './legacy-types';
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomStreamEvent, ChatroomMessage } from '@chamber/shared/chatroom-types';
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { OrchestrationStrategy, OrchestrationContext } from '../../chatroom/orchestration';
+import type { OrchestrationStrategy, OrchestrationContext } from './legacy-types';
 import { wrapStrategy } from './wrap-strategy';
 import { SessionGroup } from '../SessionGroup';
 import type { SessionGroupRunContext, ProductHooks } from './types';

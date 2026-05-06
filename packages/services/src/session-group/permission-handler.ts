@@ -3,7 +3,7 @@ import type {
   PermissionRequest,
   PermissionRequestResult,
 } from '@github/copilot-sdk';
-import type { ApprovalGate } from '../chatroom/orchestration/approval-gate';
+import type { ApprovalGate } from './approval-gate';
 import type { PermissionHandlerFactory } from './types';
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import type { OrchestrationContext, OrchestrationStrategy } from '../../chatroom/orchestration';
+import type { OrchestrationContext, OrchestrationStrategy } from './legacy-types';
 import type { SessionGroupOrchestrator, SessionGroupRunContext } from './types';
 
 // ---------------------------------------------------------------------------
@@ -6,15 +6,16 @@ import type { SessionGroupOrchestrator, SessionGroupRunContext } from './types';
 // ---------------------------------------------------------------------------
 
 /**
- * Phase 3 compatibility shim: each existing strategy
- * (Concurrent / Sequential / GroupChat / Handoff / Magentic) keeps its
- * `OrchestrationContext`-shaped contract. The wrapper rebuilds an
- * `OrchestrationContext` from the SessionGroup-native run context so
- * SessionGroup.run() can dispatch through the new seam without touching
- * any strategy code.
+ * Bridge between the legacy `OrchestrationStrategy` contract (used by every
+ * concrete strategy in this folder) and the SessionGroup-native
+ * `SessionGroupOrchestrator` contract that `SessionGroup.run()` consumes.
+ * Rebuilds an `OrchestrationContext` from the run context so strategies
+ * don't need to know about `SessionGroup`.
  *
- * Phase 5 will rewrite strategies to consume `SessionGroupRunContext`
- * directly and this shim goes away.
+ * This adapter is intentional and load-bearing — strategies are kept on
+ * the legacy contract so their dense, well-tested fakes stay valid. A
+ * follow-up PR will rewrite strategies to consume `SessionGroupRunContext`
+ * directly and delete this shim.
  */
 export function wrapStrategy(strategy: OrchestrationStrategy): SessionGroupOrchestrator {
   return {

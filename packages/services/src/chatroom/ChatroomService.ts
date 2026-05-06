@@ -19,13 +19,13 @@ import type { MindContext } from '@chamber/shared/types';
 import type { CopilotSession } from '../mind';
 import type { AppPaths } from '../ports';
 import type { PermissionHandler } from '@github/copilot-sdk';
-import { createStrategy } from './orchestration';
 import { escapeXml, textContent, stripControlJson } from './orchestration/shared';
 import { ApprovalGate } from './orchestration/approval-gate';
 import {
   SessionGroup,
   createApprovalGatePermissionFactory,
   wrapStrategy,
+  createStrategy,
 } from '../session-group';
 import type { ProductHooks } from '../session-group';
 

@@ -8,7 +8,7 @@ vi.mock('node:crypto', () => ({
 
 import { streamAgentTurn, sendToAgentWithRetry, TurnTimeoutError } from './stream-session';
 import type { StreamAgentOptions, SendToAgentOptions } from './stream-session';
-import type { OrchestrationContext } from '../chatroom/orchestration/types';
+import type { OrchestrationContext } from './orchestrators/legacy-types';
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomStreamEvent, ChatroomMessage } from '@chamber/shared/chatroom-types';
 
