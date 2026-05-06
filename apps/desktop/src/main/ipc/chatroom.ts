@@ -2,30 +2,39 @@ import { ipcMain, BrowserWindow } from 'electron';
 import type { ChatroomService } from '@chamber/services';
 import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '@chamber/shared/chatroom-types';
 
-function assertSendArgs(
-  message: unknown,
-  model: unknown,
-): asserts message is string {
+interface ChatroomSendArgs {
+  message: string;
+  model: string | undefined;
+  roundId: string | undefined;
+}
+
+const MAX_ROUND_ID_LENGTH = 128;
+
+function parseSendArgs(message: unknown, model: unknown, roundId: unknown): ChatroomSendArgs {
   if (typeof message !== 'string') {
     throw new TypeError(`chatroom:send: 'message' must be a string, got ${typeof message}`);
   }
   if (message.length === 0) {
     throw new TypeError(`chatroom:send: 'message' must be a non-empty string`);
   }
-  assertModel(model);
-}
-
-function assertModel(model: unknown): asserts model is string | undefined {
   if (model !== undefined && typeof model !== 'string') {
     throw new TypeError(`chatroom:send: 'model' must be a string or undefined, got ${typeof model}`);
   }
+  if (roundId !== undefined) {
+    if (typeof roundId !== 'string' || roundId.length === 0) {
+      throw new TypeError(`chatroom:send: 'roundId' must be a non-empty string or undefined`);
+    }
+    if (roundId.length > MAX_ROUND_ID_LENGTH) {
+      throw new TypeError(`chatroom:send: 'roundId' exceeds ${MAX_ROUND_ID_LENGTH} characters`);
+    }
+  }
+  return { message, model, roundId };
 }
 
 export function setupChatroomIPC(chatroomService: ChatroomService): void {
-  ipcMain.handle('chatroom:send', async (_event, message: unknown, model?: unknown) => {
-    assertSendArgs(message, model);
-    assertModel(model);
-    await chatroomService.broadcast(message, model);
+  ipcMain.handle('chatroom:send', async (_event, message: unknown, model?: unknown, roundId?: unknown) => {
+    const args = parseSendArgs(message, model, roundId);
+    await chatroomService.broadcast(args.message, args.model, args.roundId);
   });
 
   ipcMain.handle('chatroom:history', async () => {

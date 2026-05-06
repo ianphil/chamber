@@ -92,7 +92,7 @@ export class ChatroomService extends EventEmitter {
   // Public API
   // -------------------------------------------------------------------------
 
-  async broadcast(userMessage: string, _model?: string): Promise<void> {
+  async broadcast(userMessage: string, _model?: string, suppliedRoundId?: string): Promise<void> {
     void _model;
     // Cancel any in-flight agents from previous round
     this.stopAll();
@@ -105,7 +105,7 @@ export class ChatroomService extends EventEmitter {
     // (persisted alongside user message below)
     this.lastLedger = [];
 
-    const roundId = randomUUID();
+    const roundId = this.resolveRoundId(suppliedRoundId);
 
     // Snapshot participants (only ready minds)
     const participants = this.sessionFactory
@@ -303,6 +303,15 @@ export class ChatroomService extends EventEmitter {
       sender: { mindId: 'user', name: 'You' },
       roundId,
     };
+  }
+
+  private resolveRoundId(supplied: string | undefined): string {
+    if (supplied === undefined) return randomUUID();
+    if (this.messages.some((m) => m.roundId === supplied)) {
+      log.warn(`broadcast received duplicate roundId "${supplied}"; generating a fresh id`);
+      return randomUUID();
+    }
+    return supplied;
   }
 
   // -------------------------------------------------------------------------

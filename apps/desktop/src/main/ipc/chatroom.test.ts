@@ -47,13 +47,25 @@ describe('Chatroom IPC', () => {
   it('chatroom:send invokes broadcast with message and model', async () => {
     const handler = getHandler('chatroom:send');
     await handler(EVT, 'Hello agents', 'gpt-4');
-    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'gpt-4');
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'gpt-4', undefined);
   });
 
   it('chatroom:send works without model', async () => {
     const handler = getHandler('chatroom:send');
     await handler(EVT, 'Hello agents');
-    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined);
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined, undefined);
+  });
+
+  it('chatroom:send forwards renderer-supplied roundId to the service', async () => {
+    const handler = getHandler('chatroom:send');
+    await handler(EVT, 'Hello agents', 'gpt-4', 'renderer-round-1');
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'gpt-4', 'renderer-round-1');
+  });
+
+  it('chatroom:send accepts roundId without a model', async () => {
+    const handler = getHandler('chatroom:send');
+    await handler(EVT, 'Hello agents', undefined, 'renderer-round-2');
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined, 'renderer-round-2');
   });
 
   describe('chatroom:send input validation', () => {
@@ -97,7 +109,36 @@ describe('Chatroom IPC', () => {
     it('accepts undefined model', async () => {
       const handler = getHandler('chatroom:send');
       await handler(EVT, 'hello', undefined);
-      expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined);
+      expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined, undefined);
+    });
+
+    const invalidRoundIds: Array<[string, unknown]> = [
+      ['number', 9],
+      ['null', null],
+      ['object', { id: 'r' }],
+      ['empty string', ''],
+    ];
+
+    for (const [label, value] of invalidRoundIds) {
+      it(`rejects ${label} roundId without invoking broadcast`, async () => {
+        const handler = getHandler('chatroom:send');
+        await expect(handler(EVT, 'hello', undefined, value)).rejects.toThrow(TypeError);
+        expect(mockService.broadcast).not.toHaveBeenCalled();
+      });
+    }
+
+    it('rejects roundId longer than 128 characters', async () => {
+      const handler = getHandler('chatroom:send');
+      const tooLong = 'x'.repeat(129);
+      await expect(handler(EVT, 'hello', undefined, tooLong)).rejects.toThrow(TypeError);
+      expect(mockService.broadcast).not.toHaveBeenCalled();
+    });
+
+    it('accepts roundId exactly 128 characters', async () => {
+      const handler = getHandler('chatroom:send');
+      const exact = 'x'.repeat(128);
+      await handler(EVT, 'hello', undefined, exact);
+      expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined, exact);
     });
   });
 

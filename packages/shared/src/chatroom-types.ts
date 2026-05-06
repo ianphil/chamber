@@ -156,7 +156,7 @@ export interface ChatroomStreamEvent {
 // ---------------------------------------------------------------------------
 
 export interface ChatroomAPI {
-  send: (message: string, model?: string) => Promise<void>;
+  send: (message: string, model?: string, roundId?: string) => Promise<void>;
   history: () => Promise<ChatroomMessage[]>;
   taskLedger: () => Promise<TaskLedgerItem[]>;
   clear: () => Promise<void>;
