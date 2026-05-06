@@ -1,5 +1,10 @@
 import type { CopilotSession } from '../mind';
 import type { PermissionHandlerFactory, SessionGroupSessionFactory } from './types';
+import type {
+  SessionGroupOrchestrator,
+  SessionGroupRunOptions,
+  SessionGroupRunContext,
+} from './orchestrators/types';
 
 // ---------------------------------------------------------------------------
 // SessionGroup — Chamber-internal, SDK-shaped adapter
@@ -18,6 +23,7 @@ import type { PermissionHandlerFactory, SessionGroupSessionFactory } from './typ
  */
 export class SessionGroup {
   private readonly sessionCache = new Map<string, CopilotSession>();
+  private activeOrchestrator: SessionGroupOrchestrator | null = null;
 
   constructor(
     private readonly sessionFactory: SessionGroupSessionFactory,
@@ -81,6 +87,46 @@ export class SessionGroup {
     session.abort().catch(() => { /* noop */ });
     session.destroy().catch(() => { /* noop */ });
     this.sessionCache.delete(mindId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Orchestrator dispatch
+  // -------------------------------------------------------------------------
+
+  /**
+   * Dispatch an orchestrator. Tracks the active orchestrator so
+   * `stopActiveRun()` can cancel it. Resets `activeOrchestrator` once
+   * `execute` resolves or throws so a subsequent `stopActiveRun()` is a
+   * no-op rather than re-stopping a finished run.
+   */
+  async run(opts: SessionGroupRunOptions): Promise<void> {
+    const { orchestrator, prompt, participants, roundId, product } = opts;
+    this.activeOrchestrator = orchestrator;
+    const runContext: SessionGroupRunContext = {
+      group: this,
+      product,
+      orchestrationMode: orchestrator.mode,
+    };
+    try {
+      await orchestrator.execute(prompt, participants, roundId, runContext);
+    } finally {
+      if (this.activeOrchestrator === orchestrator) {
+        this.activeOrchestrator = null;
+      }
+    }
+  }
+
+  /** Stop the active orchestrator (if any). Safe to call when idle. */
+  stopActiveRun(): void {
+    if (!this.activeOrchestrator) return;
+    const o = this.activeOrchestrator;
+    this.activeOrchestrator = null;
+    o.stop();
+  }
+
+  /** Whether an orchestrator is currently active. Test/diagnostic surface. */
+  get isRunning(): boolean {
+    return this.activeOrchestrator !== null;
   }
 
   // -------------------------------------------------------------------------

@@ -12,3 +12,10 @@ export type {
   SendToAgentResult,
 } from './stream-session';
 export type { PermissionHandlerFactory, SessionGroupSessionFactory } from './types';
+export { wrapStrategy } from './orchestrators';
+export type {
+  ProductHooks,
+  SessionGroupOrchestrator,
+  SessionGroupRunContext,
+  SessionGroupRunOptions,
+} from './orchestrators';
