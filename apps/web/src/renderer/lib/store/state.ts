@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatEvent, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '@chamber/shared/types';
+import type { ChatMessage, ChatEvent, ConversationSummary, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '@chamber/shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@chamber/shared/a2a-types';
 import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 
@@ -10,6 +10,8 @@ export interface AppState {
   runtimePhase: 'ready' | 'switching-account';
   switchingAccountLogin: string | null;
   messagesByMind: Record<string, ChatMessage[]>;
+  conversationHistoryByMind: Record<string, ConversationSummary[]>;
+  activeConversationByMind: Record<string, string | undefined>;
   isStreaming: boolean;
   streamingByMind: Record<string, boolean>;
   availableModels: ModelInfo[];
@@ -38,6 +40,8 @@ export type AppAction =
   | { type: 'ADD_ASSISTANT_MESSAGE'; payload: { id: string; timestamp: number } }
   | { type: 'CHAT_EVENT'; payload: { mindId: string; messageId: string; event: ChatEvent } }
   | { type: 'HYDRATE_CHAT_STATE'; payload: { messagesByMind: Record<string, ChatMessage[]>; streamingByMind: Record<string, boolean> } }
+  | { type: 'SET_CONVERSATION_HISTORY'; payload: { mindId: string; conversations: ConversationSummary[] } }
+  | { type: 'RESUME_CONVERSATION'; payload: { mindId: string; sessionId: string; messages: ChatMessage[]; conversations: ConversationSummary[] } }
   | { type: 'SET_MINDS'; payload: MindContext[] }
   | { type: 'SET_ACTIVE_MIND'; payload: string | null }
   | { type: 'ADD_MIND'; payload: MindContext }
@@ -75,6 +79,8 @@ export const initialState: AppState = {
   runtimePhase: 'ready',
   switchingAccountLogin: null,
   messagesByMind: {},
+  conversationHistoryByMind: {},
+  activeConversationByMind: {},
   isStreaming: false,
   streamingByMind: {},
   availableModels: [],

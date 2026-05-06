@@ -2,13 +2,14 @@
 // Owns Map<mindId, InternalMindContext>, lifecycle, persistence.
 
 import { EventEmitter } from 'events';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { PermissionHandler, SessionConfig } from '@github/copilot-sdk';
+import type { PermissionHandler, ResumeSessionConfig, SessionConfig } from '@github/copilot-sdk';
 import { Logger } from '../logger';
 
 const log = Logger.create('MindManager');
-import type { MindContext, AppConfig, MindRecord } from '@chamber/shared/types';
+import type { AppConfig, ChamberConversationRecord, ChatMessage, ConversationResumeResult, ConversationSummary, MindContext, MindRecord } from '@chamber/shared/types';
 import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInputHandler } from './types';
 import { generateMindId } from './generateMindId';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
@@ -94,10 +95,34 @@ export class MindManager extends EventEmitter {
 
     const sessionTools = this.getSessionTools(id, resolvedMindPath);
 
-    const selectedModel = this.knownMindRecords.get(id)?.selectedModel;
+    const knownRecord = this.knownMindRecords.get(id);
+    const selectedModel = knownRecord?.selectedModel;
+    const activeSessionId = knownRecord?.activeSessionId ?? this.createConversationRecord(id).sessionId;
+    const conversationRecord = this.ensureConversationRecord(id, activeSessionId, knownRecord?.conversations);
 
-    // Create session
-    const session = await this.createSessionForMind(
+    const session = knownRecord?.activeSessionId
+      ? await this.resumeSessionForMind(
+        client,
+        activeSessionId,
+        resolvedMindPath,
+        identity.systemMessage,
+        sessionTools,
+        undefined,
+        approveAllCompat,
+        true,
+        selectedModel,
+      ).catch(() => this.createSessionForMind(
+        client,
+        resolvedMindPath,
+        identity.systemMessage,
+        sessionTools,
+        undefined,
+        approveAllCompat,
+        true,
+        selectedModel,
+        activeSessionId,
+      ))
+      : await this.createSessionForMind(
       client,
       resolvedMindPath,
       identity.systemMessage,
@@ -106,6 +131,7 @@ export class MindManager extends EventEmitter {
       approveAllCompat,
       true,
       selectedModel,
+      activeSessionId,
     );
 
     const context: InternalMindContext = {
@@ -114,6 +140,7 @@ export class MindManager extends EventEmitter {
       identity,
       status: 'ready',
       selectedModel,
+      activeSessionId,
       client,
       session,
     };
@@ -138,7 +165,16 @@ export class MindManager extends EventEmitter {
       throw err;
     }
 
-    this.knownMindRecords.set(id, { id, path: resolvedMindPath, ...(selectedModel ? { selectedModel } : {}) });
+    this.knownMindRecords.set(id, {
+      id,
+      path: resolvedMindPath,
+      ...(selectedModel ? { selectedModel } : {}),
+      activeSessionId,
+      conversations: [
+        conversationRecord,
+        ...(knownRecord?.conversations ?? []).filter((conversation) => conversation.sessionId !== activeSessionId),
+      ],
+    });
 
     // Persist
     this.persistConfig();
@@ -211,8 +247,10 @@ export class MindManager extends EventEmitter {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
 
+    const conversation = this.createConversationRecord(mindId);
+    const previousSession = context.session;
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
-    context.session = await this.createSessionForMind(
+    const nextSession = await this.createSessionForMind(
       context.client,
       context.mindPath,
       context.identity.systemMessage,
@@ -221,8 +259,82 @@ export class MindManager extends EventEmitter {
       approveAllCompat,
       true,
       context.selectedModel,
+      conversation.sessionId,
     );
+    context.session = nextSession;
+    context.activeSessionId = conversation.sessionId;
+    this.upsertConversationRecord(mindId, conversation);
+    this.persistConfig();
+    await previousSession?.disconnect().catch(() => { /* session already disconnected */ });
     return context.session;
+  }
+
+  async resumeConversation(mindId: string, sessionId: string): Promise<ConversationResumeResult> {
+    const context = this.minds.get(mindId);
+    if (!context) throw new Error(`Mind ${mindId} not found`);
+    const record = this.knownMindRecords.get(mindId);
+    if (!record?.conversations?.some((conversation) => conversation.sessionId === sessionId)) {
+      throw new Error(`Conversation ${sessionId} not found for mind ${mindId}`);
+    }
+
+    const previousSession = context.session;
+    const sessionTools = this.getSessionTools(mindId, context.mindPath);
+    const nextSession = await this.resumeSessionForMind(
+      context.client,
+      sessionId,
+      context.mindPath,
+      context.identity.systemMessage,
+      sessionTools,
+      undefined,
+      approveAllCompat,
+      true,
+      context.selectedModel,
+    );
+    context.session = nextSession;
+    context.activeSessionId = sessionId;
+    this.touchConversationRecord(mindId, sessionId);
+    this.persistConfig();
+    await previousSession?.disconnect().catch(() => { /* session already disconnected */ });
+
+    return {
+      sessionId,
+      messages: await this.getMessagesForSession(nextSession),
+      conversations: this.listConversationHistory(mindId),
+    };
+  }
+
+  listConversationHistory(mindId: string): ConversationSummary[] {
+    const context = this.minds.get(mindId);
+    const record = this.knownMindRecords.get(mindId);
+    const activeSessionId = context?.activeSessionId ?? record?.activeSessionId;
+    return [...(record?.conversations ?? [])]
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .map((conversation) => ({
+        sessionId: conversation.sessionId,
+        title: conversation.title ?? this.defaultConversationTitle(conversation),
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        kind: conversation.kind,
+        active: conversation.sessionId === activeSessionId,
+      }));
+  }
+
+  renameConversation(mindId: string, sessionId: string, title: string): ConversationSummary[] {
+    const record = this.knownMindRecords.get(mindId);
+    if (!record) throw new Error(`Mind ${mindId} not found`);
+    const conversations = record.conversations ?? [];
+    if (!conversations.some((conversation) => conversation.sessionId === sessionId)) {
+      throw new Error(`Conversation ${sessionId} not found for mind ${mindId}`);
+    }
+    const updatedAt = new Date().toISOString();
+    this.knownMindRecords.set(mindId, {
+      ...record,
+      conversations: conversations.map((conversation) => conversation.sessionId === sessionId
+        ? { ...conversation, title: title.trim(), updatedAt }
+        : conversation),
+    });
+    this.persistConfig();
+    return this.listConversationHistory(mindId);
   }
 
   async setMindModel(mindId: string, model: string | null): Promise<MindContext | null> {
@@ -256,6 +368,8 @@ export class MindManager extends EventEmitter {
         id: existingRecord.id,
         path: existingRecord.path,
         ...(selectedModel ? { selectedModel } : {}),
+        ...(existingRecord.activeSessionId ? { activeSessionId: existingRecord.activeSessionId } : {}),
+        ...(existingRecord.conversations ? { conversations: existingRecord.conversations } : {}),
       });
       this.persistConfig();
       return null;
@@ -265,16 +379,28 @@ export class MindManager extends EventEmitter {
 
     const previousSession = context.session;
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
-    const nextSession = await this.createSessionForMind(
-      context.client,
-      context.mindPath,
-      context.identity.systemMessage,
-      sessionTools,
-      undefined,
-      approveAllCompat,
-      true,
-      selectedModel,
-    );
+    const nextSession = context.activeSessionId
+      ? await this.resumeSessionForMind(
+        context.client,
+        context.activeSessionId,
+        context.mindPath,
+        context.identity.systemMessage,
+        sessionTools,
+        undefined,
+        approveAllCompat,
+        true,
+        selectedModel,
+      )
+      : await this.createSessionForMind(
+        context.client,
+        context.mindPath,
+        context.identity.systemMessage,
+        sessionTools,
+        undefined,
+        approveAllCompat,
+        true,
+        selectedModel,
+      );
 
     context.selectedModel = selectedModel;
     context.session = nextSession;
@@ -282,6 +408,8 @@ export class MindManager extends EventEmitter {
       id: mindId,
       path: context.mindPath,
       ...(selectedModel ? { selectedModel } : {}),
+      ...(context.activeSessionId ? { activeSessionId: context.activeSessionId } : {}),
+      ...(this.knownMindRecords.get(mindId)?.conversations ? { conversations: this.knownMindRecords.get(mindId)?.conversations } : {}),
     });
     this.persistConfig();
     await previousSession?.disconnect().catch(() => { /* session already disconnected */ });
@@ -402,6 +530,7 @@ export class MindManager extends EventEmitter {
       status: ctx.status,
       error: ctx.error,
       selectedModel: ctx.selectedModel,
+      activeSessionId: ctx.activeSessionId,
       windowed: false,
     };
   }
@@ -463,8 +592,45 @@ export class MindManager extends EventEmitter {
     onPermissionRequest: PermissionHandler = approveAllCompat,
     approveAll = true,
     model?: string,
+    sessionId?: string,
   ): Promise<CopilotSession> {
     const sessionConfig: SessionConfig = {
+      workingDirectory: mindPath,
+      enableConfigDiscovery: true,
+      tools,
+      systemMessage: {
+        mode: 'customize',
+        sections: {
+          identity: { action: 'replace', content: systemMessage },
+          tone: { action: 'remove' },
+        },
+      },
+      onPermissionRequest,
+      ...(sessionId ? { sessionId } : {}),
+      ...(model ? { model } : {}),
+      ...(onUserInputRequest ? { onUserInputRequest } : {}),
+    };
+    const session = await client.createSession(sessionConfig);
+
+    if (approveAll) {
+      await session.rpc.permissions.setApproveAll({ enabled: true });
+    }
+
+    return session;
+  }
+
+  private async resumeSessionForMind(
+    client: CopilotClient,
+    sessionId: string,
+    mindPath: string,
+    systemMessage: string,
+    tools: Tool[],
+    onUserInputRequest?: UserInputHandler,
+    onPermissionRequest: PermissionHandler = approveAllCompat,
+    approveAll = true,
+    model?: string,
+  ): Promise<CopilotSession> {
+    const sessionConfig: ResumeSessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
       tools,
@@ -479,13 +645,57 @@ export class MindManager extends EventEmitter {
       ...(model ? { model } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };
-    const session = await client.createSession(sessionConfig);
-
+    const session = await client.resumeSession(sessionId, sessionConfig);
     if (approveAll) {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
-
     return session;
+  }
+
+  private async getMessagesForSession(session: CopilotSession): Promise<ChatMessage[]> {
+    const events = await session.getMessages();
+    return events.flatMap((event, index) => this.mapSessionEventToChatMessage(event, index));
+  }
+
+  private mapSessionEventToChatMessage(event: unknown, index: number): ChatMessage[] {
+    if (typeof event !== 'object' || event === null) return [];
+    const record = event as Record<string, unknown>;
+    const data = typeof record.data === 'object' && record.data !== null
+      ? record.data as Record<string, unknown>
+      : {};
+    const content = this.extractMessageContent(data);
+    if (!content) return [];
+    const timestamp = typeof record.timestamp === 'number'
+      ? record.timestamp
+      : Date.parse(String(record.timestamp ?? '')) || Date.now();
+    const id = typeof data.messageId === 'string'
+      ? data.messageId
+      : `${String(record.type ?? 'session-event')}-${index}`;
+    if (record.type === 'user.message') {
+      return [{ id, role: 'user', blocks: [{ type: 'text', content }], timestamp }];
+    }
+    if (record.type === 'assistant.message') {
+      return [{ id, role: 'assistant', blocks: [{ type: 'text', content }], timestamp }];
+    }
+    return [];
+  }
+
+  private extractMessageContent(data: Record<string, unknown>): string | null {
+    const value = data.content ?? data.message ?? data.text ?? data.prompt;
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      const content = value
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (typeof item !== 'object' || item === null) return '';
+          const block = item as Record<string, unknown>;
+          return typeof block.text === 'string' ? block.text : '';
+        })
+        .filter(Boolean)
+        .join('\n');
+      return content || null;
+    }
+    return null;
   }
 
   async sendBackgroundPrompt(mindPath: string, prompt: string): Promise<void> {
@@ -526,9 +736,68 @@ export class MindManager extends EventEmitter {
         id: mind.mindId,
         path: mind.mindPath,
         ...(mind.selectedModel ? { selectedModel: mind.selectedModel } : {}),
+        ...(mind.activeSessionId ? { activeSessionId: mind.activeSessionId } : {}),
+        ...(this.knownMindRecords.get(mind.mindId)?.conversations ? { conversations: this.knownMindRecords.get(mind.mindId)?.conversations } : {}),
       });
     }
     return Array.from(records.values());
+  }
+
+  private createConversationRecord(mindId: string): ChamberConversationRecord {
+    const now = new Date().toISOString();
+    return {
+      sessionId: `chamber-${mindId}-${randomUUID()}`,
+      title: `New chat · ${new Date(now).toLocaleString()}`,
+      createdAt: now,
+      updatedAt: now,
+      kind: 'chat',
+    };
+  }
+
+  private ensureConversationRecord(
+    mindId: string,
+    sessionId: string,
+    conversations: ChamberConversationRecord[] = [],
+  ): ChamberConversationRecord {
+    return conversations.find((conversation) => conversation.sessionId === sessionId)
+      ?? {
+        sessionId,
+        title: `New chat · ${new Date().toLocaleString()}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        kind: 'chat',
+      };
+  }
+
+  private upsertConversationRecord(mindId: string, conversation: ChamberConversationRecord): void {
+    const record = this.knownMindRecords.get(mindId);
+    if (!record) return;
+    const conversations = record.conversations ?? [];
+    this.knownMindRecords.set(mindId, {
+      ...record,
+      activeSessionId: conversation.sessionId,
+      conversations: [
+        conversation,
+        ...conversations.filter((existing) => existing.sessionId !== conversation.sessionId),
+      ],
+    });
+  }
+
+  private touchConversationRecord(mindId: string, sessionId: string): void {
+    const record = this.knownMindRecords.get(mindId);
+    if (!record) return;
+    const updatedAt = new Date().toISOString();
+    this.knownMindRecords.set(mindId, {
+      ...record,
+      activeSessionId: sessionId,
+      conversations: (record.conversations ?? []).map((conversation) => conversation.sessionId === sessionId
+        ? { ...conversation, updatedAt }
+        : conversation),
+    });
+  }
+
+  private defaultConversationTitle(conversation: ChamberConversationRecord): string {
+    return `Chat · ${new Date(conversation.createdAt).toLocaleString()}`;
   }
 
   private getPersistedActiveMindId(): string | null {

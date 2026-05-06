@@ -111,9 +111,14 @@ export function mockElectronAPI(): ElectronAPI {
     chat: {
       send: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
-      newConversation: vi.fn().mockResolvedValue(undefined),
+      newConversation: vi.fn().mockResolvedValue({ sessionId: '', messages: [], conversations: [] }),
       listModels: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
+    },
+    conversationHistory: {
+      list: vi.fn().mockResolvedValue([]),
+      resume: vi.fn().mockResolvedValue({ sessionId: '', messages: [], conversations: [] }),
+      rename: vi.fn().mockResolvedValue([]),
     },
     mind: {
       add: vi.fn().mockResolvedValue({ mindId: 'test-1234', mindPath: 'C:\\test', identity: { name: 'Test', systemMessage: '' }, status: 'ready' }),

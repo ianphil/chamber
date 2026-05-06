@@ -89,6 +89,7 @@ export interface MindContext {
   readonly status: MindStatus;
   readonly error?: string;
   selectedModel?: string;
+  activeSessionId?: string;
   readonly windowed?: boolean;
 }
 
@@ -97,6 +98,33 @@ export interface MindRecord {
   id: string;
   path: string;
   selectedModel?: string;
+  activeSessionId?: string;
+  conversations?: ChamberConversationRecord[];
+}
+
+export type ChamberConversationKind = 'chat' | 'cron' | 'task';
+
+export interface ChamberConversationRecord {
+  sessionId: string;
+  title?: string;
+  createdAt: string;
+  updatedAt: string;
+  kind: ChamberConversationKind;
+}
+
+export interface ConversationSummary {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  kind: ChamberConversationKind;
+  active: boolean;
+}
+
+export interface ConversationResumeResult {
+  sessionId: string;
+  messages: ChatMessage[];
+  conversations: ConversationSummary[];
 }
 
 export interface MarketplaceRegistry {
@@ -200,9 +228,14 @@ export interface ElectronAPI {
   chat: {
     send: (mindId: string, message: string, messageId: string, model?: string, attachments?: ChatImageAttachment[]) => Promise<void>;
     stop: (mindId: string, messageId: string) => Promise<void>;
-    newConversation: (mindId: string) => Promise<void>;
+    newConversation: (mindId: string) => Promise<ConversationResumeResult>;
     listModels: (mindId?: string) => Promise<ModelInfo[]>;
     onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent) => void) => () => void;
+  };
+  conversationHistory: {
+    list: (mindId: string) => Promise<ConversationSummary[]>;
+    resume: (mindId: string, sessionId: string) => Promise<ConversationResumeResult>;
+    rename: (mindId: string, sessionId: string, title: string) => Promise<ConversationSummary[]>;
   };
   mind: {
     add: (mindPath: string) => Promise<MindContext>;

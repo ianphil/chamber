@@ -31,6 +31,7 @@ function createSessionStub() {
   return {
   send: vi.fn(),
   sendAndWait: vi.fn(),
+  getMessages: vi.fn(async (): Promise<unknown[]> => []),
   on: vi.fn(),
   off: vi.fn(),
   disconnect: vi.fn(async () => undefined),
@@ -38,14 +39,22 @@ function createSessionStub() {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const mockCreateSession = vi.fn((_config: Record<string, unknown>) => createSessionStub());
+const mockCreateSession = vi.fn((config: Record<string, unknown>) => {
+  void config;
+  return createSessionStub();
+});
+const mockResumeSession = vi.fn((sessionId: string, config: Record<string, unknown>) => {
+  void sessionId;
+  void config;
+  return createSessionStub();
+});
 
 function makeMockClient() {
   return {
     start: mockStart,
     stop: mockStop,
     createSession: mockCreateSession,
+    resumeSession: mockResumeSession,
   };
 }
 
@@ -130,6 +139,15 @@ describe('MindManager', () => {
       activeLogin: null,
       theme: 'dark',
     };
+    mockCreateSession.mockImplementation((config: Record<string, unknown>) => {
+      void config;
+      return createSessionStub();
+    });
+    mockResumeSession.mockImplementation((sessionId: string, config: Record<string, unknown>) => {
+      void sessionId;
+      void config;
+      return createSessionStub();
+    });
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     vi.mocked(fs.realpathSync.native).mockImplementation((candidate) => String(candidate));
@@ -154,6 +172,50 @@ describe('MindManager', () => {
         '/tmp/agents/q',
       );
       expect(mockConfigService.save).toHaveBeenCalled();
+    });
+
+    it('creates a named chamber session and persists conversation metadata', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const sessionConfig = mockCreateSession.mock.calls[0][0] as { sessionId?: string };
+
+      expect(sessionConfig.sessionId).toMatch(new RegExp(`^chamber-${mind.mindId}-`));
+      expect(lastSavedConfig().minds[0]).toMatchObject({
+        id: mind.mindId,
+        activeSessionId: sessionConfig.sessionId,
+        conversations: [expect.objectContaining({
+          sessionId: sessionConfig.sessionId,
+          kind: 'chat',
+        })],
+      });
+    });
+
+    it('resumes a persisted active conversation when restoring a mind', async () => {
+      currentConfig = {
+        version: 2,
+        minds: [{
+          id: 'q-a1b2',
+          path: '/tmp/agents/q',
+          activeSessionId: 'chamber-q-a1b2-existing',
+          conversations: [{
+            sessionId: 'chamber-q-a1b2-existing',
+            title: 'Existing chat',
+            createdAt: '2026-05-05T22:00:00.000Z',
+            updatedAt: '2026-05-05T22:00:00.000Z',
+            kind: 'chat',
+          }],
+        }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'dark',
+      };
+
+      await manager.restoreFromConfig();
+
+      expect(mockResumeSession).toHaveBeenCalledWith(
+        'chamber-q-a1b2-existing',
+        expect.objectContaining({ workingDirectory: '/tmp/agents/q' }),
+      );
+      expect(manager.listMinds()[0].activeSessionId).toBe('chamber-q-a1b2-existing');
     });
 
     it('injects current datetime context into background prompts', async () => {
@@ -186,15 +248,20 @@ describe('MindManager', () => {
       expect(manager.listMinds()[0].selectedModel).toBe('gpt-5.4');
     });
 
-    it('persists a per-mind model and recreates the session with it', async () => {
+    it('persists a per-mind model and resumes the active session with it', async () => {
       const mind = await manager.loadMind('/tmp/agents/q');
       mockCreateSession.mockClear();
+      mockResumeSession.mockClear();
 
       const updated = await manager.setMindModel(mind.mindId, 'claude-opus');
 
       expect(updated?.selectedModel).toBe('claude-opus');
       expect(lastSavedConfig().minds[0].selectedModel).toBe('claude-opus');
-      expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus' }));
+      expect(mockCreateSession).not.toHaveBeenCalled();
+      expect(mockResumeSession).toHaveBeenCalledWith(
+        mind.activeSessionId,
+        expect.objectContaining({ model: 'claude-opus' }),
+      );
     });
 
     it('serializes concurrent per-mind model changes', async () => {
@@ -202,7 +269,8 @@ describe('MindManager', () => {
       const firstModelSession = createSessionStub();
       const secondModelSession = createSessionStub();
       let resolveFirstModelSession: (() => void) | undefined;
-      const createSession = vi.fn((config: Record<string, unknown>) => {
+      const createSession = vi.fn(() => Promise.resolve(originalSession));
+      const resumeSession = vi.fn((_sessionId: string, config: Record<string, unknown>) => {
         if (config.model === 'model-a') {
           return new Promise((resolve) => {
             resolveFirstModelSession = () => resolve(firstModelSession);
@@ -212,7 +280,7 @@ describe('MindManager', () => {
         return Promise.resolve(originalSession);
       });
       const clientFactory = {
-        createClient: vi.fn(async () => ({ start: vi.fn(), stop: vi.fn(), createSession })),
+        createClient: vi.fn(async () => ({ start: vi.fn(), stop: vi.fn(), createSession, resumeSession })),
         destroyClient: vi.fn(),
       };
       const localManager = new MindManager(
@@ -224,20 +292,22 @@ describe('MindManager', () => {
 
       const mind = await localManager.loadMind('/tmp/agents/q');
       createSession.mockClear();
+      resumeSession.mockClear();
 
       const firstChange = localManager.setMindModel(mind.mindId, 'model-a');
       const secondChange = localManager.setMindModel(mind.mindId, 'model-b');
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(createSession).toHaveBeenCalledTimes(1);
-      expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ model: 'model-a' }));
+      expect(resumeSession).toHaveBeenCalledTimes(1);
+      expect(resumeSession).toHaveBeenCalledWith(mind.activeSessionId, expect.objectContaining({ model: 'model-a' }));
 
       resolveFirstModelSession?.();
       await Promise.all([firstChange, secondChange]);
 
-      expect(createSession).toHaveBeenCalledTimes(2);
-      expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'model-b' }));
+      expect(createSession).not.toHaveBeenCalled();
+      expect(resumeSession).toHaveBeenCalledTimes(2);
+      expect(resumeSession).toHaveBeenLastCalledWith(mind.activeSessionId, expect.objectContaining({ model: 'model-b' }));
       expect(localManager.getMind(mind.mindId)?.selectedModel).toBe('model-b');
       expect(localManager.getMind(mind.mindId)?.session).toBe(secondModelSession);
       expect(originalSession.disconnect).toHaveBeenCalledTimes(1);
@@ -448,10 +518,70 @@ describe('MindManager', () => {
       const newSession = newCtx.session;
       expect(newSession).toBeDefined();
       expect(mockCreateSession).toHaveBeenCalledTimes(2);
+      expect(manager.listConversationHistory(mind.mindId)).toHaveLength(2);
+      expect(manager.listConversationHistory(mind.mindId)[0].active).toBe(true);
     });
 
     it('throws for non-existent mind', async () => {
       await expect(manager.recreateSession('nonexistent')).rejects.toThrow();
+    });
+  });
+
+  describe('conversation history', () => {
+    it('resumes a selected conversation and hydrates messages from the SDK session', async () => {
+      const resumedSession = createSessionStub();
+      resumedSession.getMessages.mockResolvedValue([
+        {
+          type: 'user.message',
+          timestamp: '2026-05-05T22:00:00.000Z',
+          data: { messageId: 'u1', content: 'hello Monica' },
+        },
+        {
+          type: 'assistant.message',
+          timestamp: '2026-05-05T22:00:01.000Z',
+          data: { messageId: 'a1', content: 'hello human' },
+        },
+      ]);
+      mockResumeSession.mockResolvedValueOnce(resumedSession);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      await manager.recreateSession(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+
+      const result = await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      expect(mockResumeSession).toHaveBeenCalledWith(
+        target.sessionId,
+        expect.objectContaining({ workingDirectory: '/tmp/agents/q' }),
+      );
+      expect(result.sessionId).toBe(target.sessionId);
+      expect(result.messages).toEqual([
+        {
+          id: 'u1',
+          role: 'user',
+          blocks: [{ type: 'text', content: 'hello Monica' }],
+          timestamp: Date.parse('2026-05-05T22:00:00.000Z'),
+        },
+        {
+          id: 'a1',
+          role: 'assistant',
+          blocks: [{ type: 'text', content: 'hello human' }],
+          timestamp: Date.parse('2026-05-05T22:00:01.000Z'),
+        },
+      ]);
+      expect(result.conversations.find((conversation) => conversation.sessionId === target.sessionId)?.active).toBe(true);
+    });
+
+    it('renames only Chamber-owned conversation metadata', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const sessionId = manager.listConversationHistory(mind.mindId)[0].sessionId;
+
+      const history = manager.renameConversation(mind.mindId, sessionId, 'Better title');
+
+      expect(history[0]).toMatchObject({ sessionId, title: 'Better title' });
+      expect(lastSavedConfig().minds[0].conversations?.[0]).toMatchObject({
+        sessionId,
+        title: 'Better title',
+      });
     });
   });
 

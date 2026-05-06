@@ -86,6 +86,43 @@ describe('ConfigService', () => {
       });
     });
 
+    it('preserves per-mind conversation history metadata without transcript text', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [{
+          id: 'q-a1b2',
+          path: '/tmp/agents/q',
+          selectedModel: 'gpt-5.4',
+          activeSessionId: 'chamber-q-a1b2-conversation-1',
+          conversations: [{
+            sessionId: 'chamber-q-a1b2-conversation-1',
+            title: 'Launch plan',
+            createdAt: '2026-05-05T22:00:00.000Z',
+            updatedAt: '2026-05-05T22:15:00.000Z',
+            kind: 'chat',
+            messages: [{ role: 'user', content: 'do not persist me here' }],
+          }],
+        }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'dark',
+      }));
+
+      expect(svc.load().minds[0]).toEqual({
+        id: 'q-a1b2',
+        path: '/tmp/agents/q',
+        selectedModel: 'gpt-5.4',
+        activeSessionId: 'chamber-q-a1b2-conversation-1',
+        conversations: [{
+          sessionId: 'chamber-q-a1b2-conversation-1',
+          title: 'Launch plan',
+          createdAt: '2026-05-05T22:00:00.000Z',
+          updatedAt: '2026-05-05T22:15:00.000Z',
+          kind: 'chat',
+        }],
+      });
+    });
+
     it('preserves a saved disabled state for the default public marketplace', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,

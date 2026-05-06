@@ -132,6 +132,7 @@ export function installBrowserApi(): void {
       },
       newConversation: async (mindId) => {
         await client.startNewConversation(mindId);
+        return { sessionId: '', messages: [], conversations: [] };
       },
       listModels: (): Promise<ModelInfo[]> => client.listModels(),
       onEvent: (callback) => {
@@ -141,6 +142,11 @@ export function installBrowserApi(): void {
           chatEventHandlers.delete(callback);
         };
       },
+    },
+    conversationHistory: {
+      list: async () => [],
+      resume: async () => ({ sessionId: '', messages: [], conversations: [] }),
+      rename: async () => [],
     },
     mind: {
       add: (mindPath): Promise<MindContext> => client.addMind(mindPath) as Promise<MindContext>,

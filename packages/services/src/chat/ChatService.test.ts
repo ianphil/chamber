@@ -27,6 +27,9 @@ const mockMindManager = {
     return undefined;
   }),
   recreateSession: vi.fn(),
+  listConversationHistory: vi.fn(() => []),
+  resumeConversation: vi.fn(async () => ({ sessionId: 'session-1', messages: [], conversations: [] })),
+  renameConversation: vi.fn(() => []),
   setMindModel: vi.fn(async () => null),
 };
 
@@ -130,6 +133,21 @@ describe('ChatService', () => {
     it('delegates to mindManager.recreateSession', async () => {
       await svc.newConversation('valid-mind');
       expect(mockMindManager.recreateSession).toHaveBeenCalledWith('valid-mind');
+    });
+
+    it('rejects conversation switches while a message is streaming', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        void eventOrCb;
+        void cb;
+        return vi.fn();
+      });
+      const send = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+      await Promise.resolve();
+
+      await expect(svc.newConversation('valid-mind')).rejects.toThrow('Cannot switch conversations');
+
+      await svc.cancelMessage('valid-mind', 'msg-1');
+      await send;
     });
   });
 

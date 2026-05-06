@@ -21,4 +21,5 @@ export type UserInputResponse = Awaited<ReturnType<UserInputHandler>>;
 export interface InternalMindContext extends MindContext {
   client: CopilotClient;
   session: CopilotSession | null;
+  activeSessionId?: string;
 }

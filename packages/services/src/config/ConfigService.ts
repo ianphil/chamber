@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { generateMindId } from '../mind';
-import type { AppConfig, AppConfigV1, MarketplaceRegistry, MindRecord } from '@chamber/shared/types';
+import type { AppConfig, AppConfigV1, ChamberConversationRecord, MarketplaceRegistry, MindRecord } from '@chamber/shared/types';
 
 const CONFIG_DIR = path.join(os.homedir(), '.chamber');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
@@ -121,6 +121,34 @@ function normalizeMindRecord(value: unknown): MindRecord | null {
     ...(typeof record.selectedModel === 'string' && record.selectedModel.trim().length > 0
       ? { selectedModel: record.selectedModel.trim() }
       : {}),
+    ...(typeof record.activeSessionId === 'string' && record.activeSessionId.trim().length > 0
+      ? { activeSessionId: record.activeSessionId.trim() }
+      : {}),
+    ...(Array.isArray(record.conversations)
+      ? { conversations: record.conversations.map(normalizeConversationRecord).filter((conversation): conversation is ChamberConversationRecord => conversation !== null) }
+      : {}),
+  };
+}
+
+function normalizeConversationRecord(value: unknown): ChamberConversationRecord | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const kind = record.kind === 'cron' || record.kind === 'task' ? record.kind : 'chat';
+  if (
+    typeof record.sessionId !== 'string'
+    || typeof record.createdAt !== 'string'
+    || typeof record.updatedAt !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    sessionId: record.sessionId,
+    ...(typeof record.title === 'string' && record.title.trim().length > 0
+      ? { title: record.title.trim() }
+      : {}),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    kind,
   };
 }
 

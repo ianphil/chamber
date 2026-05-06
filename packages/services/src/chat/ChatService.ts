@@ -2,7 +2,7 @@
 // Gets sessions from MindManager, streams SDK events via callback.
 
 import type { MindManager } from '../mind';
-import type { ChatEvent, ChatImageAttachment, ModelInfo } from '@chamber/shared/types';
+import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, ConversationSummary, ModelInfo } from '@chamber/shared/types';
 import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
 import { Logger } from '../logger';
@@ -210,8 +210,27 @@ export class ChatService {
     }
   }
 
-  async newConversation(mindId: string): Promise<void> {
+  async newConversation(mindId: string): Promise<ConversationResumeResult> {
+    this.assertCanSwitchConversation(mindId);
     await this.mindManager.recreateSession(mindId);
+    return {
+      sessionId: this.mindManager.getMind(mindId)?.activeSessionId ?? '',
+      messages: [],
+      conversations: this.mindManager.listConversationHistory(mindId),
+    };
+  }
+
+  listConversationHistory(mindId: string): ConversationSummary[] {
+    return this.mindManager.listConversationHistory(mindId);
+  }
+
+  async resumeConversation(mindId: string, sessionId: string): Promise<ConversationResumeResult> {
+    this.assertCanSwitchConversation(mindId);
+    return this.mindManager.resumeConversation(mindId, sessionId);
+  }
+
+  renameConversation(mindId: string, sessionId: string, title: string): ConversationSummary[] {
+    return this.mindManager.renameConversation(mindId, sessionId, title);
   }
 
   async listModels(mindId: string): Promise<ModelInfo[]> {
@@ -222,5 +241,11 @@ export class ChatService {
     clearCopilotModelsCache(context.client);
     const models = await context.client.listModels();
     return models.map((m: { id: string; name: string }) => ({ id: m.id, name: m.name }));
+  }
+
+  private assertCanSwitchConversation(mindId: string): void {
+    if (this.abortControllers.has(mindId)) {
+      throw new Error('Cannot switch conversations while a message is still streaming.');
+    }
   }
 }

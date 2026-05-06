@@ -14,6 +14,11 @@ const electronAPI: ElectronAPI = {
     listModels: (mindId?) => ipcRenderer.invoke('chat:listModels', mindId),
     onEvent: (callback) => createIpcListener(ipcRenderer, 'chat:event', callback),
   },
+  conversationHistory: {
+    list: (mindId) => ipcRenderer.invoke('conversationHistory:list', mindId),
+    resume: (mindId, sessionId) => ipcRenderer.invoke('conversationHistory:resume', mindId, sessionId),
+    rename: (mindId, sessionId, title) => ipcRenderer.invoke('conversationHistory:rename', mindId, sessionId, title),
+  },
   mind: {
     add: (mindPath) => ipcRenderer.invoke('mind:add', mindPath),
     remove: (mindId) => ipcRenderer.invoke('mind:remove', mindId),

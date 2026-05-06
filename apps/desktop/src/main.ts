@@ -52,6 +52,7 @@ import { setupMarketplaceIPC } from './main/ipc/marketplace';
 import { setupAuthIPC } from './main/ipc/auth';
 import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
+import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
 
 import { EventEmitter } from 'events';
@@ -450,6 +451,7 @@ app.on('ready', async () => {
 
   // --- IPC adapters (thin, parameter-injected) ---
   setupChatIPC(chatService, mindManager);
+  setupConversationHistoryIPC(chatService);
   setupMindIPC(mindManager, {
     preloadPath: path.join(__dirname, 'preload.js'),
     devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined,

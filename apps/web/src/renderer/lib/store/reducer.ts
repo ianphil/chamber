@@ -201,6 +201,41 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'SET_CONVERSATION_HISTORY':
+      return {
+        ...state,
+        conversationHistoryByMind: {
+          ...state.conversationHistoryByMind,
+          [action.payload.mindId]: action.payload.conversations,
+        },
+        activeConversationByMind: {
+          ...state.activeConversationByMind,
+          [action.payload.mindId]: action.payload.conversations.find((conversation) => conversation.active)?.sessionId,
+        },
+      };
+
+    case 'RESUME_CONVERSATION':
+      return {
+        ...state,
+        messagesByMind: {
+          ...state.messagesByMind,
+          [action.payload.mindId]: action.payload.messages,
+        },
+        conversationHistoryByMind: {
+          ...state.conversationHistoryByMind,
+          [action.payload.mindId]: action.payload.conversations,
+        },
+        activeConversationByMind: {
+          ...state.activeConversationByMind,
+          [action.payload.mindId]: action.payload.sessionId,
+        },
+        streamingByMind: {
+          ...state.streamingByMind,
+          [action.payload.mindId]: false,
+        },
+        isStreaming: state.activeMindId === action.payload.mindId ? false : state.isStreaming,
+      };
+
     case 'SET_MINDS':
       return {
         ...state,
@@ -230,7 +265,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'REMOVE_MIND': {
       const newMinds = state.minds.filter(m => m.mindId !== action.payload);
       const newMsgsByMind = { ...state.messagesByMind };
+      const newConversationHistoryByMind = { ...state.conversationHistoryByMind };
+      const newActiveConversationByMind = { ...state.activeConversationByMind };
       delete newMsgsByMind[action.payload];
+      delete newConversationHistoryByMind[action.payload];
+      delete newActiveConversationByMind[action.payload];
       const newActive = state.activeMindId === action.payload
         ? (newMinds.length > 0 ? newMinds[0].mindId : null)
         : state.activeMindId;
@@ -239,6 +278,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         minds: newMinds,
         activeMindId: newActive,
         messagesByMind: newMsgsByMind,
+        conversationHistoryByMind: newConversationHistoryByMind,
+        activeConversationByMind: newActiveConversationByMind,
         showLanding: newMinds.length === 0,
       };
     }

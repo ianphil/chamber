@@ -53,11 +53,78 @@ async function main() {
     if (!response.includes('Chamber')) {
       throw new Error(`Unexpected SDK smoke response: ${response}`);
     }
+    await assertNamedSessionResume({ sdk, cliPath, mindPath, logDir });
     console.log('SDK smoke passed.');
   } finally {
     await session?.destroy().catch(() => undefined);
     await client.stop().catch(() => undefined);
     await cleanupMind(mindPath);
+  }
+}
+
+async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir }) {
+  const sessionId = `chamber-sdk-smoke-${Date.now()}`;
+  const firstClient = new sdk.CopilotClient({
+    cliPath,
+    cwd: mindPath,
+    logLevel: 'all',
+    cliArgs: [
+      '--log-dir', logDir,
+      '--allow-all-tools',
+      '--allow-all-paths',
+      '--allow-all-urls',
+    ],
+  });
+  const secondClient = new sdk.CopilotClient({
+    cliPath,
+    cwd: mindPath,
+    logLevel: 'all',
+    cliArgs: [
+      '--log-dir', logDir,
+      '--allow-all-tools',
+      '--allow-all-paths',
+      '--allow-all-urls',
+    ],
+  });
+  let firstSession;
+  let resumedSession;
+  try {
+    await firstClient.start();
+    firstSession = await firstClient.createSession({
+      sessionId,
+      streaming: true,
+      workingDirectory: mindPath,
+      onPermissionRequest: async () => ({ kind: 'allow' }),
+      onUserInputRequest: async () => ({ answer: 'Proceed.', wasFreeform: true }),
+    });
+    await firstSession.rpc.permissions.setApproveAll({ enabled: true });
+    await sendAndWaitForResponse(firstSession, 'Remember this exact token: chamber-resume-smoke');
+    await firstSession.disconnect();
+    firstSession = undefined;
+    await firstClient.stop();
+
+    await secondClient.start();
+    resumedSession = await secondClient.resumeSession(sessionId, {
+      streaming: true,
+      workingDirectory: mindPath,
+      onPermissionRequest: async () => ({ kind: 'allow' }),
+      onUserInputRequest: async () => ({ answer: 'Proceed.', wasFreeform: true }),
+    });
+    await resumedSession.rpc.permissions.setApproveAll({ enabled: true });
+    const messages = await resumedSession.getMessages();
+    if (!messages.some((event) => JSON.stringify(event).includes('chamber-resume-smoke'))) {
+      throw new Error('Named SDK session resume did not restore prior messages.');
+    }
+    const response = await sendAndWaitForResponse(resumedSession, 'What exact token did I ask you to remember?');
+    if (!response.includes('chamber-resume-smoke')) {
+      throw new Error(`Named SDK session did not continue prior context: ${response}`);
+    }
+  } finally {
+    await resumedSession?.disconnect().catch(() => undefined);
+    await firstSession?.disconnect().catch(() => undefined);
+    await secondClient.deleteSession?.(sessionId).catch(() => undefined);
+    await secondClient.stop().catch(() => undefined);
+    await firstClient.stop().catch(() => undefined);
   }
 }
 

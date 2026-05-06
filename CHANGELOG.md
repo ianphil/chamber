@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.43.0 (2026-05-05)
+
+### Chat
+
+- **Add resumable conversation history** - Chamber now creates named Copilot SDK sessions per mind, shows them in a right-side history pane, supports metadata-only rename, and resumes selected sessions so follow-up prompts continue the prior conversation. (#55)
+
+### Testing
+
+- **Smoke conversation history flows** - Electron smoke coverage now drives Monica and Lucy through history-pane create, rename, per-mind isolation, and restart restore flows. (#55)
+
 ## v0.42.0 (2026-05-05)
 
 ### Cron

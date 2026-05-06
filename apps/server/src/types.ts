@@ -48,7 +48,7 @@ export interface ChamberCtx {
   saveAttachment?: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
   cancelChat?: (mindId: string, messageId: string) => Promise<void> | void;
   sendChat?: (request: SendChatRequest) => Promise<void> | void;
-  newConversation?: (mindId: string) => Promise<void> | void;
+  newConversation?: (mindId: string) => Promise<unknown> | unknown;
   listModels?: (mindId?: string) => ModelDto[] | Promise<ModelDto[]>;
   shutdown?: () => void;
   handlePrivilegedRequest?: (request: PrivilegedRequest) => Promise<PrivilegedResponse>;

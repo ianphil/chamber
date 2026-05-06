@@ -26,6 +26,6 @@ export function setupChatIPC(chatService: ChatService, mindManager: MindManager)
   });
 
   ipcMain.handle('chat:newConversation', async (_event, mindId: string) => {
-    await chatService.newConversation(mindId);
+    return chatService.newConversation(mindId);
   });
 }
