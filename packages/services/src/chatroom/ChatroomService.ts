@@ -18,11 +18,12 @@ import type {
 import type { MindContext } from '@chamber/shared/types';
 import type { CopilotSession } from '../mind';
 import type { AppPaths } from '../ports';
-import type { PermissionHandler, PermissionRequest, PermissionRequestResult } from '@github/copilot-sdk';
+import type { PermissionHandler } from '@github/copilot-sdk';
 import { createStrategy } from './orchestration';
 import type { OrchestrationStrategy, OrchestrationContext } from './orchestration';
 import { escapeXml, textContent, stripControlJson } from './orchestration/shared';
 import { ApprovalGate } from './orchestration/approval-gate';
+import { SessionGroup, createApprovalGatePermissionFactory } from '../session-group';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -48,7 +49,7 @@ const MAX_MESSAGES = 500;
 export class ChatroomService extends EventEmitter {
   private messages: ChatroomMessage[] = [];
   private lastLedger: TaskLedgerItem[] = [];
-  private sessionCache = new Map<string, CopilotSession>();
+  private readonly sessionGroup: SessionGroup;
   private activeStrategy: OrchestrationStrategy | null = null;
   private orchestrationMode: OrchestrationMode = 'concurrent';
   private groupChatConfig: GroupChatConfig | null = null;
@@ -65,6 +66,11 @@ export class ChatroomService extends EventEmitter {
     private readonly approvalGate = new ApprovalGate(),
   ) {
     super();
+
+    this.sessionGroup = new SessionGroup(
+      sessionFactory,
+      createApprovalGatePermissionFactory(this.approvalGate),
+    );
 
     const chamberDir = appPaths.userData;
     this.persistDir = chamberDir;
@@ -124,7 +130,7 @@ export class ChatroomService extends EventEmitter {
     // Warm session pool — pre-create sessions for all participants in parallel
     // to eliminate cold-start delays when workers begin their turns.
     await Promise.all(
-      participants.map((p) => this.getOrCreateSession(p.mindId).catch(() => { /* non-fatal */ })),
+      participants.map((p) => this.sessionGroup.getOrCreateSession(p.mindId).catch(() => { /* non-fatal */ })),
     );
 
     // Create strategy for current orchestration mode
@@ -151,8 +157,8 @@ export class ChatroomService extends EventEmitter {
 
     // Build context adapter for strategies
     const contextAdapter: OrchestrationContext = {
-      getOrCreateSession: (mindId: string) => this.getOrCreateSession(mindId),
-      evictSession: (mindId: string) => this.evictSession(mindId),
+      getOrCreateSession: (mindId: string) => this.sessionGroup.getOrCreateSession(mindId),
+      evictSession: (mindId: string) => this.sessionGroup.evictSession(mindId),
       buildBasePrompt: (msg: string, parts: MindContext[], forMind?: MindContext) =>
         this.buildPrompt(msg, parts, roundId, forMind),
       emitEvent: (event: ChatroomStreamEvent) => this.emit('chatroom:event', event),
@@ -184,10 +190,7 @@ export class ChatroomService extends EventEmitter {
       this.activeStrategy = null;
     }
     // Abort and evict all cached sessions so next round gets fresh ones
-    for (const [, session] of this.sessionCache) {
-      session.abort().catch(() => { /* noop */ });
-    }
-    this.sessionCache.clear();
+    this.sessionGroup.abortAll();
   }
 
   setOrchestration(mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig): void {
@@ -226,72 +229,16 @@ export class ChatroomService extends EventEmitter {
     this.persist();
 
     // Destroy all cached sessions
-    for (const [, session] of this.sessionCache) {
-      await session.destroy().catch(() => { /* noop */ });
-    }
-    this.sessionCache.clear();
+    await this.sessionGroup.destroyAll();
   }
 
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
 
-  private async getOrCreateSession(mindId: string): Promise<CopilotSession> {
-    let session = this.sessionCache.get(mindId);
-    if (!session) {
-      session = await this.sessionFactory.createChatroomSession(
-        mindId,
-        this.createPermissionHandler(mindId),
-      );
-      this.sessionCache.set(mindId, session as CopilotSession);
-    }
-    return session;
-  }
-
-  private createPermissionHandler(mindId: string): PermissionHandler {
-    return async (
-      request: PermissionRequest,
-      invocation: { sessionId: string },
-    ): Promise<PermissionRequestResult> => {
-      const toolName = this.permissionToolName(request);
-      const { approved, reason } = await this.approvalGate.gate(
-        mindId,
-        toolName,
-        {
-          kind: request.kind,
-          toolCallId: request.toolCallId,
-          sessionId: invocation.sessionId,
-        },
-        `Copilot requested permission for ${request.kind}`,
-      );
-
-      if (approved) {
-        return { kind: 'approve-once' };
-      }
-
-      return {
-        kind: 'reject',
-        feedback: reason
-          ? `Denied by Chamber approval gate: ${reason}`
-          : 'Denied by Chamber approval gate',
-      };
-    };
-  }
-
-  private permissionToolName(request: PermissionRequest): string {
-    switch (request.kind) {
-      case 'custom-tool':
-        return 'custom_tool';
-      case 'mcp':
-        return 'mcp_tool';
-      default:
-        return request.kind;
-    }
-  }
-
   /** Evict a cached session (called by strategies on stale-session errors) */
   evictSession(mindId: string): void {
-    this.sessionCache.delete(mindId);
+    this.sessionGroup.evictSession(mindId);
   }
 
   private createUserMessage(text: string, roundId: string): ChatroomMessage {
@@ -458,11 +405,6 @@ export class ChatroomService extends EventEmitter {
     }
 
     // Destroy and remove cached session
-    const session = this.sessionCache.get(mindId);
-    if (session) {
-      session.abort().catch(() => { /* noop */ });
-      session.destroy().catch(() => { /* noop */ });
-      this.sessionCache.delete(mindId);
-    }
+    this.sessionGroup.destroySession(mindId);
   }
 }
