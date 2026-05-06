@@ -20,10 +20,14 @@ import type { CopilotSession } from '../mind';
 import type { AppPaths } from '../ports';
 import type { PermissionHandler } from '@github/copilot-sdk';
 import { createStrategy } from './orchestration';
-import type { OrchestrationStrategy, OrchestrationContext } from './orchestration';
 import { escapeXml, textContent, stripControlJson } from './orchestration/shared';
 import { ApprovalGate } from './orchestration/approval-gate';
-import { SessionGroup, createApprovalGatePermissionFactory } from '../session-group';
+import {
+  SessionGroup,
+  createApprovalGatePermissionFactory,
+  wrapStrategy,
+} from '../session-group';
+import type { ProductHooks } from '../session-group';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -50,7 +54,6 @@ export class ChatroomService extends EventEmitter {
   private messages: ChatroomMessage[] = [];
   private lastLedger: TaskLedgerItem[] = [];
   private readonly sessionGroup: SessionGroup;
-  private activeStrategy: OrchestrationStrategy | null = null;
   private orchestrationMode: OrchestrationMode = 'concurrent';
   private groupChatConfig: GroupChatConfig | null = null;
   private handoffConfig: HandoffConfig | null = null;
@@ -133,63 +136,40 @@ export class ChatroomService extends EventEmitter {
       participants.map((p) => this.sessionGroup.getOrCreateSession(p.mindId).catch(() => { /* non-fatal */ })),
     );
 
-    // Create strategy for current orchestration mode
-    let strategy: OrchestrationStrategy;
+    // Build the orchestrator for the current mode and wrap it for SessionGroup.
+    let orchestrator;
     try {
-      strategy = createStrategy(
+      const strategy = createStrategy(
         this.orchestrationMode,
         this.groupChatConfig ?? undefined,
         this.handoffConfig ?? undefined,
         this.magneticConfig ?? undefined,
       );
+      orchestrator = wrapStrategy(strategy);
     } catch (err) {
       log.error(`Failed to create strategy for mode "${this.orchestrationMode}":`, err);
-      this.emit('chatroom:event', {
-        mindId: 'system',
-        mindName: 'System',
-        messageId: randomUUID(),
-        roundId,
-        event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
-      } satisfies ChatroomStreamEvent);
+      this.emitOrchestrationError(roundId, err);
       return;
     }
-    this.activeStrategy = strategy;
-
-    // Build context adapter for strategies
-    const contextAdapter: OrchestrationContext = {
-      getOrCreateSession: (mindId: string) => this.sessionGroup.getOrCreateSession(mindId),
-      evictSession: (mindId: string) => this.sessionGroup.evictSession(mindId),
-      buildBasePrompt: (msg: string, parts: MindContext[], forMind?: MindContext) =>
-        this.buildPrompt(msg, parts, roundId, forMind),
-      emitEvent: (event: ChatroomStreamEvent) => this.emit('chatroom:event', event),
-      persistMessage: (message: ChatroomMessage) => {
-        this.messages.push(message);
-        this.persist();
-      },
-      getHistory: () => [...this.messages],
-      orchestrationMode: this.orchestrationMode,
-    };
 
     try {
-      await strategy.execute(userMessage, participants, roundId, contextAdapter);
+      await this.sessionGroup.run({
+        prompt: userMessage,
+        participants,
+        roundId,
+        orchestrator,
+        product: this.buildProductHooks(roundId),
+      });
     } catch (err) {
       log.error(`Strategy "${this.orchestrationMode}" execution failed:`, err);
-      this.emit('chatroom:event', {
-        mindId: 'system',
-        mindName: 'System',
-        messageId: randomUUID(),
-        roundId,
-        event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
-      } satisfies ChatroomStreamEvent);
+      this.emitOrchestrationError(roundId, err);
     }
   }
 
   stopAll(): void {
-    if (this.activeStrategy) {
-      this.activeStrategy.stop();
-      this.activeStrategy = null;
-    }
-    // Abort and evict all cached sessions so next round gets fresh ones
+    // Cancel the active orchestrator (if any) then abort + evict all
+    // cached sessions so the next round starts cold.
+    this.sessionGroup.stopActiveRun();
     this.sessionGroup.abortAll();
   }
 
@@ -236,9 +216,34 @@ export class ChatroomService extends EventEmitter {
   // Internals
   // -------------------------------------------------------------------------
 
-  /** Evict a cached session (called by strategies on stale-session errors) */
-  evictSession(mindId: string): void {
-    this.sessionGroup.evictSession(mindId);
+  /**
+   * Build the product-shaped hooks SessionGroup hands to the orchestrator
+   * each round: prompt building, event emission, message persistence,
+   * history access. Bound to the round so `buildBasePrompt` can capture
+   * `roundId` for context.
+   */
+  private buildProductHooks(roundId: string): ProductHooks {
+    return {
+      buildBasePrompt: (msg, parts, forMind) =>
+        this.buildPrompt(msg, parts, roundId, forMind),
+      emitEvent: (event) => this.emit('chatroom:event', event),
+      persistMessage: (message) => {
+        this.messages.push(message);
+        this.persist();
+      },
+      getHistory: () => [...this.messages],
+    };
+  }
+
+  /** Emit a system-level orchestration error event. */
+  private emitOrchestrationError(roundId: string, err: unknown): void {
+    this.emit('chatroom:event', {
+      mindId: 'system',
+      mindName: 'System',
+      messageId: randomUUID(),
+      roundId,
+      event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
+    } satisfies ChatroomStreamEvent);
   }
 
   private createUserMessage(text: string, roundId: string): ChatroomMessage {
@@ -398,13 +403,9 @@ export class ChatroomService extends EventEmitter {
   }
 
   private handleMindUnloaded(mindId: string): void {
-    // Cancel active strategy if running
-    if (this.activeStrategy) {
-      this.activeStrategy.stop();
-      this.activeStrategy = null;
-    }
-
-    // Destroy and remove cached session
+    // Cancel active orchestrator (if running) and tear down the unloaded
+    // mind's session.
+    this.sessionGroup.stopActiveRun();
     this.sessionGroup.destroySession(mindId);
   }
 }
