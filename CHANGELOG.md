@@ -11,6 +11,7 @@
 ### SDK
 
 - **Accept string tool arguments** - SDK tool execution events now tolerate object, JSON-string, and raw-string argument payloads, preventing contract mismatch failures for tools such as apply-patch.
+- **Align the packaged Copilot runtime** - Chamber now pins `@github/copilot` to `1.0.42-0` so the packaged runtime smoke matches the CLI binary version bundled by npm.
 
 ### Testing
 
