@@ -186,4 +186,40 @@ describe('ChatroomPanel', () => {
     });
     expect(api.chatroom.stop).toHaveBeenCalled();
   });
+
+  // 13. Participant toggle — disabled style + click invokes IPC
+  describe('participant toggle', () => {
+    it('renders agents as buttons with aria-pressed reflecting enabled state', () => {
+      renderPanel({ minds: [MIND_A, MIND_B], chatroomDisabledMindIds: ['mind-b'] }, api);
+
+      const dude = screen.getByRole('button', { name: /The Dude/ });
+      const jarvis = screen.getByRole('button', { name: /Jarvis/ });
+      expect(dude.getAttribute('aria-pressed')).toBe('true');
+      expect(jarvis.getAttribute('aria-pressed')).toBe('false');
+      // Disabled pill carries the line-through class.
+      expect(jarvis.className).toContain('line-through');
+      expect(dude.className).not.toContain('line-through');
+    });
+
+    it('clicking an enabled agent calls setMindEnabled(mindId, false)', async () => {
+      renderPanel({ minds: [MIND_A], chatroomDisabledMindIds: [] }, api);
+      const dude = screen.getByRole('button', { name: /The Dude/ });
+      await act(async () => { fireEvent.click(dude); });
+      expect(api.chatroom.setMindEnabled).toHaveBeenCalledWith('mind-a', false);
+    });
+
+    it('clicking a disabled agent calls setMindEnabled(mindId, true)', async () => {
+      renderPanel({ minds: [MIND_A], chatroomDisabledMindIds: ['mind-a'] }, api);
+      const dude = screen.getByRole('button', { name: /The Dude/ });
+      await act(async () => { fireEvent.click(dude); });
+      expect(api.chatroom.setMindEnabled).toHaveBeenCalledWith('mind-a', true);
+    });
+
+    it('hydrates chatroomDisabledMindIds from IPC on mount', async () => {
+      (api.chatroom.getDisabledMindIds as Mock).mockResolvedValueOnce(['mind-b']);
+      renderPanel({ minds: [MIND_A, MIND_B] }, api);
+      await act(async () => { await Promise.resolve(); });
+      expect(api.chatroom.getDisabledMindIds).toHaveBeenCalled();
+    });
+  });
 });

@@ -29,6 +29,9 @@ function createBrowserChatroomApi(): ChatroomAPI {
     setOrchestration: async () => unavailable('chatroom orchestration changes'),
     getOrchestration: async () => ({ mode: 'concurrent', config: null }),
     onEvent: () => noopUnsubscribe,
+    setMindEnabled: async () => unavailable('chatroom participant toggles'),
+    getDisabledMindIds: async (): Promise<string[]> => [],
+    onStateChanged: () => noopUnsubscribe,
   };
 }
 

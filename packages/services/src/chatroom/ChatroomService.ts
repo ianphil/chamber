@@ -9,6 +9,7 @@ import type {
   ChatroomMessage,
   ChatroomTranscript,
   ChatroomStreamEvent,
+  ChatroomStateChange,
   OrchestrationMode,
   GroupChatConfig,
   HandoffConfig,
@@ -19,8 +20,8 @@ import type { MindContext } from '@chamber/shared/types';
 import type { CopilotSession } from '../mind';
 import type { AppPaths } from '../ports';
 import type { PermissionHandler } from '@github/copilot-sdk';
-import { escapeXml, textContent, stripControlJson } from './orchestration/shared';
-import { ApprovalGate } from './orchestration/approval-gate';
+import { escapeXml, textContent, stripControlJson } from '../session-group/shared';
+import { ApprovalGate } from '../session-group/approval-gate';
 import {
   SessionGroup,
   createApprovalGatePermissionFactory,
@@ -53,6 +54,7 @@ const MAX_MESSAGES = 500;
 export class ChatroomService extends EventEmitter {
   private messages: ChatroomMessage[] = [];
   private lastLedger: TaskLedgerItem[] = [];
+  private readonly disabledMindIds = new Set<string>();
   private readonly sessionGroup: SessionGroup;
   private orchestrationMode: OrchestrationMode = 'concurrent';
   private groupChatConfig: GroupChatConfig | null = null;
@@ -116,19 +118,41 @@ export class ChatroomService extends EventEmitter {
 
     const roundId = this.resolveRoundId(suppliedRoundId);
 
-    // Snapshot participants (only ready minds)
-    const participants = this.sessionFactory
+    // Snapshot participants (only ready minds) and apply the user-managed
+    // disabled set. Snapshotted once at the top of the round so a toggle
+    // mid-round does not affect the in-flight broadcast.
+    const readyMinds = this.sessionFactory
       .listMinds()
       .filter((m) => m.status === 'ready');
+    const participants = readyMinds.filter((m) => !this.disabledMindIds.has(m.mindId));
 
     // Create and persist user message
     const userMsg = this.createUserMessage(userMessage, roundId);
     this.messages.push(userMsg);
     this.persist();
 
-    if (participants.length === 0) return;
+    // No enabled participants — emit and persist a system assistant message
+    // so the user sees explicit feedback rather than a silent no-op.
+    if (participants.length === 0) {
+      this.emitSystemMessage(
+        roundId,
+        readyMinds.length === 0
+          ? 'No agents are loaded. Add an agent to start chatting.'
+          : 'No agents are enabled. Click an agent at the top to re-enable it.',
+      );
+      return;
+    }
 
-    log.info(`broadcast mode="${this.orchestrationMode}" participants=${participants.length} handoffConfig=${JSON.stringify(this.handoffConfig)} magneticConfig=${JSON.stringify(this.magneticConfig)}`);
+    // Validate orchestration prerequisites against the *enabled* set.
+    // Without this, disabling the moderator/manager produces a confusing
+    // silent no-op or partial behavior inside the strategy.
+    const orchestrationError = this.validateOrchestrationPrerequisites(participants);
+    if (orchestrationError) {
+      this.emitSystemMessage(roundId, orchestrationError);
+      return;
+    }
+
+    log.info(`broadcast mode="${this.orchestrationMode}" participants=${participants.length} disabled=${this.disabledMindIds.size} handoffConfig=${JSON.stringify(this.handoffConfig)} magneticConfig=${JSON.stringify(this.magneticConfig)}`);
 
     // Warm session pool — pre-create sessions for all participants in parallel
     // to eliminate cold-start delays when workers begin their turns.
@@ -202,6 +226,29 @@ export class ChatroomService extends EventEmitter {
     return [...this.lastLedger];
   }
 
+  /**
+   * Toggle a mind's chatroom participation. Persists synchronously and
+   * emits `chatroom:state-changed` so any other windows update too.
+   * No-op if the requested state is already the current one.
+   */
+  setMindEnabled(mindId: string, enabled: boolean): void {
+    const wasDisabled = this.disabledMindIds.has(mindId);
+    const wantDisabled = !enabled;
+    if (wasDisabled === wantDisabled) return;
+    if (wantDisabled) {
+      this.disabledMindIds.add(mindId);
+    } else {
+      this.disabledMindIds.delete(mindId);
+    }
+    this.persist();
+    this.emitStateChanged();
+  }
+
+  /** Snapshot of currently disabled mind IDs. */
+  getDisabledMindIds(): string[] {
+    return [...this.disabledMindIds];
+  }
+
   async clearHistory(): Promise<void> {
     this.cancelPendingLedgerPersist();
     this.messages = [];
@@ -244,6 +291,71 @@ export class ChatroomService extends EventEmitter {
       roundId,
       event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
     } satisfies ChatroomStreamEvent);
+  }
+
+  /**
+   * Persist a system assistant message in the transcript and stream it
+   * to the renderer in one shot. Used for "no enabled participants" and
+   * for orchestration prerequisite failures so the user sees explicit
+   * feedback instead of a silent dropped round.
+   */
+  private emitSystemMessage(roundId: string, text: string): void {
+    const messageId = randomUUID();
+    const msg: ChatroomMessage = {
+      id: messageId,
+      role: 'assistant',
+      blocks: [{ type: 'text', content: text }],
+      timestamp: Date.now(),
+      sender: { mindId: 'system', name: 'System' },
+      roundId,
+    };
+    this.messages.push(msg);
+    this.persist();
+    this.emit('chatroom:event', {
+      mindId: 'system',
+      mindName: 'System',
+      messageId,
+      roundId,
+      event: { type: 'message_final', content: text, sdkMessageId: messageId },
+    } satisfies ChatroomStreamEvent);
+    this.emit('chatroom:event', {
+      mindId: 'system',
+      mindName: 'System',
+      messageId,
+      roundId,
+      event: { type: 'done' },
+    } satisfies ChatroomStreamEvent);
+  }
+
+  /**
+   * Validate that the selected orchestration mode can run with the given
+   * (already enabled-filtered) participant set. Returns a user-facing
+   * error string if not, otherwise null.
+   */
+  private validateOrchestrationPrerequisites(participants: MindContext[]): string | null {
+    const ids = new Set(participants.map((p) => p.mindId));
+    if (this.orchestrationMode === 'group-chat' && this.groupChatConfig) {
+      if (!ids.has(this.groupChatConfig.moderatorMindId)) {
+        return 'The group-chat moderator is disabled or not loaded. Re-enable it or change the orchestration mode.';
+      }
+    }
+    if (this.orchestrationMode === 'magentic' && this.magneticConfig) {
+      if (!ids.has(this.magneticConfig.managerMindId)) {
+        return 'The magentic manager is disabled or not loaded. Re-enable it or change the orchestration mode.';
+      }
+      // Magentic needs at least one worker (a non-manager participant) to assign tasks to.
+      const workers = participants.filter((p) => p.mindId !== this.magneticConfig?.managerMindId);
+      if (workers.length === 0) {
+        return 'Magentic orchestration needs at least one worker enabled in addition to the manager.';
+      }
+    }
+    return null;
+  }
+
+  /** Emit an authoritative state-changed event for cross-window sync. */
+  private emitStateChanged(): void {
+    const payload: ChatroomStateChange = { disabledMindIds: this.getDisabledMindIds() };
+    this.emit('chatroom:state-changed', payload);
   }
 
   private createUserMessage(text: string, roundId: string): ChatroomMessage {
@@ -341,6 +453,13 @@ export class ChatroomService extends EventEmitter {
       if (transcript.version === 1 && Array.isArray(transcript.messages)) {
         this.messages = transcript.messages;
         this.lastLedger = Array.isArray(transcript.taskLedger) ? transcript.taskLedger : [];
+        // Defensive: keep only string entries and don't fail the whole
+        // transcript load if the optional preference field is malformed.
+        if (Array.isArray(transcript.disabledMindIds)) {
+          for (const id of transcript.disabledMindIds) {
+            if (typeof id === 'string') this.disabledMindIds.add(id);
+          }
+        }
       }
     } catch {
       // Corrupt or missing — start fresh
@@ -352,7 +471,12 @@ export class ChatroomService extends EventEmitter {
       fs.mkdirSync(this.persistDir, { recursive: true });
       const trimmed = this.messages.slice(-MAX_MESSAGES);
       this.messages = trimmed;
-      const transcript: ChatroomTranscript = { version: 1, messages: trimmed, taskLedger: this.lastLedger };
+      const transcript: ChatroomTranscript = {
+        version: 1,
+        messages: trimmed,
+        taskLedger: this.lastLedger,
+        disabledMindIds: this.getDisabledMindIds(),
+      };
       const tmpPath = this.persistPath + '.tmp';
       fs.writeFileSync(tmpPath, JSON.stringify(transcript, null, 2));
       fs.renameSync(tmpPath, this.persistPath);
@@ -407,5 +531,14 @@ export class ChatroomService extends EventEmitter {
     // mind's session.
     this.sessionGroup.stopActiveRun();
     this.sessionGroup.destroySession(mindId);
+
+    // Housekeeping: drop the mind from the disabled set so a re-added
+    // mind with the same id starts enabled, and the persisted set
+    // doesn't accumulate stale ids. Persist + broadcast only if the set
+    // actually changed.
+    if (this.disabledMindIds.delete(mindId)) {
+      this.persist();
+      this.emitStateChanged();
+    }
   }
 }

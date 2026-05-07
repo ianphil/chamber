@@ -74,6 +74,9 @@ const electronAPI: ElectronAPI = {
     setOrchestration: (mode: string, config?: unknown) => ipcRenderer.invoke('chatroom:set-orchestration', mode, config),
     getOrchestration: () => ipcRenderer.invoke('chatroom:get-orchestration'),
     onEvent: (callback) => createIpcListener(ipcRenderer, 'chatroom:event', callback),
+    setMindEnabled: (mindId: string, enabled: boolean) => ipcRenderer.invoke('chatroom:set-mind-enabled', mindId, enabled),
+    getDisabledMindIds: () => ipcRenderer.invoke('chatroom:get-disabled-mind-ids'),
+    onStateChanged: (callback) => createIpcListener(ipcRenderer, 'chatroom:state-changed', callback),
   },
   updater: {
     getState: () => ipcRenderer.invoke('updater:get-state'),

@@ -47,6 +47,8 @@ export interface AppState {
   chatroomTaskLedger: TaskLedgerItem[];
   /** Orchestration completion metrics */
   chatroomMetrics: { elapsedMs: number; totalTasks: number; completedTasks: number; failedTasks: number; agentsUsed: number; orchestrationMode: string } | null;
+  /** Mind IDs the user has disabled in the chatroom; excluded from broadcasts. */
+  chatroomDisabledMindIds: string[];
 }
 
 export type AppAction =
@@ -88,7 +90,8 @@ export type AppAction =
   | { type: 'SET_GROUP_CHAT_CONFIG'; payload: GroupChatConfig | null }
   | { type: 'SET_HANDOFF_CONFIG'; payload: HandoffConfig | null }
   | { type: 'SET_MAGENTIC_CONFIG'; payload: MagenticConfig | null }
-  | { type: 'CHATROOM_ACTIVE_SPEAKER'; payload: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null };
+  | { type: 'CHATROOM_ACTIVE_SPEAKER'; payload: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null }
+  | { type: 'SET_CHATROOM_DISABLED_MIND_IDS'; payload: string[] };
 
 export const initialState: AppState = {
   minds: [],
@@ -117,4 +120,5 @@ export const initialState: AppState = {
   chatroomActiveSpeaker: null,
   chatroomTaskLedger: [],
   chatroomMetrics: null,
+  chatroomDisabledMindIds: [],
 };

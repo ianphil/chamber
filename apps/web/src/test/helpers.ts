@@ -216,6 +216,9 @@ export function mockElectronAPI(): ElectronAPI {
       setOrchestration: vi.fn().mockResolvedValue(undefined),
       getOrchestration: vi.fn().mockResolvedValue({ mode: 'concurrent', config: null }),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
+      setMindEnabled: vi.fn().mockResolvedValue(undefined),
+      getDisabledMindIds: vi.fn().mockResolvedValue([]),
+      onStateChanged: vi.fn().mockReturnValue(vi.fn()),
     },
     updater: {
       getState: vi.fn((): Promise<DesktopUpdateState> => new Promise<DesktopUpdateState>(() => {})),

@@ -1021,6 +1021,23 @@ describe('appReducer — chatroom actions', () => {
     expect(state.chatroomStreamingByMind).toEqual({});
   });
 
+  it('CHATROOM_CLEAR preserves chatroomDisabledMindIds (preference, not transcript)', () => {
+    const base: AppState = {
+      ...initialState,
+      chatroomMessages: [makeChatroomMessage()],
+      chatroomDisabledMindIds: ['mind-1'],
+    };
+    const state = appReducer(base, { type: 'CHATROOM_CLEAR' });
+    expect(state.chatroomMessages).toEqual([]);
+    expect(state.chatroomDisabledMindIds).toEqual(['mind-1']);
+  });
+
+  it('SET_CHATROOM_DISABLED_MIND_IDS replaces the array', () => {
+    const base: AppState = { ...initialState, chatroomDisabledMindIds: ['old'] };
+    const state = appReducer(base, { type: 'SET_CHATROOM_DISABLED_MIND_IDS', payload: ['mind-1', 'mind-2'] });
+    expect(state.chatroomDisabledMindIds).toEqual(['mind-1', 'mind-2']);
+  });
+
   // -------------------------------------------------------------------------
   // Orchestration events — set chatroomActiveSpeaker
   // -------------------------------------------------------------------------

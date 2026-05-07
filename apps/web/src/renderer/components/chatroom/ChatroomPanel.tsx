@@ -55,21 +55,44 @@ function isModeratorMessage(message: ChatroomMessage, moderatorMindId?: string):
 // ParticipantBar
 // ---------------------------------------------------------------------------
 
-function ParticipantBar({ minds, streamingByMind }: { minds: MindContext[]; streamingByMind: Record<string, boolean> }) {
+function ParticipantBar({ minds, streamingByMind, disabledMindIds, onToggle }: {
+  minds: MindContext[];
+  streamingByMind: Record<string, boolean>;
+  disabledMindIds: string[];
+  onToggle: (mindId: string, enabled: boolean) => void;
+}) {
   if (minds.length === 0) return null;
+  const disabledSet = new Set(disabledMindIds);
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-border overflow-x-auto shrink-0">
       {minds.map((mind, i) => {
         const streaming = streamingByMind[mind.mindId];
+        const disabled = disabledSet.has(mind.mindId);
+        const color = AGENT_COLORS[i % AGENT_COLORS.length];
+        const title = disabled
+          ? streaming
+            ? `${mind.identity.name} is disabled — currently responding to this round. Click to re-enable.`
+            : `${mind.identity.name} is disabled. Click to enable.`
+          : `${mind.identity.name} is enabled. Click to disable.`;
         return (
-          <span
+          <button
+            type="button"
             key={mind.mindId}
-            className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 whitespace-nowrap"
-            style={{ backgroundColor: `${AGENT_COLORS[i % AGENT_COLORS.length]}20`, color: AGENT_COLORS[i % AGENT_COLORS.length] }}
+            aria-pressed={!disabled}
+            title={title}
+            onClick={() => onToggle(mind.mindId, disabled)}
+            className={cn(
+              'inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 whitespace-nowrap',
+              'transition-opacity cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-ring',
+              disabled
+                ? 'opacity-50 line-through hover:opacity-75'
+                : 'hover:opacity-90',
+            )}
+            style={{ backgroundColor: `${color}20`, color }}
           >
             <span className={cn('w-2 h-2 rounded-full', streaming ? 'bg-yellow-400 animate-pulse' : 'bg-green-500')} />
             {mind.identity.name}
-          </span>
+          </button>
         );
       })}
     </div>
@@ -449,6 +472,7 @@ export function ChatroomPanel() {
     chatroomActiveSpeaker,
     chatroomTaskLedger,
     chatroomMetrics,
+    chatroomDisabledMindIds,
   } = useAppState();
   const dispatch = useAppDispatch();
   const isStreaming = Object.values(chatroomStreamingByMind).some(Boolean);
@@ -474,6 +498,35 @@ export function ChatroomPanel() {
     return unsub;
   }, [dispatch]);
 
+  // Hydrate disabled-mind set on mount and stay in sync via the
+  // authoritative state-changed channel (other windows can also toggle).
+  // Subscribe FIRST, snapshot SECOND, and ignore the snapshot if the
+  // authoritative channel has already published — otherwise a slow snapshot
+  // can stomp a fresher state-changed event from another window.
+  useEffect(() => {
+    let cancelled = false;
+    let receivedAuthoritativeUpdate = false;
+    const unsub = window.electronAPI.chatroom.onStateChanged((state) => {
+      if (cancelled) return;
+      receivedAuthoritativeUpdate = true;
+      dispatch({ type: 'SET_CHATROOM_DISABLED_MIND_IDS', payload: state.disabledMindIds });
+    });
+    window.electronAPI.chatroom.getDisabledMindIds().then((ids) => {
+      if (cancelled || receivedAuthoritativeUpdate) return;
+      dispatch({ type: 'SET_CHATROOM_DISABLED_MIND_IDS', payload: ids });
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [dispatch]);
+
+  const handleToggleMind = useCallback((mindId: string, enabled: boolean) => {
+    // Authoritative model: the click only invokes IPC; the state-changed
+    // event from the service drives the visible state.
+    void window.electronAPI.chatroom.setMindEnabled(mindId, enabled);
+  }, []);
+
   const handleSend = useCallback(async (content: string) => {
     const roundId = crypto.randomUUID();
     dispatch({
@@ -496,7 +549,12 @@ export function ChatroomPanel() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <ParticipantBar minds={minds} streamingByMind={chatroomStreamingByMind} />
+      <ParticipantBar
+        minds={minds}
+        streamingByMind={chatroomStreamingByMind}
+        disabledMindIds={chatroomDisabledMindIds}
+        onToggle={handleToggleMind}
+      />
 
       <OrchestrationPicker
         mode={chatroomOrchestration}

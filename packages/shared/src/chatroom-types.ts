@@ -136,6 +136,12 @@ export interface ChatroomTranscript {
   version: 1;
   messages: ChatroomMessage[];
   taskLedger?: TaskLedgerItem[];
+  /**
+   * Mind IDs the user has manually disabled in the chatroom. Disabled
+   * minds are excluded from the participant snapshot taken at the start
+   * of each round but otherwise stay loaded. Default: empty.
+   */
+  disabledMindIds?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +158,16 @@ export interface ChatroomStreamEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Chatroom state-change event
+// ---------------------------------------------------------------------------
+
+/** Authoritative state delta emitted when chatroom preferences change. */
+export interface ChatroomStateChange {
+  /** Currently disabled mind IDs. Always sent in full (not a delta). */
+  disabledMindIds: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Chatroom ElectronAPI surface
 // ---------------------------------------------------------------------------
 
@@ -164,4 +180,7 @@ export interface ChatroomAPI {
   setOrchestration: (mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => Promise<void>;
   getOrchestration: () => Promise<{ mode: OrchestrationMode; config: GroupChatConfig | HandoffConfig | MagenticConfig | null }>;
   onEvent: (callback: (event: ChatroomStreamEvent) => void) => () => void;
+  setMindEnabled: (mindId: string, enabled: boolean) => Promise<void>;
+  getDisabledMindIds: () => Promise<string[]>;
+  onStateChanged: (callback: (state: ChatroomStateChange) => void) => () => void;
 }

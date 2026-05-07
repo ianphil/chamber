@@ -568,15 +568,20 @@ describe('ChatroomService', () => {
 
   // 15. 0 agents
   describe('0 agents', () => {
-    it('broadcast with no ready minds saves user message only', async () => {
+    it('broadcast with no ready minds saves user message and a system message', async () => {
       minds.length = 0;
 
       await svc.broadcast('Hello nobody');
 
       const history = svc.getHistory();
-      expect(history).toHaveLength(1);
+      expect(history).toHaveLength(2);
       expect(history[0].role).toBe('user');
       expect(history[0].blocks[0]).toEqual({ type: 'text', content: 'Hello nobody' });
+      expect(history[1].role).toBe('assistant');
+      expect(history[1].sender.mindId).toBe('system');
+      expect(history[1].blocks[0]).toMatchObject({ type: 'text' });
+      // Both messages share the same roundId so the renderer groups them.
+      expect(history[1].roundId).toBe(history[0].roundId);
     });
   });
 
@@ -820,6 +825,190 @@ describe('ChatroomService', () => {
 
       expect(factory.createChatroomSession).toHaveBeenCalledTimes(1);
       expect(factory.createChatroomSession).toHaveBeenCalledWith('dude', expect.any(Function));
+    });
+  });
+
+  // 18. Disabled minds (participant toggle)
+  describe('disabled minds', () => {
+    it('defaults to no disabled minds', () => {
+      expect(svc.getDisabledMindIds()).toEqual([]);
+    });
+
+    it('setMindEnabled(false) excludes the mind from broadcast', async () => {
+      const dudeSess = createMockSession();
+      const jarvisSess = createMockSession();
+      sessions.set('dude', dudeSess);
+      sessions.set('jarvis', jarvisSess);
+      autoIdle(dudeSess);
+      autoIdle(jarvisSess);
+
+      svc.setMindEnabled('dude', false);
+      await svc.broadcast('Hello');
+
+      expect(dudeSess.send).not.toHaveBeenCalled();
+      expect(jarvisSess.send).toHaveBeenCalled();
+    });
+
+    it('setMindEnabled is idempotent and only persists/emits on change', () => {
+      const stateChanges: unknown[] = [];
+      svc.on('chatroom:state-changed', (s) => stateChanges.push(s));
+
+      svc.setMindEnabled('dude', false);
+      svc.setMindEnabled('dude', false); // no-op
+      svc.setMindEnabled('dude', true);
+      svc.setMindEnabled('dude', true); // no-op
+
+      expect(stateChanges).toHaveLength(2);
+      expect(stateChanges[0]).toEqual({ disabledMindIds: ['dude'] });
+      expect(stateChanges[1]).toEqual({ disabledMindIds: [] });
+    });
+
+    it('persists disabledMindIds in chatroom.json', () => {
+      svc.setMindEnabled('dude', false);
+
+      const writes = vi.mocked(fs.writeFileSync).mock.calls;
+      const lastWrite = writes[writes.length - 1];
+      const transcript = JSON.parse(lastWrite[1] as string);
+      expect(transcript.disabledMindIds).toEqual(['dude']);
+    });
+
+    it('loads disabledMindIds defensively from a prior transcript', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 1,
+        messages: [],
+        disabledMindIds: ['dude', 42, null, 'jarvis'], // mixed garbage
+      }));
+
+      const fresh = new ChatroomService(factory, mockAppPaths);
+      expect(fresh.getDisabledMindIds().sort()).toEqual(['dude', 'jarvis']);
+    });
+
+    it('still loads transcript when disabledMindIds is malformed (not an array)', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 1,
+        messages: [{ id: 'm1', role: 'user', blocks: [{ type: 'text', content: 'hi' }], timestamp: 1, sender: { mindId: 'user', name: 'You' }, roundId: 'r1' }],
+        disabledMindIds: 'not-an-array',
+      }));
+
+      const fresh = new ChatroomService(factory, mockAppPaths);
+      expect(fresh.getHistory()).toHaveLength(1);
+      expect(fresh.getDisabledMindIds()).toEqual([]);
+    });
+
+    it('all-disabled produces a system message and no agent invocation', async () => {
+      const dudeSess = createMockSession();
+      const jarvisSess = createMockSession();
+      sessions.set('dude', dudeSess);
+      sessions.set('jarvis', jarvisSess);
+
+      svc.setMindEnabled('dude', false);
+      svc.setMindEnabled('jarvis', false);
+      await svc.broadcast('Hello nobody');
+
+      expect(dudeSess.send).not.toHaveBeenCalled();
+      expect(jarvisSess.send).not.toHaveBeenCalled();
+      const history = svc.getHistory();
+      expect(history).toHaveLength(2);
+      expect(history[1].sender.mindId).toBe('system');
+    });
+
+    it('handleMindUnloaded prunes the disabled set, persists, and emits', () => {
+      const stateChanges: unknown[] = [];
+      svc.on('chatroom:state-changed', (s) => stateChanges.push(s));
+
+      svc.setMindEnabled('dude', false);
+      stateChanges.length = 0;
+
+      factory.emit('mind:unloaded', 'dude');
+
+      expect(svc.getDisabledMindIds()).toEqual([]);
+      expect(stateChanges).toEqual([{ disabledMindIds: [] }]);
+    });
+
+    it('handleMindUnloaded for a mind that was not disabled does not emit', () => {
+      const stateChanges: unknown[] = [];
+      svc.on('chatroom:state-changed', (s) => stateChanges.push(s));
+
+      factory.emit('mind:unloaded', 'jarvis');
+
+      expect(stateChanges).toEqual([]);
+    });
+
+    it('clearHistory keeps the disabled set (preference, not transcript content)', async () => {
+      svc.setMindEnabled('dude', false);
+      await svc.clearHistory();
+      expect(svc.getDisabledMindIds()).toEqual(['dude']);
+    });
+
+    it('mid-round toggle does not affect the in-flight broadcast (snapshot semantics)', async () => {
+      const dudeSess = createMockSession();
+      const jarvisSess = createMockSession();
+      sessions.set('dude', dudeSess);
+      sessions.set('jarvis', jarvisSess);
+      autoIdle(dudeSess);
+      autoIdle(jarvisSess);
+
+      const broadcastPromise = svc.broadcast('Hello');
+      // Toggle mid-flight; snapshot was taken at the top of broadcast.
+      svc.setMindEnabled('jarvis', false);
+      await broadcastPromise;
+
+      expect(dudeSess.send).toHaveBeenCalled();
+      expect(jarvisSess.send).toHaveBeenCalled();
+    });
+  });
+
+  // 19. Orchestration prerequisites
+  describe('orchestration prerequisites', () => {
+    it('emits a system message when group-chat moderator is disabled', async () => {
+      svc.setOrchestration('group-chat', { moderatorMindId: 'dude', maxTurns: 3, minRounds: 1, maxSpeakerRepeats: 3 });
+      svc.setMindEnabled('dude', false);
+
+      const dudeSess = createMockSession();
+      const jarvisSess = createMockSession();
+      sessions.set('dude', dudeSess);
+      sessions.set('jarvis', jarvisSess);
+
+      await svc.broadcast('Discuss');
+
+      expect(dudeSess.send).not.toHaveBeenCalled();
+      expect(jarvisSess.send).not.toHaveBeenCalled();
+      const history = svc.getHistory();
+      expect(history[history.length - 1].sender.mindId).toBe('system');
+    });
+
+    it('emits a system message when magentic manager is disabled', async () => {
+      svc.setOrchestration('magentic', { managerMindId: 'dude', maxSteps: 3 });
+      svc.setMindEnabled('dude', false);
+
+      const dudeSess = createMockSession();
+      const jarvisSess = createMockSession();
+      sessions.set('dude', dudeSess);
+      sessions.set('jarvis', jarvisSess);
+
+      await svc.broadcast('Plan');
+
+      expect(dudeSess.send).not.toHaveBeenCalled();
+      expect(jarvisSess.send).not.toHaveBeenCalled();
+      const history = svc.getHistory();
+      expect(history[history.length - 1].sender.mindId).toBe('system');
+    });
+
+    it('emits a system message when magentic has manager but no workers', async () => {
+      svc.setOrchestration('magentic', { managerMindId: 'dude', maxSteps: 3 });
+      svc.setMindEnabled('jarvis', false);
+      minds.length = 1; // only dude (manager) remains
+
+      const dudeSess = createMockSession();
+      sessions.set('dude', dudeSess);
+
+      await svc.broadcast('Plan');
+
+      expect(dudeSess.send).not.toHaveBeenCalled();
+      const history = svc.getHistory();
+      expect(history[history.length - 1].sender.mindId).toBe('system');
     });
   });
 });
