@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
+import { IPC } from '@chamber/shared';
 import type { ChatroomService } from '@chamber/services';
 import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, ChatroomStateChange } from '@chamber/shared/chatroom-types';
 
@@ -32,48 +33,51 @@ function parseSendArgs(message: unknown, model: unknown, roundId: unknown): Chat
 }
 
 export function setupChatroomIPC(chatroomService: ChatroomService): void {
-  ipcMain.handle('chatroom:send', async (_event, message: unknown, model?: unknown, roundId?: unknown) => {
+  ipcMain.handle(IPC.CHATROOM.SEND, async (_event, message: unknown, model?: unknown, roundId?: unknown) => {
     const args = parseSendArgs(message, model, roundId);
     await chatroomService.broadcast(args.message, args.model, args.roundId);
   });
 
-  ipcMain.handle('chatroom:history', async () => {
+  ipcMain.handle(IPC.CHATROOM.HISTORY, async () => {
     return chatroomService.getHistory();
   });
 
-  ipcMain.handle('chatroom:task-ledger', async () => {
+  ipcMain.handle(IPC.CHATROOM.TASK_LEDGER, async () => {
     return chatroomService.getTaskLedger();
   });
 
-  ipcMain.handle('chatroom:clear', async () => {
+  ipcMain.handle(IPC.CHATROOM.CLEAR, async () => {
     await chatroomService.clearHistory();
   });
 
-  ipcMain.handle('chatroom:stop', async () => {
+  ipcMain.handle(IPC.CHATROOM.STOP, async () => {
     chatroomService.stopAll();
   });
 
-  ipcMain.handle('chatroom:set-orchestration', async (_event, mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => {
+  ipcMain.handle(IPC.CHATROOM.SET_ORCHESTRATION, async (_event, mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => {
     chatroomService.setOrchestration(mode, config);
   });
 
-  ipcMain.handle('chatroom:get-orchestration', async () => {
+  ipcMain.handle(IPC.CHATROOM.GET_ORCHESTRATION, async () => {
     return chatroomService.getOrchestration();
   });
 
-  ipcMain.handle('chatroom:set-mind-enabled', async (_event, mindId: string, enabled: boolean) => {
+  ipcMain.handle(IPC.CHATROOM.SET_MIND_ENABLED, async (_event, mindId: string, enabled: boolean) => {
     chatroomService.setMindEnabled(mindId, enabled);
   });
 
-  ipcMain.handle('chatroom:get-disabled-mind-ids', async () => {
+  ipcMain.handle(IPC.CHATROOM.GET_DISABLED_MIND_IDS, async () => {
     return chatroomService.getDisabledMindIds();
   });
 
-  // Forward chatroom streaming events to all renderer windows
+  // Forward chatroom streaming events to all renderer windows.
+  // The 'chatroom:event' string passed to chatroomService.on(...) is an internal
+  // EventEmitter event name on the service, not an IPC wire channel; the
+  // webContents.send call uses the IPC.CHATROOM.EVENT constant for the IPC wire.
   chatroomService.on('chatroom:event', (event) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
-        win.webContents.send('chatroom:event', event);
+        win.webContents.send(IPC.CHATROOM.EVENT, event);
       }
     }
   });
@@ -84,7 +88,7 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
   chatroomService.on('chatroom:state-changed', (state: ChatroomStateChange) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
-        win.webContents.send('chatroom:state-changed', state);
+        win.webContents.send(IPC.CHATROOM.STATE_CHANGED, state);
       }
     }
   });

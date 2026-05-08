@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.4 (2026-05-08)
+
+### IPC
+
+- **Centralize IPC channel constants in `@chamber/shared`** — All IPC channel names are now declared in a single `IPC_CHANNELS` constant in `packages/shared/src/ipc-channels.ts`, with a typed `IpcChannel` union and the existing `createIpcListener` helper updated to consume them. Main-process IPC handlers in `apps/desktop/src/main/ipc/{auth,chat,chatroom,conversationHistory,genesis,lens,marketplace,mind,tools,updater}.ts` and the renderer's `preload.ts` channel registrations now reference the constants instead of magic strings. Adds 118 lines of unit coverage in `ipc-channels.test.ts` for naming convention, uniqueness, and cross-package consumer alignment. No behavior change. (#61)
+
 ## v0.49.3 (2026-05-08)
 
 ### Tests

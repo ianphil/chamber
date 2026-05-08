@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import started from 'electron-squirrel-startup';
+import { IPC } from '@chamber/shared';
 
 import {
   A2aToolProvider,
@@ -536,14 +537,14 @@ app.on('ready', async () => {
   reconcileMarketplaceTools();
 
   // Window controls
-  ipcMain.on('window:minimize', () => mainWindow?.minimize());
-  ipcMain.on('window:maximize', () => {
+  ipcMain.on(IPC.WINDOW.MINIMIZE, () => mainWindow?.minimize());
+  ipcMain.on(IPC.WINDOW.MAXIMIZE, () => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize();
     else mainWindow?.maximize();
   });
-  ipcMain.on('window:close', () => mainWindow?.close());
-  ipcMain.handle('desktop:getBranding', () => ({ name: app.getName(), version: app.getVersion() }));
-  ipcMain.handle('desktop:confirm', (_event, message: string) => {
+  ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
+  ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
+  ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {
           type: 'question',

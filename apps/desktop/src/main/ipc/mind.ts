@@ -3,6 +3,7 @@ import { ipcMain, dialog, BrowserWindow, type NativeImage } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import { setTimeout as delay } from 'node:timers/promises';
+import { IPC } from '@chamber/shared';
 import type { ChatService, MindManager } from '@chamber/services';
 import type { MindContext } from '@chamber/shared/types';
 import { installExternalNavigationGuard } from '../navigationGuard';
@@ -22,31 +23,31 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
       windowed: windowByMind.has(mind.mindId),
     }));
 
-  ipcMain.handle('mind:add', async (event, mindPath: string) => {
+  ipcMain.handle(IPC.MIND.ADD, async (event, mindPath: string) => {
     return mindManager.loadMind(mindPath);
   });
 
-  ipcMain.handle('mind:remove', async (_event, mindId: string) => {
+  ipcMain.handle(IPC.MIND.REMOVE, async (_event, mindId: string) => {
     await mindManager.unloadMind(mindId);
   });
 
-  ipcMain.handle('mind:list', async () => {
+  ipcMain.handle(IPC.MIND.LIST, async () => {
     // Wait for restore to complete before returning the list
     await mindManager.awaitRestore();
     return listMinds();
   });
 
-  ipcMain.handle('mind:setActive', async (_event, mindId: string) => {
+  ipcMain.handle(IPC.MIND.SET_ACTIVE, async (_event, mindId: string) => {
     mindManager.setActiveMind(mindId);
   });
 
-  ipcMain.handle('mind:setModel', async (_event, mindId: string, model: string | null) => {
+  ipcMain.handle(IPC.MIND.SET_MODEL, async (_event, mindId: string, model: string | null) => {
     const e2eDelayMs = Number(process.env.CHAMBER_E2E_MODEL_SWITCH_DELAY_MS ?? 0);
     if (e2eDelayMs > 0) await delay(e2eDelayMs);
     return chatService.setMindModel(mindId, model);
   });
 
-  ipcMain.handle('mind:selectDirectory', async (event) => {
+  ipcMain.handle(IPC.MIND.SELECT_DIRECTORY, async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return null;
 
@@ -60,7 +61,7 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
     return result.filePaths[0];
   });
 
-  ipcMain.handle('mind:openWindow', async (_event, mindId: string) => {
+  ipcMain.handle(IPC.MIND.OPEN_WINDOW, async (_event, mindId: string) => {
     // If already popped out, focus existing window
     const existing = windowByMind.get(mindId);
     if (existing) {
@@ -117,7 +118,7 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
   const broadcastMinds = () => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
-      win.webContents.send('mind:changed', listMinds());
+      win.webContents.send(IPC.MIND.CHANGED, listMinds());
       }
     }
   };

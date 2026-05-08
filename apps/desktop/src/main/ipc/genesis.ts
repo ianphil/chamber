@@ -2,6 +2,7 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { IPC } from '@chamber/shared';
 import {
   MindManager,
   MindScaffold,
@@ -26,11 +27,11 @@ export function setupGenesisIPC(
   templateInstaller: GenesisMindTemplateInstallerPort,
 ): void {
 
-  ipcMain.handle('genesis:getDefaultPath', async () => {
+  ipcMain.handle(IPC.GENESIS.GET_DEFAULT_PATH, async () => {
     return getDefaultGenesisBasePath();
   });
 
-  ipcMain.handle('genesis:pickPath', async (event) => {
+  ipcMain.handle(IPC.GENESIS.PICK_PATH, async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return null;
 
@@ -44,15 +45,15 @@ export function setupGenesisIPC(
     return result.filePaths[0];
   });
 
-  ipcMain.handle('genesis:listTemplates', async () => {
+  ipcMain.handle(IPC.GENESIS.LIST_TEMPLATES, async () => {
     return await templateCatalog.listTemplates();
   });
 
-  ipcMain.handle('genesis:create', async (event, config: GenesisConfig) => {
+  ipcMain.handle(IPC.GENESIS.CREATE, async (event, config: GenesisConfig) => {
     const win = BrowserWindow.fromWebContents(event.sender);
 
     scaffold.setProgressHandler((progress) => {
-      if (win) win.webContents.send('genesis:progress', progress);
+      if (win) win.webContents.send(IPC.GENESIS.PROGRESS, progress);
     });
 
     try {
@@ -60,23 +61,23 @@ export function setupGenesisIPC(
       return await activateCreatedMind(mindManager, mindPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (win) win.webContents.send('genesis:progress', { step: 'error', detail: message });
+      if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
       return { success: false, error: message };
     }
   });
 
-  ipcMain.handle('genesis:createFromTemplate', async (event, request: GenesisMindTemplateInstallRequest) => {
+  ipcMain.handle(IPC.GENESIS.CREATE_FROM_TEMPLATE, async (event, request: GenesisMindTemplateInstallRequest) => {
     const win = BrowserWindow.fromWebContents(event.sender);
 
     try {
-      if (win) win.webContents.send('genesis:progress', { step: 'template', detail: 'Installing Genesis mind template...' });
+      if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'template', detail: 'Installing Genesis mind template...' });
       const mindPath = await templateInstaller.install(request);
       const result = await activateCreatedMind(mindManager, mindPath);
-      if (win) win.webContents.send('genesis:progress', { step: 'complete', detail: 'Genesis template install complete.' });
+      if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'complete', detail: 'Genesis template install complete.' });
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (win) win.webContents.send('genesis:progress', { step: 'error', detail: message });
+      if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
       return { success: false, error: message };
     }
   });
