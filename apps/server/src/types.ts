@@ -29,27 +29,34 @@ export interface ServerAuthLoginResult {
   error?: string;
 }
 
+/**
+ * Capabilities the loopback server requires from its host process. Every
+ * field except `publish` is mandatory: a deployment that doesn't want to
+ * support a feature must provide an explicit refusal (e.g. a function that
+ * throws `new Error('Mind loading is unavailable')`) rather than rely on a
+ * silent default. `publish` is the optional outbound observability hook the
+ * websocket fan-out also tees published chat events into.
+ */
 export interface ChamberCtx {
   token: string;
   allowedOrigins: ReadonlySet<string>;
   listMinds: () => unknown[];
-  addMind?: (mindPath: string) => unknown | Promise<unknown>;
-  getConfig?: () => unknown | Promise<unknown>;
-  listLensViews?: () => unknown | Promise<unknown>;
-  getGenesisStatus?: () => unknown | Promise<unknown>;
-  getAuthStatus?: () => unknown | Promise<unknown>;
-  listAuthAccounts?: () => unknown[] | Promise<unknown[]>;
-  startAuthLogin?: (onProgress: (progress: ServerAuthProgress) => void) => Promise<ServerAuthLoginResult>;
-  switchAuthAccount?: (login: string) => void | Promise<void>;
-  logoutAuth?: () => void | Promise<void>;
-  listChamberTools?: () => unknown;
+  addMind: (mindPath: string) => unknown | Promise<unknown>;
+  getConfig: () => unknown | Promise<unknown>;
+  listLensViews: () => unknown | Promise<unknown>;
+  getGenesisStatus: () => unknown | Promise<unknown>;
+  getAuthStatus: () => unknown | Promise<unknown>;
+  listAuthAccounts: () => unknown[] | Promise<unknown[]>;
+  startAuthLogin: (onProgress: (progress: ServerAuthProgress) => void) => Promise<ServerAuthLoginResult>;
+  switchAuthAccount: (login: string) => void | Promise<void>;
+  logoutAuth: () => void | Promise<void>;
+  listChamberTools: () => unknown;
+  saveAttachment: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
+  cancelChat: (mindId: string, messageId: string) => Promise<void> | void;
+  sendChat: (request: SendChatRequest) => Promise<void> | void;
+  newConversation: (mindId: string) => Promise<unknown> | unknown;
+  listModels: (mindId?: string) => ModelDto[] | Promise<ModelDto[]>;
+  shutdown: () => void;
+  handlePrivilegedRequest: (request: PrivilegedRequest) => Promise<PrivilegedResponse>;
   publish?: (sessionId: string, event: unknown) => void;
-  validatePath?: (candidate: string) => boolean;
-  saveAttachment?: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
-  cancelChat?: (mindId: string, messageId: string) => Promise<void> | void;
-  sendChat?: (request: SendChatRequest) => Promise<void> | void;
-  newConversation?: (mindId: string) => Promise<unknown> | unknown;
-  listModels?: (mindId?: string) => ModelDto[] | Promise<ModelDto[]>;
-  shutdown?: () => void;
-  handlePrivilegedRequest?: (request: PrivilegedRequest) => Promise<PrivilegedResponse>;
 }

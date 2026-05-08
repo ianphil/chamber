@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.47.6 (2026-05-08)
+
+### Server
+
+- **Make loopback server capabilities required at construction** — `apps/server/src/types.ts` `ChamberCtx` no longer marks route-backed capabilities optional; `createServerContext` (`apps/server/src/composition.ts`) takes the full capability set up front via `ServerContextInputs` and only defaults `token`/`allowedOrigins`. `bin.ts` builds the production context immutably (a small `publishHolder` breaks the `sendChat`↔`createHttpServer` cycle without post-create mutation), and the E2E fake-chat overrides are now applied as a derived context rather than reassignment. The 503-fallback branches in `streamAuthLogin`, `/api/privileged`, and `/api/shutdown` are gone — those paths cannot exist now that the capabilities are required. The four `honoAdapter.test.ts` tests asserting the old "503 when capability missing" behavior are removed because the situation is unrepresentable at compile time; the `makeContext` helpers in `honoAdapter.test.ts` and `handlers.test.ts` provide explicit throwing stubs so tests fail loudly rather than rely on silent defaults. (#138)
+
 ## v0.47.5 (2026-05-08)
 
 ### Server
