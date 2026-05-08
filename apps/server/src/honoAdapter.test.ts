@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import type { IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocketServer } from 'ws';
 import { WebSocket } from 'ws';
 import { createHttpServer } from './honoAdapter';
@@ -143,6 +143,321 @@ describe('createHttpServer', () => {
       ws.close();
     }
   });
+
+  describe('auth header enforcement', () => {
+    it('returns 401 when the Authorization header is missing', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+        headers: { origin: ORIGIN },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Unauthorized' });
+    });
+
+    it('returns 401 when the Authorization scheme is not Bearer', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+        headers: { origin: ORIGIN, authorization: `Basic ${TOKEN}` },
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('returns 401 when the Bearer token does not match', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+        headers: { origin: ORIGIN, authorization: `Bearer not-the-token` },
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('accepts the configured Bearer token', async () => {
+      const { port } = await startServer({});
+      const response = await httpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+      });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ minds: [] });
+    });
+  });
+
+  describe('origin allowlist', () => {
+    it('rejects requests from a disallowed origin', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+        headers: {
+          origin: 'https://evil.example.com',
+          authorization: `Bearer ${TOKEN}`,
+        },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Forbidden origin' });
+    });
+
+    it('allows requests with no Origin header (native fetchers)', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+        headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('allows loopback origins on any port when the host matches the allowlist', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/api/mind/list',
+        headers: {
+          origin: `http://127.0.0.1:${port}`,
+          authorization: `Bearer ${TOKEN}`,
+        },
+      });
+      expect(response.statusCode).toBe(200);
+    });
+  });
+
+  describe('route availability', () => {
+    it('returns 503 from /api/mind/add when the context has no addMind capability', async () => {
+      const { port } = await startServer({});
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/mind/add',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mindPath: 'C:\\agents\\dude' }),
+      });
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Mind loading is unavailable' });
+    });
+
+    it('returns 503 from /api/chat/send when the context has no sendChat capability', async () => {
+      const { port } = await startServer({});
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/chat/send',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mindId: 'dude-1234',
+          message: 'Hello',
+          messageId: 'assistant-1',
+        }),
+      });
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Chat is unavailable' });
+    });
+
+    it('returns 503 from /api/chat/models when the context has no listModels capability', async () => {
+      const { port } = await startServer({});
+      const response = await httpRequest(port, {
+        method: 'GET',
+        path: '/api/chat/models',
+      });
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Model listing is unavailable' });
+    });
+
+    it('returns 503 from /api/privileged when the context has no privileged handler', async () => {
+      const { port } = await startServer({});
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/privileged',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          protoVersion: 1,
+          type: 'credential.getPassword',
+          requestId: 'r1',
+          payload: { service: 'copilot-cli', account: 'octocat' },
+        }),
+      });
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Privileged channel unavailable' });
+    });
+
+    it('serves the placeholder HTML on the catch-all GET route without auth', async () => {
+      const { port } = await startServer({});
+      const response = await rawHttpRequest(port, {
+        method: 'GET',
+        path: '/anything-else',
+        headers: {},
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('<h1>Chamber server</h1>');
+    });
+  });
+
+  describe('shutdown', () => {
+    it('schedules ctx.shutdown asynchronously and replies 200 immediately', async () => {
+      const shutdown = vi.fn();
+      const { port } = await startServer({ shutdown });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/shutdown',
+      });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      // setTimeout(..., 0) means shutdown runs on the next tick after the response is flushed.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(shutdown).toHaveBeenCalledTimes(1);
+    });
+
+    it('still responds 200 when no shutdown handler is configured', async () => {
+      const { port } = await startServer({});
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/shutdown',
+      });
+      expect(response.statusCode).toBe(200);
+    });
+  });
+
+  describe('attachment upload', () => {
+    it('forwards the binary body to ctx.saveAttachment with the requested name', async () => {
+      const saveAttachment = vi.fn(async ({ name, body }: { name: string; body: ArrayBuffer }) => ({
+        name,
+        size: body.byteLength,
+      }));
+      const { port } = await startServer({ saveAttachment });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/attachments?name=image.png',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: 'binary-bytes',
+      });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ name: 'image.png', size: 12 });
+      expect(saveAttachment).toHaveBeenCalledTimes(1);
+      const call = saveAttachment.mock.calls[0][0];
+      expect(call.name).toBe('image.png');
+      expect(call.body).toBeInstanceOf(ArrayBuffer);
+      expect(Buffer.from(call.body).toString('utf8')).toBe('binary-bytes');
+    });
+
+    it('returns 400 when the name query parameter is missing', async () => {
+      const saveAttachment = vi.fn();
+      const { port } = await startServer({ saveAttachment });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/attachments',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: 'binary-bytes',
+      });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Attachment name is required' });
+      expect(saveAttachment).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the body is JSON instead of binary', async () => {
+      const saveAttachment = vi.fn();
+      const { port } = await startServer({ saveAttachment });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/attachments?name=image.png',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ data: 'oops' }),
+      });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Attachment body is required' });
+      expect(saveAttachment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('chat cancel', () => {
+    it('forwards the mindId and messageId to ctx.cancelChat', async () => {
+      const cancelChat = vi.fn(async () => undefined);
+      const { port } = await startServer({ cancelChat });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/chat/cancel',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mindId: 'dude-1234', messageId: 'assistant-1' }),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      expect(cancelChat).toHaveBeenCalledWith('dude-1234', 'assistant-1');
+    });
+
+    it('returns 400 when mindId is missing', async () => {
+      const cancelChat = vi.fn();
+      const { port } = await startServer({ cancelChat });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/chat/cancel',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: 'assistant-1' }),
+      });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: 'mindId is required' });
+      expect(cancelChat).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when messageId is missing', async () => {
+      const cancelChat = vi.fn();
+      const { port } = await startServer({ cancelChat });
+      const response = await httpRequest(port, {
+        method: 'POST',
+        path: '/api/chat/cancel',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mindId: 'dude-1234' }),
+      });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: 'messageId is required' });
+      expect(cancelChat).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('WebSocket upgrade authorization', () => {
+    it('rejects upgrades that do not present a token', async () => {
+      const { port } = await startServer({});
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/events`, {
+        headers: { origin: `${ORIGIN}:${port}` },
+      });
+      const status = await waitForUpgradeRejection(ws);
+      expect(status).toBe(401);
+    });
+
+    it('rejects upgrades whose query token is wrong', async () => {
+      const { port } = await startServer({});
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/events?token=not-the-token`, {
+        headers: { origin: `${ORIGIN}:${port}` },
+      });
+      const status = await waitForUpgradeRejection(ws);
+      expect(status).toBe(401);
+    });
+
+    it('rejects upgrades from a disallowed origin', async () => {
+      const { port } = await startServer({});
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/events?token=${TOKEN}`, {
+        headers: { origin: 'https://evil.example.com' },
+      });
+      const status = await waitForUpgradeRejection(ws);
+      expect(status).toBe(401);
+    });
+
+    it('accepts upgrades that authenticate via the Authorization header instead of the query token', async () => {
+      const { port } = await startServer({});
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/events`, {
+        headers: {
+          origin: `${ORIGIN}:${port}`,
+          authorization: `Bearer ${TOKEN}`,
+        },
+      });
+      try {
+        await waitForOpen(ws);
+        expect(ws.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        ws.close();
+      }
+    });
+  });
 });
 
 function makeContext(overrides: Partial<ChamberCtx> = {}): ChamberCtx {
@@ -192,6 +507,30 @@ interface BufferedResponse {
 async function httpRequest(port: number, options: RequestOptions): Promise<BufferedResponse> {
   return new Promise((resolve, reject) => {
     const req = request(baseRequestOptions(port, options), (res) => {
+      res.setEncoding('utf8');
+      let body = '';
+      res.on('data', (chunk: string) => {
+        body += chunk;
+      });
+      res.on('end', () => resolve({ statusCode: res.statusCode ?? 0, body }));
+    });
+    req.on('error', reject);
+    req.end(options.body);
+  });
+}
+
+async function rawHttpRequest(
+  port: number,
+  options: { method: string; path: string; headers: IncomingHttpHeaders; body?: string },
+): Promise<BufferedResponse> {
+  return new Promise((resolve, reject) => {
+    const req = request({
+      hostname: '127.0.0.1',
+      port,
+      path: options.path,
+      method: options.method,
+      headers: options.headers,
+    }, (res) => {
       res.setEncoding('utf8');
       let body = '';
       res.on('data', (chunk: string) => {
@@ -270,6 +609,20 @@ async function waitForOpen(ws: WebSocket): Promise<void> {
     ws.once('open', resolve);
     ws.once('error', reject);
   });
+}
+
+async function waitForUpgradeRejection(ws: WebSocket): Promise<number> {
+  return withTimeout(new Promise<number>((resolve, reject) => {
+    ws.on('unexpected-response', (_request, response) => {
+      response.resume();
+      resolve(response.statusCode ?? 0);
+    });
+    ws.on('open', () => reject(new Error('Expected upgrade to be rejected, but the socket opened')));
+    ws.on('error', () => {
+      // ws emits "error" alongside "unexpected-response" or when the socket is destroyed.
+      // We rely on "unexpected-response" for the status code; ignore the bare error.
+    });
+  }), 'Timed out waiting for WebSocket upgrade rejection');
 }
 
 async function waitForMessage(
