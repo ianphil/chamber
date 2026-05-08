@@ -154,11 +154,34 @@ describe('server handlers', () => {
   });
 });
 
+function notConfigured(name: string): () => never {
+  return () => {
+    throw new Error(`Test stub: ${name} not configured`);
+  };
+}
+
 function makeContext(overrides: Partial<ChamberCtx>): ChamberCtx {
   return {
     token: 'test-token',
     allowedOrigins: new Set(['http://127.0.0.1']),
     listMinds: () => [],
+    addMind: notConfigured('addMind'),
+    getConfig: notConfigured('getConfig'),
+    listLensViews: notConfigured('listLensViews'),
+    getGenesisStatus: notConfigured('getGenesisStatus'),
+    getAuthStatus: notConfigured('getAuthStatus'),
+    listAuthAccounts: notConfigured('listAuthAccounts'),
+    startAuthLogin: notConfigured('startAuthLogin'),
+    switchAuthAccount: notConfigured('switchAuthAccount'),
+    logoutAuth: notConfigured('logoutAuth'),
+    listChamberTools: notConfigured('listChamberTools'),
+    saveAttachment: notConfigured('saveAttachment'),
+    sendChat: notConfigured('sendChat'),
+    newConversation: notConfigured('newConversation'),
+    cancelChat: notConfigured('cancelChat'),
+    listModels: notConfigured('listModels'),
+    shutdown: () => {},
+    handlePrivilegedRequest: notConfigured('handlePrivilegedRequest'),
     ...overrides,
   };
 }

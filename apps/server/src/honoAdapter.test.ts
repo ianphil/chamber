@@ -227,61 +227,6 @@ describe('createHttpServer', () => {
   });
 
   describe('route availability', () => {
-    it('returns 503 from /api/mind/add when the context has no addMind capability', async () => {
-      const { port } = await startServer({});
-      const response = await httpRequest(port, {
-        method: 'POST',
-        path: '/api/mind/add',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mindPath: 'C:\\agents\\dude' }),
-      });
-      expect(response.statusCode).toBe(503);
-      expect(JSON.parse(response.body)).toEqual({ error: 'Mind loading is unavailable' });
-    });
-
-    it('returns 503 from /api/chat/send when the context has no sendChat capability', async () => {
-      const { port } = await startServer({});
-      const response = await httpRequest(port, {
-        method: 'POST',
-        path: '/api/chat/send',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          mindId: 'dude-1234',
-          message: 'Hello',
-          messageId: 'assistant-1',
-        }),
-      });
-      expect(response.statusCode).toBe(503);
-      expect(JSON.parse(response.body)).toEqual({ error: 'Chat is unavailable' });
-    });
-
-    it('returns 503 from /api/chat/models when the context has no listModels capability', async () => {
-      const { port } = await startServer({});
-      const response = await httpRequest(port, {
-        method: 'GET',
-        path: '/api/chat/models',
-      });
-      expect(response.statusCode).toBe(503);
-      expect(JSON.parse(response.body)).toEqual({ error: 'Model listing is unavailable' });
-    });
-
-    it('returns 503 from /api/privileged when the context has no privileged handler', async () => {
-      const { port } = await startServer({});
-      const response = await httpRequest(port, {
-        method: 'POST',
-        path: '/api/privileged',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          protoVersion: 1,
-          type: 'credential.getPassword',
-          requestId: 'r1',
-          payload: { service: 'copilot-cli', account: 'octocat' },
-        }),
-      });
-      expect(response.statusCode).toBe(503);
-      expect(JSON.parse(response.body)).toEqual({ error: 'Privileged channel unavailable' });
-    });
-
     it('serves the placeholder HTML on the catch-all GET route without auth', async () => {
       const { port } = await startServer({});
       const response = await rawHttpRequest(port, {
@@ -309,7 +254,7 @@ describe('createHttpServer', () => {
       expect(shutdown).toHaveBeenCalledTimes(1);
     });
 
-    it('still responds 200 when no shutdown handler is configured', async () => {
+    it('responds 200 immediately even when the shutdown handler is a noop', async () => {
       const { port } = await startServer({});
       const response = await httpRequest(port, {
         method: 'POST',
@@ -460,11 +405,34 @@ describe('createHttpServer', () => {
   });
 });
 
+function notConfigured(name: string): () => never {
+  return () => {
+    throw new Error(`Test stub: ${name} not configured`);
+  };
+}
+
 function makeContext(overrides: Partial<ChamberCtx> = {}): ChamberCtx {
   return {
     token: TOKEN,
     allowedOrigins: new Set([ORIGIN]),
     listMinds: () => [],
+    addMind: notConfigured('addMind'),
+    getConfig: notConfigured('getConfig'),
+    listLensViews: notConfigured('listLensViews'),
+    getGenesisStatus: notConfigured('getGenesisStatus'),
+    getAuthStatus: notConfigured('getAuthStatus'),
+    listAuthAccounts: notConfigured('listAuthAccounts'),
+    startAuthLogin: notConfigured('startAuthLogin'),
+    switchAuthAccount: notConfigured('switchAuthAccount'),
+    logoutAuth: notConfigured('logoutAuth'),
+    listChamberTools: notConfigured('listChamberTools'),
+    saveAttachment: notConfigured('saveAttachment'),
+    sendChat: notConfigured('sendChat'),
+    newConversation: notConfigured('newConversation'),
+    cancelChat: notConfigured('cancelChat'),
+    listModels: notConfigured('listModels'),
+    shutdown: () => {},
+    handlePrivilegedRequest: notConfigured('handlePrivilegedRequest'),
     ...overrides,
   };
 }

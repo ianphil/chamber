@@ -1,31 +1,22 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { ChamberCtx } from './types';
 
-export interface ServerCompositionOptions {
+/**
+ * Inputs to {@link createServerContext}. `token` and `allowedOrigins` have
+ * sensible defaults; every capability is required so a deployment must
+ * explicitly opt in to (or refuse) each surface rather than silently fall
+ * back to a no-op.
+ */
+export interface ServerContextInputs extends Omit<ChamberCtx, 'token' | 'allowedOrigins'> {
   token?: string;
   allowedOrigins?: Iterable<string>;
 }
 
-export function createServerContext(options: ServerCompositionOptions = {}): ChamberCtx {
-  const token = options.token ?? randomBytes(32).toString('base64url');
+export function createServerContext(inputs: ServerContextInputs): ChamberCtx {
+  const { token, allowedOrigins, ...capabilities } = inputs;
   return {
-    token,
-    allowedOrigins: new Set(options.allowedOrigins ?? [`http://127.0.0.1`]),
-    listMinds: () => [],
-    addMind: async () => {
-      throw new Error('Mind loading is unavailable');
-    },
-    getConfig: () => ({ version: 1 }),
-    listLensViews: () => [],
-    getGenesisStatus: () => ({ ready: false }),
-    getAuthStatus: () => ({ authenticated: false }),
-    listAuthAccounts: () => [],
-    listChamberTools: () => [],
-    saveAttachment: async ({ name }) => ({ attachmentId: randomUUID(), name }),
-    cancelChat: () => undefined,
-    sendChat: () => undefined,
-    newConversation: () => undefined,
-    listModels: () => [],
-    validatePath: () => false,
+    token: token ?? randomBytes(32).toString('base64url'),
+    allowedOrigins: new Set(allowedOrigins ?? ['http://127.0.0.1']),
+    ...capabilities,
   };
 }

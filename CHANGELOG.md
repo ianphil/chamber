@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.8 (2026-05-08)
+
+### Server
+
+- **Require capabilities at `ChamberCtx` construction** — Drop the `?` modifier from every route-backed capability on `ChamberCtx` so the loopback server fails at compile time when a deployment forgets to wire a feature, instead of silently returning a 503 at runtime. `createServerContext` now takes a `ServerContextInputs` (`Omit`-based) requiring all capabilities; only `token` and `allowedOrigins` are defaulted; `publish` stays optional as an observability hook. `bin.ts` builds `ChamberCtx` up front with real services backing `getConfig` / `listLensViews` / `listChamberTools`, and uses throwing `notImplemented(name)` stubs for surfaces with no implementation (`getGenesisStatus`, `saveAttachment`) so the contract refusal is explicit. A small `publishHolder` breaks the `sendChat` ↔ `serverControls.publish` cycle so the production context is constructed once and never mutated; the E2E fake-chat path is now `buildE2EFakeChatContext(productionContext)` returning a derived context. New `composition.test.ts` pins the contract with `@ts-expect-error` tripwires on `createServerContext` calls missing required capabilities. `handlers.test.ts` and `honoAdapter.test.ts` `makeContext` helpers use explicit `notConfigured(<name>)` throwing stubs for every required capability so tests fail loudly when wiring is wrong. Four `returns 503 when capability missing` tests are deleted (no longer representable at compile time); the `no shutdown handler` test is rewritten as `responds 200 even with a noop shutdown handler`. Closes #138. (#248)
+
 ## v0.49.7 (2026-05-08)
 
 ### IPC

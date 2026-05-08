@@ -16,9 +16,6 @@ export async function addMindHandler(request: ChamberRequest, ctx: ChamberCtx): 
   if (!mindPath) {
     return { status: 400, body: { error: 'mindPath is required' } };
   }
-  if (!ctx.addMind) {
-    return { status: 503, body: { error: 'Mind loading is unavailable' } };
-  }
   try {
     return { status: 200, body: { mind: await ctx.addMind(mindPath) } };
   } catch (error) {
@@ -27,23 +24,23 @@ export async function addMindHandler(request: ChamberRequest, ctx: ChamberCtx): 
 }
 
 export async function getConfigHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  return { status: 200, body: await ctx.getConfig?.() ?? { version: 1 } };
+  return { status: 200, body: await ctx.getConfig() };
 }
 
 export async function listLensViewsHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  return { status: 200, body: { views: await ctx.listLensViews?.() ?? [] } };
+  return { status: 200, body: { views: await ctx.listLensViews() } };
 }
 
 export async function getGenesisStatusHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  return { status: 200, body: await ctx.getGenesisStatus?.() ?? { ready: false } };
+  return { status: 200, body: await ctx.getGenesisStatus() };
 }
 
 export async function getAuthStatusHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  return { status: 200, body: await ctx.getAuthStatus?.() ?? { authenticated: false } };
+  return { status: 200, body: await ctx.getAuthStatus() };
 }
 
 export async function listAuthAccountsHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  return { status: 200, body: { accounts: await ctx.listAuthAccounts?.() ?? [] } };
+  return { status: 200, body: { accounts: await ctx.listAuthAccounts() } };
 }
 
 export async function switchAuthAccountHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
@@ -53,23 +50,17 @@ export async function switchAuthAccountHandler(request: ChamberRequest, ctx: Cha
   if (!login) {
     return { status: 400, body: { error: 'login is required' } };
   }
-  if (!ctx.switchAuthAccount) {
-    return { status: 503, body: { error: 'Auth account switching is unavailable' } };
-  }
   await ctx.switchAuthAccount(login);
   return { status: 200, body: { ok: true } };
 }
 
 export async function logoutAuthHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  if (!ctx.logoutAuth) {
-    return { status: 503, body: { error: 'Auth logout is unavailable' } };
-  }
   await ctx.logoutAuth();
   return { status: 200, body: { ok: true } };
 }
 
 export async function listChamberToolsHandler(_request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  return { status: 200, body: { tools: ctx.listChamberTools?.() ?? [] } };
+  return { status: 200, body: { tools: ctx.listChamberTools() } };
 }
 
 export async function uploadAttachmentHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
@@ -80,8 +71,7 @@ export async function uploadAttachmentHandler(request: ChamberRequest, ctx: Cham
   if (!request.body || !(request.body instanceof ArrayBuffer)) {
     return { status: 400, body: { error: 'Attachment body is required' } };
   }
-  const result = await ctx.saveAttachment?.({ name, body: request.body }) ?? { name };
-  return { status: 200, body: result };
+  return { status: 200, body: await ctx.saveAttachment({ name, body: request.body }) };
 }
 
 export async function cancelChatHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
@@ -93,7 +83,7 @@ export async function cancelChatHandler(request: ChamberRequest, ctx: ChamberCtx
     : '';
   if (!mindId) return { status: 400, body: { error: 'mindId is required' } };
   if (!messageId) return { status: 400, body: { error: 'messageId is required' } };
-  await ctx.cancelChat?.(mindId, messageId);
+  await ctx.cancelChat(mindId, messageId);
   return { status: 200, body: { ok: true } };
 }
 
@@ -106,7 +96,6 @@ export async function sendChatHandler(request: ChamberRequest, ctx: ChamberCtx):
   const messageId = typeof body.messageId === 'string' ? body.messageId.trim() : '';
   if (!mindId) return { status: 400, body: { error: 'mindId is required' } };
   if (!messageId) return { status: 400, body: { error: 'messageId is required' } };
-  if (!ctx.sendChat) return { status: 503, body: { error: 'Chat is unavailable' } };
 
   const attachments = parseChatAttachments(body.attachments);
   if (attachments === null) {
@@ -130,14 +119,12 @@ export async function newConversationHandler(request: ChamberRequest, ctx: Chamb
     ? String((request.body as { mindId: unknown }).mindId).trim()
     : '';
   if (!mindId) return { status: 400, body: { error: 'mindId is required' } };
-  if (!ctx.newConversation) return { status: 503, body: { error: 'Chat is unavailable' } };
 
   await ctx.newConversation(mindId);
   return { status: 200, body: { ok: true } };
 }
 
 export async function listModelsHandler(request: ChamberRequest, ctx: ChamberCtx): Promise<ChamberResponse> {
-  if (!ctx.listModels) return { status: 503, body: { error: 'Model listing is unavailable' } };
   const body: ListModelsResponse = {
     models: await ctx.listModels(request.query?.get('mindId') ?? undefined),
   };

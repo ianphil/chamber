@@ -51,12 +51,7 @@ function send(c: Context, response: ChamberResponse): Response {
   return c.json(response.body ?? null, response.status as 200);
 }
 
-function streamAuthLogin(c: Context, ctx: ChamberCtx): Response {
-  const startAuthLogin = ctx.startAuthLogin;
-  if (!startAuthLogin) {
-    return c.json({ error: 'Auth login is unavailable' }, 503);
-  }
-
+function streamAuthLogin(ctx: ChamberCtx): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -64,7 +59,7 @@ function streamAuthLogin(c: Context, ctx: ChamberCtx): Response {
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
 
-      void startAuthLogin((progress) => write({ type: 'progress', progress }))
+      void ctx.startAuthLogin((progress) => write({ type: 'progress', progress }))
         .then((result) => write({ type: 'result', result }))
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
@@ -117,7 +112,7 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
   app.post('/api/auth/login', async (c) => {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;
-    return streamAuthLogin(c, ctx);
+    return streamAuthLogin(ctx);
   });
   app.post('/api/auth/switch', async (c) => {
     const authFailure = requireAuth(c, ctx);
@@ -154,7 +149,6 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
   app.post('/api/privileged', async (c) => {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;
-    if (!ctx.handlePrivilegedRequest) return c.json({ error: 'Privileged channel unavailable' }, 503);
     let body: unknown;
     let request;
     try {
@@ -175,7 +169,7 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
   app.post('/api/shutdown', async (c) => {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;
-    setTimeout(() => ctx.shutdown?.(), 0);
+    setTimeout(() => ctx.shutdown(), 0);
     return c.json({ ok: true });
   });
   app.get('*', (c) => c.html('<!doctype html><html><body><h1>Chamber server</h1></body></html>'));
