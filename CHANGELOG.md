@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.47.5 (2026-05-08)
+
+### Server
+
+- **Broaden loopback server route coverage** — Add `apps/server/src/auth.test.ts` covering `isLoopbackHost`, `isAllowedOrigin`, and the constant-time `isAuthorized` Bearer-token check (15 cases). Extend `apps/server/src/honoAdapter.test.ts` with 24 new HTTP scenarios across auth header enforcement (missing, wrong scheme, wrong token, accepted), origin allowlist (rejected, no-origin, loopback-port-stripping), route availability (`/api/mind/add`, `/api/chat/send`, `/api/chat/models`, `/api/privileged` returning 503 when the corresponding capability is absent; catch-all GET returning the placeholder HTML), `/api/shutdown` calling `ctx.shutdown` on the next tick, attachment upload (binary forwarding, missing `?name=`, JSON-body rejection), `/api/chat/cancel` mindId/messageId validation through the adapter, and WebSocket upgrade authorization (rejecting missing/wrong/disallowed inputs and accepting the previously-untested `Authorization: Bearer` header path). Pure characterization play — no production code changes; pins behavior so the #138 capability-injection refactor lands on a tested base. (#142)
+
 ## v0.47.0 (2026-05-08)
 
 ### Marketplace
