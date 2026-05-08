@@ -164,6 +164,18 @@ export function installBrowserApi(): void {
       },
       onMindChanged: () => noopUnsubscribe,
     },
+    mindProfile: {
+      get: async () => {
+        throw new Error('Agent profiles are desktop-only in browser mode.');
+      },
+      saveFile: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
+      pickAvatarImage: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
+      saveAvatar: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
+      removeAvatar: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
+      restart: async () => {
+        throw new Error('Agent profiles are desktop-only in browser mode.');
+      },
+    },
     lens: {
       getViews: async (): Promise<LensViewManifest[]> => [],
       getViewData: async () => null,

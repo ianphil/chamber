@@ -30,6 +30,14 @@ const electronAPI: ElectronAPI = {
     openWindow: (mindId) => ipcRenderer.invoke('mind:openWindow', mindId),
     onMindChanged: (callback) => createIpcListener(ipcRenderer, 'mind:changed', callback),
   },
+  mindProfile: {
+    get: (mindId) => ipcRenderer.invoke('mindProfile:get', mindId),
+    saveFile: (request) => ipcRenderer.invoke('mindProfile:saveFile', request),
+    pickAvatarImage: () => ipcRenderer.invoke('mindProfile:pickAvatarImage'),
+    saveAvatar: (request) => ipcRenderer.invoke('mindProfile:saveAvatar', request),
+    removeAvatar: (mindId) => ipcRenderer.invoke('mindProfile:removeAvatar', mindId),
+    restart: (mindId) => ipcRenderer.invoke('mindProfile:restart', mindId),
+  },
   lens: {
     getViews: (mindId?) => ipcRenderer.invoke('lens:getViews', mindId),
     getViewData: (viewId, mindId?) => ipcRenderer.invoke('lens:getViewData', viewId, mindId),

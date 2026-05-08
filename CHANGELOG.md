@@ -2,6 +2,16 @@
 
 ## v0.48.0 (2026-05-08)
 
+### Agent profiles
+
+- **Edit local agent profiles in place** — Agent rows now open a desktop profile editor for the local `SOUL.md` and agent markdown files, with focused markdown editing, safe save validation, restart-to-apply, normalized avatar upload/cropping, and avatar display in the agent list. (#106)
+
+### Runtime
+
+- **Align packaged Copilot runtime smoke with the installed CLI** — The app and packaged runtime now pin `@github/copilot` to `1.0.44-2`, matching the CLI version reported by the runtime smoke during packaging.
+
+## v0.48.0 (2026-05-08)
+
 ### Genesis
 
 - **Scale voice selection for long persona lists** — The Genesis voice picker now uses a searchable master/detail layout with a scrollable persona rail, pinned custom "Someone else..." flow, editable research brief review step, and focused coverage for long lists and custom creation. The following role screen now keeps card text readable on the dark Genesis background. (#213)

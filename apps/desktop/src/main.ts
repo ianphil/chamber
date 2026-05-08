@@ -27,6 +27,7 @@ import {
   MessageRouter,
   MarketplaceRegistryService,
   MindManager,
+  MindProfileService,
   MindScaffold,
   TaskManager,
   ChildProcessRunner,
@@ -52,6 +53,7 @@ import { enrollMarketplaceFromProtocolUrl, findMarketplaceInstallUrl, parseMarke
 // IPC adapters
 import { setupChatIPC } from './main/ipc/chat';
 import { setupMindIPC } from './main/ipc/mind';
+import { setupMindProfileIPC } from './main/ipc/mindProfile';
 import { setupLensIPC } from './main/ipc/lens';
 import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupMarketplaceIPC } from './main/ipc/marketplace';
@@ -67,6 +69,7 @@ import { wireLifecycleEvents } from './main/wireLifecycleEvents';
 import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
 import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
+import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 
 if (started) {
   app.quit();
@@ -161,6 +164,10 @@ const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
 const turnQueue = new TurnQueue();
 const mindManager: MindManager = new MindManager(clientFactory, identityLoader, configService, viewDiscovery);
+const mindProfileService = new MindProfileService({
+  getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
+  restartMind: (mindId) => mindManager.reloadMind(mindId),
+}, identityLoader, new SharpAvatarNormalizer());
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
 const messageRouter: MessageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
@@ -490,6 +497,7 @@ app.on('ready', async () => {
     rendererPath: MAIN_WINDOW_VITE_DEV_SERVER_URL ? undefined : path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     windowIcon,
   });
+  setupMindProfileIPC(mindProfileService, mindManager);
   setupLensIPC(viewDiscovery, mindManager, canvasService);
   setupGenesisIPC(
     mindManager,

@@ -211,6 +211,27 @@ export class MindManager extends EventEmitter {
     this.emit('mind:unloaded', mindId);
   }
 
+  async reloadMind(mindId: string): Promise<MindContext> {
+    const context = this.minds.get(mindId);
+    if (!context) throw new Error(`Mind ${mindId} not found`);
+
+    const mindPath = context.mindPath;
+    const knownRecord = this.knownMindRecords.get(mindId);
+    const wasActive = this.activeMindId === mindId;
+
+    await this.releaseProviders(mindId);
+    await this.clientFactory.destroyClient(context.client);
+    this.viewDiscovery.removeMind(context.mindPath);
+    this.minds.delete(mindId);
+    this.pathToId.delete(this.mindPathKey(context.mindPath));
+    if (knownRecord) this.knownMindRecords.set(mindId, knownRecord);
+
+    this.emit('mind:unloaded', mindId);
+    const reloaded = await this.loadMind(mindPath, mindId);
+    if (wasActive) this.setActiveMind(mindId);
+    return reloaded;
+  }
+
   listMinds(): MindContext[] {
     return Array.from(this.minds.values()).map(m => this.toExternalContext(m));
   }
