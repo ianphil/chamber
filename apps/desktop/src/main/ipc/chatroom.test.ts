@@ -140,6 +140,13 @@ describe('Chatroom IPC', () => {
       await handler(EVT, 'hello', undefined, exact);
       expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined, exact);
     });
+    it('TypeError message names the channel and the bad field by name', async () => {
+      const handler = getHandler('chatroom:send');
+      await expect(handler(EVT, '')).rejects.toThrow(/chatroom:send/);
+      await expect(handler(EVT, '')).rejects.toThrow(/message/);
+      await expect(handler(EVT, 'hello', 7)).rejects.toThrow(/model/);
+      await expect(handler(EVT, 'hello', undefined, '')).rejects.toThrow(/roundId/);
+    });
   });
 
   it('chatroom:history returns result from getHistory', async () => {
