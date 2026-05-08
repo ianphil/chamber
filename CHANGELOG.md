@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.46.1 (2026-05-07)
+
+### Chat
+
+- **Stop falsely completing long-running single-agent turns** — `ChatService.streamTurn` no longer emits a success-shaped `done` event purely because the 5-minute idle fallback timer elapsed. The fallback now rejects with `TurnTimeoutError` and surfaces a typed `{ type: 'timeout', timeoutMs }` chat event, mirroring the chatroom precedent in `streamAgentTurn`. The renderer reducer already handles `timeout` by clearing `isStreaming` and rendering an "Agent timed out after `<s>`s" message, so the working/stop indicator stays accurate until the SDK reports real completion, failure, cancellation, or an explicit timeout. Server-mode `/api/chat/send` continues to await `sendMessage` cleanly because the timeout is handled inside `streamTurn` rather than thrown across the HTTP boundary, so long turns no longer disconnect the request or produce duplicate events. Regression coverage in `ChatService.test.ts` exercises the "send resolves but `session.idle` never fires" path. (#222)
+
 ## v0.46.0 (2026-05-07)
 
 ### Marketplace
