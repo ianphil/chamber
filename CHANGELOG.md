@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.46.2 (2026-05-07)
+
+### Chat
+
+- **Let users control long-running chat turns** - Single-agent chat no longer has a Chamber-side wall-clock turn deadline; long-running agent work stays streaming until the SDK emits idle/error or the user presses Stop. The separate 30s `session.send()` wedge guard remains for stale-session recovery, and a real Electron smoke now clicks through the Stop flow. (#222)
+
 ## v0.46.1 (2026-05-07)
 
 ### Chat
@@ -15,7 +21,6 @@
 - **Auto-install on startup** — On app ready, `ToolsService.reconcile()` diffs marketplace `tools[]` against `config.installedTools[]` and runs `npm install -g <package>@<version>` for any new entry, then runs declared `preflight` commands (e.g. `workiq accept-eula`). Errors are logged per-tool and do not block other installs. Already-installed tools are not auto-updated. (#218)
 - **Runtime tool context in the system message** — `IdentityLoader` accepts an `InstalledTool[]` provider and appends a `## Tools` section to every session's system message. Tool descriptions live in the marketplace manifest's `agentInstructions` field and are captured into the installed-tool record at install time, so model context is available offline. Mind directories are not modified. (#218)
 - **Tools IPC + preload surface** — New `tools:list`, `tools:install`, `tools:uninstall` channels exposed via `window.electronAPI.tools.*`. Browser-mode shim returns descriptive "desktop-only" errors. (#218)
-
 ## v0.45.0 (2026-05-07)
 
 ### Chatroom

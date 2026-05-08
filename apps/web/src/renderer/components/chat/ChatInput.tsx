@@ -504,6 +504,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
             <button
               onClick={handleSubmit}
               disabled={disabled && !isStreaming}
+              aria-label={isStreaming ? 'Stop streaming' : 'Send message'}
               className={cn(
                 'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
                 isStreaming

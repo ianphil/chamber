@@ -4,9 +4,8 @@
 import type { MindManager } from '../mind';
 import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, ConversationSummary, ModelInfo } from '@chamber/shared/types';
 import type { CopilotSession } from '../mind/types';
-import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
+import { isStaleSessionError, SEND_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
 import { Logger } from '../logger';
-import { TurnTimeoutError } from '../session-group/stream-session';
 import {
   SdkChatEventContractError,
   getSdkSessionErrorMessage,
@@ -66,6 +65,7 @@ export class ChatService {
           // If reattach also fails stale, surface the error so the user can start a new chat.
           emit({ type: 'reconnecting' });
           const recoveredSession = await this.mindManager.recoverActiveConversationSession(mindId);
+          if (abortController.signal.aborted) return;
           await this.streamTurn(recoveredSession, prompt, abortController, emit, attachments, () => {
             this.mindManager.markActiveConversationHasMessages(mindId, prompt);
           });
@@ -88,6 +88,8 @@ export class ChatService {
     attachments?: ChatImageAttachment[],
     onSendAccepted?: () => void,
   ): Promise<void>{
+    if (abortController.signal.aborted) return;
+
     const unsubs: (() => void)[] = [];
     const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
     let sdkContractFailed = false;
@@ -109,14 +111,6 @@ export class ChatService {
         failSdkContract(error);
       }
     };
-    // Hoisted so the outer `finally` can guarantee the 5-minute fallback
-    // timer is cleared on every exit path (send failure, SDK contract abort,
-    // normal completion, timeout, etc.). Without this, a send-side throw
-    // unwinds before `await turnDone`, the timer keeps ticking, and the
-    // eventual `reject(new TurnTimeoutError(...))` would surface as an
-    // unhandled rejection minutes later (#222 follow-up).
-    let turnDoneTimerId: ReturnType<typeof setTimeout> | undefined;
-
     try {
       // Text streaming
       unsubs.push(session.on('assistant.message_delta', (event) => {
@@ -152,24 +146,23 @@ export class ChatService {
 
       // Set up idle/error listeners BEFORE send to avoid missing events
       // that fire synchronously inside session.send (regression-test guarded).
+      //
+      // INVARIANT: no fallback wall-clock deadline on the turn (#222).
+      // Long-running agent work - deep research, multi-step tool chains,
+      // big-codebase analysis - is a first-class Chamber use case. The
+      // user owns "this has gone on long enough" via the Stop button,
+      // which calls cancelMessage -> abortController.abort() -> session.abort().
+      // We rely on the SDK to eventually emit `session.idle`, `session.error`,
+      // or for the user to cancel. SEND_TIMEOUT_MS below still bounds the
+      // separate failure mode of `session.send()` itself wedging.
       const turnDone = new Promise<void>((resolve, reject) => {
-        // INVARIANT: a fallback timer must NOT silently complete the turn.
-        // Reject with TurnTimeoutError so the renderer sees an explicit
-        // `timeout` event instead of a success-shaped `done` (#222).
-        turnDoneTimerId = setTimeout(
-          () => reject(new TurnTimeoutError(DEFAULT_TURN_TIMEOUT_MS)),
-          DEFAULT_TURN_TIMEOUT_MS,
-        );
-
         const unsubIdle = session.on('session.idle', () => {
-          if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           unsubIdle();
           resolve();
         });
         unsubs.push(unsubIdle);
 
         const unsubError = session.on('session.error', (event) => {
-          if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           unsubError();
           try {
             reject(new Error(getSdkSessionErrorMessage(event)));
@@ -181,18 +174,15 @@ export class ChatService {
         unsubs.push(unsubError);
 
         abortController.signal.addEventListener('abort', () => {
-          if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
           resolve();
         }, { once: true });
       });
       // Defensive no-op catch: if `session.send` throws and we never reach
-      // `await turnDone` below, the outer `finally` clears the timer so it
-      // cannot fire — but if it somehow does (e.g., scheduled before the
-      // clear ran), this guarantees the rejection is observed instead of
-      // surfacing as an unhandled rejection.
+      // `await turnDone` below, this guarantees a later SDK error rejection is
+      // observed instead of surfacing as an unhandled rejection.
       turnDone.catch(() => { /* observed in await below or intentionally discarded */ });
 
-      // Send with a timeout guard — if session.send() itself hangs (dead
+      // Send with a timeout guard: if session.send() itself hangs (dead
       // WebSocket, killed CLI), surface as a stale-session error so the
       // outer catch can recreate the session and retry.
       let sendTimerId: ReturnType<typeof setTimeout> | undefined;
@@ -214,28 +204,11 @@ export class ChatService {
       }
 
       // Wait for idle (listeners already active from before send).
-      // A TurnTimeoutError surfaces as a typed `timeout` event so the
-      // renderer can render timeout-specific UI; we suppress the trailing
-      // `done` to avoid a false-completion signal (#222). Other errors
-      // propagate to the outer catch which emits `{ type: 'error' }`.
-      try {
-        await turnDone;
-      } catch (err) {
-        if (err instanceof TurnTimeoutError) {
-          log.warn(`Chat turn timed out after ${err.timeoutMs}ms; SDK never emitted session.idle`);
-          // guard suppresses the emit on a racing abort — cancellation is
-          // its own terminal state and the renderer already cleared
-          // isStreaming on the abort path.
-          guard(() => emit({ type: 'timeout', timeoutMs: err.timeoutMs }));
-          return;
-        }
-        throw err;
-      }
+      await turnDone;
 
       if (abortController.signal.aborted) return;
       emit({ type: 'done' });
     } finally {
-      if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
       for (const unsub of unsubs) unsub();
     }
   }
