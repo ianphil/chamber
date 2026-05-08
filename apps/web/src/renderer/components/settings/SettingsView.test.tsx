@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { version } from '../../../../../../package.json';
 import { SettingsView } from './SettingsView';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
@@ -75,6 +76,15 @@ describe('SettingsView', () => {
     render(<SettingsView />);
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /account/i })).toBeTruthy();
+    });
+  });
+
+  it('shows the app version from package.json', async () => {
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'alice' });
+    (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }]);
+    render(<SettingsView />);
+    await waitFor(() => {
+      expect(screen.getByText(`Chamber v${version}`)).toBeTruthy();
     });
   });
 

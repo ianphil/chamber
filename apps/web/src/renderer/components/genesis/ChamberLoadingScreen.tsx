@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { version } from '../../../../package.json';
+import { APP_VERSION } from '@/renderer/lib/appVersion';
 
 const STARTUP_LINES = [
-  `> chamber v${version}`,
+  `> chamber v${APP_VERSION}`,
   '> initializing runtime...',
   '> scanning mind registry...',
 ];
@@ -10,7 +10,7 @@ const STARTUP_LINES = [
 function getBootLines(mode: 'startup' | 'switching-account', login?: string | null): string[] {
   if (mode === 'switching-account') {
     return [
-      `> chamber v${version}`,
+      `> chamber v${APP_VERSION}`,
       `> switching github account${login ? ` to @${login}` : ''}...`,
       '> reloading minds...',
     ];
@@ -33,7 +33,8 @@ export function ChamberLoadingScreen({ mode = 'startup', login }: Props) {
     let i = 0;
     const interval = setInterval(() => {
       if (i < bootLines.length) {
-        setLines(prev => [...prev, bootLines[i]]);
+        const line = bootLines[i];
+        setLines(prev => [...prev, line]);
         i++;
       } else {
         clearInterval(interval);
