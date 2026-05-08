@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.7 (2026-05-08)
+
+### IPC
+
+- **Validate `chatroom:set-orchestration` payload with Zod** — The previously unvalidated `chatroom:set-orchestration` channel in `apps/desktop/src/main/ipc/chatroom.ts` now runs through `parseIpcArgs` (#63) with a `z.discriminatedUnion('mode', …)` schema that mirrors `OrchestrationMode` and the per-mode config interfaces from `packages/shared/src/chatroom-types.ts`. The five variants are: `concurrent`/`sequential` (config must be `undefined`); `group-chat` (optional strict `{ moderatorMindId: string, maxTurns: positive int, minRounds: non-negative int, maxSpeakerRepeats: positive int }`); `handoff` (optional strict `{ initialMindId?: string, maxHandoffHops: positive int }`); `magentic` (optional strict `{ managerMindId: string, maxSteps: positive int, allowedMindIds?: string[] }`). Per-mode config is `.optional()` because the renderer fires `setOrchestration(mode, undefined)` first when switching modes, then a second time with the auto-default config (see `apps/web/src/renderer/components/chatroom/OrchestrationPicker.tsx`). Failures surface as a `TypeError` whose message names the channel and lists every Zod issue path under `config.<field>`. 29 new tests cover the happy path for every mode (with and without config) plus the rejection lattice (unknown mode, non-string mode, unexpected config on `concurrent`/`sequential`, `null` config, wrong-type config, missing/empty/non-positive/non-integer fields, extra fields). Closes the last gap in the IPC-hardening series begun in #61/#62/#63. (#203)
+
 ## v0.49.6 (2026-05-08)
 
 ### IPC

@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { IPC, parseIpcArgs } from '@chamber/shared';
 import type { ChatroomService } from '@chamber/services';
-import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, ChatroomStateChange } from '@chamber/shared/chatroom-types';
+import type { ChatroomStateChange } from '@chamber/shared/chatroom-types';
 
 const MAX_ROUND_ID_LENGTH = 128;
 
@@ -15,6 +15,45 @@ const sendArgsSchema = z.object({
     .max(MAX_ROUND_ID_LENGTH, `must be at most ${MAX_ROUND_ID_LENGTH} characters`)
     .optional(),
 });
+
+const groupChatConfigSchema = z
+  .object({
+    moderatorMindId: z.string().min(1),
+    maxTurns: z.number().int().positive(),
+    minRounds: z.number().int().nonnegative(),
+    maxSpeakerRepeats: z.number().int().positive(),
+  })
+  .strict();
+
+const handoffConfigSchema = z
+  .object({
+    initialMindId: z.string().min(1).optional(),
+    maxHandoffHops: z.number().int().positive(),
+  })
+  .strict();
+
+const magenticConfigSchema = z
+  .object({
+    managerMindId: z.string().min(1),
+    maxSteps: z.number().int().positive(),
+    allowedMindIds: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+// `chatroom:set-orchestration` is dispatched as two positional args
+// `(mode, config?)`. Mode is one of five string literals; config is
+// discriminated by mode. `concurrent` and `sequential` carry no config;
+// the other three modes accept their respective per-mode config or
+// nothing (the renderer fires the IPC call with `undefined` first when
+// switching modes, then a second time with the auto-default config —
+// see apps/web/src/renderer/components/chatroom/OrchestrationPicker.tsx).
+const setOrchestrationArgsSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('concurrent'), config: z.undefined() }),
+  z.object({ mode: z.literal('sequential'), config: z.undefined() }),
+  z.object({ mode: z.literal('group-chat'), config: groupChatConfigSchema.optional() }),
+  z.object({ mode: z.literal('handoff'), config: handoffConfigSchema.optional() }),
+  z.object({ mode: z.literal('magentic'), config: magenticConfigSchema.optional() }),
+]);
 
 export function setupChatroomIPC(chatroomService: ChatroomService): void {
   ipcMain.handle(IPC.CHATROOM.SEND, async (_event, message: unknown, model?: unknown, roundId?: unknown) => {
@@ -42,8 +81,13 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
     chatroomService.stopAll();
   });
 
-  ipcMain.handle(IPC.CHATROOM.SET_ORCHESTRATION, async (_event, mode: OrchestrationMode, config?: GroupChatConfig | HandoffConfig | MagenticConfig) => {
-    chatroomService.setOrchestration(mode, config);
+  ipcMain.handle(IPC.CHATROOM.SET_ORCHESTRATION, async (_event, mode: unknown, config?: unknown) => {
+    const parsed = parseIpcArgs(
+      IPC.CHATROOM.SET_ORCHESTRATION,
+      setOrchestrationArgsSchema,
+      { mode, config },
+    );
+    chatroomService.setOrchestration(parsed.mode, parsed.config);
   });
 
   ipcMain.handle(IPC.CHATROOM.GET_ORCHESTRATION, async () => {

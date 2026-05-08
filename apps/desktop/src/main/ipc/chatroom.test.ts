@@ -30,6 +30,7 @@ describe('Chatroom IPC', () => {
     getHistory: ReturnType<typeof vi.fn>;
     clearHistory: ReturnType<typeof vi.fn>;
     stopAll: ReturnType<typeof vi.fn>;
+    setOrchestration: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -40,6 +41,7 @@ describe('Chatroom IPC', () => {
       getHistory: vi.fn().mockReturnValue([]),
       clearHistory: vi.fn().mockResolvedValue(undefined),
       stopAll: vi.fn(),
+      setOrchestration: vi.fn(),
     });
     setupChatroomIPC(mockService as unknown as ChatroomService);
   });
@@ -146,6 +148,206 @@ describe('Chatroom IPC', () => {
       await expect(handler(EVT, '')).rejects.toThrow(/message/);
       await expect(handler(EVT, 'hello', 7)).rejects.toThrow(/model/);
       await expect(handler(EVT, 'hello', undefined, '')).rejects.toThrow(/roundId/);
+    });
+  });
+
+  describe('chatroom:set-orchestration input validation', () => {
+    it('accepts concurrent mode without config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await handler(EVT, 'concurrent');
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('concurrent', undefined);
+    });
+
+    it('accepts sequential mode without config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await handler(EVT, 'sequential');
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('sequential', undefined);
+    });
+
+    it('accepts group-chat mode without config (renderer fires this on first mode switch)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await handler(EVT, 'group-chat');
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('group-chat', undefined);
+    });
+
+    it('accepts handoff mode without config (renderer fires this on first mode switch)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await handler(EVT, 'handoff');
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('handoff', undefined);
+    });
+
+    it('accepts magentic mode without config (renderer fires this on first mode switch)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await handler(EVT, 'magentic');
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('magentic', undefined);
+    });
+
+    it('accepts group-chat mode with a valid config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      const config = { moderatorMindId: 'mod-1', maxTurns: 10, minRounds: 1, maxSpeakerRepeats: 3 };
+      await handler(EVT, 'group-chat', config);
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('group-chat', config);
+    });
+
+    it('accepts handoff mode with a valid config (no initialMindId)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      const config = { maxHandoffHops: 5 };
+      await handler(EVT, 'handoff', config);
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('handoff', config);
+    });
+
+    it('accepts handoff mode with a valid config (with initialMindId)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      const config = { initialMindId: 'agent-a', maxHandoffHops: 5 };
+      await handler(EVT, 'handoff', config);
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('handoff', config);
+    });
+
+    it('accepts magentic mode with a valid config (no allowedMindIds)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      const config = { managerMindId: 'mgr-1', maxSteps: 10 };
+      await handler(EVT, 'magentic', config);
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('magentic', config);
+    });
+
+    it('accepts magentic mode with a valid config (with allowedMindIds)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      const config = { managerMindId: 'mgr-1', maxSteps: 10, allowedMindIds: ['a', 'b'] };
+      await handler(EVT, 'magentic', config);
+      expect(mockService.setOrchestration).toHaveBeenCalledWith('magentic', config);
+    });
+
+    it('rejects unknown mode without invoking the service', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'broadcast')).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-string mode without invoking the service', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 42)).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects concurrent mode with any non-undefined config (object)', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'concurrent', {})).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects concurrent mode with null config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'concurrent', null)).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects sequential mode with any non-undefined config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'sequential', { maxTurns: 5 })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects group-chat mode with null config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', null)).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects group-chat mode when config is the wrong type entirely', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', 42)).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects group-chat mode missing required fields', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', { moderatorMindId: 'mod-1' })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects group-chat mode with empty moderatorMindId', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', {
+        moderatorMindId: '',
+        maxTurns: 10,
+        minRounds: 1,
+        maxSpeakerRepeats: 3,
+      })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects group-chat mode with non-positive maxTurns', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', {
+        moderatorMindId: 'mod-1',
+        maxTurns: 0,
+        minRounds: 1,
+        maxSpeakerRepeats: 3,
+      })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects group-chat mode with extra fields', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', {
+        moderatorMindId: 'mod-1',
+        maxTurns: 10,
+        minRounds: 1,
+        maxSpeakerRepeats: 3,
+        extra: 'nope',
+      })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects handoff mode missing maxHandoffHops', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'handoff', { initialMindId: 'a' })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects handoff mode with zero maxHandoffHops', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'handoff', { maxHandoffHops: 0 })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects handoff mode with non-integer maxHandoffHops', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'handoff', { maxHandoffHops: 1.5 })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects magentic mode missing managerMindId', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'magentic', { maxSteps: 10 })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects magentic mode with zero maxSteps', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'magentic', { managerMindId: 'mgr-1', maxSteps: 0 })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('rejects magentic mode with empty-string entry in allowedMindIds', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'magentic', {
+        managerMindId: 'mgr-1',
+        maxSteps: 10,
+        allowedMindIds: ['a', ''],
+      })).rejects.toThrow(TypeError);
+      expect(mockService.setOrchestration).not.toHaveBeenCalled();
+    });
+
+    it('TypeError message names the channel for an unknown mode', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'broadcast')).rejects.toThrow(/chatroom:set-orchestration/);
+    });
+
+    it('TypeError message names the bad field for a malformed group-chat config', async () => {
+      const handler = getHandler('chatroom:set-orchestration');
+      await expect(handler(EVT, 'group-chat', { moderatorMindId: '', maxTurns: 10, minRounds: 1, maxSpeakerRepeats: 3 }))
+        .rejects.toThrow(/moderatorMindId/);
     });
   });
 
