@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.46.3 (2026-05-07)
+
+### Updates
+
+- **Refresh from the up-to-date updater icon** - The Activity Bar updater button now remains clickable when Chamber is already marked up to date, using the existing manual check path to refresh release state while still disabling duplicate actions during checking, downloading, and installing. (#226)
+
 ## v0.46.2 (2026-05-07)
 
 ### Chat
