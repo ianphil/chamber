@@ -326,3 +326,56 @@ describe('ChatInput', () => {
     });
   });
 });
+
+describe('ChatInput controlled value (per-agent compose drafts #221)', () => {
+  it('renders the controlled value and forwards edits via onValueChange', () => {
+    const onValueChange = vi.fn();
+    const { rerender } = render(
+      <ChatInput {...defaultProps} value="A draft" onValueChange={onValueChange} />,
+    );
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('A draft');
+
+    fireEvent.change(textarea, { target: { value: 'A draft typed more' } });
+    expect(onValueChange).toHaveBeenCalledWith('A draft typed more');
+
+    // Parent reflects the new value -> textarea updates (controlled semantics).
+    rerender(
+      <ChatInput {...defaultProps} value="A draft typed more" onValueChange={onValueChange} />,
+    );
+    expect(textarea.value).toBe('A draft typed more');
+  });
+
+  it('switching the controlled value swaps the textarea content (mind switch UX)', () => {
+    const onValueChange = vi.fn();
+    const { rerender } = render(
+      <ChatInput {...defaultProps} value="draft for A" onValueChange={onValueChange} />,
+    );
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('draft for A');
+
+    rerender(
+      <ChatInput {...defaultProps} value="draft for B" onValueChange={onValueChange} />,
+    );
+    expect(textarea.value).toBe('draft for B');
+  });
+
+  it('clearing the controlled value to "" empties the textarea (post-send clear)', () => {
+    const onValueChange = vi.fn();
+    const { rerender } = render(
+      <ChatInput {...defaultProps} value="ready to send" onValueChange={onValueChange} />,
+    );
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    rerender(
+      <ChatInput {...defaultProps} value="" onValueChange={onValueChange} />,
+    );
+    expect(textarea.value).toBe('');
+  });
+
+  it('keeps prior uncontrolled behavior when value is omitted', () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'local-only' } });
+    expect(textarea.value).toBe('local-only');
+  });
+});

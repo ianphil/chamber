@@ -8,7 +8,7 @@ import { Logger } from '../../lib/logger';
 const log = Logger.create('ChatPanel');
 
 export function ChatPanel() {
-  const { messagesByMind, activeMindId, minds, availableModels, selectedModel, conversationViewByMind } = useAppState();
+  const { messagesByMind, activeMindId, minds, availableModels, selectedModel, conversationViewByMind, composeDraftByMind } = useAppState();
   const messages = activeMindId ? (messagesByMind[activeMindId] ?? []) : [];
   const conversationView = activeMindId ? conversationViewByMind[activeMindId] : undefined;
   const isConversationHydrating = conversationView?.status === 'hydrating';
@@ -16,6 +16,14 @@ export function ChatPanel() {
   const connected = minds.length > 0;
   const dispatch = useAppDispatch();
   const { sendMessage, stopStreaming, isStreaming } = useChatStreaming();
+  // Per-mind unsent compose draft (#221). Reading from the store keeps the
+  // textarea in sync when the active mind changes; writing back on every
+  // edit preserves drafts for future visits to the same mind.
+  const draft = activeMindId ? (composeDraftByMind[activeMindId] ?? '') : '';
+  const handleDraftChange = (next: string) => {
+    if (!activeMindId) return;
+    dispatch({ type: 'SET_COMPOSE_DRAFT', payload: { mindId: activeMindId, draft: next } });
+  };
 
   const handleModelChange = (model: string) => {
     if (!activeMindId || isModelSwitching) return;
@@ -61,6 +69,8 @@ export function ChatPanel() {
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
         placeholder={isModelSwitching ? 'Switching model…' : undefined}
+        value={draft}
+        onValueChange={handleDraftChange}
       />
     </div>
   );
