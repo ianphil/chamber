@@ -6,6 +6,7 @@ import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, Conversa
 import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
 import { Logger } from '../logger';
+import { TurnTimeoutError } from '../session-group/stream-session';
 import {
   SdkChatEventContractError,
   getSdkSessionErrorMessage,
@@ -108,6 +109,13 @@ export class ChatService {
         failSdkContract(error);
       }
     };
+    // Hoisted so the outer `finally` can guarantee the 5-minute fallback
+    // timer is cleared on every exit path (send failure, SDK contract abort,
+    // normal completion, timeout, etc.). Without this, a send-side throw
+    // unwinds before `await turnDone`, the timer keeps ticking, and the
+    // eventual `reject(new TurnTimeoutError(...))` would surface as an
+    // unhandled rejection minutes later (#222 follow-up).
+    let turnDoneTimerId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       // Text streaming
@@ -144,9 +152,14 @@ export class ChatService {
 
       // Set up idle/error listeners BEFORE send to avoid missing events
       // that fire synchronously inside session.send (regression-test guarded).
-      let turnDoneTimerId: ReturnType<typeof setTimeout> | undefined;
       const turnDone = new Promise<void>((resolve, reject) => {
-        turnDoneTimerId = setTimeout(resolve, DEFAULT_TURN_TIMEOUT_MS);
+        // INVARIANT: a fallback timer must NOT silently complete the turn.
+        // Reject with TurnTimeoutError so the renderer sees an explicit
+        // `timeout` event instead of a success-shaped `done` (#222).
+        turnDoneTimerId = setTimeout(
+          () => reject(new TurnTimeoutError(DEFAULT_TURN_TIMEOUT_MS)),
+          DEFAULT_TURN_TIMEOUT_MS,
+        );
 
         const unsubIdle = session.on('session.idle', () => {
           if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
@@ -172,6 +185,12 @@ export class ChatService {
           resolve();
         }, { once: true });
       });
+      // Defensive no-op catch: if `session.send` throws and we never reach
+      // `await turnDone` below, the outer `finally` clears the timer so it
+      // cannot fire — but if it somehow does (e.g., scheduled before the
+      // clear ran), this guarantees the rejection is observed instead of
+      // surfacing as an unhandled rejection.
+      turnDone.catch(() => { /* observed in await below or intentionally discarded */ });
 
       // Send with a timeout guard — if session.send() itself hangs (dead
       // WebSocket, killed CLI), surface as a stale-session error so the
@@ -194,12 +213,29 @@ export class ChatService {
         if (sendTimerId) clearTimeout(sendTimerId);
       }
 
-      // Wait for idle (listeners already active from before send)
-      await turnDone;
+      // Wait for idle (listeners already active from before send).
+      // A TurnTimeoutError surfaces as a typed `timeout` event so the
+      // renderer can render timeout-specific UI; we suppress the trailing
+      // `done` to avoid a false-completion signal (#222). Other errors
+      // propagate to the outer catch which emits `{ type: 'error' }`.
+      try {
+        await turnDone;
+      } catch (err) {
+        if (err instanceof TurnTimeoutError) {
+          log.warn(`Chat turn timed out after ${err.timeoutMs}ms; SDK never emitted session.idle`);
+          // guard suppresses the emit on a racing abort — cancellation is
+          // its own terminal state and the renderer already cleared
+          // isStreaming on the abort path.
+          guard(() => emit({ type: 'timeout', timeoutMs: err.timeoutMs }));
+          return;
+        }
+        throw err;
+      }
 
       if (abortController.signal.aborted) return;
       emit({ type: 'done' });
     } finally {
+      if (turnDoneTimerId) clearTimeout(turnDoneTimerId);
       for (const unsub of unsubs) unsub();
     }
   }

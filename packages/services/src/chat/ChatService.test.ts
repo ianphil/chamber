@@ -94,6 +94,50 @@ describe('ChatService', () => {
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     });
 
+    it('emits timeout (not done) when send resolves but session.idle never fires', async () => {
+      vi.useFakeTimers();
+      try {
+        // Default behavior: register listeners but never fire session.idle.
+        mockSession.on.mockImplementation(() => vi.fn());
+        mockSession.send.mockResolvedValue(undefined);
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        // Advance past the 5-minute fallback turn timeout.
+        await vi.advanceTimersByTimeAsync(300_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'timeout', timeoutMs: 300_000 });
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+        expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+        // No timer leak: the fallback timer was cleared by the outer finally.
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not leak the 5-minute fallback timer when session.send fails synchronously', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.on.mockImplementation(() => vi.fn());
+        mockSession.send.mockRejectedValueOnce(new Error('send blew up'));
+
+        const emit = vi.fn();
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        // Outer finally must clear turnDoneTimerId even though we never
+        // reached `await turnDone`. If this leaks, getTimerCount > 0 and a
+        // future TurnTimeoutError reject would surface as unhandled.
+        expect(vi.getTimerCount()).toBe(0);
+        expect(emit).toHaveBeenCalledWith({ type: 'error', message: 'send blew up' });
+        expect(emit).not.toHaveBeenCalledWith({ type: 'timeout', timeoutMs: 300_000 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('emits a clear error when the SDK chat event contract drifts', async () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       let deltaListener: ((event: unknown) => void) | undefined;
