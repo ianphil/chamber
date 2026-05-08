@@ -164,7 +164,61 @@ export interface AppConfig {
   activeLogin: string | null;
   theme: 'light' | 'dark' | 'system';
   marketplaceRegistries?: MarketplaceRegistry[];
+  installedTools?: InstalledTool[];
 }
+
+/**
+ * Persistent record of a CLI tool installed via the marketplace.
+ * The tool itself lives on the user's PATH (installed via `npm i -g`); this record
+ * tracks what we installed so startup reconciliation can avoid reinstalling, and
+ * carries the agent-facing description so the system message can advertise the
+ * tool offline (no marketplace fetch needed at session start).
+ */
+export interface InstalledTool {
+  id: string;
+  package: string;
+  version: string;
+  bin: string;
+  displayName: string;
+  description: string;
+  help?: string;
+  agentInstructions?: string;
+  source: { marketplaceId: string; pluginId: string };
+  installedAt: string;
+}
+
+export interface MarketplaceToolEntry {
+  id: string;
+  displayName: string;
+  description: string;
+  install: { type: 'npm-global'; package: string; version: string };
+  bin: string;
+  help?: string;
+  preflight?: string[];
+  /** Inline markdown describing how the model should invoke the CLI. Rendered into the system message. */
+  agentInstructions?: string;
+  source: {
+    owner: string;
+    repo: string;
+    ref: string;
+    plugin: string;
+    marketplaceId: string;
+    marketplaceLabel: string;
+    marketplaceUrl: string;
+  };
+}
+
+export type ToolInstallStatus = 'installed' | 'available' | 'error';
+
+export interface ToolCatalogEntry extends MarketplaceToolEntry {
+  status: ToolInstallStatus;
+  installedVersion?: string;
+  errorMessage?: string;
+}
+
+export type ToolActionResult =
+  | { success: true; tool: InstalledTool }
+  | { success: false; error: string };
 
 export interface LensViewManifest {
   id: string;
@@ -285,6 +339,11 @@ export interface ElectronAPI {
     refreshGenesisRegistry: (id: string) => Promise<MarketplaceRegistryActionResult>;
     setGenesisRegistryEnabled: (id: string, enabled: boolean) => Promise<MarketplaceRegistryActionResult>;
     removeGenesisRegistry: (id: string) => Promise<MarketplaceRegistryActionResult>;
+  };
+  tools: {
+    list: () => Promise<ToolCatalogEntry[]>;
+    install: (toolId: string, marketplaceId?: string) => Promise<ToolActionResult>;
+    uninstall: (toolId: string) => Promise<{ success: boolean; error?: string }>;
   };
   chatroom: ChatroomAPI;
   updater: {

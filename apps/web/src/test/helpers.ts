@@ -207,6 +207,11 @@ export function mockElectronAPI(): ElectronAPI {
         isDefault: false,
       } }),
     },
+    tools: {
+      list: vi.fn().mockResolvedValue([]),
+      install: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
+      uninstall: vi.fn().mockResolvedValue({ success: true }),
+    },
     chatroom: {
       send: vi.fn().mockResolvedValue(undefined),
       history: vi.fn().mockResolvedValue([]),

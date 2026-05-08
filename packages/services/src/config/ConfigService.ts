@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { generateMindId } from '../mind';
-import type { AppConfig, AppConfigV1, ChamberConversationRecord, MarketplaceRegistry, MindRecord } from '@chamber/shared/types';
+import type { AppConfig, AppConfigV1, ChamberConversationRecord, InstalledTool, MarketplaceRegistry, MindRecord } from '@chamber/shared/types';
 
 const CONFIG_DIR = path.join(os.homedir(), '.chamber');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
@@ -66,6 +66,7 @@ export class ConfigService {
     const minds = Array.isArray(raw.minds)
       ? raw.minds.map(normalizeMindRecord).filter((record): record is MindRecord => record !== null)
       : [];
+    const installedTools = normalizeInstalledTools(raw.installedTools);
     return this.deduplicateMinds({
       version: 2,
       minds,
@@ -73,6 +74,7 @@ export class ConfigService {
       activeLogin: typeof raw.activeLogin === 'string' ? raw.activeLogin : null,
       theme,
       marketplaceRegistries: this.normalizeMarketplaceRegistries(raw.marketplaceRegistries),
+      ...(installedTools.length > 0 ? { installedTools } : {}),
     });
   }
 
@@ -167,6 +169,48 @@ function isMarketplaceRegistry(value: unknown): value is MarketplaceRegistry {
     && typeof record.plugin === 'string'
     && typeof record.enabled === 'boolean'
     && typeof record.isDefault === 'boolean';
+}
+
+function normalizeInstalledTools(raw: unknown): InstalledTool[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const tools: InstalledTool[] = [];
+  for (const value of raw) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.id !== 'string'
+      || typeof record.package !== 'string'
+      || typeof record.version !== 'string'
+      || typeof record.bin !== 'string'
+      || typeof record.installedAt !== 'string'
+      || typeof record.displayName !== 'string'
+      || typeof record.description !== 'string'
+    ) {
+      continue;
+    }
+    const source = record.source;
+    if (typeof source !== 'object' || source === null || Array.isArray(source)) continue;
+    const sourceRecord = source as Record<string, unknown>;
+    if (typeof sourceRecord.marketplaceId !== 'string' || typeof sourceRecord.pluginId !== 'string') {
+      continue;
+    }
+    if (seen.has(record.id)) continue;
+    seen.add(record.id);
+    tools.push({
+      id: record.id,
+      package: record.package,
+      version: record.version,
+      bin: record.bin,
+      displayName: record.displayName,
+      description: record.description,
+      ...(typeof record.help === 'string' ? { help: record.help } : {}),
+      ...(typeof record.agentInstructions === 'string' ? { agentInstructions: record.agentInstructions } : {}),
+      source: { marketplaceId: sourceRecord.marketplaceId, pluginId: sourceRecord.pluginId },
+      installedAt: record.installedAt,
+    });
+  }
+  return tools;
 }
 
 function deduplicateRegistries(registries: MarketplaceRegistry[]): MarketplaceRegistry[] {

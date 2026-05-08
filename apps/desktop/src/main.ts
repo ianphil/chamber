@@ -22,11 +22,14 @@ import {
   GitHubRegistryClient,
   CronService,
   IdentityLoader,
+  MarketplaceToolCatalog,
   MessageRouter,
   MarketplaceRegistryService,
   MindManager,
   MindScaffold,
   TaskManager,
+  ToolInstaller,
+  ToolsService,
   TurnQueue,
   ViewDiscovery,
   configureSdkRuntimeLayout,
@@ -49,6 +52,7 @@ import { setupMindIPC } from './main/ipc/mind';
 import { setupLensIPC } from './main/ipc/lens';
 import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupMarketplaceIPC } from './main/ipc/marketplace';
+import { setupToolsIPC } from './main/ipc/tools';
 import { setupAuthIPC } from './main/ipc/auth';
 import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
@@ -115,8 +119,8 @@ const notifier: Notifier = {
 };
 
 const clientFactory = new CopilotClientFactory();
-const identityLoader = new IdentityLoader();
 const configService = new ConfigService();
+const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
 const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
   configService.load().marketplaceRegistries ?? [DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE];
 const saveActiveLogin = (login: string | null) => {
@@ -135,6 +139,8 @@ const scaffold = new MindScaffold();
 const genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
 const genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
 const marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
+const marketplaceToolCatalog = new MarketplaceToolCatalog(githubRegistryClient, getGenesisMarketplaceSources);
+const toolsService = new ToolsService(marketplaceToolCatalog, new ToolInstaller(), configService);
 const viewDiscovery = new ViewDiscovery();
 
 // --- Services (business rules, all dependencies injected) ---
@@ -475,10 +481,24 @@ app.on('ready', async () => {
     genesisTemplateInstaller,
   );
   setupMarketplaceIPC(marketplaceRegistryService);
+  setupToolsIPC(toolsService);
   setupAuthIPC(authService, mindManager);
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);
+
+  // Fire-and-forget tool reconciliation: install any new marketplace tools.
+  // Errors are logged in ToolsService and surface via tools:list later.
+  toolsService.reconcile()
+    .then((outcome) => {
+      if (outcome.installed.length > 0) {
+        log.info(`Installed ${outcome.installed.length} new marketplace tool(s):`, outcome.installed.map((tool) => tool.id));
+      }
+      if (outcome.errors.length > 0) {
+        log.warn(`Tool reconcile encountered ${outcome.errors.length} error(s):`, outcome.errors);
+      }
+    })
+    .catch((error: unknown) => log.warn('Tool reconciliation failed:', error));
 
   // Window controls
   ipcMain.on('window:minimize', () => mainWindow?.minimize());

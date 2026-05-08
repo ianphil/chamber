@@ -8,6 +8,7 @@ vi.mock('fs', () => ({
 
 import * as fs from 'fs';
 import { IdentityLoader } from './IdentityLoader';
+import type { InstalledTool } from '@chamber/shared/types';
 
 describe('IdentityLoader', () => {
   const loader = new IdentityLoader();
@@ -123,6 +124,37 @@ describe('IdentityLoader', () => {
     it('returns null when nothing exists', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
       expect(loader.load('/tmp/test')).toBeNull();
+    });
+
+    it('appends a Tools section when installed tools are provided', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue('# Q\nI am an agent.');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const tools: InstalledTool[] = [{
+        id: 'workiq',
+        package: '@microsoft/workiq',
+        version: 'latest',
+        bin: 'workiq',
+        displayName: 'Microsoft Work IQ',
+        description: 'Query M365 data.',
+        help: 'workiq ask --help',
+        agentInstructions: 'Use `workiq ask "<question>"`.',
+        source: { marketplaceId: 'github:ianphil/genesis-minds', pluginId: 'genesis-minds' },
+        installedAt: '2026-05-07T21:00:00.000Z',
+      }];
+      const withTools = new IdentityLoader(() => tools);
+      const result = withTools.load('/tmp/test');
+      expect(result?.systemMessage).toContain('## Tools');
+      expect(result?.systemMessage).toContain('### workiq — Microsoft Work IQ');
+      expect(result?.systemMessage).toContain('workiq ask --help');
+    });
+
+    it('does not append a Tools section when no tools are installed', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue('# Q\nI am an agent.');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const result = new IdentityLoader(() => []).load('/tmp/test');
+      expect(result?.systemMessage).not.toContain('## Tools');
     });
   });
 });

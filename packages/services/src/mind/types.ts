@@ -1,7 +1,7 @@
 // Internal mind context — main process only, not exposed to renderer
 // Extends the shared MindContext with infrastructure details
 
-import type { MindContext } from '@chamber/shared/types';
+import type { MindContext, MindIdentity } from '@chamber/shared/types';
 import type { CopilotClient, CopilotSession, SessionConfig, Tool as SdkTool } from '@github/copilot-sdk';
 
 export type { CopilotClient, CopilotSession };
@@ -22,4 +22,8 @@ export interface InternalMindContext extends MindContext {
   client: CopilotClient;
   session: CopilotSession | null;
   activeSessionId?: string;
+  // Override the readonly identity from MindContext so internal callers can
+  // refresh it (e.g. when newly installed marketplace tools change the
+  // system message advertised at the start of a new conversation).
+  identity: MindIdentity;
 }

@@ -499,6 +499,38 @@ describe('MindManager', () => {
 
       expect(savedMindIds(lastSavedConfig())).toEqual([mind2.mindId]);
     });
+
+    it('preserves marketplaceRegistries and installedTools across persist', async () => {
+      currentConfig = {
+        ...currentConfig,
+        marketplaceRegistries: [{
+          id: 'github:ianphil/genesis-minds',
+          label: 'Public Genesis Minds',
+          url: 'https://github.com/ianphil/genesis-minds',
+          owner: 'ianphil',
+          repo: 'genesis-minds',
+          ref: 'master',
+          plugin: 'genesis-minds',
+          enabled: true,
+          isDefault: true,
+        }],
+        installedTools: [{
+          id: 'workiq',
+          package: '@microsoft/workiq',
+          version: 'latest',
+          bin: 'workiq',
+          displayName: 'Microsoft Work IQ',
+          description: 'Query M365 data.',
+          source: { marketplaceId: 'github:ianphil/genesis-minds', pluginId: 'genesis-minds' },
+          installedAt: '2026-05-08T00:00:00.000Z',
+        }],
+      };
+      await manager.loadMind('/tmp/agents/q');
+      const saved = lastSavedConfig();
+      expect(saved.marketplaceRegistries).toHaveLength(1);
+      expect(saved.installedTools).toHaveLength(1);
+      expect(saved.installedTools?.[0].id).toBe('workiq');
+    });
   });
 
   describe('listMinds', () => {

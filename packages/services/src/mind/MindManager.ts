@@ -273,9 +273,21 @@ export class MindManager extends EventEmitter {
   async startNewConversation(mindId: string): Promise<CopilotSession> {
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
+    const refreshedIdentity = this.identityLoader.load(context.mindPath);
+    const identityChanged = refreshedIdentity !== null
+      && refreshedIdentity.systemMessage !== context.identity.systemMessage;
+    if (identityChanged) {
+      context.identity = refreshedIdentity;
+    }
     const activeConversation = this.getActiveConversationRecord(mindId);
-    if (activeConversation?.hasMessages === false && context.session) {
+    if (activeConversation?.hasMessages === false && context.session && !identityChanged) {
       return context.session;
+    }
+
+    if (activeConversation?.hasMessages === false && context.session && identityChanged) {
+      // Recreate the SDK session so the model picks up the refreshed system message
+      // (e.g. newly installed marketplace tools advertised in ## Tools).
+      return this.createNewConversationSession(mindId, context, activeConversation.sessionId);
     }
 
     return this.createNewConversationSession(mindId, context);
@@ -310,6 +322,10 @@ export class MindManager extends EventEmitter {
     context: InternalMindContext,
     replaceSessionId?: string,
   ): Promise<CopilotSession> {
+    const refreshedIdentity = this.identityLoader.load(context.mindPath);
+    if (refreshedIdentity) {
+      context.identity = refreshedIdentity;
+    }
     const conversation = this.createConversationRecord(mindId);
     const previousSession = context.session;
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
@@ -556,11 +572,10 @@ export class MindManager extends EventEmitter {
 
     const existingConfig = this.configService.load();
     const configSnapshot: AppConfig = {
+      ...existingConfig,
       version: 2,
       minds: this.getPersistedMindRecords(),
       activeMindId: this.getPersistedActiveMindId(),
-      activeLogin: existingConfig.activeLogin,
-      theme: existingConfig.theme,
     };
 
     this.reloading = true;
@@ -892,11 +907,10 @@ export class MindManager extends EventEmitter {
     if (this.reloading) return;
     const existingConfig = this.configService.load();
     const config: AppConfig = {
+      ...existingConfig,
       version: 2,
       minds: this.getPersistedMindRecords(),
       activeMindId: this.getPersistedActiveMindId(),
-      activeLogin: existingConfig.activeLogin,
-      theme: existingConfig.theme,
     };
     this.configService.save(config);
   }

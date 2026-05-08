@@ -65,6 +65,11 @@ const electronAPI: ElectronAPI = {
     setGenesisRegistryEnabled: (id, enabled) => ipcRenderer.invoke('marketplace:setGenesisRegistryEnabled', id, enabled),
     removeGenesisRegistry: (id) => ipcRenderer.invoke('marketplace:removeGenesisRegistry', id),
   },
+  tools: {
+    list: () => ipcRenderer.invoke('tools:list'),
+    install: (toolId, marketplaceId) => ipcRenderer.invoke('tools:install', toolId, marketplaceId),
+    uninstall: (toolId) => ipcRenderer.invoke('tools:uninstall', toolId),
+  },
   chatroom: {
     send: (message: string, model?: string, roundId?: string) => ipcRenderer.invoke('chatroom:send', message, model, roundId),
     history: () => ipcRenderer.invoke('chatroom:history'),

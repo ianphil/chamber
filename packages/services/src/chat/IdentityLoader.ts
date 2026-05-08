@@ -1,12 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { MindIdentity } from '@chamber/shared/types';
+import type { InstalledTool, MindIdentity } from '@chamber/shared/types';
+import { buildToolsSection } from '../tools/toolsSystemMessage';
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const H1_RE = /^#\s+(.+)$/m;
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
+export type InstalledToolsProvider = () => InstalledTool[];
+
 export class IdentityLoader {
+  constructor(private readonly getInstalledTools: InstalledToolsProvider = () => []) {}
+
   load(mindPath: string | null): MindIdentity | null {
     if (!mindPath) return null;
     const identityParts: string[] = [];
@@ -48,6 +53,9 @@ export class IdentityLoader {
 
     const parts = [...identityParts, ...memoryParts];
     if (parts.length === 0) return null;
+
+    const toolsSection = buildToolsSection(this.getInstalledTools());
+    if (toolsSection) parts.push(toolsSection);
 
     const systemMessage = parts.join('\n\n---\n\n');
     const name = this.extractName(identityParts.join('\n\n---\n\n'), mindPath);

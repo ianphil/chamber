@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.46.0 (2026-05-07)
+
+### Marketplace
+
+- **CLI tools as a marketplace primitive** — Genesis-minds plugin manifests can now declare a `tools[]` array alongside `minds[]`. Each entry describes a globally-installable npm CLI (`{ install: { type: 'npm-global', package, version }, bin, help, preflight, agentInstructions }`). Chamber reads tools from every enrolled marketplace and persists installed tools in `~/.chamber/config.json` under `installedTools[]`. Foundation for the public-marketplace WorkIQ capability. (#218)
+- **Auto-install on startup** — On app ready, `ToolsService.reconcile()` diffs marketplace `tools[]` against `config.installedTools[]` and runs `npm install -g <package>@<version>` for any new entry, then runs declared `preflight` commands (e.g. `workiq accept-eula`). Errors are logged per-tool and do not block other installs. Already-installed tools are not auto-updated. (#218)
+- **Runtime tool context in the system message** — `IdentityLoader` accepts an `InstalledTool[]` provider and appends a `## Tools` section to every session's system message. Tool descriptions live in the marketplace manifest's `agentInstructions` field and are captured into the installed-tool record at install time, so model context is available offline. Mind directories are not modified. (#218)
+- **Tools IPC + preload surface** — New `tools:list`, `tools:install`, `tools:uninstall` channels exposed via `window.electronAPI.tools.*`. Browser-mode shim returns descriptive "desktop-only" errors. (#218)
+
 ## v0.45.0 (2026-05-07)
 
 ### Chatroom
