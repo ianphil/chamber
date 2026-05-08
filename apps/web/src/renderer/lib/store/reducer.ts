@@ -755,6 +755,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'CHATROOM_ACTIVE_SPEAKER':
       return { ...state, chatroomActiveSpeaker: action.payload };
 
+    case 'SET_CHATROOM_DISABLED_MIND_IDS':
+      return { ...state, chatroomDisabledMindIds: action.payload };
+
     default:
       return state;
   }

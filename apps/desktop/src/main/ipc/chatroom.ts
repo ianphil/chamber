@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { ChatroomService } from '@chamber/services';
-import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '@chamber/shared/chatroom-types';
+import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, ChatroomStateChange } from '@chamber/shared/chatroom-types';
 
 interface ChatroomSendArgs {
   message: string;
@@ -61,11 +61,30 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
     return chatroomService.getOrchestration();
   });
 
+  ipcMain.handle('chatroom:set-mind-enabled', async (_event, mindId: string, enabled: boolean) => {
+    chatroomService.setMindEnabled(mindId, enabled);
+  });
+
+  ipcMain.handle('chatroom:get-disabled-mind-ids', async () => {
+    return chatroomService.getDisabledMindIds();
+  });
+
   // Forward chatroom streaming events to all renderer windows
   chatroomService.on('chatroom:event', (event) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
         win.webContents.send('chatroom:event', event);
+      }
+    }
+  });
+
+  // Forward authoritative state-change events (e.g. mind enable/disable)
+  // on a dedicated channel so the renderer's chatroom event union stays
+  // typed for streaming events only.
+  chatroomService.on('chatroom:state-changed', (state: ChatroomStateChange) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('chatroom:state-changed', state);
       }
     }
   });

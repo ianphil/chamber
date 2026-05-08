@@ -1,8 +1,8 @@
 import type { MindContext } from '@chamber/shared/types';
-import type { OrchestrationStrategy, OrchestrationContext } from './types';
+import type { OrchestrationStrategy, OrchestrationContext } from './legacy-types';
 import type { CopilotSession } from '../../mind';
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
-import { streamAgentTurn } from './stream-agent';
+import { streamAgentTurn } from '../stream-session';
 import { Logger } from '../../logger';
 
 const log = Logger.create('Chatroom:Concurrent');

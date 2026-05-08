@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.45.0 (2026-05-07)
+
+### Chatroom
+
+- **Toggle agents on/off in the participant bar** — Click an agent's pill at the top of the chatroom to disable it; click again to re-enable. Disabled agents grey out with a line-through name and are excluded from the participant snapshot taken at the start of each round. State persists in `chatroom.json`. The all-disabled / no-agents-loaded path emits a system message instead of a silent no-op, and orchestration prerequisite failures (group-chat moderator or magentic manager disabled) surface as a system message before the strategy runs. Cross-window state is kept in sync via a dedicated `chatroom:state-changed` IPC channel.
+
+### Refactor
+
+- **`SessionGroup` adapter for the chatroom** — Inserted an SDK-shaped `SessionGroup` seam between `CopilotSession` and `ChatroomService` so the chatroom no longer owns session lifecycle, permission-handler injection, stream-event wiring, stale-session retry, or orchestrator dispatch. New folder `packages/services/src/session-group/` with `SessionGroup`, `SessionGroupOrchestrator`, `stream-session.ts`, and the relocated `ConcurrentStrategy` / `SequentialStrategy` / `GroupChatStrategy` / `HandoffStrategy` / `MagenticStrategy` (under `session-group/orchestrators/`). `ChatroomService` is now a thin product-layer adapter over `SessionGroup` — transcript persistence, task-ledger persistence, mode/config selection, prompt building, and renderer event mapping. Behavior is preserved.
+
 ## v0.44.0 (2026-05-07)
 
 ### Chat

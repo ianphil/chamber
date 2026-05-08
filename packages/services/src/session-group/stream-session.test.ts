@@ -6,9 +6,9 @@ vi.mock('node:crypto', () => ({
   randomUUID: () => mockRandomUUID(),
 }));
 
-import { streamAgentTurn, sendToAgentWithRetry, TurnTimeoutError } from './stream-agent';
-import type { StreamAgentOptions, SendToAgentOptions } from './stream-agent';
-import type { OrchestrationContext } from './types';
+import { streamAgentTurn, sendToAgentWithRetry, TurnTimeoutError } from './stream-session';
+import type { StreamAgentOptions, SendToAgentOptions } from './stream-session';
+import type { OrchestrationContext } from './orchestrators/legacy-types';
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomStreamEvent, ChatroomMessage } from '@chamber/shared/chatroom-types';
 
@@ -63,7 +63,7 @@ function createContext(
   return {
     getOrCreateSession: vi.fn(async (mindId: string) => {
       if (!sessions.has(mindId)) sessions.set(mindId, createMockSession());
-      return sessions.get(mindId)! as unknown as import('../../mind/types').CopilotSession;
+      return sessions.get(mindId)! as unknown as import('../mind/types').CopilotSession;
     }),
     evictSession: vi.fn((mindId: string) => {
       sessions.delete(mindId);

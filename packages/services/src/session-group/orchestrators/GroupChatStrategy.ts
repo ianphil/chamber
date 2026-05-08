@@ -2,10 +2,10 @@ import type { MindContext } from '@chamber/shared/types';
 import type {
   GroupChatConfig,
 } from '@chamber/shared/chatroom-types';
-import type { OrchestrationContext } from './types';
-import { BaseStrategy } from './types';
-import { escapeXml, textContent, extractJsonObject } from './shared';
-import { sendToAgentWithRetry } from './stream-agent';
+import type { OrchestrationContext } from './legacy-types';
+import { BaseStrategy } from './legacy-types';
+import { escapeXml, textContent, extractJsonObject } from '../shared';
+import { sendToAgentWithRetry } from '../stream-session';
 import { Logger } from '../../logger';
 
 const log = Logger.create('Chatroom:GroupChat');

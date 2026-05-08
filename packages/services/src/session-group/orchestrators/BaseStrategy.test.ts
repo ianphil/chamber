@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BaseStrategy } from './types';
-import type { OrchestrationContext } from './types';
+import { BaseStrategy } from './legacy-types';
+import type { OrchestrationContext } from './legacy-types';
 import type { MindContext } from '@chamber/shared/types';
 import { SequentialStrategy } from './SequentialStrategy';
 import { HandoffStrategy } from './HandoffStrategy';

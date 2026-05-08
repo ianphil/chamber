@@ -1,51 +1,15 @@
-import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig } from '@chamber/shared/chatroom-types';
-import type { OrchestrationStrategy } from './types';
-import { ConcurrentStrategy } from './ConcurrentStrategy';
-import { SequentialStrategy } from './SequentialStrategy';
-import { GroupChatStrategy } from './GroupChatStrategy';
-import { HandoffStrategy } from './HandoffStrategy';
-import { MagenticStrategy } from './MagenticStrategy';
+// `chatroom/orchestration/` no longer holds product-layer modules — strategies,
+// stream wiring, prompt helpers, observability, and the approval gate all moved
+// under `session-group/` in v0.44.0. The folder remains as a barrel that
+// re-exports the migrated modules so existing call sites keep compiling
+// without churn. New code should import from `@chamber/services` (the
+// `session-group` re-exports) instead of digging into this folder.
 
-export type { OrchestrationStrategy, OrchestrationContext } from './types';
-export { BaseStrategy } from './types';
-export { ConcurrentStrategy } from './ConcurrentStrategy';
-export { SequentialStrategy } from './SequentialStrategy';
-export { GroupChatStrategy } from './GroupChatStrategy';
-export { HandoffStrategy } from './HandoffStrategy';
-export { MagenticStrategy } from './MagenticStrategy';
-export { ObservabilityEmitter, redactParameters } from './observability';
-export { ApprovalGate } from './approval-gate';
-export type { ApprovalGateConfig, ApprovalGateResult, ApprovalHandler, ApprovalLogEntry } from './approval-gate';
-
-export function createStrategy(
-  mode: OrchestrationMode,
-  groupChatConfig?: GroupChatConfig,
-  handoffConfig?: HandoffConfig,
-  magneticConfig?: MagenticConfig,
-): OrchestrationStrategy {
-  switch (mode) {
-    case 'concurrent':
-      return new ConcurrentStrategy();
-    case 'sequential':
-      return new SequentialStrategy();
-    case 'group-chat': {
-      if (!groupChatConfig) {
-        throw new Error('GroupChatConfig is required for group-chat orchestration');
-      }
-      return new GroupChatStrategy(groupChatConfig);
-    }
-    case 'handoff': {
-      return new HandoffStrategy(handoffConfig ?? { maxHandoffHops: 5 });
-    }
-    case 'magentic': {
-      if (!magneticConfig) {
-        throw new Error('MagenticConfig is required for magentic orchestration');
-      }
-      return new MagenticStrategy(magneticConfig);
-    }
-    default: {
-      const _exhaustive: never = mode;
-      throw new Error(`Unknown orchestration mode: ${_exhaustive}`);
-    }
-  }
-}
+export { ObservabilityEmitter, redactParameters } from '../../session-group/observability';
+export { ApprovalGate } from '../../session-group/approval-gate';
+export type {
+  ApprovalGateConfig,
+  ApprovalGateResult,
+  ApprovalHandler,
+  ApprovalLogEntry,
+} from '../../session-group/approval-gate';

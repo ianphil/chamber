@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomStreamEvent, OrchestrationMode, ChatroomMessage } from '@chamber/shared/chatroom-types';
-import type { OrchestrationContext } from './types';
-import type { CopilotSession } from '../../mind';
+import type { OrchestrationContext } from './orchestrators/legacy-types';
+import type { CopilotSession } from '../mind';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
-import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../../chat/currentDateTimeContext';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 
 // ---------------------------------------------------------------------------
 // TurnTimeoutError — distinguishable timeout for callers

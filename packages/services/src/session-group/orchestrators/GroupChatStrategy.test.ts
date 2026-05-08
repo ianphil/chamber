@@ -7,7 +7,7 @@ vi.mock('node:crypto', () => ({
 }));
 
 import { GroupChatStrategy } from './GroupChatStrategy';
-import type { OrchestrationContext } from './types';
+import type { OrchestrationContext } from './legacy-types';
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomStreamEvent, GroupChatConfig } from '@chamber/shared/chatroom-types';
 

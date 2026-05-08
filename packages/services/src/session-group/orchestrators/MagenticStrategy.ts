@@ -4,14 +4,14 @@ import type {
   MagenticConfig,
   TaskLedgerItem,
 } from '@chamber/shared/chatroom-types';
-import type { OrchestrationContext } from './types';
-import { BaseStrategy } from './types';
-import { ObservabilityEmitter } from './observability';
-import { textContent, extractJsonObject } from './shared';
+import type { OrchestrationContext } from './legacy-types';
+import { BaseStrategy } from './legacy-types';
+import { ObservabilityEmitter } from '../observability';
+import { textContent, extractJsonObject } from '../shared';
 import { Logger } from '../../logger';
 
 const log = Logger.create('Chatroom:Magentic');
-import { sendToAgentWithRetry, TurnTimeoutError } from './stream-agent';
+import { sendToAgentWithRetry, TurnTimeoutError } from '../stream-session';
 
 /** Max characters stored in task.result (safe summary only) */
 const MAX_RESULT_LENGTH = 500;

@@ -82,14 +82,19 @@ Electron Main Process
 ├── CanvasService       — browser-rendered HTML canvases with live reload
 ├── CronService         — built-in scheduled jobs and durable run history
 ├── ChatService         — streaming sessions, background prompts
-├── ChatroomService     — multi-agent broadcast, orchestration strategy dispatch
+├── ChatroomService     — multi-agent broadcast (transcript, ledger, mode/config, renderer event mapping)
 │   └── orchestration/
-│       ├── stream-agent.ts  — shared SDK event wiring + stale session retry
-│       ├── shared.ts        — XML/JSON helpers shared across strategies
-│       ├── ConcurrentStrategy, SequentialStrategy, GroupChatStrategy,
-│       │   HandoffStrategy, MagenticStrategy
+│       ├── shared.ts        — XML/JSON helpers shared with strategies
 │       ├── approval-gate.ts — tool execution review gate
 │       └── observability.ts — structured event emission with redaction
+├── SessionGroup        — SDK-shaped adapter: per-mind session cache, lifecycle, orchestrator dispatch
+│   ├── stream-session.ts    — shared SDK event wiring + stale session retry
+│   ├── permission-handler.ts — ApprovalGate ↔ Copilot SDK PermissionHandler bridge
+│   └── orchestrators/
+│       ├── ConcurrentStrategy, SequentialStrategy, GroupChatStrategy,
+│       │   HandoffStrategy, MagenticStrategy
+│       ├── createStrategy.ts — factory keyed by orchestration mode
+│       └── wrap-strategy.ts  — adapts legacy OrchestrationStrategy to SessionGroupOrchestrator
 ├── ViewDiscovery       — scans .github/lens/ for view.json, file watcher
 ├── Tray                — Windows close-to-tray lifecycle
 └── IPC Handlers        — chat, chatroom, agent, lens, config channels
