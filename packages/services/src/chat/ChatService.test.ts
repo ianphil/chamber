@@ -94,45 +94,34 @@ describe('ChatService', () => {
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     });
 
-    it('emits timeout (not done) when send resolves but session.idle never fires', async () => {
+    it('does not arm a wall-clock fallback timer; long turns wait indefinitely for the SDK or user cancel (#222)', async () => {
       vi.useFakeTimers();
       try {
-        // Default behavior: register listeners but never fire session.idle.
+        // session.send resolves but session.idle never fires.
         mockSession.on.mockImplementation(() => vi.fn());
         mockSession.send.mockResolvedValue(undefined);
 
         const emit = vi.fn();
         const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
 
-        // Advance past the 5-minute fallback turn timeout.
-        await vi.advanceTimersByTimeAsync(300_000);
-        await pending;
+        // Drain enough microtasks to push past turnQueue.enqueue, send,
+        // Promise.race, and the inner finally that clears SEND_TIMEOUT_MS.
+        for (let i = 0; i < 10; i += 1) await Promise.resolve();
 
-        expect(emit).toHaveBeenCalledWith({ type: 'timeout', timeoutMs: 300_000 });
+        // Far past the prior 5-minute fallback. No timer must be armed for
+        // the turn deadline; the only timer in flight should be the 30s
+        // SEND_TIMEOUT_MS, which is already cleared by send resolving.
+        expect(vi.getTimerCount()).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(60 * 60_000); // one hour
         expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+        expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'timeout' }));
         expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
-        // No timer leak: the fallback timer was cleared by the outer finally.
-        expect(vi.getTimerCount()).toBe(0);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
 
-    it('does not leak the 5-minute fallback timer when session.send fails synchronously', async () => {
-      vi.useFakeTimers();
-      try {
-        mockSession.on.mockImplementation(() => vi.fn());
-        mockSession.send.mockRejectedValueOnce(new Error('send blew up'));
-
-        const emit = vi.fn();
-        await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
-
-        // Outer finally must clear turnDoneTimerId even though we never
-        // reached `await turnDone`. If this leaks, getTimerCount > 0 and a
-        // future TurnTimeoutError reject would surface as unhandled.
-        expect(vi.getTimerCount()).toBe(0);
-        expect(emit).toHaveBeenCalledWith({ type: 'error', message: 'send blew up' });
-        expect(emit).not.toHaveBeenCalledWith({ type: 'timeout', timeoutMs: 300_000 });
+        // User-pressed Stop: cancelMessage aborts the controller, the
+        // turnDone abort listener resolves, and the turn unwinds cleanly.
+        await svc.cancelMessage('valid-mind', 'msg-1');
+        await pending;
       } finally {
         vi.useRealTimers();
       }
@@ -312,6 +301,39 @@ describe('ChatService', () => {
       expect(emit).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'error', message: 'Network error' }),
       );
+    });
+
+    it('does not retry stale-session recovery after the user cancels', async () => {
+      mockSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      const freshSession = {
+        send: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn(() => vi.fn()),
+      };
+      let resolveRecovery: ((session: typeof freshSession) => void) | undefined;
+      mockMindManager.recoverActiveConversationSession.mockImplementationOnce(
+        () => new Promise<typeof freshSession>((resolve) => {
+          resolveRecovery = resolve;
+        }),
+      );
+
+      const emit = vi.fn();
+      const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      await vi.waitFor(() => {
+        expect(mockMindManager.recoverActiveConversationSession).toHaveBeenCalledWith('valid-mind');
+      });
+      await svc.cancelMessage('valid-mind', 'msg-1');
+      resolveRecovery?.(freshSession);
+      await pending;
+
+      expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(freshSession.send).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+      expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     });
   });
 
