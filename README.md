@@ -57,6 +57,10 @@ Marketplace maintainers can add a click-to-enroll link to a README or internal p
 
 The GitHub Pages interstitial at `https://chmbr.dev/install.html?registry=<encoded registry URL>` opens the matching `chamber://install?registry=...` URL and shows a fallback copy button if Chamber is not installed.
 
+### Marketplace CLI tools
+
+Marketplace plugin manifests can declare a `tools[]` array alongside `minds[]`. Chamber supports `npm-global` tools and GitHub release asset tools. Release asset tools use the GitHub API directly, require per-platform SHA-256 metadata, and install prebuilt binaries into Chamber's managed tools directory so end-user machines do not need `gh`, Go, or a source checkout.
+
 ## Architecture
 
 Chamber is being split into a transport-oriented workspace layout so the UI can run either in a browser or inside Electron:

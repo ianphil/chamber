@@ -81,6 +81,27 @@ describe('CopilotClientFactory', () => {
       expect(cliArgs).not.toContain(expect.stringMatching(/npm-loader\.js$/));
     });
 
+    it('prepends the Chamber tools bin directory to the CLI PATH when configured', async () => {
+      factory = new CopilotClientFactory({ toolsBinDir: 'C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin' });
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const env = client.options.env as Record<string, string>;
+      const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+
+      expect(env[pathKey].split(';')[0]).toBe('C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin');
+    });
+
+    it('does not duplicate the Chamber tools bin directory in the CLI PATH', async () => {
+      const toolsBinDir = 'C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin';
+      factory = new CopilotClientFactory({
+        toolsBinDir,
+        env: { Path: `${toolsBinDir};C:\\Windows\\System32` },
+      });
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const env = client.options.env as Record<string, string>;
+
+      expect(env.Path).toBe(`${toolsBinDir};C:\\Windows\\System32`);
+    });
+
     it('creates separate clients for different mind paths', async () => {
       const client1 = await factory.createClient('C:\\agents\\q');
       const client2 = await factory.createClient('C:\\agents\\fox');

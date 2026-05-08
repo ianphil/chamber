@@ -20,6 +20,7 @@ import {
   GenesisMindTemplateInstaller,
   GenesisMindTemplateMarketplaceCatalog,
   GitHubRegistryClient,
+  GitHubReleaseAssetClient,
   CronService,
   IdentityLoader,
   MarketplaceToolCatalog,
@@ -28,11 +29,13 @@ import {
   MindManager,
   MindScaffold,
   TaskManager,
+  ChildProcessRunner,
   ToolInstaller,
   ToolsService,
   TurnQueue,
   ViewDiscovery,
   configureSdkRuntimeLayout,
+  getChamberToolsBinDir,
   type AppPaths,
   type CredentialStore,
   type GenesisMindTemplateMarketplaceSource,
@@ -118,7 +121,8 @@ const notifier: Notifier = {
   },
 };
 
-const clientFactory = new CopilotClientFactory();
+const chamberToolsBinDir = getChamberToolsBinDir();
+const clientFactory = new CopilotClientFactory({ toolsBinDir: chamberToolsBinDir });
 const configService = new ConfigService();
 const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
 const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
@@ -140,7 +144,15 @@ const genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubR
 const genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
 const marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
 const marketplaceToolCatalog = new MarketplaceToolCatalog(githubRegistryClient, getGenesisMarketplaceSources);
-const toolsService = new ToolsService(marketplaceToolCatalog, new ToolInstaller(), configService);
+const toolsService = new ToolsService(
+  marketplaceToolCatalog,
+  new ToolInstaller(
+    new ChildProcessRunner(),
+    GitHubReleaseAssetClient.withCredentialStore(credentialStore),
+    chamberToolsBinDir,
+  ),
+  configService,
+);
 const viewDiscovery = new ViewDiscovery();
 
 // --- Services (business rules, all dependencies injected) ---

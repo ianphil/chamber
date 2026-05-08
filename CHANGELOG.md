@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.47.0 (2026-05-08)
+
+### Marketplace
+
+- **Install internal CLI tools from GitHub release assets** — Marketplace `tools[]` entries can now use `install.type: "github-release-asset"` with platform/arch asset selectors and required SHA-256 checksums. Chamber downloads private release assets through the GitHub API using stored credentials, avoids forwarding tokens across release-download redirects, installs verified binaries into the Chamber tools bin directory, and prepends that directory to SDK subprocess PATH so advertised tools are executable. (#229)
+- **Ship A365 tools through the internal marketplace** — The internal Genesis marketplace now declares A365 Teams, Mail, Calendar, Copilot, Planner, Whois, Word, Excel, and Sales tools from `agency-microsoft/a365-cli` release `v0.5.0`, preserving public/default marketplace behavior while enabling internal users to install prebuilt binaries without `gh`, Go, or a source checkout. (#229)
+
 ## v0.46.4 (2026-05-08)
 
 ### SDK

@@ -178,17 +178,7 @@ function normalizeInstalledTools(raw: unknown): InstalledTool[] {
   for (const value of raw) {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
     const record = value as Record<string, unknown>;
-    if (
-      typeof record.id !== 'string'
-      || typeof record.package !== 'string'
-      || typeof record.version !== 'string'
-      || typeof record.bin !== 'string'
-      || typeof record.installedAt !== 'string'
-      || typeof record.displayName !== 'string'
-      || typeof record.description !== 'string'
-    ) {
-      continue;
-    }
+    if (!hasBaseInstalledToolFields(record)) continue;
     const source = record.source;
     if (typeof source !== 'object' || source === null || Array.isArray(source)) continue;
     const sourceRecord = source as Record<string, unknown>;
@@ -196,10 +186,11 @@ function normalizeInstalledTools(raw: unknown): InstalledTool[] {
       continue;
     }
     if (seen.has(record.id)) continue;
+    const install = normalizeInstalledToolInstall(record);
+    if (!install) continue;
     seen.add(record.id);
-    tools.push({
+    const base = {
       id: record.id,
-      package: record.package,
       version: record.version,
       bin: record.bin,
       displayName: record.displayName,
@@ -208,9 +199,77 @@ function normalizeInstalledTools(raw: unknown): InstalledTool[] {
       ...(typeof record.agentInstructions === 'string' ? { agentInstructions: record.agentInstructions } : {}),
       source: { marketplaceId: sourceRecord.marketplaceId, pluginId: sourceRecord.pluginId },
       installedAt: record.installedAt,
-    });
+    };
+    if (install.type === 'npm-global') {
+      tools.push({
+        ...base,
+        package: install.package,
+        install,
+      });
+    } else {
+      tools.push({
+        ...base,
+        install,
+      });
+    }
   }
   return tools;
+}
+
+function hasBaseInstalledToolFields(record: Record<string, unknown>): record is Record<string, unknown> & {
+  id: string;
+  version: string;
+  bin: string;
+  installedAt: string;
+  displayName: string;
+  description: string;
+} {
+  return typeof record.id === 'string'
+    && typeof record.version === 'string'
+    && typeof record.bin === 'string'
+    && typeof record.installedAt === 'string'
+    && typeof record.displayName === 'string'
+    && typeof record.description === 'string';
+}
+
+function normalizeInstalledToolInstall(record: Record<string, unknown>): InstalledTool['install'] | null {
+  const install = record.install;
+  if (typeof install === 'object' && install !== null && !Array.isArray(install)) {
+    const installRecord = install as Record<string, unknown>;
+    if (installRecord.type === 'npm-global'
+      && typeof installRecord.package === 'string'
+      && typeof installRecord.version === 'string') {
+      return { type: 'npm-global', package: installRecord.package, version: installRecord.version };
+    }
+    if (installRecord.type === 'github-release-asset'
+      && typeof installRecord.owner === 'string'
+      && typeof installRecord.repo === 'string'
+      && typeof installRecord.tag === 'string'
+      && typeof installRecord.assetName === 'string'
+      && typeof installRecord.sha256 === 'string'
+      && typeof installRecord.platform === 'string'
+      && typeof installRecord.arch === 'string'
+      && typeof installRecord.installedPath === 'string') {
+      return {
+        type: 'github-release-asset',
+        owner: installRecord.owner,
+        repo: installRecord.repo,
+        tag: installRecord.tag,
+        assetName: installRecord.assetName,
+        sha256: installRecord.sha256,
+        platform: installRecord.platform,
+        arch: installRecord.arch,
+        installedPath: installRecord.installedPath,
+        ...(installRecord.archive === 'zip' || installRecord.archive === 'tar.gz' ? { archive: installRecord.archive } : {}),
+        ...(typeof installRecord.binPath === 'string' ? { binPath: installRecord.binPath } : {}),
+      };
+    }
+    return null;
+  }
+  if (typeof record.package === 'string') {
+    return { type: 'npm-global', package: record.package, version: record.version as string };
+  }
+  return null;
 }
 
 function deduplicateRegistries(registries: MarketplaceRegistry[]): MarketplaceRegistry[] {

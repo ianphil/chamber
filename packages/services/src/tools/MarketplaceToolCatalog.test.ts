@@ -66,6 +66,80 @@ describe('MarketplaceToolCatalog', () => {
     expect(tool.source.marketplaceId).toBe('github:ianphil/genesis-minds');
   });
 
+  it('parses a GitHub release asset install entry', async () => {
+    client.manifests.set('plugins/genesis-minds/plugin.json', {
+      name: 'genesis-minds',
+      tools: [
+        {
+          id: 'a365',
+          displayName: 'A365 CLI',
+          description: 'Run Microsoft 365 internal automation tools.',
+          install: {
+            type: 'github-release-asset',
+            owner: 'agency-microsoft',
+            repo: 'a365-cli',
+            tag: 'latest',
+            assets: [
+              {
+                platform: 'win32',
+                arch: 'x64',
+                name: 'a365-windows-amd64.exe',
+                sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+              },
+            ],
+          },
+          bin: 'a365',
+          help: 'a365 --help',
+          agentInstructions: 'Use a365 for Microsoft 365 internal workflows.',
+        },
+      ],
+    });
+    const catalog = new MarketplaceToolCatalog(client, [SOURCE]);
+    const result = await catalog.listTools();
+    expect(result.errors).toEqual([]);
+    expect(result.tools).toHaveLength(1);
+    const tool = result.tools[0];
+    expect(tool.install).toEqual({
+      type: 'github-release-asset',
+      owner: 'agency-microsoft',
+      repo: 'a365-cli',
+      tag: 'latest',
+      assets: [
+        {
+          platform: 'win32',
+          arch: 'x64',
+          name: 'a365-windows-amd64.exe',
+          sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        },
+      ],
+    });
+  });
+
+  it('rejects GitHub release asset entries without checksums', async () => {
+    client.manifests.set('plugins/genesis-minds/plugin.json', {
+      tools: [
+        {
+          id: 'a365',
+          displayName: 'A365 CLI',
+          description: 'Run Microsoft 365 internal automation tools.',
+          install: {
+            type: 'github-release-asset',
+            owner: 'agency-microsoft',
+            repo: 'a365-cli',
+            tag: 'latest',
+            assets: [{ platform: 'win32', arch: 'x64', name: 'a365-windows-amd64.exe' }],
+          },
+          bin: 'a365',
+        },
+      ],
+    });
+    const catalog = new MarketplaceToolCatalog(client, [SOURCE]);
+    const result = await catalog.listTools();
+    expect(result.tools).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toContain('sha256');
+  });
+
   it('skips disabled marketplaces', async () => {
     const catalog = new MarketplaceToolCatalog(client, [{ ...SOURCE, enabled: false }]);
     const result = await catalog.listTools();

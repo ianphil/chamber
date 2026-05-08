@@ -2,11 +2,14 @@ import { describe, it, expect } from 'vitest';
 import type { InstalledTool } from '@chamber/shared/types';
 import { buildToolsSection } from './toolsSystemMessage';
 
-function tool(overrides: Partial<InstalledTool> = {}): InstalledTool {
+type InstalledNpmTool = Extract<InstalledTool, { package: string }>;
+
+function tool(overrides: Partial<InstalledNpmTool> = {}): InstalledTool {
   return {
     id: 'workiq',
     package: '@microsoft/workiq',
     version: 'latest',
+    install: { type: 'npm-global', package: '@microsoft/workiq', version: 'latest' },
     bin: 'workiq',
     displayName: 'Microsoft Work IQ',
     description: 'Query M365 data via natural language.',

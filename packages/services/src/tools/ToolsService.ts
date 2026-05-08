@@ -71,8 +71,11 @@ export class ToolsService {
   async reconcile(): Promise<{ installed: InstalledTool[]; errors: Array<{ toolId: string; message: string }> }> {
     const result = await this.catalog.listTools();
     const installed = this.getInstalled();
-    const installedIds = new Set(installed.map((tool) => tool.id));
-    const newTools = result.tools.filter((tool) => !installedIds.has(tool.id));
+    const installedById = new Map(installed.map((tool) => [tool.id, tool]));
+    const newTools = result.tools.filter((tool) => {
+      const persisted = installedById.get(tool.id);
+      return !persisted || persisted.version !== marketplaceToolVersion(tool);
+    });
 
     const newlyInstalled: InstalledTool[] = [];
     const errors: Array<{ toolId: string; message: string }> = [];
@@ -85,6 +88,10 @@ export class ToolsService {
         log.warn(`Reconcile failed for tool ${tool.id}: ${outcome.error}`);
         errors.push({ toolId: tool.id, message: outcome.error });
       }
+    }
+
+    function marketplaceToolVersion(tool: MarketplaceToolEntry): string {
+      return tool.install.type === 'npm-global' ? tool.install.version : tool.install.tag;
     }
 
     return { installed: newlyInstalled, errors };

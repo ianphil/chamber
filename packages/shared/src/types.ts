@@ -167,16 +167,8 @@ export interface AppConfig {
   installedTools?: InstalledTool[];
 }
 
-/**
- * Persistent record of a CLI tool installed via the marketplace.
- * The tool itself lives on the user's PATH (installed via `npm i -g`); this record
- * tracks what we installed so startup reconciliation can avoid reinstalling, and
- * carries the agent-facing description so the system message can advertise the
- * tool offline (no marketplace fetch needed at session start).
- */
-export interface InstalledTool {
+interface InstalledToolBase {
   id: string;
-  package: string;
   version: string;
   bin: string;
   displayName: string;
@@ -187,11 +179,60 @@ export interface InstalledTool {
   installedAt: string;
 }
 
+/**
+ * Persistent record of a CLI tool installed via the marketplace. Records carry
+ * the agent-facing description so the system message can advertise tools
+ * offline (no marketplace fetch needed at session start).
+ */
+export type InstalledTool = InstalledNpmGlobalTool | InstalledGitHubReleaseAssetTool;
+
+export interface InstalledNpmGlobalTool extends InstalledToolBase {
+  package: string;
+  install?: { type: 'npm-global'; package: string; version: string };
+}
+
+export interface InstalledGitHubReleaseAssetTool extends InstalledToolBase {
+  install: {
+    type: 'github-release-asset';
+    owner: string;
+    repo: string;
+    tag: string;
+    assetName: string;
+    sha256: string;
+    platform: string;
+    arch: string;
+    installedPath: string;
+    archive?: GitHubReleaseAssetArchiveType;
+    binPath?: string;
+  };
+}
+
+export type GitHubReleaseAssetArchiveType = 'zip' | 'tar.gz';
+
+export interface GitHubReleaseAssetSelector {
+  platform: string;
+  arch: string;
+  name: string;
+  sha256: string;
+  archive?: GitHubReleaseAssetArchiveType;
+  binPath?: string;
+}
+
+export type MarketplaceToolInstall =
+  | { type: 'npm-global'; package: string; version: string }
+  | {
+    type: 'github-release-asset';
+    owner: string;
+    repo: string;
+    tag: string;
+    assets: GitHubReleaseAssetSelector[];
+  };
+
 export interface MarketplaceToolEntry {
   id: string;
   displayName: string;
   description: string;
-  install: { type: 'npm-global'; package: string; version: string };
+  install: MarketplaceToolInstall;
   bin: string;
   help?: string;
   preflight?: string[];

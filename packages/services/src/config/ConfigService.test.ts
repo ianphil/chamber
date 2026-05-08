@@ -243,6 +243,7 @@ describe('ConfigService', () => {
         id: 'workiq',
         package: '@microsoft/workiq',
         version: 'latest',
+        install: { type: 'npm-global', package: '@microsoft/workiq', version: 'latest' },
         bin: 'workiq',
         displayName: 'Microsoft Work IQ',
         description: 'Query M365 data.',
@@ -263,6 +264,59 @@ describe('ConfigService', () => {
       expect(loaded.installedTools).toEqual([installedTool]);
     });
 
+    it('round-trips a GitHub release asset installed tool record', () => {
+      const installedTool = {
+        id: 'a365-teams',
+        version: 'v0.5.0',
+        bin: 'teams',
+        displayName: 'A365 Teams CLI',
+        description: 'Read and post Teams messages.',
+        help: 'teams --help',
+        agentInstructions: 'Use teams read.',
+        source: { marketplaceId: 'github:agency-microsoft/genesis-minds', pluginId: 'genesis-minds' },
+        installedAt: '2026-05-08T04:00:00.000Z',
+        install: {
+          type: 'github-release-asset',
+          owner: 'agency-microsoft',
+          repo: 'a365-cli',
+          tag: 'v0.5.0',
+          assetName: 'teams.exe',
+          sha256: 'ab6d078c26648a9409137c0ae3b245d006c12c39a9222efeb0c5847b8554aa31',
+          platform: 'win32',
+          arch: 'x64',
+          installedPath: 'C:\\Users\\ianphil\\.chamber\\tools\\bin\\teams.exe',
+        },
+      };
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        installedTools: [installedTool],
+      }));
+      const loaded = svc.load();
+      expect(loaded.installedTools).toEqual([installedTool]);
+    });
+
+    it('adds install metadata to legacy npm installed tool records', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        installedTools: [
+          { id: 'workiq', package: '@microsoft/workiq', version: 'latest', bin: 'workiq', displayName: 'A', description: 'a', source: { marketplaceId: 'm', pluginId: 'p' }, installedAt: '2026-01-01T00:00:00Z' },
+        ],
+      }));
+      const loaded = svc.load();
+      expect(loaded.installedTools?.[0]).toMatchObject({
+        package: '@microsoft/workiq',
+        install: { type: 'npm-global', package: '@microsoft/workiq', version: 'latest' },
+      });
+    });
+
     it('drops malformed tool records and deduplicates by id', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,
@@ -279,7 +333,7 @@ describe('ConfigService', () => {
       }));
       const loaded = svc.load();
       expect(loaded.installedTools).toHaveLength(1);
-      expect(loaded.installedTools?.[0].package).toBe('@microsoft/workiq');
+      expect(loaded.installedTools?.[0].install).toEqual({ type: 'npm-global', package: '@microsoft/workiq', version: '1' });
     });
 
     it('omits installedTools entirely when none are persisted', () => {

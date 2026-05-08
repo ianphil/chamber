@@ -1,5 +1,5 @@
 import { GitHubRegistryClient, type TreeEntry } from '../genesis/GitHubRegistryClient';
-import type { MarketplaceToolEntry } from '@chamber/shared/types';
+import type { GitHubReleaseAssetSelector, MarketplaceToolEntry, MarketplaceToolInstall } from '@chamber/shared/types';
 import type { ToolMarketplaceSource } from './toolTypes';
 
 interface RegistryClient {
@@ -77,11 +77,7 @@ function parseToolEntry(
   const description = stringField(entry, 'description', pluginPath, index);
   const bin = stringField(entry, 'bin', pluginPath, index);
 
-  const install = entry.install;
-  if (!isRecord(install) || install.type !== 'npm-global'
-    || typeof install.package !== 'string' || typeof install.version !== 'string') {
-    throw new Error(`${pluginPath} tools[${index}].install must be { type: 'npm-global', package, version }`);
-  }
+  const install = parseInstall(entry.install, pluginPath, index);
 
   const help = optionalString(entry, 'help');
   const agentInstructions = optionalString(entry, 'agentInstructions');
@@ -91,7 +87,7 @@ function parseToolEntry(
     id,
     displayName,
     description,
-    install: { type: 'npm-global', package: install.package, version: install.version },
+    install,
     bin,
     ...(help ? { help } : {}),
     ...(preflight ? { preflight } : {}),
@@ -108,6 +104,74 @@ function parseToolEntry(
   };
 }
 
+function parseInstall(value: unknown, pluginPath: string, index: number): MarketplaceToolInstall {
+  if (!isRecord(value) || typeof value.type !== 'string') {
+    throw new Error(`${pluginPath} tools[${index}].install must be a tool install object`);
+  }
+  if (value.type === 'npm-global') {
+    if (typeof value.package !== 'string' || value.package.length === 0
+      || typeof value.version !== 'string' || value.version.length === 0) {
+      throw new Error(`${pluginPath} tools[${index}].install must be { type: 'npm-global', package, version }`);
+    }
+    return { type: 'npm-global', package: value.package, version: value.version };
+  }
+  if (value.type === 'github-release-asset') {
+    return parseGitHubReleaseAssetInstall(value, pluginPath, index);
+  }
+  throw new Error(`${pluginPath} tools[${index}].install.type is not supported: ${value.type}`);
+}
+
+function parseGitHubReleaseAssetInstall(
+  install: Record<string, unknown>,
+  pluginPath: string,
+  index: number,
+): MarketplaceToolInstall {
+  const installPrefix = `${pluginPath} tools[${index}].install`;
+  const owner = requiredString(install, 'owner', installPrefix);
+  const repo = requiredString(install, 'repo', installPrefix);
+  const tag = requiredString(install, 'tag', installPrefix);
+  const assets = install.assets;
+  if (!Array.isArray(assets) || assets.length === 0) {
+    throw new Error(`${pluginPath} tools[${index}].install.assets must be a non-empty array`);
+  }
+  return {
+    type: 'github-release-asset',
+    owner,
+    repo,
+    tag,
+    assets: assets.map((asset, assetIndex) => parseGitHubReleaseAsset(asset, pluginPath, index, assetIndex)),
+  };
+}
+
+function parseGitHubReleaseAsset(
+  value: unknown,
+  pluginPath: string,
+  toolIndex: number,
+  assetIndex: number,
+): GitHubReleaseAssetSelector {
+  if (!isRecord(value)) {
+    throw new Error(`${pluginPath} tools[${toolIndex}].install.assets[${assetIndex}] is not an object`);
+  }
+  const prefix = `${pluginPath} tools[${toolIndex}].install.assets[${assetIndex}]`;
+  const platform = requiredString(value, 'platform', prefix);
+  const arch = requiredString(value, 'arch', prefix);
+  const name = requiredString(value, 'name', prefix);
+  const sha256 = requiredString(value, 'sha256', prefix);
+  if (!/^[a-fA-F0-9]{64}$/.test(sha256)) {
+    throw new Error(`${prefix}.sha256 must be a 64-character hex string`);
+  }
+  const archive = optionalArchive(value, prefix);
+  const binPath = optionalString(value, 'binPath');
+  return {
+    platform,
+    arch,
+    name,
+    sha256: sha256.toLowerCase(),
+    ...(archive ? { archive } : {}),
+    ...(binPath ? { binPath } : {}),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -116,6 +180,14 @@ function stringField(record: Record<string, unknown>, key: string, pluginPath: s
   const value = record[key];
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${pluginPath} tools[${index}].${key} must be a non-empty string`);
+  }
+  return value;
+}
+
+function requiredString(record: Record<string, unknown>, key: string, prefix: string): string {
+  const value = record[key];
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${prefix}.${key} must be a non-empty string`);
   }
   return value;
 }
@@ -137,4 +209,13 @@ function optionalStringArray(
     throw new Error(`${pluginPath} tools[${index}].${key} must be a string array`);
   }
   return value as string[];
+}
+
+function optionalArchive(record: Record<string, unknown>, prefix: string): 'zip' | 'tar.gz' | undefined {
+  const value = record.archive;
+  if (value === undefined) return undefined;
+  if (value !== 'zip' && value !== 'tar.gz') {
+    throw new Error(`${prefix}.archive must be "zip" or "tar.gz"`);
+  }
+  return value;
 }

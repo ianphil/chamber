@@ -10,8 +10,15 @@ import { getPlatformCopilotBinaryPath } from './SdkBootstrap';
 
 import type { CopilotClient } from '@github/copilot-sdk';
 
+export interface CopilotClientFactoryOptions {
+  toolsBinDir?: string;
+  env?: Record<string, string | undefined>;
+}
+
 export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
+
+  constructor(private readonly options: CopilotClientFactoryOptions = {}) {}
 
   async createClient(mindPath: string): Promise<CopilotClient> {
     const sdk = await this.getSdk();
@@ -39,6 +46,7 @@ export class CopilotClientFactory {
       cwd: mindPath,
       logLevel: 'all',
       cliArgs,
+      ...(this.options.toolsBinDir ? { env: prependToPath(this.options.env ?? process.env, this.options.toolsBinDir) } : {}),
     });
 
     await client.start();
@@ -59,4 +67,21 @@ export class CopilotClientFactory {
     }
     return this.sdkModule;
   }
+}
+
+function prependToPath(env: Record<string, string | undefined>, entry: string): Record<string, string | undefined> {
+  const next = { ...env };
+  const pathKey = Object.keys(next).find((key) => key.toLowerCase() === 'path') ?? (process.platform === 'win32' ? 'Path' : 'PATH');
+  const current = next[pathKey] ?? '';
+  const parts = current.split(path.delimiter).filter(Boolean);
+  if (parts.some((part) => samePath(part, entry))) {
+    next[pathKey] = current;
+    return next;
+  }
+  next[pathKey] = [entry, ...parts].join(path.delimiter);
+  return next;
+}
+
+function samePath(left: string, right: string): boolean {
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
