@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
-import { Plus, X, Bot, ExternalLink } from 'lucide-react';
+import { Plus, X, Bot, ExternalLink, UserCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import type { MindContext } from '@chamber/shared/types';
+import { AgentProfileModal } from '../profile/AgentProfileModal';
+import type { AgentProfile, MindContext } from '@chamber/shared/types';
 
 const MIN_WIDTH = 140;
 const MAX_WIDTH = 400;
@@ -22,6 +23,8 @@ function statusColor(status: MindContext['status']): string {
 export function MindSidebar() {
   const { minds, activeMindId } = useAppState();
   const dispatch = useAppDispatch();
+  const [profileMind, setProfileMind] = useState<MindContext | null>(null);
+  const [avatarByMindId, setAvatarByMindId] = useState<Record<string, string | null>>({});
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, parseInt(saved, 10))) : 192;
@@ -46,6 +49,11 @@ export function MindSidebar() {
   const handlePopout = async (e: React.MouseEvent, mindId: string) => {
     e.stopPropagation();
     await window.electronAPI.mind.openWindow(mindId);
+  };
+
+  const handleProfile = (e: React.MouseEvent, mind: MindContext) => {
+    e.stopPropagation();
+    setProfileMind(mind);
   };
 
   const handleRemoveMind = async (e: React.MouseEvent, mindId: string) => {
@@ -80,9 +88,37 @@ export function MindSidebar() {
     localStorage.setItem(STORAGE_KEY, String(width));
   }, [width]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadAvatars = async () => {
+      const entries = await Promise.all(minds.map(async (mind) => {
+        try {
+          const profile = await window.electronAPI.mindProfile.get(mind.mindId);
+          return [mind.mindId, profile.avatarDataUrl] as const;
+        } catch {
+          return [mind.mindId, null] as const;
+        }
+      }));
+      if (!cancelled) setAvatarByMindId(Object.fromEntries(entries));
+    };
+
+    void loadAvatars();
+    return () => {
+      cancelled = true;
+    };
+  }, [minds]);
+
+  const handleProfileChanged = (profile: AgentProfile) => {
+    setAvatarByMindId((avatars) => ({
+      ...avatars,
+      [profile.mindId]: profile.avatarDataUrl,
+    }));
+  };
+
   if (minds.length === 0) return null;
 
   return (
+    <>
     <div className="relative bg-card border border-border rounded-xl overflow-hidden flex flex-col shrink-0" style={{ width }}>
       {/* Resize handle */}
       <div
@@ -107,7 +143,7 @@ export function MindSidebar() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
             )}
           >
-            <Bot size={16} className="shrink-0" />
+            <MindAvatar name={mind.identity.name} avatarDataUrl={avatarByMindId[mind.mindId]} />
             <div className={cn('w-2 h-2 rounded-full shrink-0', statusColor(mind.status))} />
             <span className="truncate flex-1 text-left">{mind.identity.name}</span>
             {mind.windowed ? (
@@ -125,6 +161,20 @@ export function MindSidebar() {
                   <TooltipTrigger asChild>
                     <span
                       role="button"
+                      aria-label={`Edit ${mind.identity.name} profile`}
+                      onClick={(e) => handleProfile(e, mind)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-foreground"
+                    >
+                      <UserCircle size={13} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Edit profile</TooltipContent>
+                </Tooltip>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      aria-label={`Open ${mind.identity.name} in window`}
                       onClick={(e) => handlePopout(e, mind.mindId)}
                       className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-foreground"
                     >
@@ -137,6 +187,7 @@ export function MindSidebar() {
                   <TooltipTrigger asChild>
                     <span
                       role="button"
+                      aria-label={`Remove ${mind.identity.name}`}
                       onClick={(e) => handleRemoveMind(e, mind.mindId)}
                       className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
                     >
@@ -161,5 +212,26 @@ export function MindSidebar() {
         </button>
       </div>
     </div>
+    <AgentProfileModal
+      mind={profileMind}
+      open={Boolean(profileMind)}
+      onOpenChange={(open) => { if (!open) setProfileMind(null); }}
+      onProfileChanged={handleProfileChanged}
+    />
+    </>
   );
+}
+
+function MindAvatar({ name, avatarDataUrl }: { name: string; avatarDataUrl?: string | null }) {
+  if (avatarDataUrl) {
+    return (
+      <img
+        src={avatarDataUrl}
+        alt=""
+        className="h-4 w-4 shrink-0 rounded object-cover"
+      />
+    );
+  }
+
+  return <Bot size={16} className="shrink-0" aria-label={`${name} agent`} />;
 }

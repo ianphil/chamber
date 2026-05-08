@@ -103,6 +103,72 @@ export interface MindRecord {
   conversations?: ChamberConversationRecord[];
 }
 
+// ---------------------------------------------------------------------------
+// Mind profiles — local profile editor contracts
+// ---------------------------------------------------------------------------
+
+export type AgentProfileFileKind = 'soul' | 'agent';
+
+export interface AgentProfileFile {
+  kind: AgentProfileFileKind;
+  label: string;
+  relativePath: string;
+  content: string;
+  exists: boolean;
+  mtimeMs: number | null;
+}
+
+export interface AgentProfile {
+  mindId: string;
+  mindPath: string;
+  displayName: string;
+  folderName: string;
+  avatarDataUrl: string | null;
+  soul: AgentProfileFile;
+  agentFiles: AgentProfileFile[];
+  needsRestart: boolean;
+}
+
+export interface AgentProfileSaveRequest {
+  mindId: string;
+  kind: AgentProfileFileKind;
+  relativePath: string;
+  content: string;
+  expectedMtimeMs: number | null;
+}
+
+export type AgentProfileSaveResult =
+  | { success: true; profile: AgentProfile; needsRestart: true }
+  | { success: false; error: string; profile?: AgentProfile };
+
+export interface AgentProfileAvatarSource {
+  sourceId: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+export interface AgentProfileAvatarCrop {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface AgentProfileAvatarSaveRequest {
+  mindId: string;
+  sourceId: string;
+  crop: AgentProfileAvatarCrop;
+}
+
+export type AgentProfileAvatarPickResult =
+  | { success: true; source: AgentProfileAvatarSource }
+  | { success: false; error: string };
+
+export type AgentProfileActionResult =
+  | { success: true; profile: AgentProfile }
+  | { success: false; error: string; profile?: AgentProfile };
+
 export type ChamberConversationKind = 'chat' | 'cron' | 'task';
 
 export interface ChamberConversationRecord {
@@ -345,6 +411,14 @@ export interface ElectronAPI {
     selectDirectory: () => Promise<string | null>;
     openWindow: (mindId: string) => Promise<void>;
     onMindChanged: (callback: (minds: MindContext[]) => void) => () => void;
+  };
+  mindProfile: {
+    get: (mindId: string) => Promise<AgentProfile>;
+    saveFile: (request: AgentProfileSaveRequest) => Promise<AgentProfileSaveResult>;
+    pickAvatarImage: () => Promise<AgentProfileAvatarPickResult>;
+    saveAvatar: (request: AgentProfileAvatarSaveRequest) => Promise<AgentProfileActionResult>;
+    removeAvatar: (mindId: string) => Promise<AgentProfileActionResult>;
+    restart: (mindId: string) => Promise<MindContext>;
   };
   lens: {
     getViews: (mindId?: string) => Promise<LensViewManifest[]>;

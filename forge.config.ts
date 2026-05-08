@@ -33,7 +33,9 @@ function prepareCopilotRuntime(platform: string, arch: string): void {
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/node_modules/{sharp,@img}/**/*',
+    },
     executableName: 'chamber',
     icon: APP_ICON_PATH,
     protocols: [
