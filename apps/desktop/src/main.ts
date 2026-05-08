@@ -146,12 +146,13 @@ const saveActiveLogin = (login: string | null) => {
 };
 const credentialStore = loadKeytar();
 const sharp = loadSharp();
-const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore);
+const userAgent = `Chamber/${app.getVersion()}`;
+const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore, userAgent);
 const authService = new AuthService(
   credentialStore,
   () => configService.load().activeLogin,
   saveActiveLogin,
-  `Chamber/${app.getVersion()}`,
+  userAgent,
 );
 const scaffold = new MindScaffold();
 const genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
@@ -162,7 +163,7 @@ const toolsService = new ToolsService(
   marketplaceToolCatalog,
   new ToolInstaller(
     new ChildProcessRunner(),
-    GitHubReleaseAssetClient.withCredentialStore(credentialStore),
+    GitHubReleaseAssetClient.withCredentialStore(credentialStore, userAgent),
     chamberToolsBinDir,
   ),
   configService,

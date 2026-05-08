@@ -1,4 +1,4 @@
-import { AuthService, listStoredGitHubCredentials } from '../auth';
+import { listStoredGitHubCredentials, DEFAULT_USER_AGENT } from '../auth';
 import type { CredentialStore } from '../ports';
 
 export interface TreeEntry {
@@ -19,6 +19,7 @@ export interface GitHubRegistryClientOptions {
   credentialProvider?: GitHubRegistryCredentialProvider;
   requestTimeoutMs?: number;
   maxBlobBytes?: number;
+  userAgent?: string;
 }
 
 interface GitHubTreeResponse {
@@ -38,18 +39,21 @@ export class GitHubRegistryClient {
   private readonly credentialProvider: GitHubRegistryCredentialProvider;
   private readonly requestTimeoutMs: number;
   private readonly maxBlobBytes: number;
+  private readonly userAgent: string;
 
   constructor(options: GitHubRegistryClientOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.credentialProvider = options.credentialProvider ?? (() => Promise.resolve([]));
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.maxBlobBytes = options.maxBlobBytes ?? DEFAULT_MAX_BLOB_BYTES;
+    this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
   }
 
-  static withCredentialStore(credentials: CredentialStore): GitHubRegistryClient {
+  static withCredentialStore(credentials: CredentialStore, userAgent?: string): GitHubRegistryClient {
     return new GitHubRegistryClient({
       credentialProvider: async () => (await listStoredGitHubCredentials(credentials))
         .map((credential) => ({ login: credential.login, token: credential.password })),
+      userAgent,
     });
   }
 
@@ -118,7 +122,7 @@ export class GitHubRegistryClient {
     const timeout = setTimeout(() => abort.abort(), this.requestTimeoutMs);
     try {
       const response = await this.fetchImpl(`https://api.github.com${pathAndQuery}`, {
-        headers: requestHeaders(token),
+        headers: this.requestHeaders(token),
         signal: abort.signal,
       });
       if (response.ok) {
@@ -143,18 +147,18 @@ export class GitHubRegistryClient {
       return [];
     }
   }
+
+  private requestHeaders(token: string | null): HeadersInit {
+    return {
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': this.userAgent,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  }
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024;
-
-function requestHeaders(token: string | null): HeadersInit {
-  return {
-    'Accept': 'application/vnd.github+json',
-    'User-Agent': AuthService.userAgent,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-  };
-}
 
 function maxBase64Length(maxBytes: number): number {
   return Math.ceil(maxBytes / 3) * 4;

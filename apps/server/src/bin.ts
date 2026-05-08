@@ -60,7 +60,6 @@ function notImplemented(name: string): () => never {
 const publishHolder: { publish: (sessionId: string, event: unknown) => void } = {
   publish: () => {},
 };
-
 const productionContext: ChamberCtx = createServerContext({
   token: process.env.CHAMBER_SERVER_TOKEN,
   allowedOrigins: [allowedOrigin],
@@ -79,8 +78,7 @@ const productionContext: ChamberCtx = createServerContext({
   },
   listAuthAccounts: () => authService.listAccounts(),
   startAuthLogin: async (onProgress) => {
-    authService.setProgressHandler(onProgress);
-    const result = await authService.startLogin();
+    const result = await authService.startLogin({ onProgress });
     if (result.success && result.login) {
       authService.setActiveLogin(result.login);
     }

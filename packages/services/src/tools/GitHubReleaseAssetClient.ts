@@ -1,4 +1,4 @@
-import { AuthService, listStoredGitHubCredentials } from '../auth';
+import { listStoredGitHubCredentials, DEFAULT_USER_AGENT } from '../auth';
 import type { CredentialStore } from '../ports';
 import type { GitHubRegistryCredential, GitHubRegistryCredentialProvider } from '../genesis/GitHubRegistryClient';
 
@@ -6,6 +6,7 @@ export interface GitHubReleaseAssetClientOptions {
   fetch?: typeof fetch;
   credentialProvider?: GitHubRegistryCredentialProvider;
   requestTimeoutMs?: number;
+  userAgent?: string;
 }
 
 export interface DownloadReleaseAssetRequest {
@@ -28,17 +29,20 @@ export class GitHubReleaseAssetClient {
   private readonly fetchImpl: typeof fetch;
   private readonly credentialProvider: GitHubRegistryCredentialProvider;
   private readonly requestTimeoutMs: number;
+  private readonly userAgent: string;
 
   constructor(options: GitHubReleaseAssetClientOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.credentialProvider = options.credentialProvider ?? (() => Promise.resolve([]));
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
   }
 
-  static withCredentialStore(credentials: CredentialStore): GitHubReleaseAssetClient {
+  static withCredentialStore(credentials: CredentialStore, userAgent?: string): GitHubReleaseAssetClient {
     return new GitHubReleaseAssetClient({
       credentialProvider: async () => (await listStoredGitHubCredentials(credentials))
         .map((credential) => ({ login: credential.login, token: credential.password })),
+      userAgent,
     });
   }
 
@@ -82,7 +86,7 @@ export class GitHubReleaseAssetClient {
     repo: string,
   ): Promise<{ ok: true; value: T } | { ok: false; error: Error }> {
     const response = await this.fetchWithTimeout(`https://api.github.com${pathAndQuery}`, {
-      headers: jsonHeaders(token),
+      headers: this.jsonHeaders(token),
     });
     if (response.ok) {
       return { ok: true, value: await response.json() as T };
@@ -112,7 +116,7 @@ export class GitHubReleaseAssetClient {
     repo: string,
   ): Promise<{ ok: true; value: Buffer } | { ok: false; error: Error }> {
     const response = await this.fetchWithTimeout(`https://api.github.com${pathAndQuery}`, {
-      headers: assetHeaders(token),
+      headers: this.assetHeaders(token),
       redirect: 'manual',
     });
     if (response.status >= 300 && response.status < 400) {
@@ -121,7 +125,7 @@ export class GitHubReleaseAssetClient {
         return { ok: false, error: new Error(`GitHub release asset redirect for ${owner}/${repo} did not include a location`) };
       }
       const redirected = await this.fetchWithTimeout(location, {
-        headers: { 'User-Agent': AuthService.userAgent },
+        headers: { 'User-Agent': this.userAgent },
       });
       if (!redirected.ok) {
         return { ok: false, error: await githubRequestError(redirected, null, owner, repo) };
@@ -153,6 +157,22 @@ export class GitHubReleaseAssetClient {
       return [];
     }
   }
+
+  private jsonHeaders(token: string | null): HeadersInit {
+    return {
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': this.userAgent,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  }
+
+  private assetHeaders(token: string | null): HeadersInit {
+    return {
+      'Accept': 'application/octet-stream',
+      'User-Agent': this.userAgent,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  }
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -162,22 +182,6 @@ function releasePath(owner: string, repo: string, tag: string): string {
     return `/repos/${encodePath(owner)}/${encodePath(repo)}/releases/latest`;
   }
   return `/repos/${encodePath(owner)}/${encodePath(repo)}/releases/tags/${encodePath(tag)}`;
-}
-
-function jsonHeaders(token: string | null): HeadersInit {
-  return {
-    'Accept': 'application/vnd.github+json',
-    'User-Agent': AuthService.userAgent,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-  };
-}
-
-function assetHeaders(token: string | null): HeadersInit {
-  return {
-    'Accept': 'application/octet-stream',
-    'User-Agent': AuthService.userAgent,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-  };
 }
 
 async function githubRequestError(response: Response, login: string | null, owner: string, repo: string): Promise<Error> {

@@ -15,6 +15,7 @@ const AUTH_SCOPE = 'read:user,read:org,repo,gist';
 // so existing Windows credentials remain readable after the switch to keytar.
 export const GITHUB_CREDENTIAL_SERVICE = 'copilot-cli';
 export const GITHUB_ACCOUNT_PREFIX = 'https://github.com:';
+export const DEFAULT_USER_AGENT = 'Chamber';
 
 export interface StoredGitHubCredential {
   login: string;
@@ -51,7 +52,12 @@ export interface AuthProgress {
   error?: string;
 }
 
-function postJson(url: string, body: Record<string, string>): Promise<Record<string, unknown>> {
+export interface StartLoginOptions {
+  onProgress?: (progress: AuthProgress) => void;
+  signal?: AbortSignal;
+}
+
+function postJson(url: string, body: Record<string, string>, userAgent: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const parsed = new URL(url);
@@ -63,7 +69,7 @@ function postJson(url: string, body: Record<string, string>): Promise<Record<str
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data),
-        'User-Agent': AuthService.userAgent,
+        'User-Agent': userAgent,
       },
     };
 
@@ -81,7 +87,7 @@ function postJson(url: string, body: Record<string, string>): Promise<Record<str
   });
 }
 
-function getJson(url: string, token: string): Promise<Record<string, unknown>> {
+function getJson(url: string, token: string, userAgent: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const options = {
@@ -91,7 +97,7 @@ function getJson(url: string, token: string): Promise<Record<string, unknown>> {
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
-        'User-Agent': AuthService.userAgent,
+        'User-Agent': userAgent,
       },
     };
 
@@ -109,28 +115,15 @@ function getJson(url: string, token: string): Promise<Record<string, unknown>> {
 }
 
 export class AuthService {
-  static userAgent = 'Chamber/dev';
-
-  private onProgress?: (progress: AuthProgress) => void;
-  private aborted = false;
+  private readonly userAgent: string;
 
   constructor(
     private readonly credentials: CredentialStore,
     private readonly getActiveLogin: () => string | null = () => null,
     readonly setActiveLogin: (login: string | null) => void = () => undefined,
-    userAgent?: string,
+    userAgent: string = DEFAULT_USER_AGENT,
   ) {
-    if (userAgent) {
-      AuthService.userAgent = userAgent;
-    }
-  }
-
-  setProgressHandler(handler: (progress: AuthProgress) => void): void {
-    this.onProgress = handler;
-  }
-
-  abort(): void {
-    this.aborted = true;
+    this.userAgent = userAgent;
   }
 
   async listAccounts(): Promise<Array<{ login: string }>> {
@@ -154,8 +147,6 @@ export class AuthService {
   }
 
   async logout(): Promise<void> {
-    this.abort();
-
     try {
       const credential = await this.getStoredCredentialEntry();
       if (!credential) return;
@@ -191,15 +182,20 @@ export class AuthService {
     log.info(`Stored credential for ${login} via keytar`);
   }
 
-  async startLogin(): Promise<{ success: boolean; login?: string }> {
-    this.aborted = false;
+  async startLogin(options: StartLoginOptions = {}): Promise<{ success: boolean; login?: string }> {
+    const { onProgress, signal } = options;
+    const isAborted = (): boolean => signal?.aborted === true;
+
+    // Honor an already-aborted signal as a clean no-op so the public contract
+    // is "an aborted signal at entry never makes a network request."
+    if (isAborted()) return { success: false };
 
     try {
       // 1. Start device flow
       const deviceResp = await postJson(DEVICE_CODE_URL, {
         client_id: CLIENT_ID,
         scope: AUTH_SCOPE,
-      });
+      }, this.userAgent);
 
       const userCode = String(deviceResp.user_code);
       const verificationUri = String(deviceResp.verification_uri_complete ?? deviceResp.verification_uri);
@@ -207,21 +203,21 @@ export class AuthService {
       let interval = Number(deviceResp.interval) || 5;
       const expiresIn = Number(deviceResp.expires_in) || 900;
 
-      this.onProgress?.({ step: 'device_code', userCode, verificationUri });
+      onProgress?.({ step: 'device_code', userCode, verificationUri });
 
       // 2. Poll for access token
-      this.onProgress?.({ step: 'polling', userCode, verificationUri });
+      onProgress?.({ step: 'polling', userCode, verificationUri });
       const deadline = Date.now() + expiresIn * 1000;
 
-      while (Date.now() < deadline && !this.aborted) {
+      while (Date.now() < deadline && !isAborted()) {
         await new Promise(r => setTimeout(r, interval * 1000));
-        if (this.aborted) return { success: false };
+        if (isAborted()) return { success: false };
 
         const tokenResp = await postJson(ACCESS_TOKEN_URL, {
           client_id: CLIENT_ID,
           device_code: deviceCode,
           grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        });
+        }, this.userAgent);
 
         if (tokenResp.access_token) {
           const token = String(tokenResp.access_token);
@@ -229,7 +225,7 @@ export class AuthService {
           // Get user login
           let login = 'user';
           try {
-            const user = await getJson('https://api.github.com/user', token);
+            const user = await getJson('https://api.github.com/user', token, this.userAgent);
             login = String(user.login);
           } catch (err) {
             log.warn('Failed to fetch user login, using default account name:', err);
@@ -237,7 +233,7 @@ export class AuthService {
 
           await this.storeCredential(login, token);
 
-          this.onProgress?.({ step: 'authenticated', login });
+          onProgress?.({ step: 'authenticated', login });
           return { success: true, login };
         }
 
@@ -248,16 +244,16 @@ export class AuthService {
           continue;
         }
 
-        this.onProgress?.({ step: 'error', error: `Auth failed: ${error}` });
+        onProgress?.({ step: 'error', error: `Auth failed: ${error}` });
         return { success: false };
       }
 
-      if (this.aborted) return { success: false };
-      this.onProgress?.({ step: 'error', error: 'Timed out waiting for authorization' });
+      if (isAborted()) return { success: false };
+      onProgress?.({ step: 'error', error: 'Timed out waiting for authorization' });
       return { success: false };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.onProgress?.({ step: 'error', error: message });
+      onProgress?.({ step: 'error', error: message });
       return { success: false };
     }
   }

@@ -41,6 +41,11 @@ export function setupAuthIPC(
 
   ipcMain.handle(IPC.AUTH.LIST_ACCOUNTS, async () => authService.listAccounts());
 
+  // Tracks in-flight login attempts so auth:cancelLogin can abort them.
+  // Each call to auth:startLogin gets its own AbortController, isolating
+  // progress + abort state per request (#139).
+  const inflightLoginControllers = new Set<AbortController>();
+
   // E2E short-circuit: when CHAMBER_E2E=1, do not hit the real GitHub device flow.
   // Tests drive auth:progress via e2e:auth:emit-progress and resolve startLogin
   // via e2e:auth:complete-login, exercising the full renderer lifecycle without
@@ -71,41 +76,51 @@ export function setupAuthIPC(
     }
 
     const win = BrowserWindow.fromWebContents(event.sender);
+    const controller = new AbortController();
+    inflightLoginControllers.add(controller);
 
-    authService.setProgressHandler((progress) => {
-      if (win) {
-        win.webContents.send(IPC.AUTH.PROGRESS, progress);
+    try {
+      const result = await authService.startLogin({
+        onProgress: (progress) => {
+          if (win) {
+            win.webContents.send(IPC.AUTH.PROGRESS, progress);
+          }
+          if (progress.step === 'device_code' && progress.verificationUri) {
+            shell.openExternal(progress.verificationUri);
+          }
+        },
+        signal: controller.signal,
+      });
+      if (result.success && result.login) {
+        authService.setActiveLogin(result.login);
+        broadcast(IPC.AUTH.ACCOUNT_SWITCH_STARTED, { login: result.login });
+        try {
+          await mindManager.reloadAllMinds();
+        } catch (err) {
+          log.error('Failed to reload minds after login:', err);
+        }
+        broadcast(IPC.AUTH.ACCOUNT_SWITCHED, { login: result.login });
       }
-      if (progress.step === 'device_code' && progress.verificationUri) {
-        shell.openExternal(progress.verificationUri);
-      }
-    });
 
-    const result = await authService.startLogin();
-    if (result.success && result.login) {
-      authService.setActiveLogin(result.login);
-      broadcast(IPC.AUTH.ACCOUNT_SWITCH_STARTED, { login: result.login });
-      try {
-        await mindManager.reloadAllMinds();
-      } catch (err) {
-        log.error('Failed to reload minds after login:', err);
-      }
-      broadcast(IPC.AUTH.ACCOUNT_SWITCHED, { login: result.login });
+      return result;
+    } finally {
+      inflightLoginControllers.delete(controller);
     }
-
-    return result;
   });
 
-  // Lets the renderer abort a pending device-code login (e.g. user cancels the
-  // Add Account modal). Maps onto AuthService.abort() which trips the polling
-  // loop's exit flag. In E2E mode it short-circuits the stub resolver instead.
+  // Lets the renderer abort all in-flight device-code logins (e.g. user cancels
+  // the Add Account modal). Each in-flight startLogin owns its own
+  // AbortController; aborting them trips the polling loop's exit condition.
+  // In E2E mode it short-circuits the stub resolver instead.
   ipcMain.handle(IPC.AUTH.CANCEL_LOGIN, async () => {
     if (E2E_ENABLED && e2eStartLoginResolver) {
       e2eStartLoginResolver({ success: false });
       e2eStartLoginResolver = null;
       return;
     }
-    authService.abort();
+    for (const controller of inflightLoginControllers) {
+      controller.abort();
+    }
   });
 
   ipcMain.handle(IPC.AUTH.SWITCH_ACCOUNT, async (_event, login: string) => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.49.9 (2026-05-08)
+
+### Auth
+
+- **Per-request `AuthService.startLogin`** — `AuthService` no longer stores `onProgress` and abort state on the instance; `startLogin({ onProgress, signal })` accepts a per-attempt callback and an `AbortSignal`. Concurrent login attempts (browser + server, or two browser tabs) now have isolated progress streams and cancellation. The desktop IPC handler tracks an `AbortController` per in-flight `auth:startLogin` and aborts all of them on `auth:cancelLogin`. Removes `setProgressHandler` and `abort()` from the public surface. (#139)
+- **Instance-scoped GitHub user agent** — Removed the static `AuthService.userAgent` global. `AuthService`, `GitHubRegistryClient`, and `GitHubReleaseAssetClient` each accept a `userAgent` constructor option (default `'Chamber'`). The desktop and server composition roots thread the same `Chamber/${version}` string through all three. Eliminates an order-dependent module-level mutation that could leak the wrong user agent between processes. (#139)
+
 ## v0.49.8 (2026-05-08)
 
 ### Server

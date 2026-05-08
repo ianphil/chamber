@@ -84,6 +84,24 @@ describe('GitHubRegistryClient', () => {
       await expect(client.fetchTree('agency-microsoft', 'genesis-minds', 'main'))
         .rejects.toThrow('GitHub API request failed anonymously: 404 Not Found');
     });
+
+    it('uses the configured user agent in request headers', async () => {
+      // Pins #139: removing the static AuthService.userAgent means the user
+      // agent must be threaded through this client's options. If a future
+      // change goes back to a global, this test will fail because the option
+      // path is no longer honored.
+      client = new GitHubRegistryClient({ fetch: fetchMock, userAgent: 'Chamber/test-1.2.3' });
+      fetchMock.mockResolvedValueOnce(jsonResponse({ tree: [] }));
+
+      await client.fetchTree('o', 'r', 'main');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'User-Agent': 'Chamber/test-1.2.3' }),
+        }),
+      );
+    });
   });
 
   describe('fetchBlob', () => {

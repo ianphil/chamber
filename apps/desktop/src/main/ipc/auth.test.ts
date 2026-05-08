@@ -15,11 +15,9 @@ function createFakeAuth() {
   return {
     getStoredCredential: vi.fn().mockResolvedValue(null),
     listAccounts: vi.fn().mockResolvedValue([]),
-    setProgressHandler: vi.fn(),
     startLogin: vi.fn().mockResolvedValue({ success: true }),
     logout: vi.fn().mockResolvedValue(undefined),
     setActiveLogin: vi.fn(),
-    abort: vi.fn(),
   } as unknown as AuthService;
 }
 
@@ -143,14 +141,95 @@ describe('setupAuthIPC', () => {
     expect(mockSend).toHaveBeenCalledTimes(2);
   });
 
-  it('BVT-13: auth:cancelLogin handler calls authService.abort()', async () => {
+  it('BVT-13: auth:cancelLogin handler aborts the in-flight startLogin AbortSignal', async () => {
     const fakeAuth = createFakeAuth();
+    // Resolve startLogin only when its signal aborts, so we can prove the
+    // cancel handler delivered the abort to the per-attempt controller (#139).
+    fakeAuth.startLogin = vi.fn().mockImplementation(({ signal }: { signal?: AbortSignal }) =>
+      new Promise<{ success: boolean }>((resolve) => {
+        signal?.addEventListener('abort', () => resolve({ success: false }));
+      }),
+    ) as unknown as AuthService['startLogin'];
     setupAuthIPC(fakeAuth, createFakeMindManager());
 
+    const startCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:startLogin');
     const cancelCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:cancelLogin');
+    expect(startCall).toBeDefined();
     expect(cancelCall).toBeDefined();
+
+    const startPromise = startCall![1]({ sender: {} } as never, ...([] as unknown[]));
+    await Promise.resolve();
     await cancelCall![1]({} as never, ...([] as unknown[]));
-    expect(fakeAuth.abort).toHaveBeenCalled();
+
+    await expect(startPromise).resolves.toEqual({ success: false });
+    const startArgs = vi.mocked(fakeAuth.startLogin).mock.calls[0]![0] as { signal?: AbortSignal };
+    expect(startArgs.signal?.aborted).toBe(true);
+  });
+
+  it('BVT-13a: concurrent auth:startLogin invocations each get an isolated AbortController; cancel aborts all of them (#139)', async () => {
+    const fakeAuth = createFakeAuth();
+    // Each startLogin call resolves only when its OWN signal aborts. If the
+    // IPC handler accidentally shares one controller across attempts (the
+    // pre-#139 bug), the second call would inherit the first call's signal
+    // and either both signals would point at the same instance or only one
+    // would abort.
+    fakeAuth.startLogin = vi.fn().mockImplementation(({ signal }: { signal?: AbortSignal }) =>
+      new Promise<{ success: boolean }>((resolve) => {
+        signal?.addEventListener('abort', () => resolve({ success: false }));
+      }),
+    ) as unknown as AuthService['startLogin'];
+    setupAuthIPC(fakeAuth, createFakeMindManager());
+
+    const startCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:startLogin');
+    const cancelCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:cancelLogin');
+    expect(startCall).toBeDefined();
+    expect(cancelCall).toBeDefined();
+
+    const first = startCall![1]({ sender: {} } as never, ...([] as unknown[]));
+    const second = startCall![1]({ sender: {} } as never, ...([] as unknown[]));
+    await Promise.resolve();
+
+    const calls = vi.mocked(fakeAuth.startLogin).mock.calls;
+    expect(calls.length).toBe(2);
+    const firstSignal = (calls[0]![0] as { signal?: AbortSignal }).signal;
+    const secondSignal = (calls[1]![0] as { signal?: AbortSignal }).signal;
+    expect(firstSignal).toBeDefined();
+    expect(secondSignal).toBeDefined();
+    // Per-attempt isolation: each invocation owns a distinct signal.
+    expect(firstSignal).not.toBe(secondSignal);
+    expect(firstSignal!.aborted).toBe(false);
+    expect(secondSignal!.aborted).toBe(false);
+
+    await cancelCall![1]({} as never, ...([] as unknown[]));
+
+    await expect(first).resolves.toEqual({ success: false });
+    await expect(second).resolves.toEqual({ success: false });
+    expect(firstSignal!.aborted).toBe(true);
+    expect(secondSignal!.aborted).toBe(true);
+  });
+
+  it('BVT-13b: auth:cancelLogin after a successful startLogin does NOT abort the already-finished signal (no inflight leak) (#139)', async () => {
+    const fakeAuth = createFakeAuth();
+    fakeAuth.startLogin = vi.fn().mockResolvedValue({ success: true, login: 'alice' });
+    setupAuthIPC(fakeAuth, createFakeMindManager());
+
+    const startCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:startLogin');
+    const cancelCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:cancelLogin');
+    expect(startCall).toBeDefined();
+    expect(cancelCall).toBeDefined();
+
+    await expect(
+      startCall![1]({ sender: {} } as never, ...([] as unknown[])),
+    ).resolves.toEqual({ success: true, login: 'alice' });
+
+    const finishedSignal = (vi.mocked(fakeAuth.startLogin).mock.calls[0]![0] as { signal?: AbortSignal }).signal;
+    expect(finishedSignal).toBeDefined();
+    expect(finishedSignal!.aborted).toBe(false);
+
+    // Cancel should be a no-op once the controller is removed from the
+    // inflight set in the handler's `finally` clause.
+    await cancelCall![1]({} as never, ...([] as unknown[]));
+    expect(finishedSignal!.aborted).toBe(false);
   });
 
   it('BVT-14: e2e:auth handlers are NOT registered when CHAMBER_E2E is unset', async () => {
