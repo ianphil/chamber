@@ -229,6 +229,53 @@ describe('appReducer', () => {
     expect(getMsgs(state)[0]).toMatchObject({ id: 'u1', role: 'user', blocks: [{ type: 'text', content: 'Hello' }] });
   });
 
+  describe('per-agent compose drafts (#221)', () => {
+    it('SET_COMPOSE_DRAFT keys text per mind without mutating other minds drafts', () => {
+      let state = appReducer(withActiveMind, { type: 'SET_COMPOSE_DRAFT', payload: { mindId: 'mind-a', draft: 'draft for A' } });
+      state = appReducer(state, { type: 'SET_COMPOSE_DRAFT', payload: { mindId: 'mind-b', draft: 'draft for B' } });
+      expect(state.composeDraftByMind).toEqual({ 'mind-a': 'draft for A', 'mind-b': 'draft for B' });
+    });
+
+    it('SET_COMPOSE_DRAFT with empty string clears the key (no persisted noise)', () => {
+      const seeded = { ...withActiveMind, composeDraftByMind: { 'mind-a': 'half-typed' } };
+      const cleared = appReducer(seeded, { type: 'SET_COMPOSE_DRAFT', payload: { mindId: 'mind-a', draft: '' } });
+      expect('mind-a' in cleared.composeDraftByMind).toBe(false);
+    });
+
+    it('SET_COMPOSE_DRAFT no-ops (returns same state) when value is unchanged', () => {
+      const seeded = { ...withActiveMind, composeDraftByMind: { 'mind-a': 'same' } };
+      const after = appReducer(seeded, { type: 'SET_COMPOSE_DRAFT', payload: { mindId: 'mind-a', draft: 'same' } });
+      expect(after).toBe(seeded);
+    });
+
+    it('ADD_USER_MESSAGE clears only the active mind compose draft, leaving other minds drafts intact', () => {
+      const seeded = {
+        ...withActiveMind,
+        composeDraftByMind: { [mindId]: 'about to send', 'other-mind': 'still typing elsewhere' },
+      };
+      const after = appReducer(seeded, { type: 'ADD_USER_MESSAGE', payload: { id: 'u1', content: 'about to send', timestamp: 1 } });
+      expect(after.composeDraftByMind).toEqual({ 'other-mind': 'still typing elsewhere' });
+    });
+
+    it('NEW_CONVERSATION clears the targeted minds compose draft', () => {
+      const seeded = {
+        ...withActiveMind,
+        composeDraftByMind: { [mindId]: 'stale draft', 'other-mind': 'preserved' },
+      };
+      const after = appReducer(seeded, { type: 'NEW_CONVERSATION', payload: { mindId } });
+      expect(after.composeDraftByMind).toEqual({ 'other-mind': 'preserved' });
+    });
+
+    it('REMOVE_MIND drops the removed minds compose draft', () => {
+      const seeded = {
+        ...withActiveMind,
+        composeDraftByMind: { [mindId]: 'goodbye', 'other-mind': 'kept' },
+      };
+      const after = appReducer(seeded, { type: 'REMOVE_MIND', payload: mindId });
+      expect(after.composeDraftByMind).toEqual({ 'other-mind': 'kept' });
+    });
+  });
+
   it('ADD_ASSISTANT_MESSAGE adds a streaming assistant message', () => {
     const state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
     expect(getMsgs(state)).toHaveLength(1);

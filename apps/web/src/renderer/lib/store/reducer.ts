@@ -175,6 +175,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const blocks: ContentBlock[] = action.payload.images && action.payload.images.length > 0
         ? [...action.payload.images, textBlock]
         : [textBlock];
+      // Sending clears only the active mind's draft (#221). Other minds'
+      // unsent drafts remain untouched.
+      const composeDraftByMind = state.activeMindId && state.composeDraftByMind[state.activeMindId]
+        ? (() => {
+            const next = { ...state.composeDraftByMind };
+            delete next[state.activeMindId as string];
+            return next;
+          })()
+        : state.composeDraftByMind;
       return {
         ...state,
         messagesByMind: setActiveMsgs([...activeMsgs(), {
@@ -183,6 +192,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           blocks,
           timestamp: action.payload.timestamp,
         }]),
+        composeDraftByMind,
       };
     }
 
@@ -393,10 +403,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const newConversationHistoryByMind = { ...state.conversationHistoryByMind };
       const newActiveConversationByMind = { ...state.activeConversationByMind };
       const newConversationViewByMind = { ...state.conversationViewByMind };
+      const newComposeDraftByMind = { ...state.composeDraftByMind };
       delete newMsgsByMind[action.payload];
       delete newConversationHistoryByMind[action.payload];
       delete newActiveConversationByMind[action.payload];
       delete newConversationViewByMind[action.payload];
+      delete newComposeDraftByMind[action.payload];
       const newActive = state.activeMindId === action.payload
         ? (newMinds.length > 0 ? newMinds[0].mindId : null)
         : state.activeMindId;
@@ -408,6 +420,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         conversationHistoryByMind: newConversationHistoryByMind,
         activeConversationByMind: newActiveConversationByMind,
         conversationViewByMind: newConversationViewByMind,
+        composeDraftByMind: newComposeDraftByMind,
         showLanding: newMinds.length === 0,
       };
     }
@@ -447,6 +460,24 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_ACTIVE_VIEW':
       return { ...state, activeView: action.payload };
+
+    case 'SET_COMPOSE_DRAFT': {
+      const { mindId, draft } = action.payload;
+      const previous = state.composeDraftByMind[mindId] ?? '';
+      if (draft === previous) return state;
+      // Empty drafts must not produce persisted noise (#221) — clear the key
+      // when draft becomes empty so the map stays compact across many minds.
+      if (draft === '') {
+        if (!(mindId in state.composeDraftByMind)) return state;
+        const next = { ...state.composeDraftByMind };
+        delete next[mindId];
+        return { ...state, composeDraftByMind: next };
+      }
+      return {
+        ...state,
+        composeDraftByMind: { ...state.composeDraftByMind, [mindId]: draft },
+      };
+    }
 
     case 'SET_DISCOVERED_VIEWS':
       return { ...state, discoveredViews: action.payload };
@@ -492,11 +523,22 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'NEW_CONVERSATION': {
       const conversationMindId = action.payload?.mindId ?? state.activeMindId;
+      // A new conversation is its own slate — drop any unsent draft for that
+      // mind so the user is not confronted with stale text from the prior
+      // conversation (#221).
+      const composeDraftByMind = conversationMindId && state.composeDraftByMind[conversationMindId]
+        ? (() => {
+            const next = { ...state.composeDraftByMind };
+            delete next[conversationMindId];
+            return next;
+          })()
+        : state.composeDraftByMind;
       return {
         ...state,
         messagesByMind: conversationMindId
           ? { ...state.messagesByMind, [conversationMindId]: [] }
           : state.messagesByMind,
+        composeDraftByMind,
         isStreaming: conversationMindId === state.activeMindId ? false : state.isStreaming,
         streamingByMind: conversationMindId
           ? { ...state.streamingByMind, [conversationMindId]: false }

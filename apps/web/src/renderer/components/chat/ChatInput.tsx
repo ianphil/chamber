@@ -36,6 +36,14 @@ interface Props {
   selectedModel: string | null;
   onModelChange: (model: string) => void;
   placeholder?: string;
+  /**
+   * When provided, the textarea is controlled — `value` drives display and
+   * `onValueChange` is invoked on every edit. Used by the single-agent chat
+   * panel to persist drafts per active mind (#221). Omit to keep the prior
+   * uncontrolled behavior (used by the chatroom panel).
+   */
+  value?: string;
+  onValueChange?: (next: string) => void;
 }
 
 const IMAGE_TOKEN_RE = /\[📷 ([^\]]+)\]/g;
@@ -145,8 +153,15 @@ function getShortcodePopoverPlacement(anchor: ShortcodeAnchor): ShortcodePopover
   };
 }
 
-export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder }: Props) {
-  const [input, setInput] = useState('');
+export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder, value, onValueChange }: Props) {
+  const isControlled = value !== undefined;
+  const [internalInput, setInternalInput] = useState('');
+  const input = isControlled ? value : internalInput;
+  const setInput = (next: string | ((prev: string) => string)) => {
+    const resolved = typeof next === 'function' ? next(input) : next;
+    if (isControlled) onValueChange?.(resolved);
+    else setInternalInput(resolved);
+  };
   const [attachments, setAttachments] = useState<ChatImageAttachment[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [shortcodeMatch, setShortcodeMatch] = useState<ShortcodeMatch | null>(null);

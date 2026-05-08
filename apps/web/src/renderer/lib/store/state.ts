@@ -28,6 +28,13 @@ export interface AppState {
   conversationViewByMind: Record<string, ConversationViewState>;
   isStreaming: boolean;
   streamingByMind: Record<string, boolean>;
+  /**
+   * Per-mind unsent compose draft text. Switching agents preserves and
+   * restores each mind's in-progress message so users can stage thoughts
+   * across agents without sending or losing them (#221). Cleared for the
+   * active mind when ADD_USER_MESSAGE fires.
+   */
+  composeDraftByMind: Record<string, string>;
   availableModels: ModelInfo[];
   selectedModel: string | null;
   activeView: LensView;
@@ -77,6 +84,7 @@ export type AppAction =
   | { type: 'MINDS_CHECKED' }
   | { type: 'CLEAR_MESSAGES' }
   | { type: 'NEW_CONVERSATION'; payload?: { mindId: string } }
+  | { type: 'SET_COMPOSE_DRAFT'; payload: { mindId: string; draft: string } }
   | { type: 'A2A_INCOMING'; payload: { targetMindId: string; message: Message; replyMessageId: string } }
   | { type: 'TASK_STATUS_UPDATE'; payload: TaskStatusUpdateEvent & { targetMindId: string } }
   | { type: 'TASK_ARTIFACT_UPDATE'; payload: TaskArtifactUpdateEvent & { targetMindId: string } }
@@ -104,6 +112,7 @@ export const initialState: AppState = {
   conversationViewByMind: {},
   isStreaming: false,
   streamingByMind: {},
+  composeDraftByMind: {},
   availableModels: [],
   selectedModel: null,
   activeView: 'chat',
