@@ -90,8 +90,9 @@ Autopilot mode: apply the recommendation automatically. For issue-slate stacks, 
 
 ```powershell
 npm version <patch|minor|major> --no-git-tag-version
-npm install --package-lock-only
 ```
+
+`npm version` updates the `version` field in both `package.json` and `package-lock.json`. **Do not run `npm install --package-lock-only` afterwards** — on local npm 11.6.x it strips top-level optional cross-platform binary entries (e.g. `node_modules/@emnapi/core`, `node_modules/@emnapi/runtime`) that CI's npm 11.12.x rejects with `npm error Missing: <pkg> from lock file` during `npm ci`. If a real dependency change requires regenerating the lockfile, run a full `npm install` instead and verify the diff with `git --no-pager diff <base-ref> -- package-lock.json` before staging — the diff for a pure version bump should be limited to the two `"version":` fields at the top of the file.
 
 Stage `package.json` and `package-lock.json`.
 
