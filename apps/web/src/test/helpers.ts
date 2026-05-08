@@ -8,9 +8,9 @@ import type {
   ReasoningBlock,
   ModelInfo,
   LensViewManifest,
-  ElectronAPI,
   DesktopUpdateState,
 } from '@chamber/shared/types';
+import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type {
   ChatroomMessage,
   ChatroomStreamEvent,

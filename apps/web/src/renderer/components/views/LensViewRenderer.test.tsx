@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ElectronAPI } from '@chamber/shared/types';
+import type { ElectronAPI } from '@chamber/shared/electron-types';
 import { mockElectronAPI, makeLensViewManifest } from '../../../test/helpers';
 import { LensViewRenderer } from './LensViewRenderer';
 

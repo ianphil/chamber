@@ -1,5 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi } from 'vitest';
 import { createIpcListener } from './createIpcListener';
+import { IPC } from './ipc-channels';
+import type { IpcChannel } from './ipc-channels';
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
 
 function makeMockIpcRenderer() {
@@ -33,16 +35,16 @@ describe('createIpcListener', () => {
     const ipc = makeMockIpcRenderer();
     const callback = vi.fn();
 
-    createIpcListener(ipc, 'test-channel', callback);
+    createIpcListener(ipc, IPC.CHAT.EVENT, callback);
 
-    expect(ipc.on).toHaveBeenCalledWith('test-channel', expect.any(Function));
+    expect(ipc.on).toHaveBeenCalledWith('chat:event', expect.any(Function));
   });
 
   it('forwards IPC events to the callback without the event object', () => {
     const ipc = makeMockIpcRenderer();
     const callback = vi.fn();
 
-    createIpcListener(ipc, 'chat:event', callback);
+    createIpcListener(ipc, IPC.CHAT.EVENT, callback);
     ipc._emit('chat:event', 'msg-1', { type: 'chunk', content: 'hi' });
 
     expect(callback).toHaveBeenCalledWith('msg-1', { type: 'chunk', content: 'hi' });
@@ -52,22 +54,44 @@ describe('createIpcListener', () => {
     const ipc = makeMockIpcRenderer();
     const callback = vi.fn();
 
-    const unsub = createIpcListener(ipc, 'my-channel', callback);
+    const unsub = createIpcListener(ipc, IPC.MIND.CHANGED, callback);
     unsub();
 
-    expect(ipc.removeListener).toHaveBeenCalledWith('my-channel', expect.any(Function));
+    expect(ipc.removeListener).toHaveBeenCalledWith('mind:changed', expect.any(Function));
   });
 
   it('stops receiving events after unsubscribe', () => {
     const ipc = makeMockIpcRenderer();
     const callback = vi.fn();
 
-    const unsub = createIpcListener(ipc, 'data', callback);
-    ipc._emit('data', 'first');
+    const unsub = createIpcListener(ipc, IPC.LENS.VIEWS_CHANGED, callback);
+    ipc._emit('lens:viewsChanged', 'first');
     expect(callback).toHaveBeenCalledTimes(1);
 
     unsub();
-    ipc._emit('data', 'second');
+    ipc._emit('lens:viewsChanged', 'second');
     expect(callback).toHaveBeenCalledTimes(1);
   });
+
+  it('only accepts known IpcChannel values at the type level', () => {
+    // Every IpcChannel literal is assignable to the channel parameter.
+    expectTypeOf(createIpcListener<[unknown]>).parameter(1).toEqualTypeOf<IpcChannel>();
+
+    const ipc = makeMockIpcRenderer();
+    const callback = vi.fn();
+
+    // Real IPC.* values type-check.
+    createIpcListener(ipc, IPC.CHAT.EVENT, callback);
+
+    // An arbitrary string literal must not type-check — the constants are now a
+    // contract, not decoration.
+    // @ts-expect-error: 'not:a:real:channel' is not assignable to IpcChannel
+    createIpcListener(ipc, 'not:a:real:channel', callback);
+
+    // A free-typed string also must not type-check.
+    const looseChannel: string = 'chat:event';
+    // @ts-expect-error: a `string` is not assignable to the IpcChannel literal union
+    createIpcListener(ipc, looseChannel, callback);
+  });
 });
+

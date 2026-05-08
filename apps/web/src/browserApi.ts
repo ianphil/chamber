@@ -1,5 +1,6 @@
 import { ChamberClient } from '@chamber/client';
-import type { ElectronAPI, LensViewManifest, MindContext, ModelInfo } from '@chamber/shared/types';
+import type { LensViewManifest, MindContext, ModelInfo } from '@chamber/shared/types';
+import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type { AgentCard, ListTasksResponse, Task } from '@chamber/shared/a2a-types';
 import type { ChatroomAPI, ChatroomMessage, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 

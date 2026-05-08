@@ -7,7 +7,8 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ChatroomPanel } from './ChatroomPanel';
 import { AppStateProvider } from '../../lib/store';
 import type { AppState } from '../../lib/store';
-import type { MindContext, ElectronAPI } from '@chamber/shared/types';
+import type { MindContext } from '@chamber/shared/types';
+import type { ElectronAPI } from '@chamber/shared/electron-types';
 import {
   installElectronAPI,
   makeChatroomMessage,

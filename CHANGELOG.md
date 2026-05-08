@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.5 (2026-05-08)
+
+### IPC
+
+- **Shared `ElectronAPI` type and typed `createIpcListener` channel** — Extracted the renderer-facing `ElectronAPI` interface and its `Window.electronAPI` global declaration into `packages/shared/src/electron-types.ts` per the original #62 specification, with the previous inline definition in `packages/shared/src/types.ts` replaced by a pointer comment to keep the two modules from circularly depending on each other. Tightened `createIpcListener<T>(ipcRenderer, channel, callback)` to require an `IpcChannel` (#61) instead of a free `string`, so misspelled or unknown channels now fail at compile time and the IPC channel constants become a real contract rather than decoration. Existing tests migrated to consume `IPC.*` constants. (#62)
+
 ## v0.49.4 (2026-05-08)
 
 ### IPC

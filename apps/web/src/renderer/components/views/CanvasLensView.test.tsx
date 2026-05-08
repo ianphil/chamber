@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ElectronAPI } from '@chamber/shared/types';
+import type { ElectronAPI } from '@chamber/shared/electron-types';
 import { CanvasLensView } from './CanvasLensView';
 
 describe('CanvasLensView', () => {

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { createIpcListener, IPC } from '@chamber/shared';
-import type { A2AIncomingPayload, ElectronAPI } from '@chamber/shared/types';
+import type { A2AIncomingPayload } from '@chamber/shared/types';
+import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type { Message, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
 const electronAPI: ElectronAPI = {
