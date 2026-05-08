@@ -210,6 +210,37 @@ describe('streamAgentTurn', () => {
     expect(types).toContain('tool_progress');
     expect(types).toContain('tool_output');
     expect(types).toContain('tool_done');
+    expect(events.find((e) => e.event.type === 'tool_start')?.event).toMatchObject({
+      type: 'tool_start',
+      args: {},
+    });
+  });
+
+  it('emits a clear error when the SDK chatroom stream event contract drifts', async () => {
+    const sess = createMockSession();
+    const ctx = createContext(sessions);
+
+    sess.send.mockImplementation(async () => {
+      setTimeout(() => {
+        sess._emit('tool.execution_complete', {
+          data: { toolCallId: 'tc-1', success: 'yes' },
+        });
+      }, 0);
+    });
+
+    await expect(streamAgentTurn(makeStreamOpts(sess, { context: ctx }))).rejects.toThrow(
+      'SDK contract mismatch for tool.execution_complete',
+    );
+
+    const events = (ctx.emitEvent as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as ChatroomStreamEvent,
+    );
+    expect(events.filter((e) => e.event.type === 'error')).toHaveLength(1);
+    expect(events.find((e) => e.event.type === 'error')?.event).toEqual({
+      type: 'error',
+      message: 'SDK contract mismatch for tool.execution_complete',
+    });
+    expect(sess.abort).toHaveBeenCalled();
   });
 
   it('emits reasoning events', async () => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.46.4 (2026-05-08)
+
+### SDK
+
+- **Expand SDK contract smoke coverage** - Chamber now validates live SDK model-list and deterministic tool execution event shapes through the same Zod-backed contract mappers used at runtime. Chatroom streaming also reuses the SDK event mapper boundary so contract drift surfaces as a clear streaming error instead of raw SDK field assumptions. (#194)
+
 ## v0.46.3 (2026-05-07)
 
 ### Updates

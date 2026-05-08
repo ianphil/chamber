@@ -13,7 +13,7 @@ const mockSession = {
 
 const validModelClient = {
   modelsCache: {} as unknown,
-  listModels: vi.fn(async () => [{ id: 'm1', name: 'Model 1' }]),
+  listModels: vi.fn(async () => [{ id: 'm1', name: 'Model 1', extra: true }]),
 };
 
 const mockMindManager = {
@@ -23,6 +23,9 @@ const mockMindManager = {
     }
     if (mindId === 'broken-models') {
       return { session: mockSession, client: { listModels: vi.fn(async () => { throw new Error('model discovery failed'); }) } };
+    }
+    if (mindId === 'drifted-models') {
+      return { session: mockSession, client: { listModels: vi.fn(async () => [{ modelId: 'm1', displayName: 'Model 1' }]) } };
     }
     return undefined;
   }),
@@ -231,6 +234,12 @@ describe('ChatService', () => {
 
     it('surfaces model discovery failures', async () => {
       await expect(svc.listModels('broken-models')).rejects.toThrow('model discovery failed');
+    });
+
+    it('surfaces SDK model-list contract drift', async () => {
+      await expect(svc.listModels('drifted-models')).rejects.toThrow(
+        'SDK contract mismatch for client.listModels',
+      );
     });
   });
 

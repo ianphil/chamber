@@ -18,6 +18,7 @@ import {
   mapSdkToolExecutionStart,
 } from '../sdk/sdkChatEventMapper';
 import { clearCopilotModelsCache } from '../sdk/modelCacheCompat';
+import { mapSdkModelList } from '../sdk/sdkModelMapper';
 import { TurnQueue } from './TurnQueue';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext, type DateTimeContextProvider } from './currentDateTimeContext';
 
@@ -265,7 +266,7 @@ export class ChatService {
     // Clear the cache so we always get a fresh list from the CLI.
     clearCopilotModelsCache(context.client);
     const models = await context.client.listModels();
-    return models.map((m: { id: string; name: string }) => ({ id: m.id, name: m.name }));
+    return mapSdkModelList(models);
   }
 
   private assertCanSwitchConversation(mindId: string): void {

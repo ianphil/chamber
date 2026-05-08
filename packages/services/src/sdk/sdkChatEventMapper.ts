@@ -5,11 +5,14 @@ const sdkEvent = <Shape extends z.ZodRawShape>(shape: Shape) =>
   z.object({ data: z.object(shape).passthrough() }).passthrough();
 
 export class SdkChatEventContractError extends Error {
+  readonly eventName: string;
+
   constructor(
-    readonly eventName: string,
+    eventName: string,
     cause: unknown,
   ) {
     super(`SDK contract mismatch for ${eventName}`, { cause });
+    this.eventName = eventName;
     this.name = 'SdkChatEventContractError';
   }
 }

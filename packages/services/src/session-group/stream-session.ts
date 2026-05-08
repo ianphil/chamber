@@ -5,6 +5,17 @@ import type { OrchestrationContext } from './orchestrators/legacy-types';
 import type { CopilotSession } from '../mind';
 import { isStaleSessionError, SEND_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
+import {
+  SdkChatEventContractError,
+  getSdkSessionErrorMessage,
+  mapSdkAssistantMessage,
+  mapSdkAssistantMessageDelta,
+  mapSdkAssistantReasoningDelta,
+  mapSdkToolExecutionComplete,
+  mapSdkToolExecutionPartialResult,
+  mapSdkToolExecutionProgress,
+  mapSdkToolExecutionStart,
+} from '../sdk/sdkChatEventMapper';
 
 // ---------------------------------------------------------------------------
 // TurnTimeoutError — distinguishable timeout for callers
@@ -64,86 +75,86 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
   };
 
   let finalContent = '';
+  let sdkContractFailed = false;
+  let rejectTurnDone: ((error: Error) => void) | undefined;
+  let turnDoneTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  const failSdkContract = (error: unknown) => {
+    if (abortSignal.aborted || sdkContractFailed) return;
+    sdkContractFailed = true;
+    const message = error instanceof SdkChatEventContractError
+      ? error.message
+      : 'SDK contract mismatch while streaming chatroom turn';
+    clearTimeout(turnDoneTimeoutId);
+    emitEvent({ type: 'error', message });
+    void session.abort().catch(() => undefined);
+    rejectTurnDone?.(error instanceof Error ? error : new Error(message));
+  };
+  const emitMapped = (mapper: () => ChatroomStreamEvent['event'] | null, afterMap?: (event: ChatroomStreamEvent['event']) => void) => {
+    try {
+      const mapped = mapper();
+      if (!mapped) return;
+      afterMap?.(mapped);
+      emitEvent(mapped);
+    } catch (error) {
+      failSdkContract(error);
+    }
+  };
 
   unsubs.push(
     session.on('assistant.message_delta', (e) => {
-      emitEvent({ type: 'chunk', sdkMessageId: e.data.messageId, content: e.data.deltaContent });
+      emitMapped(() => mapSdkAssistantMessageDelta(e));
     }),
   );
 
   unsubs.push(
     session.on('assistant.message', (e) => {
-      if (e.data.content) {
-        finalContent = e.data.content;
-        emitEvent({
-          type: 'message_final',
-          sdkMessageId: e.data.messageId,
-          content: e.data.content,
-        });
-      }
+      emitMapped(
+        () => mapSdkAssistantMessage(e),
+        (event) => {
+          if (event.type === 'message_final') {
+            finalContent = event.content;
+          }
+        },
+      );
     }),
   );
 
   unsubs.push(
     session.on('assistant.reasoning_delta', (e) => {
-      emitEvent({
-        type: 'reasoning',
-        reasoningId: e.data.reasoningId,
-        content: e.data.deltaContent,
-      });
+      emitMapped(() => mapSdkAssistantReasoningDelta(e));
     }),
   );
 
   unsubs.push(
     session.on('tool.execution_start', (e) => {
-      emitEvent({
-        type: 'tool_start',
-        toolCallId: e.data.toolCallId,
-        toolName: e.data.toolName,
-        args: e.data.arguments,
-        parentToolCallId: e.data.parentToolCallId,
-      });
+      emitMapped(() => mapSdkToolExecutionStart(e));
     }),
   );
 
   unsubs.push(
     session.on('tool.execution_progress', (e) => {
-      emitEvent({
-        type: 'tool_progress',
-        toolCallId: e.data.toolCallId,
-        message: e.data.progressMessage,
-      });
+      emitMapped(() => mapSdkToolExecutionProgress(e));
     }),
   );
 
   unsubs.push(
     session.on('tool.execution_partial_result', (e) => {
-      emitEvent({
-        type: 'tool_output',
-        toolCallId: e.data.toolCallId,
-        output: e.data.partialOutput,
-      });
+      emitMapped(() => mapSdkToolExecutionPartialResult(e));
     }),
   );
 
   unsubs.push(
     session.on('tool.execution_complete', (e) => {
-      emitEvent({
-        type: 'tool_done',
-        toolCallId: e.data.toolCallId,
-        success: e.data.success,
-        result: e.data.result?.content,
-        error: e.data.error?.message,
-      });
+      emitMapped(() => mapSdkToolExecutionComplete(e));
     }),
   );
 
   // Set up idle/error listeners BEFORE send to avoid missing events.
   // The turnDone timeout ID is hoisted so it can be cleared on any exit path
   // (send timeout, abort, or normal completion) to prevent 5-minute timer leaks.
-  let turnDoneTimeoutId: ReturnType<typeof setTimeout> | undefined;
   const turnTimeoutMs = opts.turnTimeout ?? DEFAULT_TURN_TIMEOUT_MS;
   const turnDone = new Promise<void>((resolve, reject) => {
+    rejectTurnDone = reject;
     turnDoneTimeoutId = setTimeout(
       () => reject(new TurnTimeoutError(turnTimeoutMs)),
       turnTimeoutMs,
@@ -159,7 +170,11 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
     const unsubError = session.on('session.error', (e) => {
       clearTimeout(turnDoneTimeoutId);
       unsubError();
-      reject(new Error(e.data.message));
+      try {
+        reject(new Error(getSdkSessionErrorMessage(e)));
+      } catch (error) {
+        failSdkContract(error);
+      }
     });
     unsubs.push(unsubError);
 
@@ -184,6 +199,7 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
   }
 
   await turnDone.catch((err) => {
+    if (sdkContractFailed) throw err;
     // Emit a discriminated event so the renderer clears the streaming state and
     // can render timeout-specific UI without parsing error messages.
     if (err instanceof TurnTimeoutError) {

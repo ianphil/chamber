@@ -26,6 +26,7 @@ async function main() {
   fs.writeFileSync(path.join(mindPath, 'SOUL.md'), '# Smoke Mind\n\nReply briefly and do not use tools.\n');
 
   const sdk = await import(pathToFileURL(sdkEntry).href);
+  const contracts = await importSdkContractMappers(repoRoot);
   const client = new sdk.CopilotClient({
     cliPath,
     cwd: mindPath,
@@ -53,7 +54,8 @@ async function main() {
     if (!response.includes('Chamber')) {
       throw new Error(`Unexpected SDK smoke response: ${response}`);
     }
-    await assertNamedSessionResume({ sdk, cliPath, mindPath, logDir });
+    await assertToolEventContract({ client, contracts, logDir });
+    await assertNamedSessionResume({ sdk, cliPath, mindPath, logDir, contracts });
     console.log('SDK smoke passed.');
   } finally {
     await session?.destroy().catch(() => undefined);
@@ -62,7 +64,7 @@ async function main() {
   }
 }
 
-async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir }) {
+async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir, contracts }) {
   const sessionId = `chamber-sdk-smoke-${Date.now()}`;
   const firstClient = new sdk.CopilotClient({
     cliPath,
@@ -150,7 +152,7 @@ async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir }) {
     await resumedAgainSession.disconnect();
     resumedAgainSession = undefined;
 
-    await assertModelResumePreservesContext({ client: thirdClient, sessionId, mindPath });
+    await assertModelResumePreservesContext({ client: thirdClient, sessionId, mindPath, contracts });
   } finally {
     await resumedAgainSession?.disconnect().catch(() => undefined);
     await resumedSession?.disconnect().catch(() => undefined);
@@ -162,8 +164,8 @@ async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir }) {
   }
 }
 
-async function assertModelResumePreservesContext({ client, sessionId, mindPath }) {
-  const models = await client.listModels();
+async function assertModelResumePreservesContext({ client, sessionId, mindPath, contracts }) {
+  const models = assertLiveModelListContract(await client.listModels(), contracts);
   if (!Array.isArray(models) || models.length < 2) {
     console.warn('SDK smoke skipped cross-model resume check: fewer than two models available.');
     return;
@@ -192,6 +194,104 @@ async function assertModelResumePreservesContext({ client, sessionId, mindPath }
   }
 }
 
+async function assertToolEventContract({ client, contracts }) {
+  const toolMindPath = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-sdk-tool-smoke-'));
+  fs.writeFileSync(
+    path.join(toolMindPath, 'SOUL.md'),
+    [
+      '# Tool Contract Smoke Mind',
+      '',
+      'When asked to run the Chamber SDK contract probe, call the chamber_contract_probe tool exactly once.',
+      'After the tool result returns, reply briefly with the returned token.',
+    ].join('\n'),
+  );
+
+  const tool = {
+    name: 'chamber_contract_probe',
+    description: 'Return a deterministic Chamber SDK contract smoke payload. Use this when asked to run the Chamber SDK contract probe.',
+    parameters: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'The exact token to echo.' },
+      },
+      required: ['token'],
+    },
+    skipPermission: true,
+    handler: async (args) => {
+      return `CHAMBER_TOOL_CONTRACT_OK:${args?.token ?? ''}`;
+    },
+  };
+
+  let lastResponse = '';
+  try {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const startEvents = [];
+      const completeEvents = [];
+      let toolSession;
+      const unsubs = [];
+      try {
+        toolSession = await client.createSession({
+          streaming: true,
+          workingDirectory: toolMindPath,
+          tools: [tool],
+          systemMessage: {
+            mode: 'append',
+            content: 'For this smoke test, tool use is required when the user asks for the Chamber SDK contract probe.',
+          },
+          onPermissionRequest: async () => ({ kind: 'allow' }),
+          onUserInputRequest: async () => ({ answer: 'Proceed.', wasFreeform: true }),
+        });
+        await toolSession.rpc.permissions.setApproveAll({ enabled: true });
+        unsubs.push(
+          toolSession.on('tool.execution_start', (event) => startEvents.push(event)),
+          toolSession.on('tool.execution_complete', (event) => completeEvents.push(event)),
+        );
+
+        lastResponse = await sendAndWaitForResponse(
+          toolSession,
+          'Run the Chamber SDK contract probe now. Call chamber_contract_probe with token "chamber-tool-contract" before answering.',
+        );
+
+        const start = startEvents.find((event) => {
+          const mapped = contracts.mapSdkToolExecutionStart(event);
+          return mapped.toolName === 'chamber_contract_probe';
+        });
+        if (start) {
+          const mappedStart = contracts.mapSdkToolExecutionStart(start);
+          const complete = completeEvents.find((event) => {
+            const mapped = contracts.mapSdkToolExecutionComplete(event);
+            return mapped.toolCallId === mappedStart.toolCallId;
+          });
+          if (!complete) continue;
+          const mappedComplete = contracts.mapSdkToolExecutionComplete(complete);
+          if (mappedStart.args?.token !== 'chamber-tool-contract') {
+            throw new Error(`SDK tool start contract emitted unexpected arguments: ${JSON.stringify(mappedStart.args)}`);
+          }
+          if (!mappedComplete.success || !mappedComplete.result?.includes('CHAMBER_TOOL_CONTRACT_OK:chamber-tool-contract')) {
+            throw new Error(`SDK tool complete contract emitted unexpected result: ${JSON.stringify(mappedComplete)}`);
+          }
+          return;
+        }
+      } finally {
+        for (const unsub of unsubs) unsub();
+        await toolSession?.destroy().catch(() => undefined);
+      }
+    }
+
+    throw new Error(`SDK smoke did not observe deterministic tool execution events. Last response: ${lastResponse}`);
+  } finally {
+    await cleanupMind(toolMindPath);
+  }
+}
+
+function assertLiveModelListContract(rawModels, contracts) {
+  const models = contracts.mapSdkModelList(rawModels);
+  if (!models.some((model) => model.id.trim() && model.name.trim())) {
+    throw new Error('SDK model-list contract returned no usable models.');
+  }
+  return models;
+}
+
 async function cleanupMind(mindPath) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -205,6 +305,20 @@ async function cleanupMind(mindPath) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
+}
+
+async function importSdkContractMappers(repoRoot) {
+  const sdkDir = path.join(repoRoot, 'packages', 'services', 'src', 'sdk');
+  const [chatContracts, modelContracts] = await Promise.all([
+    import(pathToFileURL(path.join(sdkDir, 'sdkChatEventMapper.ts')).href),
+    import(pathToFileURL(path.join(sdkDir, 'sdkModelMapper.ts')).href),
+  ]);
+
+  return {
+    mapSdkModelList: modelContracts.mapSdkModelList,
+    mapSdkToolExecutionStart: chatContracts.mapSdkToolExecutionStart,
+    mapSdkToolExecutionComplete: chatContracts.mapSdkToolExecutionComplete,
+  };
 }
 
 function sendAndWaitForResponse(session, prompt) {
