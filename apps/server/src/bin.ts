@@ -32,7 +32,7 @@ const saveActiveLogin = (login: string | null) => {
 };
 const authService = new AuthService(keytar as CredentialStore, () => configService.load().activeLogin, saveActiveLogin);
 const viewDiscovery = new ViewDiscovery();
-const mindManager = new MindManager(new CopilotClientFactory(), new IdentityLoader(), configService, viewDiscovery);
+const mindManager = new MindManager(new CopilotClientFactory(), new IdentityLoader(() => configService.load().installedTools ?? []), configService, viewDiscovery);
 const chatService = new ChatService(mindManager, new TurnQueue());
 viewDiscovery.setRefreshHandler({
   sendBackgroundPrompt: (mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt),

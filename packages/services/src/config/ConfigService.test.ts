@@ -237,4 +237,62 @@ describe('ConfigService', () => {
     });
   });
 
+  describe('installedTools', () => {
+    it('round-trips a complete installed tool record', () => {
+      const installedTool = {
+        id: 'workiq',
+        package: '@microsoft/workiq',
+        version: 'latest',
+        bin: 'workiq',
+        displayName: 'Microsoft Work IQ',
+        description: 'Query M365 data.',
+        help: 'workiq ask --help',
+        agentInstructions: 'Use workiq ask.',
+        source: { marketplaceId: 'github:ianphil/genesis-minds', pluginId: 'genesis-minds' },
+        installedAt: '2026-05-07T21:00:00.000Z',
+      };
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        installedTools: [installedTool],
+      }));
+      const loaded = svc.load();
+      expect(loaded.installedTools).toEqual([installedTool]);
+    });
+
+    it('drops malformed tool records and deduplicates by id', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        installedTools: [
+          { id: 'workiq', package: '@microsoft/workiq', version: '1', bin: 'workiq', displayName: 'A', description: 'a', source: { marketplaceId: 'm', pluginId: 'p' }, installedAt: '2026-01-01T00:00:00Z' },
+          { id: 'workiq', package: 'duplicate', version: '2', bin: 'workiq', displayName: 'B', description: 'b', source: { marketplaceId: 'm', pluginId: 'p' }, installedAt: '2026-01-02T00:00:00Z' },
+          { id: 'broken' },
+          { not: 'a tool' },
+        ],
+      }));
+      const loaded = svc.load();
+      expect(loaded.installedTools).toHaveLength(1);
+      expect(loaded.installedTools?.[0].package).toBe('@microsoft/workiq');
+    });
+
+    it('omits installedTools entirely when none are persisted', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+      }));
+      const loaded = svc.load();
+      expect(loaded.installedTools).toBeUndefined();
+    });
+  });
+
 });
