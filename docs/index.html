@@ -406,12 +406,19 @@
               start chatting, and let your agent handle the rest.
             </p>
             <div class="actions">
-              <a class="button button-primary" href="https://github.com/ianphil/chamber/releases/latest">
-                Download for Windows
+              <a
+                id="downloadWindows"
+                class="button button-primary"
+                href="https://github.com/ianphil/chamber/releases/latest"
+                data-ready="false"
+              >
+                Preparing download...
               </a>
               <a class="button" href="https://github.com/ianphil/chamber">GitHub</a>
             </div>
-            <p class="platform-note">Windows x64 · macOS & Linux coming soon</p>
+            <p id="downloadStatus" class="platform-note" aria-live="polite">
+              Windows x64 · finding the latest installer
+            </p>
           </div>
 
           <div class="product-stage" aria-label="Chamber product preview">
@@ -467,5 +474,47 @@
         </section>
       </main>
     </div>
-</body>
+    <script>
+      const downloadLink = document.querySelector('#downloadWindows');
+      const downloadStatus = document.querySelector('#downloadStatus');
+
+      downloadLink.addEventListener('click', (event) => {
+        if (downloadLink.dataset.ready !== 'true') {
+          event.preventDefault();
+        }
+      });
+
+      async function resolveLatestInstaller() {
+        try {
+          const response = await fetch('https://api.github.com/repos/ianphil/chamber/releases/latest');
+          if (!response.ok) {
+            throw new Error(`GitHub release lookup failed with ${response.status}.`);
+          }
+
+          const release = await response.json();
+          const assets = Array.isArray(release.assets) ? release.assets : [];
+          const installer = assets.find((asset) => (
+            typeof asset.name === 'string'
+            && /^Chamber-.+-x64\.exe$/i.test(asset.name)
+            && typeof asset.browser_download_url === 'string'
+          ));
+
+          if (!installer) {
+            throw new Error('Latest release does not include a Windows installer asset.');
+          }
+
+          downloadLink.href = installer.browser_download_url;
+          downloadLink.dataset.ready = 'true';
+          downloadLink.textContent = 'Download for Windows';
+          downloadStatus.textContent = `Windows x64 · latest ${release.tag_name ?? 'release'}`;
+        } catch (error) {
+          downloadLink.dataset.ready = 'true';
+          downloadLink.textContent = 'View latest release';
+          downloadStatus.textContent = 'Windows x64 · open the latest release to download the installer';
+        }
+      }
+
+      void resolveLatestInstaller();
+    </script>
+  </body>
 </html>

@@ -65,7 +65,7 @@ export function RoleScreen({ name, onSelect }: Props) {
                   onClick={() => handleSelect(role.id)}
                   style={{ animationDelay: `${i * 100}ms` }}
                   className={cn(
-                    'text-left p-4 rounded-xl border transition-all duration-300 animate-in fade-in slide-in-from-bottom-2',
+                    'text-left text-foreground p-4 rounded-xl border transition-all duration-300 animate-in fade-in slide-in-from-bottom-2',
                     selected === role.id
                       ? 'border-primary bg-primary/10 scale-105'
                       : selected
@@ -74,7 +74,7 @@ export function RoleScreen({ name, onSelect }: Props) {
                   )}
                 >
                   <span className="text-2xl block mb-2">{role.emoji}</span>
-                  <span className="text-sm font-medium block">{role.label}</span>
+                  <span className="text-sm font-medium text-foreground block">{role.label}</span>
                   <span className="text-xs text-muted-foreground">{role.description}</span>
                 </button>
               ))}

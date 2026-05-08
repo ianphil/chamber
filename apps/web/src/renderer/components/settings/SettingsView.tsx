@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut } from 'lucide-react';
 import type { MarketplaceRegistry } from '@chamber/shared/types';
+import { APP_VERSION } from '@/renderer/lib/appVersion';
 import {
   Select,
   SelectContent,
@@ -231,6 +232,10 @@ export function SettingsView() {
         onClose={() => setAddAccountOpen(false)}
         onRetry={handleRetryAddAccount}
       />
+
+      <p className="border-t border-border pt-4 text-center text-xs text-muted-foreground">
+        Chamber v{APP_VERSION}
+      </p>
     </div>
   );
 }

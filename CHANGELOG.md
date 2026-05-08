@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.48.0 (2026-05-08)
+
+### Genesis
+
+- **Scale voice selection for long persona lists** — The Genesis voice picker now uses a searchable master/detail layout with a scrollable persona rail, pinned custom "Someone else..." flow, editable research brief review step, and focused coverage for long lists and custom creation. The following role screen now keeps card text readable on the dark Genesis background. (#213)
+
+### Website
+
+- **Refresh the public landing page and README** — The website download CTA now resolves the latest Windows installer from GitHub releases, the README has been rewritten around a fresh app hero capture, and the app version is shown consistently in Settings and the loading screen.
+
 ## v0.47.0 (2026-05-08)
 
 ### Marketplace

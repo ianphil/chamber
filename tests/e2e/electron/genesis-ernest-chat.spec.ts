@@ -59,8 +59,10 @@ test.describe('electron Genesis Ernest chat smoke', () => {
     await page.getByRole('button', { name: 'Begin' }).click();
     await page.getByRole('button', { name: /Someone else/i }).click();
     await page.getByPlaceholder('e.g. Tony Stark, Moneypenny, Gandalf...').fill(ernestName);
-    await page.getByPlaceholder(/Backstory/).fill('a meticulous QA engineer who finds every edge case');
-    await page.getByRole('button', { name: /That's who I am/i }).click();
+    await page.getByPlaceholder(/Era, source material/).fill('a meticulous QA engineer who finds every edge case');
+    await page.getByRole('button', { name: /Research this voice/i }).click();
+    await expect(page.getByLabel('Research brief')).toHaveValue(/meticulous QA engineer/);
+    await page.getByRole('button', { name: /Continue to purpose/i }).click();
     await page.getByRole('button', { name: /Something else/i }).click();
     await page.getByPlaceholder(/Creative Director, Debate Coach/).fill('QA Tester');
     await page.getByRole('button', { name: /That's my purpose/i }).click();
