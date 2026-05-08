@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@chamber/client": "file:../../packages/client",
-    "@chamber/shared": "file:../../packages/shared"
+    "@chamber/shared": "file:../../packages/shared",
+    "@met4citizen/talkinghead": "^1.7.0"
   }
 }

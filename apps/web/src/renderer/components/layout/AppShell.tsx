@@ -7,6 +7,7 @@ import { ConversationHistoryPanel } from '../history/ConversationHistoryPanel';
 import { MacTitlebarDrag } from './MacTitlebarDrag';
 import { MindSidebar } from './MindSidebar';
 import { ViewRouter } from './ViewRouter';
+import { PopoutAvatarWindow } from '../avatar/PopoutAvatarWindow';
 
 function usePopoutParams() {
   const params = new URLSearchParams(window.location.search);
@@ -29,17 +30,23 @@ export function AppShell() {
     }
   }, [isPopout, popoutMindId, minds.length, dispatch]);
 
-  // Popout mode: just chat, no sidebar or activity bar
+  // Popout mode: avatar-first stage when running in Electron desktop;
+  // browser variant has no voice IPC, so fall back to the chat view there.
   if (isPopout) {
+    const hasVoice = typeof window !== 'undefined' && Boolean(window.electronAPI?.voice);
     return (
       <TooltipProvider>
         <MacTitlebarDrag />
         <div className="flex flex-col h-screen w-screen bg-background text-foreground">
-          <div className="flex flex-1 min-h-0">
-            <main className="flex-1 flex flex-col min-w-0">
-              <ViewRouter />
-            </main>
-          </div>
+          {hasVoice ? (
+            <PopoutAvatarWindow popoutMindId={popoutMindId} />
+          ) : (
+            <div className="flex flex-1 min-h-0">
+              <main className="flex-1 flex flex-col min-w-0">
+                <ViewRouter />
+              </main>
+            </div>
+          )}
         </div>
       </TooltipProvider>
     );

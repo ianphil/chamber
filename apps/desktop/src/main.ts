@@ -61,6 +61,7 @@ import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
+import { setupVoiceIPC } from './main/ipc/voice';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -512,6 +513,7 @@ app.on('ready', async () => {
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);
+  setupVoiceIPC();
 
   // Fire-and-forget tool reconciliation: install any new marketplace tools.
   // Errors are logged in ToolsService and surface via tools:list later.

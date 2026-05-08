@@ -98,3 +98,46 @@ body {
 .prose table {
   font-size: 0.875em;
 }
+
+.chamber-agent-avatar-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chamber-avatar-orb {
+  background: linear-gradient(135deg, var(--color-genesis), oklch(0.62 0.18 255));
+  box-shadow: 0 0 48px color-mix(in oklch, var(--color-genesis) 55%, transparent);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.chamber-avatar-orb.listening {
+  box-shadow: 0 0 60px color-mix(in oklch, oklch(0.72 0.13 235) 65%, transparent);
+}
+
+.chamber-avatar-orb.thinking {
+  animation: chamber-avatar-thinking 1.8s ease-in-out infinite;
+}
+
+.chamber-avatar-orb.speaking,
+.chamber-avatar-state-speaking {
+  animation: chamber-avatar-speaking 520ms ease-in-out infinite alternate;
+}
+
+@keyframes chamber-avatar-thinking {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-5px) rotate(3deg) scale(0.97);
+  }
+}
+
+@keyframes chamber-avatar-speaking {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.14);
+  }
+}

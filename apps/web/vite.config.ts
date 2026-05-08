@@ -5,6 +5,9 @@ import path from 'node:path';
 export default defineConfig({
   root: __dirname,
   plugins: [tailwindcss()],
+  optimizeDeps: {
+    exclude: ['@met4citizen/talkinghead'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

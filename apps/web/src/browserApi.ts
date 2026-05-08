@@ -245,6 +245,17 @@ export function installBrowserApi(): void {
       uninstall: async () => ({ success: false, error: 'Tool uninstall is desktop-only in browser mode.' }),
     },
     chatroom: createBrowserChatroomApi(),
+    voice: {
+      recognizeOnce: async () => ({
+        provider: 'windows-system-speech',
+        error: 'Voice input is unavailable in browser mode.',
+      }),
+      stopRecognition: async () => undefined,
+      synthesize: async () => ({
+        provider: 'edge-tts',
+        error: 'Voice output is unavailable in browser mode.',
+      }),
+    },
     updater: {
       getState: async () => ({
         enabled: false,

@@ -225,6 +225,18 @@ export function mockElectronAPI(): ElectronAPI {
       getDisabledMindIds: vi.fn().mockResolvedValue([]),
       onStateChanged: vi.fn().mockReturnValue(vi.fn()),
     },
+    voice: {
+      recognizeOnce: vi.fn().mockResolvedValue({
+        provider: 'windows-system-speech',
+        text: '',
+        error: 'No speech recognized. Try again after the listening indicator appears.',
+      }),
+      stopRecognition: vi.fn().mockResolvedValue(undefined),
+      synthesize: vi.fn().mockResolvedValue({
+        provider: 'edge-tts',
+        error: 'TTS is not configured for tests.',
+      }),
+    },
     updater: {
       getState: vi.fn((): Promise<DesktopUpdateState> => new Promise<DesktopUpdateState>(() => {})),
       check: vi.fn().mockResolvedValue({ success: false }),

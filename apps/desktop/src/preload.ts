@@ -83,6 +83,11 @@ const electronAPI: ElectronAPI = {
     getDisabledMindIds: () => ipcRenderer.invoke('chatroom:get-disabled-mind-ids'),
     onStateChanged: (callback) => createIpcListener(ipcRenderer, 'chatroom:state-changed', callback),
   },
+  voice: {
+    recognizeOnce: (options) => ipcRenderer.invoke('voice:recognizeOnce', options),
+    stopRecognition: () => ipcRenderer.invoke('voice:stopRecognition'),
+    synthesize: (text, options) => ipcRenderer.invoke('voice:synthesize', text, options),
+  },
   updater: {
     getState: () => ipcRenderer.invoke('updater:get-state'),
     check: () => ipcRenderer.invoke('updater:check'),

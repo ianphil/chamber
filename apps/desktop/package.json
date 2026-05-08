@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@chamber/services": "file:../../packages/services",
-    "@chamber/shared": "file:../../packages/shared"
+    "@chamber/shared": "file:../../packages/shared",
+    "edge-tts-universal": "^1.4.0"
   }
 }
