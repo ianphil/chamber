@@ -336,6 +336,19 @@ const showMarketplaceProtocolMessage = (type: 'info' | 'error', message: string,
   }
 };
 
+const reconcileMarketplaceTools = (): void => {
+  toolsService.reconcile()
+    .then((outcome) => {
+      if (outcome.installed.length > 0) {
+        log.info(`Installed ${outcome.installed.length} new marketplace tool(s):`, outcome.installed.map((tool) => tool.id));
+      }
+      if (outcome.errors.length > 0) {
+        log.warn(`Tool reconcile encountered ${outcome.errors.length} error(s):`, outcome.errors);
+      }
+    })
+    .catch((error: unknown) => log.warn('Tool reconciliation failed:', error));
+};
+
 const confirmMarketplaceProtocolEnrollment = async (registryUrl: string): Promise<boolean> => {
   const options: MessageBoxOptions = {
     type: 'question',
@@ -375,6 +388,7 @@ const handleProtocolUrl = (rawUrl: string): void => {
     })
     .then((added) => {
       if (added) {
+        reconcileMarketplaceTools();
         showMarketplaceProtocolMessage('info', 'Marketplace added to Chamber', installUrl.registryUrl);
       }
     })
@@ -492,7 +506,7 @@ app.on('ready', async () => {
     }},
     genesisTemplateInstaller,
   );
-  setupMarketplaceIPC(marketplaceRegistryService);
+  setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);
   setupAuthIPC(authService, mindManager);
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
@@ -501,16 +515,7 @@ app.on('ready', async () => {
 
   // Fire-and-forget tool reconciliation: install any new marketplace tools.
   // Errors are logged in ToolsService and surface via tools:list later.
-  toolsService.reconcile()
-    .then((outcome) => {
-      if (outcome.installed.length > 0) {
-        log.info(`Installed ${outcome.installed.length} new marketplace tool(s):`, outcome.installed.map((tool) => tool.id));
-      }
-      if (outcome.errors.length > 0) {
-        log.warn(`Tool reconcile encountered ${outcome.errors.length} error(s):`, outcome.errors);
-      }
-    })
-    .catch((error: unknown) => log.warn('Tool reconciliation failed:', error));
+  reconcileMarketplaceTools();
 
   // Window controls
   ipcMain.on('window:minimize', () => mainWindow?.minimize());

@@ -7,6 +7,7 @@ Use this runbook to validate the real README badge flow for an internal Genesis 
 3. Edge hands off the `chamber://install?registry=...` URL to the installed Chamber app.
 4. Chamber prompts to add the marketplace.
 5. After approval, Chamber persists `agency-microsoft/genesis-minds` as an enabled Genesis marketplace.
+6. For A365 release-tool validation, Chamber reconciles the newly enrolled marketplace tools, installs the A365 release assets, and Heinz's identity includes those tools in the generated `## Tools` section.
 
 This smoke intentionally crosses outside the hermetic Playwright Electron test harness. It uses your running Edge browser via the Playwright MCP Bridge extension and an installed Chamber build so Windows protocol registration is exercised.
 
@@ -66,6 +67,16 @@ npm run smoke:desktop -- tests/e2e/electron/marketplace-install-link-edge.spec.t
 Remove-Item Env:\CHAMBER_E2E_EDGE_MARKETPLACE_INSTALL_LINK
 ```
 
+To validate the full A365 marketplace-tool path with Heinz:
+
+```powershell
+$env:CHAMBER_E2E_A365_EDGE_MARKETPLACE_TOOLS = '1'
+npm run smoke:desktop -- tests/e2e/electron/a365-marketplace-install-link-edge.spec.ts
+Remove-Item Env:\CHAMBER_E2E_A365_EDGE_MARKETPLACE_TOOLS
+```
+
+By default, the A365 smoke restores `~\.chamber\config.json` after the run but leaves downloaded binaries in Chamber's tools bin. Set `CHAMBER_E2E_A365_EDGE_KEEP_CONFIG=1` if you want to keep the internal marketplace enrollment and installed-tool records after a successful run.
+
 For demos, add a pause between each browser handoff step:
 
 ```powershell
@@ -83,6 +94,8 @@ playwright-cli config --extension --browser=msedge
 ```
 
 It then opens the internal repo, snapshots the page, finds the `Add to Chamber` badge, clicks it, follows the GitHub Pages interstitial to `chamber://`, and waits for Chamber's persisted config to include `github:agency-microsoft/genesis-minds`.
+
+The A365 variant also removes existing A365 installed-tool records before clicking the badge, waits for the nine A365 release-asset tools to be installed, checks the binaries exist, and verifies Heinz's generated identity includes the A365 tool headings.
 
 ## During the test
 
