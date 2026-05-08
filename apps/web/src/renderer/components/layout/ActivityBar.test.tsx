@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ActivityBar } from './ActivityBar';
 import { AppStateProvider } from '../../lib/store';
 import type { AppState } from '../../lib/store/state';
@@ -61,6 +61,56 @@ describe('ActivityBar', () => {
       expect(screen.getByLabelText('Download Chamber 0.33.3')).toBeTruthy();
     });
   });
+
+  it('checks for updates when clicking the up-to-date updater action', async () => {
+    const api = mockElectronAPI();
+    api.updater.getState = vi.fn().mockResolvedValue({
+      enabled: true,
+      status: 'up-to-date',
+      currentVersion: '0.33.2',
+      downloadPercent: null,
+      message: 'Chamber is up to date.',
+      canRetry: false,
+    });
+    api.updater.check = vi.fn().mockResolvedValue({ success: true });
+    installElectronAPI(api);
+
+    renderActivityBar();
+
+    const updaterButton = await screen.findByRole('button', { name: 'Check for updates' });
+    expect(updaterButton).not.toHaveProperty('disabled', true);
+    fireEvent.click(updaterButton);
+
+    expect(api.updater.check).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { status: 'checking' as const, message: 'Checking for updates…', downloadPercent: null, label: 'Checking for updates…' },
+    { status: 'downloading' as const, message: null, downloadPercent: 25, label: 'Downloading update 25%' },
+    { status: 'installing' as const, message: 'Installing update…', downloadPercent: null, label: 'Installing update…' },
+  ])(
+    'keeps the updater action disabled while $status',
+    async ({ status, message, downloadPercent, label }) => {
+      const api = mockElectronAPI();
+      api.updater.getState = vi.fn().mockResolvedValue({
+        enabled: true,
+        status,
+        currentVersion: '0.33.2',
+        downloadPercent,
+        message,
+        canRetry: false,
+      });
+      api.updater.check = vi.fn().mockResolvedValue({ success: true });
+      installElectronAPI(api);
+
+      renderActivityBar();
+
+      const updaterButton = await screen.findByRole('button', { name: label });
+      expect(updaterButton).toHaveProperty('disabled', true);
+      fireEvent.click(updaterButton);
+      expect(api.updater.check).not.toHaveBeenCalled();
+    },
+  );
 
   // -------------------------------------------------------------------------
   // Running indicator — yellow dot when any chatroom mind is streaming

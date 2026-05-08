@@ -12,7 +12,7 @@ export function UpdateIndicator() {
   const isBusy = state.status === 'checking'
     || state.status === 'downloading'
     || state.status === 'installing';
-  const canAct = !isBusy && state.status !== 'up-to-date';
+  const canAct = !isBusy;
   const percent = typeof state.downloadPercent === 'number'
     ? Math.round(state.downloadPercent)
     : null;
@@ -44,7 +44,9 @@ export function UpdateIndicator() {
       ? `Restart to install Chamber ${state.downloadedVersion}`
       : state.status === 'downloading'
         ? `Downloading update${percent === null ? '' : ` ${percent}%`}`
-        : state.message ?? 'Check for updates';
+        : state.status === 'up-to-date'
+          ? 'Check for updates'
+          : state.message ?? 'Check for updates';
 
   return (
     <Tooltip delayDuration={300}>
