@@ -7,7 +7,7 @@ Use this runbook to validate the real README badge flow for an internal Genesis 
 3. Edge hands off the `chamber://install?registry=...` URL to the installed Chamber app.
 4. Chamber prompts to add the marketplace.
 5. After approval, Chamber persists `agency-microsoft/genesis-minds` as an enabled Genesis marketplace.
-6. For A365 release-tool validation, Chamber reconciles the newly enrolled marketplace tools, installs the A365 release assets, and Heinz's identity includes those tools in the generated `## Tools` section.
+6. For A365 release-tool validation, Chamber reconciles the newly enrolled marketplace tools, installs the A365 release assets, Heinz's identity includes those tools in the generated `## Tools` section, and Heinz answers that he can see the Teams tool.
 
 This smoke intentionally crosses outside the hermetic Playwright Electron test harness. It uses your running Edge browser via the Playwright MCP Bridge extension and an installed Chamber build so Windows protocol registration is exercised.
 
@@ -95,7 +95,7 @@ playwright-cli config --extension --browser=msedge
 
 It then opens the internal repo, snapshots the page, finds the `Add to Chamber` badge, clicks it, follows the GitHub Pages interstitial to `chamber://`, and waits for Chamber's persisted config to include `github:agency-microsoft/genesis-minds`.
 
-The A365 variant also removes existing A365 installed-tool records before clicking the badge, waits for the nine A365 release-asset tools to be installed, checks the binaries exist, and verifies Heinz's generated identity includes the A365 tool headings.
+The A365 variant also removes existing A365 installed-tool records before clicking the badge, waits for the nine A365 release-asset tools to be installed, checks the binaries exist, verifies Heinz's generated identity includes the A365 tool headings, then starts a Heinz chat turn and expects him to answer `YES_TEAMS_TOOL_AVAILABLE` when asked whether he can see the Teams CLI tool.
 
 ## During the test
 

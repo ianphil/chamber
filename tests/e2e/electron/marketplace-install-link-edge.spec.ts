@@ -25,6 +25,7 @@ test.describe('Edge marketplace install link smoke', () => {
     try {
       await demoPause('Connecting playwright-cli to the running Edge browser.');
       runPlaywrightCli(['config', '--extension', '--browser=msedge']);
+      waitForPlaywrightConnector();
       await demoPause('Opening the internal Genesis marketplace README in Edge.');
       runPlaywrightCli(['open', internalMarketplaceRepoUrl]);
       runPlaywrightCli(['snapshot']);
@@ -67,6 +68,15 @@ function runPlaywrightCli(args: string[]): string {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+function waitForPlaywrightConnector(): void {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const output = runPlaywrightCli(['snapshot']);
+    if (output.includes('MCP client') && output.includes('connected')) return;
+  }
+  throw new Error('Timed out waiting for Playwright MCP Bridge extension connection.');
 }
 
 function quotePowerShellArg(value: string): string {

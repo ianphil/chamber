@@ -6,12 +6,14 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { IdentityLoader } from '@chamber/services';
 import type { AppConfig, InstalledTool } from '@chamber/shared/types';
+import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from './electronApp';
 
 const internalMarketplaceId = 'github:agency-microsoft/genesis-minds';
 const internalMarketplaceRepoUrl = 'https://github.com/agency-microsoft/genesis-minds';
 const configPath = path.join(os.homedir(), '.chamber', 'config.json');
 const heinzPath = process.env.CHAMBER_E2E_HEINZ_MIND_PATH ?? path.join(os.homedir(), 'agents', 'heinz-doofenshmirtz');
 const playwrightSnapshotDir = path.resolve(process.cwd(), '.playwright-cli');
+const cdpPort = Number(process.env.CHAMBER_E2E_A365_EDGE_CDP_PORT ?? 9350);
 const keepConfig = process.env.CHAMBER_E2E_A365_EDGE_KEEP_CONFIG === '1';
 const a365ToolIds = [
   'a365-teams',
@@ -43,6 +45,7 @@ test.describe('Edge A365 marketplace install-link smoke', () => {
       prepareConfigForA365Smoke();
       await demoPause('Connecting playwright-cli to the running Edge browser.');
       runPlaywrightCli(['config', '--extension', '--browser=msedge']);
+      waitForPlaywrightConnector();
       await demoPause('Opening the internal Genesis marketplace README in Edge.');
       runPlaywrightCli(['open', internalMarketplaceRepoUrl]);
       runPlaywrightCli(['snapshot']);
@@ -91,6 +94,10 @@ test.describe('Edge A365 marketplace install-link smoke', () => {
       expect(identity?.systemMessage).toContain('### word — A365 Word CLI');
       expect(identity?.systemMessage).toContain('### excel — A365 Excel CLI');
       expect(identity?.systemMessage).toContain('### sales — A365 Sales CLI');
+
+      const answer = await askHeinzAboutTeamsTool();
+      expect(answer.errorMessage).toBe('');
+      expect(answer.assistantText).toContain('YES_TEAMS_TOOL_AVAILABLE');
     } finally {
       if (keepConfig) {
         console.log(`Keeping Chamber config changes because CHAMBER_E2E_A365_EDGE_KEEP_CONFIG=1. Backup: ${backupPath ?? '(none)'}`);
@@ -100,6 +107,64 @@ test.describe('Edge A365 marketplace install-link smoke', () => {
     }
   });
 });
+
+async function askHeinzAboutTeamsTool(): Promise<{ assistantText: string; errorMessage: string }> {
+  let app: LaunchedElectronApp | undefined;
+  try {
+    app = await launchElectronApp({ cdpPort });
+    const page = await findRendererPage(app.browser, app.logs);
+    await page.waitForLoadState('domcontentloaded');
+    return await page.evaluate(async () => {
+      const minds = await window.electronAPI.mind.list();
+      const heinz = minds.find((mind) => mind.mindId === 'heinz-doofenshmirtz-295a');
+      if (!heinz) throw new Error('Heinz mind was not loaded.');
+
+      await window.electronAPI.chat.newConversation(heinz.mindId);
+
+      const messageId = `a365-edge-teams-tool-smoke-${Date.now()}`;
+      let assistantText = '';
+      let errorMessage = '';
+      let resolveTerminal: () => void = () => undefined;
+      const terminal = new Promise<void>((resolve) => {
+        resolveTerminal = resolve;
+      });
+      const unsubscribe = window.electronAPI.chat.onEvent((mindId, receivedMessageId, event) => {
+        if (mindId !== heinz.mindId || receivedMessageId !== messageId) return;
+        if (event.type === 'chunk' || event.type === 'message_final') {
+          assistantText += event.content;
+        }
+        if (event.type === 'error') {
+          errorMessage = event.message;
+          resolveTerminal();
+        }
+        if (event.type === 'done') {
+          resolveTerminal();
+        }
+      });
+
+      try {
+        const send = window.electronAPI.chat.send(
+          heinz.mindId,
+          [
+            'Can you see the A365 Teams CLI tool in your available tools?',
+            'If the tools section contains a teams command, reply exactly YES_TEAMS_TOOL_AVAILABLE and no other text.',
+            'If not, reply exactly NO_TEAMS_TOOL_AVAILABLE and no other text.',
+          ].join(' '),
+          messageId,
+        );
+        const timeout = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Timed out waiting for Heinz Teams tool response.')), 180_000);
+        });
+        await Promise.race([Promise.all([send, terminal]), timeout]);
+        return { assistantText, errorMessage };
+      } finally {
+        unsubscribe();
+      }
+    });
+  } finally {
+    await app?.close();
+  }
+}
 
 async function demoPause(message: string): Promise<void> {
   const delayMs = Number(process.env.CHAMBER_E2E_A365_EDGE_MARKETPLACE_TOOLS_SLOW_MS ?? 0);
@@ -121,6 +186,15 @@ function runPlaywrightCli(args: string[]): string {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+function waitForPlaywrightConnector(): void {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const output = runPlaywrightCli(['snapshot']);
+    if (output.includes('MCP client') && output.includes('connected')) return;
+  }
+  throw new Error('Timed out waiting for Playwright MCP Bridge extension connection.');
 }
 
 function quotePowerShellArg(value: string): string {
