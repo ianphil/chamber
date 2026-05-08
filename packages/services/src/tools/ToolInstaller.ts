@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { InstalledTool, MarketplaceToolEntry } from '@chamber/shared/types';
 import { Logger } from '../logger';
 import { GitHubReleaseAssetClient, type DownloadReleaseAssetRequest, type DownloadedReleaseAsset } from './GitHubReleaseAssetClient';
@@ -104,13 +105,18 @@ export class ToolInstaller {
     }
 
     fs.mkdirSync(this.toolsBinDir, { recursive: true });
-    const installedPath = path.join(this.toolsBinDir, executableName(tool.bin));
+    const installedPath = resolveInstallPath(this.toolsBinDir, tool.bin);
     const tempPath = `${installedPath}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tempPath, downloaded.bytes, { mode: 0o755 });
-    if (process.platform !== 'win32') {
-      fs.chmodSync(tempPath, 0o755);
+    try {
+      fs.writeFileSync(tempPath, downloaded.bytes, { mode: 0o755 });
+      if (process.platform !== 'win32') {
+        fs.chmodSync(tempPath, 0o755);
+      }
+      await replaceFile(tempPath, installedPath);
+    } catch (error) {
+      fs.rmSync(tempPath, { force: true });
+      throw error;
     }
-    fs.renameSync(tempPath, installedPath);
 
     return {
       id: tool.id,
@@ -176,4 +182,34 @@ export class ChildProcessRunner implements CommandRunner {
 
 function executableName(bin: string): string {
   return process.platform === 'win32' && !bin.toLowerCase().endsWith('.exe') ? `${bin}.exe` : bin;
+}
+
+function resolveInstallPath(toolsBinDir: string, bin: string): string {
+  const toolsBinRoot = path.resolve(toolsBinDir);
+  const installedPath = path.resolve(toolsBinRoot, executableName(bin));
+  if (installedPath !== toolsBinRoot && installedPath.startsWith(`${toolsBinRoot}${path.sep}`)) {
+    return installedPath;
+  }
+  throw new Error(`Refusing to install tool ${bin} outside the tools bin directory`);
+}
+
+async function replaceFile(tempPath: string, installedPath: string): Promise<void> {
+  const retryDelaysMs = process.platform === 'win32' ? [100, 250, 500, 1_000, 2_000] : [];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.renameSync(tempPath, installedPath);
+      return;
+    } catch (error) {
+      if (!isRetryableReplaceError(error) || attempt >= retryDelaysMs.length) {
+        throw error;
+      }
+      await delay(retryDelaysMs[attempt]);
+    }
+  }
+}
+
+function isRetryableReplaceError(error: unknown): boolean {
+  if (process.platform !== 'win32') return false;
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'EPERM' || code === 'EBUSY';
 }

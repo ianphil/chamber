@@ -76,6 +76,9 @@ function parseToolEntry(
   const displayName = stringField(entry, 'displayName', pluginPath, index);
   const description = stringField(entry, 'description', pluginPath, index);
   const bin = stringField(entry, 'bin', pluginPath, index);
+  if (!isSafeCommandName(bin)) {
+    throw new Error(`${pluginPath} tools[${index}].bin must be a command name without path separators or traversal`);
+  }
 
   const install = parseInstall(entry.install, pluginPath, index);
 
@@ -209,6 +212,10 @@ function optionalStringArray(
     throw new Error(`${pluginPath} tools[${index}].${key} must be a string array`);
   }
   return value as string[];
+}
+
+function isSafeCommandName(value: string): boolean {
+  return /^[A-Za-z0-9._-]+$/.test(value) && !value.includes('..');
 }
 
 function optionalArchive(record: Record<string, unknown>, prefix: string): 'zip' | 'tar.gz' | undefined {

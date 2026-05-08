@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -171,6 +171,55 @@ describe('ToolInstaller', () => {
       },
       bin: 'teams',
     })).rejects.toThrow('checksum mismatch');
+  });
+
+  it('refuses to install a GitHub release asset outside the tools bin directory', async () => {
+    const downloader = new FakeReleaseAssetDownloader();
+    const sha256 = createHash('sha256').update(downloader.bytes).digest('hex');
+    const installer = new ToolInstaller(new FakeRunner(), downloader, makeTempDir());
+
+    await expect(installer.install({
+      ...TOOL,
+      id: 'a365-teams',
+      install: {
+        type: 'github-release-asset',
+        owner: 'agency-microsoft',
+        repo: 'a365-cli',
+        tag: 'v0.5.0',
+        assets: [{ platform: process.platform, arch: process.arch, name: 'teams.exe', sha256 }],
+      },
+      bin: '..\\Startup\\evil',
+    })).rejects.toThrow('outside the tools bin directory');
+  });
+
+  it('cleans up the temporary release asset when replacement fails', async () => {
+    const downloader = new FakeReleaseAssetDownloader();
+    const toolsBinDir = makeTempDir();
+    const sha256 = createHash('sha256').update(downloader.bytes).digest('hex');
+    const installer = new ToolInstaller(new FakeRunner(), downloader, toolsBinDir);
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      const error = new Error('locked') as NodeJS.ErrnoException;
+      error.code = 'EPERM';
+      throw error;
+    });
+
+    try {
+      await expect(installer.install({
+        ...TOOL,
+        id: 'a365-teams',
+        install: {
+          type: 'github-release-asset',
+          owner: 'agency-microsoft',
+          repo: 'a365-cli',
+          tag: 'v0.5.0',
+          assets: [{ platform: process.platform, arch: process.arch, name: 'teams.exe', sha256 }],
+        },
+        bin: 'teams',
+      })).rejects.toThrow('locked');
+      expect(fs.readdirSync(toolsBinDir).filter((file) => file.includes('.tmp-'))).toEqual([]);
+    } finally {
+      rename.mockRestore();
+    }
   });
 
   it('uninstalls a GitHub release asset by deleting its installed binary', async () => {

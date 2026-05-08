@@ -140,6 +140,25 @@ describe('MarketplaceToolCatalog', () => {
     expect(result.errors[0].message).toContain('sha256');
   });
 
+  it('rejects tool bins that can escape the managed tools directory', async () => {
+    client.manifests.set('plugins/genesis-minds/plugin.json', {
+      tools: [
+        {
+          id: 'a365',
+          displayName: 'A365 CLI',
+          description: 'Run Microsoft 365 internal automation tools.',
+          install: { type: 'npm-global', package: '@agency/a365', version: 'latest' },
+          bin: '..\\Startup\\evil',
+        },
+      ],
+    });
+    const catalog = new MarketplaceToolCatalog(client, [SOURCE]);
+    const result = await catalog.listTools();
+    expect(result.tools).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toContain('bin must be a command name');
+  });
+
   it('skips disabled marketplaces', async () => {
     const catalog = new MarketplaceToolCatalog(client, [{ ...SOURCE, enabled: false }]);
     const result = await catalog.listTools();
