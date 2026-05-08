@@ -154,7 +154,12 @@ describe('MindManager', () => {
     mockDeleteSession.mockImplementation(async (sessionId: string) => {
       void sessionId;
     });
-    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+      // Default: every checked path exists EXCEPT `.mcp.json`. Tests that
+      // need MindManager to discover an `.mcp.json` opt in by overriding
+      // existsSync + readFileSync per test (#199).
+      return !String(candidate).endsWith('.mcp.json');
+    });
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     vi.mocked(fs.realpathSync.native).mockImplementation((candidate) => String(candidate));
     manager = new MindManager(
@@ -434,7 +439,9 @@ describe('MindManager', () => {
     });
 
     it('deduplicates filesystem aliases by realpath before creating another client', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        return !String(candidate).endsWith('.mcp.json');
+      });
       vi.mocked(fs.realpathSync.native).mockImplementation((candidate) => {
         const normalized = String(candidate).replace(/\\/g, '/');
         if (normalized.endsWith('/tmp/aliases/q-link')) {
@@ -1194,6 +1201,51 @@ describe('MindManager', () => {
       const [mind1, mind2] = await Promise.all([promise1, promise2]);
       expect(mind1.mindId).toBe(mind2.mindId);
       expect(mockClientFactory.createClient).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('mcp.json discovery (#199)', () => {
+    it('passes parsed mcpServers to createSession when .mcp.json is present', async () => {
+      const mcpJson = JSON.stringify({
+        mcpServers: {
+          memory: {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-memory'],
+            env: { ROOT: '/tmp/mem' },
+          },
+        },
+      });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.mcp.json')
+          ? mcpJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpServers: {
+            memory: {
+              type: 'stdio',
+              command: 'npx',
+              args: ['-y', '@modelcontextprotocol/server-memory'],
+              env: { ROOT: '/tmp/mem' },
+              tools: ['*'],
+            },
+          },
+        }),
+      );
+    });
+
+    it('omits mcpServers from session config when .mcp.json is absent', async () => {
+      // Default beforeEach: existsSync returns false for `.mcp.json`.
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'mcpServers')).toBe(false);
     });
   });
 

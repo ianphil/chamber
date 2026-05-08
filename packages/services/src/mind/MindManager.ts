@@ -11,6 +11,7 @@ import type { AppConfig, ChamberConversationRecord, ChatMessage, ConversationRes
 import { Logger } from '../logger';
 import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInputHandler } from './types';
 import { generateMindId } from './generateMindId';
+import { loadMcpServersFromMindPath } from './mcpConfig';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { approveAllCompat } from '../sdk/approveAllCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
@@ -753,6 +754,7 @@ export class MindManager extends EventEmitter {
     model?: string,
     sessionId?: string,
   ): Promise<CopilotSession> {
+    const mcpServers = loadMcpServersFromMindPath(mindPath);
     const sessionConfig: SessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
@@ -765,6 +767,7 @@ export class MindManager extends EventEmitter {
         },
       },
       onPermissionRequest,
+      ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(model ? { model } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
@@ -789,6 +792,7 @@ export class MindManager extends EventEmitter {
     approveAll = true,
     model?: string,
   ): Promise<CopilotSession> {
+    const mcpServers = loadMcpServersFromMindPath(mindPath);
     const sessionConfig: ResumeSessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
@@ -801,6 +805,7 @@ export class MindManager extends EventEmitter {
         },
       },
       onPermissionRequest,
+      ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
       ...(model ? { model } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };

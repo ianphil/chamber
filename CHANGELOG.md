@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.10 (2026-05-08)
+
+### Mind
+
+- **Pass `.mcp.json` MCP servers from the mind folder into Copilot sessions** — `MindManager` now reads each mind's `<mindPath>/.mcp.json` and threads parsed `mcpServers` through `client.createSession`/`resumeSession`, working around an upstream `@github/copilot-sdk` bug where `enableConfigDiscovery: true` does not actually load workspace-scoped servers. Entries are validated against a Zod schema (stdio with `command` or HTTP/SSE with `url`); malformed JSON or schema-invalid entries warn-and-skip so a typo in one mind cannot break others. The `tools` field defaults to `["*"]` when omitted, matching the CLI's discovery behavior. (#199)
+
 ## v0.49.9 (2026-05-08)
 
 ### Auth
