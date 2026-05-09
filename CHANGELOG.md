@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.12 (2026-05-09)
+
+### Renderer
+
+- **Route pasted image drafts to the active agent** — `ChatInput` now refreshes controlled insertion callbacks when the active mind changes, so pasted image tokens are written to the current agent's compose draft instead of a stale draft setter from another agent. Fixes #221.
+
 ## v0.49.11 (2026-05-09)
 
 ### Testing
