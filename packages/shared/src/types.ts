@@ -167,6 +167,33 @@ export type AgentProfileActionResult =
   | { success: true; profile: AgentProfile }
   | { success: false; error: string; profile?: AgentProfile };
 
+// ---------------------------------------------------------------------------
+// User profile — local Chamber profile for the signed-in human
+// ---------------------------------------------------------------------------
+
+export interface UserProfile {
+  displayName: string;
+  work: string;
+  location: string;
+  about: string;
+  avatarDataUrl: string | null;
+  source: 'local' | 'microsoft';
+  microsoftAccount?: string;
+  updatedAt: string | null;
+}
+
+export interface UserProfileSaveRequest {
+  displayName?: string;
+  work?: string;
+  location?: string;
+  about?: string;
+  avatarDataUrl?: string | null;
+}
+
+export type UserProfileImportResult =
+  | { success: true; profile: UserProfile; importedFields: Array<'displayName' | 'work' | 'location' | 'avatarDataUrl'> }
+  | { success: false; error: string; cancelled?: boolean; profile?: UserProfile };
+
 export type ChamberConversationKind = 'chat' | 'cron' | 'task';
 
 export interface ChamberConversationRecord {
@@ -227,6 +254,7 @@ export interface AppConfig {
   activeMindId: string | null;
   activeLogin: string | null;
   theme: 'light' | 'dark' | 'system';
+  userProfile?: UserProfile;
   marketplaceRegistries?: MarketplaceRegistry[];
   installedTools?: InstalledTool[];
 }

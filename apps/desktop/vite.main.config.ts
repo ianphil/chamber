@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['keytar', 'sharp'],
+      external: ['keytar', 'sharp', '@azure/msal-node-extensions', '@azure/msal-node-runtime'],
     },
   },
 });

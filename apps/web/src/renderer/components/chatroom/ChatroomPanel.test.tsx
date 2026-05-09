@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach, type Mock } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { ChatroomPanel } from './ChatroomPanel';
 import { AppStateProvider } from '../../lib/store';
 import type { AppState } from '../../lib/store';
@@ -81,6 +81,33 @@ describe('ChatroomPanel', () => {
     expect(screen.getByText('hello everyone')).toBeTruthy();
   });
 
+  it('renders the saved user profile avatar for chatroom user messages', async () => {
+    (api.userProfile.get as Mock).mockResolvedValue({
+      displayName: 'Ian Philpot',
+      work: 'Principal SWE Manager',
+      location: 'Atlanta',
+      about: '',
+      avatarDataUrl: 'data:image/png;base64,aWFu',
+      source: 'microsoft',
+      microsoftAccount: 'ianphil@microsoft.com',
+      updatedAt: '2026-05-09T00:00:00.000Z',
+    });
+    const userMsg = makeChatroomMessage({
+      id: 'u-avatar',
+      role: 'user',
+      blocks: [{ type: 'text', content: 'hello with avatar' }],
+      sender: { mindId: 'user', name: 'You' },
+    });
+    (api.chatroom.history as Mock).mockResolvedValue([userMsg]);
+
+    renderPanel({ minds: [MIND_A], chatroomMessages: [userMsg] }, api);
+
+    await waitFor(() => {
+      expect(screen.getByAltText('You avatar')).toHaveProperty('src', 'data:image/png;base64,aWFu');
+    });
+    expect(screen.getByText('hello with avatar')).toBeTruthy();
+  });
+
   // 4. Agent messages
   it('renders agent messages with agent name badge', () => {
     const agentMsg = makeChatroomMessage({
@@ -92,6 +119,33 @@ describe('ChatroomPanel', () => {
     renderPanel({ minds: [MIND_A], chatroomMessages: [agentMsg] }, api);
     // Sender name appears in the message header
     expect(screen.getAllByText('The Dude').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders agent profile avatars in participant and message rows', async () => {
+    (api.mindProfile.get as Mock).mockResolvedValue({
+      mindId: MIND_A.mindId,
+      mindPath: MIND_A.mindPath,
+      displayName: 'Dude Profile',
+      folderName: 'dude',
+      avatarDataUrl: 'data:image/png;base64,ZHVkZQ==',
+      soul: { kind: 'soul', label: 'SOUL.md', relativePath: 'SOUL.md', content: '', exists: true, mtimeMs: 1 },
+      agentFiles: [],
+      needsRestart: false,
+    });
+    const agentMsg = makeChatroomMessage({
+      id: 'avatar-1',
+      role: 'assistant',
+      blocks: [{ type: 'text', content: 'profiled hello' }],
+      sender: { mindId: MIND_A.mindId, name: MIND_A.identity.name },
+    });
+    (api.chatroom.history as Mock).mockResolvedValue([agentMsg]);
+
+    renderPanel({ minds: [MIND_A], chatroomMessages: [agentMsg] }, api);
+
+    await waitFor(() => {
+      expect(screen.getAllByAltText('Dude Profile avatar')).toHaveLength(2);
+    });
+    expect(screen.getAllByText('Dude Profile').length).toBeGreaterThanOrEqual(1);
   });
 
   // 5. Loads history on mount

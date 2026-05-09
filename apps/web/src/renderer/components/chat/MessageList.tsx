@@ -3,6 +3,10 @@ import { useAppState, getPlainContent } from '../../lib/store';
 import { StreamingMessage } from './StreamingMessage';
 import { cn, formatTime } from '../../lib/utils';
 import type { ChatMessage, MindContext } from '@chamber/shared/types';
+import type { AgentProfileSummary } from '../../lib/store/state';
+import { AgentAvatar } from '../profile/AgentAvatar';
+import { useMindProfiles } from '../../hooks/useMindProfiles';
+import { useUserProfile } from '../../hooks/useUserProfile';
 
 const AGENT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -16,7 +20,16 @@ function displayName(name: string, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
-function messagePresenter(message: ChatMessage, agentName: string, minds: MindContext[]) {
+function profileName(profile: AgentProfileSummary | undefined, fallback: string): string {
+  return displayName(profile?.displayName ?? fallback, fallback);
+}
+
+function messagePresenter(
+  message: ChatMessage,
+  agentName: string,
+  minds: MindContext[],
+  profileByMindId: Record<string, AgentProfileSummary>,
+) {
   if (message.role === 'assistant') {
     const name = displayName(agentName, 'Agent');
     return {
@@ -24,16 +37,19 @@ function messagePresenter(message: ChatMessage, agentName: string, minds: MindCo
       initial: name.charAt(0).toUpperCase(),
       color: undefined,
       isAgentSender: false,
+      avatarDataUrl: undefined,
     };
   }
 
   if (message.sender && message.sender.mindId !== 'user') {
-    const name = displayName(message.sender.name, 'Unknown Agent');
+    const profile = profileByMindId[message.sender.mindId];
+    const name = profileName(profile, displayName(message.sender.name, 'Unknown Agent'));
     return {
       name,
       initial: name.charAt(0).toUpperCase(),
       color: agentColor(minds, message.sender.mindId),
       isAgentSender: true,
+      avatarDataUrl: profile?.avatarDataUrl,
     };
   }
 
@@ -42,14 +58,18 @@ function messagePresenter(message: ChatMessage, agentName: string, minds: MindCo
     initial: 'Y',
     color: undefined,
     isAgentSender: false,
+    avatarDataUrl: undefined,
   };
 }
 
 export function MessageList() {
   const { messagesByMind, activeMindId, minds } = useAppState();
+  const profileByMindId = useMindProfiles(minds);
+  const userProfile = useUserProfile();
   const messages = activeMindId ? (messagesByMind[activeMindId] ?? []) : [];
   const activeMind = minds.find(m => m.mindId === activeMindId);
-  const agentName = activeMind?.identity.name ?? 'Agent';
+  const activeProfile = activeMind ? profileByMindId[activeMind.mindId] : undefined;
+  const agentName = activeMind ? profileName(activeProfile, activeMind.identity.name) : 'Agent';
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAutoScrolling = useRef(true);
 
@@ -74,22 +94,26 @@ export function MessageList() {
     >
       <div className="max-w-3xl mx-auto space-y-6">
         {messages.map((message) => {
-          const presenter = messagePresenter(message, agentName, minds);
+          const presenter = messagePresenter(message, agentName, minds, profileByMindId);
+          const avatarDataUrl = message.role === 'assistant'
+            ? activeProfile?.avatarDataUrl
+            : presenter.isAgentSender
+              ? presenter.avatarDataUrl
+              : userProfile?.avatarDataUrl;
 
           return (
             <div key={message.id} className="flex gap-3">
               {/* Avatar */}
-              <div
-                className={cn(
-                  'w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium shrink-0 mt-0.5',
-                  message.role === 'assistant'
-                    ? 'bg-genesis text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground',
+              <AgentAvatar
+                name={presenter.name}
+                avatarDataUrl={avatarDataUrl}
+                className="w-[42px] h-[42px] rounded-full flex items-center justify-center text-sm font-medium shrink-0 -mt-2.5"
+                fallbackClassName={cn(
+                  message.role === 'assistant' ? 'bg-genesis text-primary-foreground' : 'bg-secondary text-secondary-foreground',
                 )}
                 style={presenter.isAgentSender ? { backgroundColor: presenter.color, color: '#fff' } : undefined}
-              >
-                {presenter.initial}
-              </div>
+                fallback={presenter.initial}
+              />
 
               {/* Content */}
               <div className="flex-1 min-w-0">

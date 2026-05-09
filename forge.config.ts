@@ -46,7 +46,7 @@ function prepareSharpRuntime(platform: string, arch: string): void {
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{sharp,@img}/**/*',
+      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime}/**/*',
     },
     executableName: 'chamber',
     icon: APP_ICON_PATH,

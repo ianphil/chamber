@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { generateMindId } from '../mind';
-import type { AppConfig, AppConfigV1, ChamberConversationRecord, InstalledTool, MarketplaceRegistry, MindRecord } from '@chamber/shared/types';
+import type { AppConfig, AppConfigV1, ChamberConversationRecord, InstalledTool, MarketplaceRegistry, MindRecord, UserProfile } from '@chamber/shared/types';
 
 const CONFIG_DIR = path.join(os.homedir(), '.chamber');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
@@ -67,12 +67,14 @@ export class ConfigService {
       ? raw.minds.map(normalizeMindRecord).filter((record): record is MindRecord => record !== null)
       : [];
     const installedTools = normalizeInstalledTools(raw.installedTools);
+    const userProfile = normalizeUserProfile(raw.userProfile);
     return this.deduplicateMinds({
       version: 2,
       minds,
       activeMindId: typeof raw.activeMindId === 'string' ? raw.activeMindId : null,
       activeLogin: typeof raw.activeLogin === 'string' ? raw.activeLogin : null,
       theme,
+      ...(userProfile ? { userProfile } : {}),
       marketplaceRegistries: this.normalizeMarketplaceRegistries(raw.marketplaceRegistries),
       ...(installedTools.length > 0 ? { installedTools } : {}),
     });
@@ -111,6 +113,29 @@ export class ConfigService {
     }
     return { ...config, minds: deduped };
   }
+}
+
+function normalizeUserProfile(value: unknown): UserProfile | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  return {
+    displayName: stringValue(record.displayName),
+    work: stringValue(record.work),
+    location: stringValue(record.location),
+    about: stringValue(record.about),
+    avatarDataUrl: typeof record.avatarDataUrl === 'string' && record.avatarDataUrl.startsWith('data:image/')
+      ? record.avatarDataUrl
+      : null,
+    source: record.source === 'microsoft' ? 'microsoft' : 'local',
+    ...(typeof record.microsoftAccount === 'string' && record.microsoftAccount.trim().length > 0
+      ? { microsoftAccount: record.microsoftAccount.trim() }
+      : {}),
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : null,
+  };
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function normalizeMindRecord(value: unknown): MindRecord | null {

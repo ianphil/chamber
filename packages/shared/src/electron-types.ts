@@ -38,6 +38,9 @@ import type {
   ModelInfo,
   ToolActionResult,
   ToolCatalogEntry,
+  UserProfile,
+  UserProfileImportResult,
+  UserProfileSaveRequest,
 } from './types';
 
 export interface ElectronAPI {
@@ -106,6 +109,11 @@ export interface ElectronAPI {
     refreshGenesisRegistry: (id: string) => Promise<MarketplaceRegistryActionResult>;
     setGenesisRegistryEnabled: (id: string, enabled: boolean) => Promise<MarketplaceRegistryActionResult>;
     removeGenesisRegistry: (id: string) => Promise<MarketplaceRegistryActionResult>;
+  };
+  userProfile: {
+    get: () => Promise<UserProfile>;
+    save: (request: UserProfileSaveRequest) => Promise<UserProfile>;
+    importFromMicrosoft: () => Promise<UserProfileImportResult>;
   };
   tools: {
     list: () => Promise<ToolCatalogEntry[]>;

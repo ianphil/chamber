@@ -70,6 +70,11 @@ export const IPC = {
     SET_GENESIS_REGISTRY_ENABLED: 'marketplace:setGenesisRegistryEnabled',
     REMOVE_GENESIS_REGISTRY: 'marketplace:removeGenesisRegistry',
   },
+  USER_PROFILE: {
+    GET: 'userProfile:get',
+    SAVE: 'userProfile:save',
+    IMPORT_FROM_MICROSOFT: 'userProfile:importFromMicrosoft',
+  },
   TOOLS: {
     LIST: 'tools:list',
     INSTALL: 'tools:install',

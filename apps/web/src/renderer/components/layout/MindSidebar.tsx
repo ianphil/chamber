@@ -4,6 +4,8 @@ import { cn } from '../../lib/utils';
 import { Plus, X, Bot, ExternalLink, UserCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { AgentProfileModal } from '../profile/AgentProfileModal';
+import { AgentAvatar } from '../profile/AgentAvatar';
+import { useMindProfiles } from '../../hooks/useMindProfiles';
 import type { AgentProfile, MindContext } from '@chamber/shared/types';
 
 const MIN_WIDTH = 140;
@@ -24,7 +26,7 @@ export function MindSidebar() {
   const { minds, activeMindId } = useAppState();
   const dispatch = useAppDispatch();
   const [profileMind, setProfileMind] = useState<MindContext | null>(null);
-  const [avatarByMindId, setAvatarByMindId] = useState<Record<string, string | null>>({});
+  const profileByMindId = useMindProfiles(minds);
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, parseInt(saved, 10))) : 192;
@@ -88,31 +90,15 @@ export function MindSidebar() {
     localStorage.setItem(STORAGE_KEY, String(width));
   }, [width]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadAvatars = async () => {
-      const entries = await Promise.all(minds.map(async (mind) => {
-        try {
-          const profile = await window.electronAPI.mindProfile.get(mind.mindId);
-          return [mind.mindId, profile.avatarDataUrl] as const;
-        } catch {
-          return [mind.mindId, null] as const;
-        }
-      }));
-      if (!cancelled) setAvatarByMindId(Object.fromEntries(entries));
-    };
-
-    void loadAvatars();
-    return () => {
-      cancelled = true;
-    };
-  }, [minds]);
-
   const handleProfileChanged = (profile: AgentProfile) => {
-    setAvatarByMindId((avatars) => ({
-      ...avatars,
-      [profile.mindId]: profile.avatarDataUrl,
-    }));
+    dispatch({
+      type: 'SET_AGENT_PROFILE_SUMMARY',
+      payload: {
+        mindId: profile.mindId,
+        displayName: profile.displayName,
+        avatarDataUrl: profile.avatarDataUrl,
+      },
+    });
   };
 
   if (minds.length === 0) return null;
@@ -143,7 +129,12 @@ export function MindSidebar() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
             )}
           >
-            <MindAvatar name={mind.identity.name} avatarDataUrl={avatarByMindId[mind.mindId]} />
+            <AgentAvatar
+              name={profileByMindId[mind.mindId]?.displayName ?? mind.identity.name}
+              avatarDataUrl={profileByMindId[mind.mindId]?.avatarDataUrl}
+              className="h-[30px] w-[30px] shrink-0 rounded-md"
+              fallback={<Bot size={24} className="shrink-0" aria-label={`${mind.identity.name} agent`} />}
+            />
             <div className={cn('w-2 h-2 rounded-full shrink-0', statusColor(mind.status))} />
             <span className="truncate flex-1 text-left">{mind.identity.name}</span>
             {mind.windowed ? (
@@ -220,18 +211,4 @@ export function MindSidebar() {
     />
     </>
   );
-}
-
-function MindAvatar({ name, avatarDataUrl }: { name: string; avatarDataUrl?: string | null }) {
-  if (avatarDataUrl) {
-    return (
-      <img
-        src={avatarDataUrl}
-        alt=""
-        className="h-4 w-4 shrink-0 rounded object-cover"
-      />
-    );
-  }
-
-  return <Bot size={16} className="shrink-0" aria-label={`${name} agent`} />;
 }

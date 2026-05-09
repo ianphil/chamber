@@ -26,6 +26,8 @@ import {
   IdentityLoader,
   MarketplaceToolCatalog,
   MessageRouter,
+  MicrosoftGraphProfileImporter,
+  MsalBrokerGraphTokenProvider,
   MarketplaceRegistryService,
   MindManager,
   MindProfileService,
@@ -35,6 +37,7 @@ import {
   ToolInstaller,
   ToolsService,
   TurnQueue,
+  UserProfileService,
   ViewDiscovery,
   configureSdkRuntimeLayout,
   getChamberToolsBinDir,
@@ -64,6 +67,7 @@ import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
+import { setupUserProfileIPC } from './main/ipc/userProfile';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -180,6 +184,14 @@ const mindProfileService = new MindProfileService({
   getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
   restartMind: (mindId) => mindManager.reloadMind(mindId),
 }, identityLoader, new SharpAvatarNormalizer(sharp));
+const userProfileService = new UserProfileService(configService);
+const microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
+  userProfileService,
+  new MsalBrokerGraphTokenProvider(
+    path.join(appPaths.userData, 'auth', 'microsoft'),
+    (url) => shell.openExternal(url),
+  ),
+);
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
 const messageRouter: MessageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
@@ -510,6 +522,7 @@ app.on('ready', async () => {
     windowIcon,
   });
   setupMindProfileIPC(mindProfileService, mindManager, sharp);
+  setupUserProfileIPC(userProfileService, microsoftGraphProfileImporter);
   setupLensIPC(viewDiscovery, mindManager, canvasService);
   setupGenesisIPC(
     mindManager,

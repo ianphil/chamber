@@ -4,6 +4,12 @@ import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChat
 
 export type LensView = 'chat' | string;
 
+export interface AgentProfileSummary {
+  mindId: string;
+  displayName: string;
+  avatarDataUrl: string | null;
+}
+
 // Per-mind conversation view state machine:
 // idle -> hydrating -> ready. Streaming and model switching are orthogonal
 // flags scoped to the same mind/session so history selection and chat content
@@ -19,6 +25,7 @@ export interface ConversationViewState {
 
 export interface AppState {
   minds: MindContext[];
+  agentProfileByMindId: Record<string, AgentProfileSummary>;
   activeMindId: string | null;
   runtimePhase: 'ready' | 'switching-account';
   switchingAccountLogin: string | null;
@@ -69,6 +76,7 @@ export type AppAction =
   | { type: 'RESUME_CONVERSATION'; payload: { mindId: string; sessionId: string; messages: ChatMessage[]; conversations: ConversationSummary[] } }
   | { type: 'SET_MODEL_SWITCHING'; payload: { mindId: string; switching: boolean } }
   | { type: 'SET_MINDS'; payload: MindContext[] }
+  | { type: 'SET_AGENT_PROFILE_SUMMARY'; payload: AgentProfileSummary }
   | { type: 'SET_ACTIVE_MIND'; payload: string | null }
   | { type: 'ADD_MIND'; payload: MindContext }
   | { type: 'REMOVE_MIND'; payload: string }
@@ -103,6 +111,7 @@ export type AppAction =
 
 export const initialState: AppState = {
   minds: [],
+  agentProfileByMindId: {},
   activeMindId: null,
   runtimePhase: 'ready',
   switchingAccountLogin: null,

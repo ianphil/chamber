@@ -252,6 +252,30 @@ export function installBrowserApi(): void {
       setGenesisRegistryEnabled: async () => ({ success: false, error: 'Marketplace management is desktop-only in browser mode.' }),
       removeGenesisRegistry: async () => ({ success: false, error: 'Marketplace management is desktop-only in browser mode.' }),
     },
+    userProfile: {
+      get: async () => ({
+        displayName: '',
+        work: '',
+        location: '',
+        about: '',
+        avatarDataUrl: null,
+        source: 'local',
+        updatedAt: null,
+      }),
+      save: async (request) => ({
+        displayName: request.displayName ?? '',
+        work: request.work ?? '',
+        location: request.location ?? '',
+        about: request.about ?? '',
+        avatarDataUrl: request.avatarDataUrl ?? null,
+        source: 'local',
+        updatedAt: new Date().toISOString(),
+      }),
+      importFromMicrosoft: async () => ({
+        success: false,
+        error: 'Microsoft profile import is desktop-only in browser mode.',
+      }),
+    },
     tools: {
       list: async () => [],
       install: async () => ({ success: false, error: 'Tool install is desktop-only in browser mode.' }),

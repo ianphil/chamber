@@ -74,6 +74,11 @@ const electronAPI: ElectronAPI = {
     setGenesisRegistryEnabled: (id, enabled) => ipcRenderer.invoke(IPC.MARKETPLACE.SET_GENESIS_REGISTRY_ENABLED, id, enabled),
     removeGenesisRegistry: (id) => ipcRenderer.invoke(IPC.MARKETPLACE.REMOVE_GENESIS_REGISTRY, id),
   },
+  userProfile: {
+    get: () => ipcRenderer.invoke(IPC.USER_PROFILE.GET),
+    save: (request) => ipcRenderer.invoke(IPC.USER_PROFILE.SAVE, request),
+    importFromMicrosoft: () => ipcRenderer.invoke(IPC.USER_PROFILE.IMPORT_FROM_MICROSOFT),
+  },
   tools: {
     list: () => ipcRenderer.invoke(IPC.TOOLS.LIST),
     install: (toolId, marketplaceId) => ipcRenderer.invoke(IPC.TOOLS.INSTALL, toolId, marketplaceId),

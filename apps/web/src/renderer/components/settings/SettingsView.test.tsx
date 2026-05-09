@@ -79,6 +79,116 @@ describe('SettingsView', () => {
     });
   });
 
+  it('renders user profile fields and work account import affordance', async () => {
+    (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'alice' });
+    (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }]);
+    render(<SettingsView />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /profile/i })).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: /import profile photo from microsoft 365/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /import from work account/i })).toBeTruthy();
+    expect(screen.getByLabelText('Name')).toBeTruthy();
+    expect(screen.getByLabelText('Work')).toBeTruthy();
+    expect(screen.getByLabelText('Location')).toBeTruthy();
+    expect(screen.getByLabelText('About')).toBeTruthy();
+  });
+
+  it('loads the persisted user profile into settings fields', async () => {
+    (api.userProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      displayName: 'Ian Philpot',
+      work: 'Principal SWE Manager',
+      location: 'Atlanta',
+      about: 'Builds Chamber.',
+      avatarDataUrl: null,
+      source: 'local',
+      updatedAt: '2026-05-09T00:00:00.000Z',
+    });
+
+    render(<SettingsView />);
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Ian Philpot');
+    });
+    expect((screen.getByLabelText('Work') as HTMLInputElement).value).toBe('Principal SWE Manager');
+    expect((screen.getByLabelText('Location') as HTMLInputElement).value).toBe('Atlanta');
+    expect((screen.getByLabelText('About') as HTMLTextAreaElement).value).toBe('Builds Chamber.');
+  });
+
+  it('saves edited user profile fields', async () => {
+    render(<SettingsView />);
+
+    await screen.findByRole('button', { name: /save profile/i });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ian Philpot' } });
+    fireEvent.change(screen.getByLabelText('Work'), { target: { value: 'Principal SWE Manager' } });
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Atlanta' } });
+    fireEvent.change(screen.getByLabelText('About'), { target: { value: 'Builds Chamber.' } });
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }));
+
+    await waitFor(() => {
+      expect(api.userProfile.save).toHaveBeenCalledWith({
+        displayName: 'Ian Philpot',
+        work: 'Principal SWE Manager',
+        location: 'Atlanta',
+        about: 'Builds Chamber.',
+        avatarDataUrl: null,
+      });
+    });
+    expect(await screen.findByText('Profile saved.')).toBeTruthy();
+  });
+
+  it('imports a Microsoft profile into the editable fields', async () => {
+    (api.userProfile.importFromMicrosoft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      importedFields: ['displayName', 'work', 'location', 'avatarDataUrl'],
+      profile: {
+        displayName: 'Ian Philpot',
+        work: 'Principal SWE Manager',
+        location: 'ATLANTA',
+        about: '',
+        avatarDataUrl: 'data:image/png;base64,AQID',
+        source: 'microsoft',
+        microsoftAccount: 'ianphil@microsoft.com',
+        updatedAt: '2026-05-09T00:00:00.000Z',
+      },
+    });
+
+    render(<SettingsView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /import from work account/i }));
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Ian Philpot');
+    });
+    expect((screen.getByLabelText('Work') as HTMLInputElement).value).toBe('Principal SWE Manager');
+    expect((screen.getByLabelText('Location') as HTMLInputElement).value).toBe('ATLANTA');
+    expect(screen.getByText(/imported microsoft 365 profile/i)).toBeTruthy();
+  });
+
+  it('shows Microsoft import errors without overwriting fields', async () => {
+    (api.userProfile.importFromMicrosoft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: 'Microsoft Graph profile request failed (403).',
+      profile: {
+        displayName: '',
+        work: '',
+        location: '',
+        about: '',
+        avatarDataUrl: null,
+        source: 'local',
+        updatedAt: null,
+      },
+    });
+
+    render(<SettingsView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /import from work account/i }));
+
+    expect(await screen.findByText('Microsoft Graph profile request failed (403).')).toBeTruthy();
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('');
+  });
+
   it('shows the app version from package.json', async () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'alice' });
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }]);

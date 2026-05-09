@@ -14,3 +14,4 @@ export * from './mindProfile';
 export * from './ports';
 export * from './sdk';
 export * from './tools';
+export * from './userProfile';

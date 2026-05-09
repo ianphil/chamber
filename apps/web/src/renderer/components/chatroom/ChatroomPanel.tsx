@@ -5,8 +5,12 @@ import { StreamingMessage } from '../chat/StreamingMessage';
 import { OrchestrationPicker } from './OrchestrationPicker';
 import { TaskLedgerPanel } from './TaskLedgerPanel';
 import { cn, formatTime } from '../../lib/utils';
-import type { MindContext } from '@chamber/shared/types';
+import type { MindContext, UserProfile } from '@chamber/shared/types';
 import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
+import type { AgentProfileSummary } from '../../lib/store/state';
+import { AgentAvatar } from '../profile/AgentAvatar';
+import { useMindProfiles } from '../../hooks/useMindProfiles';
+import { useUserProfile } from '../../hooks/useUserProfile';
 
 // ---------------------------------------------------------------------------
 // Colour palette for agent badges
@@ -17,6 +21,10 @@ const AGENT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#e
 function agentColor(minds: MindContext[], mindId: string): string {
   const idx = minds.findIndex(m => m.mindId === mindId);
   return AGENT_COLORS[(idx >= 0 ? idx : 0) % AGENT_COLORS.length];
+}
+
+function profileDisplayName(profile: AgentProfileSummary | undefined, fallback: string): string {
+  return profile?.displayName?.trim() || fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,10 +63,11 @@ function isModeratorMessage(message: ChatroomMessage, moderatorMindId?: string):
 // ParticipantBar
 // ---------------------------------------------------------------------------
 
-function ParticipantBar({ minds, streamingByMind, disabledMindIds, onToggle }: {
+function ParticipantBar({ minds, streamingByMind, disabledMindIds, profileByMindId, onToggle }: {
   minds: MindContext[];
   streamingByMind: Record<string, boolean>;
   disabledMindIds: string[];
+  profileByMindId: Record<string, AgentProfileSummary>;
   onToggle: (mindId: string, enabled: boolean) => void;
 }) {
   if (minds.length === 0) return null;
@@ -68,12 +77,14 @@ function ParticipantBar({ minds, streamingByMind, disabledMindIds, onToggle }: {
       {minds.map((mind, i) => {
         const streaming = streamingByMind[mind.mindId];
         const disabled = disabledSet.has(mind.mindId);
+        const profile = profileByMindId[mind.mindId];
+        const name = profileDisplayName(profile, mind.identity.name);
         const color = AGENT_COLORS[i % AGENT_COLORS.length];
         const title = disabled
           ? streaming
-            ? `${mind.identity.name} is disabled — currently responding to this round. Click to re-enable.`
-            : `${mind.identity.name} is disabled. Click to enable.`
-          : `${mind.identity.name} is enabled. Click to disable.`;
+            ? `${name} is disabled — currently responding to this round. Click to re-enable.`
+            : `${name} is disabled. Click to enable.`
+          : `${name} is enabled. Click to disable.`;
         return (
           <button
             type="button"
@@ -90,8 +101,16 @@ function ParticipantBar({ minds, streamingByMind, disabledMindIds, onToggle }: {
             )}
             style={{ backgroundColor: `${color}20`, color }}
           >
+            <AgentAvatar
+              name={name}
+              avatarDataUrl={profile?.avatarDataUrl}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0"
+              fallbackClassName="text-white"
+              fallback={name.charAt(0).toUpperCase()}
+              style={{ backgroundColor: color, color: '#fff' }}
+            />
             <span className={cn('w-2 h-2 rounded-full', streaming ? 'bg-yellow-400 animate-pulse' : 'bg-green-500')} />
-            {mind.identity.name}
+            {name}
           </button>
         );
       })}
@@ -170,7 +189,7 @@ function TypingIndicator({ speaker, minds, orchestrationMode }: {
   return (
     <div className="flex gap-3">
       {/* Spacer matching avatar width */}
-      <div className="w-7 shrink-0" />
+      <div className="w-10 shrink-0" />
       <div className="flex items-center gap-1.5 text-muted-foreground">
         <div className="flex gap-1">
           <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: color, animationDelay: '0ms' }} />
@@ -250,12 +269,16 @@ function CollapsibleMessage({ message }: { message: ChatroomMessage }) {
 function ChatroomMessageList({
   messages,
   minds,
+  profileByMindId,
+  userProfile,
   moderatorMindId,
   activeSpeaker,
   orchestrationMode,
 }: {
   messages: ChatroomMessage[];
   minds: MindContext[];
+  profileByMindId: Record<string, AgentProfileSummary>;
+  userProfile: UserProfile | null;
   moderatorMindId?: string;
   activeSpeaker: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null;
   orchestrationMode?: string;
@@ -285,21 +308,24 @@ function ChatroomMessageList({
           }
 
           const isUser = message.role === 'user';
-          const senderName = message.sender?.name ?? 'Unknown';
+          const senderProfile = !isUser && message.sender ? profileByMindId[message.sender.mindId] : undefined;
+          const senderName = isUser
+            ? (message.sender?.name ?? 'You')
+            : profileDisplayName(senderProfile, message.sender?.name ?? 'Unknown');
           const color = isUser ? undefined : agentColor(minds, message.sender?.mindId ?? '');
+          const avatarDataUrl = isUser ? userProfile?.avatarDataUrl : senderProfile?.avatarDataUrl;
 
           return (
             <div key={message.id} className="flex gap-3">
               {/* Avatar */}
-              <div
-                className={cn(
-                  'w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium shrink-0 mt-0.5',
-                  isUser && 'bg-secondary text-secondary-foreground',
-                )}
+              <AgentAvatar
+                name={senderName}
+                avatarDataUrl={avatarDataUrl}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium shrink-0 mt-0.5"
+                fallbackClassName={cn(isUser && 'bg-secondary text-secondary-foreground')}
                 style={isUser ? undefined : { backgroundColor: color, color: '#fff' }}
-              >
-                {isUser ? 'Y' : senderName.charAt(0).toUpperCase()}
-              </div>
+                fallback={isUser ? 'Y' : senderName.charAt(0).toUpperCase()}
+              />
 
               {/* Content */}
               <div className="flex-1 min-w-0">
@@ -475,6 +501,8 @@ export function ChatroomPanel() {
     chatroomDisabledMindIds,
   } = useAppState();
   const dispatch = useAppDispatch();
+  const profileByMindId = useMindProfiles(minds);
+  const userProfile = useUserProfile();
   const isStreaming = Object.values(chatroomStreamingByMind).some(Boolean);
   const connected = minds.length > 0;
 
@@ -553,6 +581,7 @@ export function ChatroomPanel() {
         minds={minds}
         streamingByMind={chatroomStreamingByMind}
         disabledMindIds={chatroomDisabledMindIds}
+        profileByMindId={profileByMindId}
         onToggle={handleToggleMind}
       />
 
@@ -604,6 +633,8 @@ export function ChatroomPanel() {
         <ChatroomMessageList
           messages={chatroomMessages}
           minds={minds}
+          profileByMindId={profileByMindId}
+          userProfile={userProfile}
           moderatorMindId={chatroomOrchestration === 'group-chat' ? chatroomGroupChatConfig?.moderatorMindId : undefined}
           activeSpeaker={chatroomActiveSpeaker}
           orchestrationMode={chatroomOrchestration}

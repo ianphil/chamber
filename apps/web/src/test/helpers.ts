@@ -133,8 +133,8 @@ export function mockElectronAPI(): ElectronAPI {
       onMindChanged: vi.fn().mockReturnValue(vi.fn()),
     },
     mindProfile: {
-      get: vi.fn().mockResolvedValue({
-        mindId: 'test-1234',
+      get: vi.fn().mockImplementation((mindId: string) => Promise.resolve({
+        mindId,
         mindPath: 'C:\\test',
         displayName: 'Test',
         folderName: 'test',
@@ -142,7 +142,7 @@ export function mockElectronAPI(): ElectronAPI {
         soul: { kind: 'soul', label: 'SOUL.md', relativePath: 'SOUL.md', content: '# Test\n', exists: true, mtimeMs: 1 },
         agentFiles: [{ kind: 'agent', label: 'test.agent.md', relativePath: '.github\\agents\\test.agent.md', content: '# Test agent\n', exists: true, mtimeMs: 2 }],
         needsRestart: false,
-      }),
+      })),
       saveFile: vi.fn().mockResolvedValue({ success: true, needsRestart: true, profile: {
         mindId: 'test-1234',
         mindPath: 'C:\\test',
@@ -157,6 +157,30 @@ export function mockElectronAPI(): ElectronAPI {
       saveAvatar: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       removeAvatar: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       restart: vi.fn().mockResolvedValue({ mindId: 'test-1234', mindPath: 'C:\\test', identity: { name: 'Test', systemMessage: '' }, status: 'ready' }),
+    },
+    userProfile: {
+      get: vi.fn().mockResolvedValue({
+        displayName: '',
+        work: '',
+        location: '',
+        about: '',
+        avatarDataUrl: null,
+        source: 'local',
+        updatedAt: null,
+      }),
+      save: vi.fn().mockImplementation((request) => Promise.resolve({
+        displayName: request.displayName ?? '',
+        work: request.work ?? '',
+        location: request.location ?? '',
+        about: request.about ?? '',
+        avatarDataUrl: request.avatarDataUrl ?? null,
+        source: 'local',
+        updatedAt: new Date().toISOString(),
+      })),
+      importFromMicrosoft: vi.fn().mockResolvedValue({
+        success: false,
+        error: 'not stubbed',
+      }),
     },
     lens: {
       getViews: vi.fn().mockResolvedValue([]),
