@@ -1,41 +1,29 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { IPC } from '@chamber/shared';
+import { z } from 'zod';
+import { IPC, parseIpcArgs } from '@chamber/shared';
 import type { ChatroomService } from '@chamber/services';
 import type { OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, ChatroomStateChange } from '@chamber/shared/chatroom-types';
 
-interface ChatroomSendArgs {
-  message: string;
-  model: string | undefined;
-  roundId: string | undefined;
-}
-
 const MAX_ROUND_ID_LENGTH = 128;
 
-function parseSendArgs(message: unknown, model: unknown, roundId: unknown): ChatroomSendArgs {
-  if (typeof message !== 'string') {
-    throw new TypeError(`chatroom:send: 'message' must be a string, got ${typeof message}`);
-  }
-  if (message.length === 0) {
-    throw new TypeError(`chatroom:send: 'message' must be a non-empty string`);
-  }
-  if (model !== undefined && typeof model !== 'string') {
-    throw new TypeError(`chatroom:send: 'model' must be a string or undefined, got ${typeof model}`);
-  }
-  if (roundId !== undefined) {
-    if (typeof roundId !== 'string' || roundId.length === 0) {
-      throw new TypeError(`chatroom:send: 'roundId' must be a non-empty string or undefined`);
-    }
-    if (roundId.length > MAX_ROUND_ID_LENGTH) {
-      throw new TypeError(`chatroom:send: 'roundId' exceeds ${MAX_ROUND_ID_LENGTH} characters`);
-    }
-  }
-  return { message, model, roundId };
-}
+const sendArgsSchema = z.object({
+  message: z.string().min(1, 'must be a non-empty string'),
+  model: z.string().optional(),
+  roundId: z
+    .string()
+    .min(1, 'must be a non-empty string when provided')
+    .max(MAX_ROUND_ID_LENGTH, `must be at most ${MAX_ROUND_ID_LENGTH} characters`)
+    .optional(),
+});
 
 export function setupChatroomIPC(chatroomService: ChatroomService): void {
   ipcMain.handle(IPC.CHATROOM.SEND, async (_event, message: unknown, model?: unknown, roundId?: unknown) => {
-    const args = parseSendArgs(message, model, roundId);
-    await chatroomService.broadcast(args.message, args.model, args.roundId);
+    const parsed = parseIpcArgs(
+      IPC.CHATROOM.SEND,
+      sendArgsSchema,
+      { message, model, roundId },
+    );
+    await chatroomService.broadcast(parsed.message, parsed.model, parsed.roundId);
   });
 
   ipcMain.handle(IPC.CHATROOM.HISTORY, async () => {

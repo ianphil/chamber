@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.6 (2026-05-08)
+
+### IPC
+
+- **Zod-backed IPC payload validation framework** — Added `parseIpcArgs(channel, schema, payload)` in `packages/shared/src/ipc-validation.ts`. The helper runs `schema.safeParse` and on failure throws a `TypeError` whose message names the channel and lists every Zod issue path. The plain-`TypeError`-with-string-message shape is dictated by Electron IPC: errors thrown from `ipcMain.handle` lose custom subclasses and own properties when crossing to the renderer, so the message string is the only durable diagnostic carrier across the boundary. Preload stays passthrough — schemas live alongside the IPC adapter that owns the channel. Migrated `chatroom:send` (refactored from manual `parseSendArgs`, preserving every existing invariant: non-empty message, optional model, roundId 1-128 chars; schema is a `z.object` so error paths name `message`/`model`/`roundId` instead of tuple indices) and `genesis:createFromTemplate` (previously unvalidated, now strict-object-typed: `templateId` non-empty, optional `marketplaceId`, `basePath` non-empty, no extra fields). 14 new genesis-payload-rejection tests parallel the existing `chatroom:send` validation tests. (#63)
+
 ## v0.49.5 (2026-05-08)
 
 ### IPC

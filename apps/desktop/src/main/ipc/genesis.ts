@@ -2,7 +2,8 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { IPC } from '@chamber/shared';
+import { z } from 'zod';
+import { IPC, parseIpcArgs } from '@chamber/shared';
 import {
   MindManager,
   MindScaffold,
@@ -19,6 +20,14 @@ interface GenesisMindTemplateCatalogPort {
 interface GenesisMindTemplateInstallerPort {
   install(request: GenesisMindTemplateInstallRequest): Promise<string>;
 }
+
+const createFromTemplateSchema = z
+  .object({
+    templateId: z.string().min(1, 'must be a non-empty string'),
+    marketplaceId: z.string().min(1, 'must be a non-empty string when provided').optional(),
+    basePath: z.string().min(1, 'must be a non-empty string'),
+  })
+  .strict();
 
 export function setupGenesisIPC(
   mindManager: MindManager,
@@ -66,7 +75,8 @@ export function setupGenesisIPC(
     }
   });
 
-  ipcMain.handle(IPC.GENESIS.CREATE_FROM_TEMPLATE, async (event, request: GenesisMindTemplateInstallRequest) => {
+  ipcMain.handle(IPC.GENESIS.CREATE_FROM_TEMPLATE, async (event, rawRequest: unknown) => {
+    const request = parseIpcArgs(IPC.GENESIS.CREATE_FROM_TEMPLATE, createFromTemplateSchema, rawRequest);
     const win = BrowserWindow.fromWebContents(event.sender);
 
     try {

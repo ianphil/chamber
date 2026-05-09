@@ -98,6 +98,41 @@ describe('setupGenesisIPC', () => {
 
     expect(scaffold.create).not.toHaveBeenCalled();
   });
+
+  describe('genesis:createFromTemplate input validation', () => {
+    const invalidPayloads: Array<[string, unknown]> = [
+      ['missing templateId', { basePath: 'C:\\agents' }],
+      ['empty templateId', { templateId: '', basePath: 'C:\\agents' }],
+      ['non-string templateId', { templateId: 123, basePath: 'C:\\agents' }],
+      ['missing basePath', { templateId: 'lucy' }],
+      ['empty basePath', { templateId: 'lucy', basePath: '' }],
+      ['non-string basePath', { templateId: 'lucy', basePath: { dir: 'C:\\agents' } }],
+      ['null payload', null],
+      ['array payload', ['lucy', 'C:\\agents']],
+      ['unknown extra field', { templateId: 'lucy', basePath: 'C:\\agents', shellCommand: 'rm -rf /' }],
+    ];
+
+    for (const [label, value] of invalidPayloads) {
+      it(`rejects ${label} without invoking the installer`, async () => {
+        const installer = createInstaller();
+        setupGenesisIPC(createMindManager(), createScaffold(), createCatalog(), installer);
+
+        await expect(getHandler('genesis:createFromTemplate')(EVT, value)).rejects.toThrow(TypeError);
+        expect(installer.install).not.toHaveBeenCalled();
+      });
+    }
+
+    it('TypeError message names the channel and the bad field', async () => {
+      setupGenesisIPC(createMindManager(), createScaffold(), createCatalog(), createInstaller());
+
+      await expect(
+        getHandler('genesis:createFromTemplate')(EVT, { templateId: '', basePath: 'C:\\agents' }),
+      ).rejects.toThrow(/genesis:createFromTemplate/);
+      await expect(
+        getHandler('genesis:createFromTemplate')(EVT, { templateId: '', basePath: 'C:\\agents' }),
+      ).rejects.toThrow(/templateId/);
+    });
+  });
 });
 
 function getHandler(name: string): InvokeHandler {
