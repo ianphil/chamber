@@ -334,6 +334,30 @@ describe('appReducer', () => {
     });
   });
 
+  it('SET_CONVERSATION_HISTORY preserves newer local summaries over stale list responses', () => {
+    const fresh = appReducer(withActiveMind, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'Fresh title', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', kind: 'chat', active: true },
+        ],
+      },
+    });
+
+    const stale = appReducer(fresh, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'New chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', kind: 'chat', active: true },
+        ],
+      },
+    });
+
+    expect(stale.conversationHistoryByMind[mindId][0].title).toBe('Fresh title');
+  });
+
   it('CONVERSATION_HYDRATING records the selected session before messages arrive', () => {
     const state = appReducer(withActiveMind, {
       type: 'CONVERSATION_HYDRATING',

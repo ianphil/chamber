@@ -154,6 +154,26 @@ test.describe('electron conversation history smoke', () => {
     await expect(page.getByText(prompt).first()).toBeVisible();
   });
 
+  test('collapsing history restores chat width in a narrow window', async () => {
+    const paths = await launchWithMinds(9357, ['Monica']);
+    const page = await findRendererPage(app?.browser, app?.logs ?? []);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await addMind(page, paths.Monica);
+
+    const history = page.getByLabel('Conversation history');
+    const main = page.locator('main').first();
+    const expanded = await measureLayout(page);
+
+    await history.getByRole('button', { name: 'Collapse history panel' }).click();
+    await expect(history.getByRole('button', { name: 'Expand history panel' })).toBeVisible();
+
+    await expect.poll(async () => (await measureLayout(page)).historyWidth, { timeout: 5_000 }).toBeLessThan(80);
+    const collapsed = await measureLayout(page);
+    expect(collapsed.historyWidth).toBeLessThan(80);
+    expect(collapsed.mainWidth).toBeGreaterThan(expanded.mainWidth + 200);
+    await expect(main).toBeVisible();
+  });
+
   async function launchWithMinds(cdpPort: number, names: string[]): Promise<Record<string, string>> {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-history-smoke-'));
     userDataPath = path.join(root, 'user-data');
@@ -201,6 +221,18 @@ async function installChatSendProbe(page: Page): Promise<void> {
       const send = originalSend(...args);
       runtimeWindow.__chamberLastChatSend = send.then(() => undefined);
       return send;
+    };
+  });
+}
+
+async function measureLayout(page: Page): Promise<{ mainWidth: number; historyWidth: number }> {
+  return page.evaluate(() => {
+    const main = document.querySelector('main');
+    const history = document.querySelector('[aria-label="Conversation history"]');
+    if (!main || !history) throw new Error('Expected main and conversation history elements');
+    return {
+      mainWidth: main.getBoundingClientRect().width,
+      historyWidth: history.getBoundingClientRect().width,
     };
   });
 }
