@@ -1,0 +1,7 @@
+{
+  "name": "chamber-sharp-runtime",
+  "private": true,
+  "dependencies": {
+    "sharp": "0.34.5"
+  }
+}

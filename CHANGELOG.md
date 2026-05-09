@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.1 (2026-05-08)
+
+### Packaging
+
+- **Package Sharp as a native runtime** — The Windows installer now ships Sharp through a dedicated `sharp-runtime` resource prepared before Forge packaging, and the sandbox preflight verifies the Sharp package and native Windows binding are present before opening the installer. This prevents the installed app from failing at startup with `Cannot find module 'sharp'`.
+
 ## v0.49.0 (2026-05-08)
 
 ### Agent profiles
