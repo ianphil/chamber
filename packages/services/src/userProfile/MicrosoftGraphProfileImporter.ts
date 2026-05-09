@@ -31,6 +31,13 @@ export interface MicrosoftGraphTokenProvider {
   acquireToken(): Promise<MicrosoftGraphToken>;
 }
 
+export interface MsalBrokerGraphTokenProviderOptions {
+  authDataDir: string;
+  openBrowser: (url: string) => Promise<void>;
+  clientId?: string;
+  tenantId?: string;
+}
+
 interface GraphUser {
   displayName?: string;
   userPrincipalName?: string;
@@ -103,10 +110,7 @@ export class MicrosoftGraphProfileImporter {
 export class MsalBrokerGraphTokenProvider implements MicrosoftGraphTokenProvider {
   private appPromise: Promise<PublicClientApplication> | null = null;
 
-  constructor(
-    private readonly authDataDir: string,
-    private readonly openBrowser: (url: string) => Promise<void>,
-  ) {}
+  constructor(private readonly options: MsalBrokerGraphTokenProviderOptions) {}
 
   async acquireToken(): Promise<MicrosoftGraphToken> {
     const app = await this.getApp();
@@ -118,10 +122,10 @@ export class MsalBrokerGraphTokenProvider implements MicrosoftGraphTokenProvider
       }
     }
 
-    const interactive = await app.acquireTokenInteractive({
+    const promptNone = await tryAcquirePromptNone(app, this.options.openBrowser);
+    const interactive = promptNone ?? await app.acquireTokenInteractive({
       scopes: GRAPH_SCOPES,
-      prompt: PromptValue.NONE,
-      openBrowser: this.openBrowser,
+      openBrowser: this.options.openBrowser,
     });
     if (!interactive?.accessToken) {
       throw new Error('Microsoft broker authentication did not return an access token.');
@@ -133,21 +137,21 @@ export class MsalBrokerGraphTokenProvider implements MicrosoftGraphTokenProvider
   }
 
   private getApp(): Promise<PublicClientApplication> {
-    this.appPromise ??= createBrokerApp(this.authDataDir);
+    this.appPromise ??= createBrokerApp(this.options);
     return this.appPromise;
   }
 }
 
-async function createBrokerApp(authDataDir: string): Promise<PublicClientApplication> {
-  fs.mkdirSync(authDataDir, { recursive: true });
+async function createBrokerApp(options: MsalBrokerGraphTokenProviderOptions): Promise<PublicClientApplication> {
+  fs.mkdirSync(options.authDataDir, { recursive: true });
   const persistence = await FilePersistenceWithDataProtection.create(
-    path.join(authDataDir, 'msal-cache.json'),
+    path.join(options.authDataDir, 'msal-cache.json'),
     DataProtectionScope.CurrentUser,
   );
   const config: Configuration = {
     auth: {
-      clientId: VSCODE_CLIENT_ID,
-      authority: `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}`,
+      clientId: options.clientId ?? VSCODE_CLIENT_ID,
+      authority: `https://login.microsoftonline.com/${options.tenantId ?? MICROSOFT_TENANT_ID}`,
     },
     cache: {
       cachePlugin: new PersistenceCachePlugin(persistence),
@@ -164,6 +168,18 @@ async function tryAcquireSilent(app: PublicClientApplication, account: AccountIn
     return await app.acquireTokenSilent({
       account,
       scopes: GRAPH_SCOPES,
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function tryAcquirePromptNone(app: PublicClientApplication, openBrowser: (url: string) => Promise<void>): Promise<AuthenticationResult | null> {
+  try {
+    return await app.acquireTokenInteractive({
+      scopes: GRAPH_SCOPES,
+      prompt: PromptValue.NONE,
+      openBrowser,
     });
   } catch {
     return null;

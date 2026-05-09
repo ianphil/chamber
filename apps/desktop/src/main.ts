@@ -187,10 +187,12 @@ const mindProfileService = new MindProfileService({
 const userProfileService = new UserProfileService(configService);
 const microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
   userProfileService,
-  new MsalBrokerGraphTokenProvider(
-    path.join(appPaths.userData, 'auth', 'microsoft'),
-    (url) => shell.openExternal(url),
-  ),
+  new MsalBrokerGraphTokenProvider({
+    authDataDir: path.join(appPaths.userData, 'auth', 'microsoft'),
+    openBrowser: (url) => shell.openExternal(url),
+    clientId: process.env.CHAMBER_MICROSOFT_GRAPH_CLIENT_ID,
+    tenantId: process.env.CHAMBER_MICROSOFT_GRAPH_TENANT_ID,
+  }),
 );
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
