@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.2 (2026-05-08)
+
+### Tooling
+
+- **Drop `--package-lock-only` from the ship workflow** — The ship skill no longer instructs maintainers to run `npm install --package-lock-only` after `npm version`. On local npm 11.6.x the flag silently strips top-level optional cross-platform binary entries (`@emnapi/core`, `@emnapi/runtime`, etc.) that the lockfile carries for non-current platforms, which then fails CI on npm 11.12.x with `Missing: <pkg> from lock file`. `npm version` already updates `package-lock.json`'s version field, so the second command was redundant for pure version bumps and harmful for everything else.
+
 ## v0.49.1 (2026-05-08)
 
 ### Packaging
