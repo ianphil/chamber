@@ -14,6 +14,15 @@
 //     mind is currently using it.
 //   * activate/release operations are serialized so concurrent activates
 //     don't race the connection start.
+//
+// Trust boundary:
+//   * Each mind sees a `MindScopedJobs` adapter — its job_ids are namespaced
+//     `${mindId}:${realJobId}` and any cli_status/respond/approve/cancel
+//     against another mind's job_id is rejected with the same UnknownJob
+//     error a non-existent id would produce. cli_list returns only this
+//     mind's jobs. See `MindScopedJobs.ts` for the rationale.
+//   * Releasing a mind cancels all of its still-running delegated jobs so
+//     work doesn't outlive the mind that owns it.
 
 import {
   AcpConnection,
@@ -24,6 +33,7 @@ import {
 import type { ChamberToolProvider } from '../chamberTools';
 import { Logger } from '../logger';
 import type { Tool } from '../mind/types';
+import { MindScopedJobs } from './MindScopedJobs';
 import type {
   AcpConnectionFactory,
   AcpToolFactory,
@@ -43,9 +53,10 @@ export class ChamberCopilotService implements ChamberToolProvider {
   private readonly jobStoreFactory: JobStoreFactory;
   private readonly toolFactory: AcpToolFactory;
   private readonly activeMinds = new Set<string>();
+  private readonly scopedStores = new Map<string, MindScopedJobs>();
+  private readonly toolsByMind = new Map<string, AcpTool[]>();
   private connection: AcpConnection | null = null;
   private store: JobStore | null = null;
-  private tools: AcpTool[] | null = null;
   private startPromise: Promise<void> | null = null;
 
   constructor(options: ChamberCopilotServiceOptions) {
@@ -54,27 +65,51 @@ export class ChamberCopilotService implements ChamberToolProvider {
     this.toolFactory = options.toolFactory ?? defaultToolFactory;
   }
 
-  getToolsForMind(_mindId: string, _mindPath: string): Tool[] {
-    void _mindId;
+  getToolsForMind(mindId: string, _mindPath: string): Tool[] {
     void _mindPath;
     if (!this.store) return [];
-    if (!this.tools) {
-      this.tools = this.toolFactory({ store: this.store });
-    }
-    return this.tools as unknown as Tool[];
+    const cached = this.toolsByMind.get(mindId);
+    if (cached) return cached as unknown as Tool[];
+
+    const scoped = this.getOrCreateScopedStore(mindId);
+    const tools = this.toolFactory({ store: scoped as unknown as JobStore });
+    this.toolsByMind.set(mindId, tools);
+    return tools as unknown as Tool[];
   }
 
   async activateMind(mindId: string, _mindPath: string): Promise<void> {
     void _mindPath;
     await this.ensureStarted();
     this.activeMinds.add(mindId);
+    // Eagerly create the per-mind scoped store so that a getToolsForMind
+    // call before activation returns [], and after activation always
+    // returns this mind's own scoped surface.
+    this.getOrCreateScopedStore(mindId);
   }
 
   async releaseMind(mindId: string): Promise<void> {
     if (!this.activeMinds.delete(mindId)) return;
+    const scoped = this.scopedStores.get(mindId);
+    this.scopedStores.delete(mindId);
+    this.toolsByMind.delete(mindId);
+    if (scoped) {
+      await scoped.releaseAll();
+    }
     if (this.activeMinds.size === 0) {
       await this.shutdown();
     }
+  }
+
+  private getOrCreateScopedStore(mindId: string): MindScopedJobs {
+    let scoped = this.scopedStores.get(mindId);
+    if (!scoped) {
+      if (!this.store) {
+        throw new Error('ChamberCopilotService: store unavailable; call activateMind first');
+      }
+      scoped = new MindScopedJobs(this.store, mindId);
+      this.scopedStores.set(mindId, scoped);
+    }
+    return scoped;
   }
 
   private async ensureStarted(): Promise<void> {
@@ -100,7 +135,6 @@ export class ChamberCopilotService implements ChamberToolProvider {
     }
     this.connection = connection;
     this.store = this.jobStoreFactory(connection);
-    this.tools = null;
     log.info('chamber-copilot AcpConnection started');
   }
 
@@ -108,7 +142,8 @@ export class ChamberCopilotService implements ChamberToolProvider {
     const connection = this.connection;
     this.connection = null;
     this.store = null;
-    this.tools = null;
+    this.scopedStores.clear();
+    this.toolsByMind.clear();
     if (!connection) return;
     try {
       await connection.stop();

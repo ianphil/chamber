@@ -26,10 +26,18 @@ class FakeAcpConnection {
 }
 
 class FakeJobStore {
-  delegate = vi.fn(async ({ cwd, prompt }: { cwd: string; prompt: string }) => ({
-    jobId: 'job-1',
-    sessionId: `sess-${cwd}-${prompt.slice(0, 4)}`,
-  }));
+  // The fake records every job the service has delegated to it so the
+  // release-cancels-jobs assertion can target the right ids without
+  // hard-coding internals.
+  readonly delegatedJobIds: string[] = [];
+  private counter = 0;
+
+  delegate = vi.fn(async ({ cwd, prompt }: { cwd: string; prompt: string }) => {
+    this.counter += 1;
+    const jobId = `job-${this.counter}`;
+    this.delegatedJobIds.push(jobId);
+    return { jobId, sessionId: `sess-${cwd}-${prompt.slice(0, 4)}` };
+  });
   respond = vi.fn(async () => {});
   approve = vi.fn(async () => {});
   cancel = vi.fn(async () => {});
@@ -52,36 +60,32 @@ interface Harness {
   readonly connection: FakeAcpConnection;
   readonly store: FakeJobStore;
   readonly toolFactoryCalls: Array<{ store: JobStore }>;
-  readonly stubTools: AcpTool[];
+  readonly stubToolNames: readonly string[];
 }
 
-function buildHarness(overrides: { stubTools?: AcpTool[] } = {}): Harness {
+function buildHarness(overrides: { connectionFactory?: () => AcpConnection } = {}): Harness {
   const connection = new FakeAcpConnection();
   const store = new FakeJobStore();
   const toolFactoryCalls: Array<{ store: JobStore }> = [];
-  const stubTools = overrides.stubTools ?? [
-    makeStubTool('cli_delegate'),
-    makeStubTool('cli_status'),
-    makeStubTool('cli_respond'),
-    makeStubTool('cli_approve'),
-    makeStubTool('cli_cancel'),
-    makeStubTool('cli_list'),
-  ];
+  const stubToolNames = [
+    'cli_delegate',
+    'cli_status',
+    'cli_respond',
+    'cli_approve',
+    'cli_cancel',
+    'cli_list',
+  ] as const;
 
   const service = new ChamberCopilotService({
-    connectionFactory: () => connection as unknown as AcpConnection,
-    jobStoreFactory: (conn) => {
-      // Sanity check the wiring direction: store gets the same connection.
-      void conn;
-      return store as unknown as JobStore;
-    },
+    connectionFactory: overrides.connectionFactory ?? (() => connection as unknown as AcpConnection),
+    jobStoreFactory: () => store as unknown as JobStore,
     toolFactory: (deps) => {
       toolFactoryCalls.push(deps);
-      return stubTools;
+      return stubToolNames.map((name) => makeStubTool(name));
     },
   });
 
-  return { service, connection, store, toolFactoryCalls, stubTools };
+  return { service, connection, store, toolFactoryCalls, stubToolNames };
 }
 
 function makeStubTool(name: string): AcpTool {
@@ -112,13 +116,6 @@ describe('ChamberCopilotService', () => {
     await service.activateMind('mind-3', '/tmp/mind-3');
 
     expect(connection.start).toHaveBeenCalledOnce();
-  });
-
-  it('does not start the connection if no mind is activated', () => {
-    const { service, connection } = buildHarness();
-
-    void service;
-    expect(connection.start).not.toHaveBeenCalled();
   });
 
   it('serializes concurrent first-activates so the connection starts exactly once', async () => {
@@ -181,16 +178,21 @@ describe('ChamberCopilotService', () => {
     ]);
   });
 
-  it('builds the cli_* tools from the JobStore exactly once', async () => {
-    const { service, toolFactoryCalls, store } = buildHarness();
+  it('builds a separate cli_* tool surface per mind so trust boundaries are not shared', async () => {
+    const { service, toolFactoryCalls } = buildHarness();
     await service.activateMind('mind-1', '/tmp/mind-1');
+    await service.activateMind('mind-2', '/tmp/mind-2');
 
     service.getToolsForMind('mind-1', '/tmp/mind-1');
-    service.getToolsForMind('mind-1', '/tmp/mind-1');
+    service.getToolsForMind('mind-1', '/tmp/mind-1'); // cached
     service.getToolsForMind('mind-2', '/tmp/mind-2');
 
-    expect(toolFactoryCalls).toHaveLength(1);
-    expect(toolFactoryCalls[0].store).toBe(store as unknown as JobStore);
+    // Two distinct minds → two distinct tool factory calls. The store passed
+    // to each call is the per-mind MindScopedJobs adapter (not the bare
+    // shared JobStore), so cross-mind cli_status/respond/approve/cancel/list
+    // is impossible — see MindScopedJobs.test.ts for that contract.
+    expect(toolFactoryCalls).toHaveLength(2);
+    expect(toolFactoryCalls[0].store).not.toBe(toolFactoryCalls[1].store);
   });
 
   it('returns an empty tool list before any mind has activated', () => {
@@ -207,5 +209,72 @@ describe('ChamberCopilotService', () => {
     await service.releaseMind('mind-1');
 
     expect(connection.stop).toHaveBeenCalledOnce();
+  });
+
+  it('cancels every job owned by a mind when the mind is released', async () => {
+    const { service, store, toolFactoryCalls } = buildHarness();
+    await service.activateMind('mind-1', '/tmp/mind-1');
+    service.getToolsForMind('mind-1', '/tmp/mind-1'); // triggers tool factory call
+    const scopedStore = toolFactoryCalls[0].store; // the MindScopedJobs adapter
+
+    await scopedStore.delegate({ cwd: '/repo', prompt: 'p1' });
+    await scopedStore.delegate({ cwd: '/repo', prompt: 'p2' });
+
+    expect(store.delegatedJobIds).toEqual(['job-1', 'job-2']);
+
+    await service.releaseMind('mind-1');
+
+    expect(store.cancel).toHaveBeenCalledWith('job-1');
+    expect(store.cancel).toHaveBeenCalledWith('job-2');
+  });
+
+  it('release with slow shutdown does not block a fresh activate from starting a new connection', async () => {
+    const connections: FakeAcpConnection[] = [];
+    let stopGate: (() => void) | null = null;
+    const stopBlocked = new Promise<void>((resolve) => {
+      stopGate = resolve;
+    });
+
+    const { service } = buildHarness({
+      connectionFactory: () => {
+        const conn = new FakeAcpConnection();
+        // First connection's stop() blocks until we open the gate, modeling
+        // a slow teardown racing a fresh activate.
+        if (connections.length === 0) {
+          conn.stop = vi.fn(async () => {
+            await stopBlocked;
+          });
+        }
+        connections.push(conn);
+        return conn as unknown as AcpConnection;
+      },
+    });
+
+    await service.activateMind('mind-1', '/tmp/mind-1');
+
+    // Start the release. Its body runs sync up to `await scoped.releaseAll()`
+    // (which resolves immediately for a mind with no delegated jobs); on the
+    // next microtask spin, shutdown() runs and synchronously nulls
+    // this.connection / this.store before suspending on the gated stop().
+    const releasePromise = service.releaseMind('mind-1');
+
+    // Drain the microtask queue so shutdown's synchronous prefix has
+    // executed (this.connection = null) before the parallel activate runs.
+    // Without this, ensureStarted would see the old connection still alive
+    // and silently reuse it — and the race wouldn't happen at all.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await service.activateMind('mind-2', '/tmp/mind-2');
+
+    expect(connections).toHaveLength(2);
+    expect(connections[1].start).toHaveBeenCalledOnce();
+
+    stopGate!();
+    await releasePromise;
+
+    // The slow stop eventually completed; the new connection is still alive.
+    expect(connections[0].stop).toHaveBeenCalledOnce();
+    expect(connections[1].stop).not.toHaveBeenCalled();
   });
 });

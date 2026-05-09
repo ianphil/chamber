@@ -90,15 +90,6 @@ async function main() {
 
     console.log(`ACP smoke passed (${updates.length} session/update events, stopReason=${snapshot.lastStopReason ?? 'unknown'}).`);
   } finally {
-    if (jobId) {
-      // Best-effort cancel; most jobs are already idle by here.
-      try {
-        const cancelStore = await import(pathToFileURL(path.join(repoRoot, 'node_modules', 'chamber-copilot', 'index.mjs')).href);
-        void cancelStore;
-      } catch {
-        // ignore
-      }
-    }
     await connection.stop().catch(() => undefined);
     cleanupMind(mindPath);
   }
