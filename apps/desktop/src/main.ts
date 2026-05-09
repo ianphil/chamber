@@ -172,6 +172,21 @@ const viewDiscovery = new ViewDiscovery();
 
 const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
+
+// Discover Copilot CLI extension AgentCards from .github/extensions/*/agent-card.json
+// so they appear in a2a_list_agents alongside in-process Mind cards. Routing to
+// COPILOT_EXTENSION-bound cards is a follow-up (#247).
+const extensionsRoot = app.isPackaged
+  ? path.join(process.resourcesPath, '.github', 'extensions')
+  : path.join(process.cwd(), '.github', 'extensions');
+const extensionLoadResult = agentCardRegistry.loadExtensionCards(extensionsRoot);
+for (const skipped of extensionLoadResult.skipped) {
+  log.warn(`Skipped extension card in '${skipped.dir}': ${skipped.reason}`);
+}
+if (extensionLoadResult.loaded.length > 0) {
+  log.info(`Loaded ${extensionLoadResult.loaded.length} extension AgentCard(s): ${extensionLoadResult.loaded.join(', ')}`);
+}
+
 const turnQueue = new TurnQueue();
 const mindManager: MindManager = new MindManager(clientFactory, identityLoader, configService, viewDiscovery);
 const mindProfileService = new MindProfileService({

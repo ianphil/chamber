@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.49.2 (2026-05-08)
+
+### A2A
+
+- **Discover Copilot CLI extension AgentCards from `.github/extensions/`** — `AgentCardRegistry.loadExtensionCards(extensionsRoot)` now scans `<root>/<dir>/agent-card.json` files, validates them against the AgentCard shape, and registers each under the synthetic key `extension:<name>`. Invalid or missing cards are skipped with a structured reason rather than thrown, so a single bad extension can't brick startup. The desktop composition root calls this on launch against `.github/extensions/`, so `chamber-copilot` (vendored as a submodule at that path) is now visible in `a2a_list_agents` alongside in-process Mind cards. Routing to `COPILOT_EXTENSION`-bound cards is a follow-up. (#247)
+
+### Internal
+
+- **Vendor `chamber-copilot` as a submodule** at `.github/extensions/chamber-copilot/`, pinned to `v0.1.0`. The extension drives a child Copilot CLI process and publishes a Chamber-compatible AgentCard. (#247)
+
 ## v0.49.1 (2026-05-08)
 
 ### Packaging

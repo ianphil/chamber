@@ -145,5 +145,126 @@ describe('AgentCardRegistry', () => {
     expect(teams.description).toBe('Send messages via Teams.');
     expect(teams.tags).toContain('teams');
   });
+
+  describe('loadExtensionCards', () => {
+    const VALID_CARD = {
+      name: 'chamber-copilot',
+      description: 'Drives a child Copilot CLI process from another agent\'s session.',
+      version: '0.1.0',
+      supportedInterfaces: [
+        { url: 'extension://chamber-copilot', protocolBinding: 'COPILOT_EXTENSION', protocolVersion: '1.0' },
+      ],
+      capabilities: { streaming: true },
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [
+        { id: 'cli-control', name: 'Drive a Copilot CLI', description: '...', tags: ['cli', 'process'] },
+      ],
+    };
+
+    function stubExtensionsDir(extensionsRoot: string, entries: { dir: string; cardJson?: string }[]) {
+      vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => {
+        const s = String(p);
+        if (s === extensionsRoot) return true;
+        for (const entry of entries) {
+          if (entry.cardJson === undefined) continue;
+          if (s === path.join(extensionsRoot, entry.dir, 'agent-card.json')) return true;
+        }
+        return false;
+      });
+      vi.mocked(fs.readdirSync).mockImplementation(((p: string, opts?: { withFileTypes?: boolean }) => {
+        if (String(p) === extensionsRoot && opts?.withFileTypes) {
+          return entries.map((e) => ({ name: e.dir, isDirectory: () => true })) as unknown as fs.Dirent[];
+        }
+        return [];
+      }) as unknown as typeof fs.readdirSync);
+      vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
+        for (const entry of entries) {
+          if (entry.cardJson !== undefined && String(p) === path.join(extensionsRoot, entry.dir, 'agent-card.json')) {
+            return entry.cardJson;
+          }
+        }
+        return '';
+      }) as typeof fs.readFileSync);
+    }
+
+    it('returns empty result when extensions directory does not exist', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      const result = registry.loadExtensionCards('C:\\nope');
+      expect(result.loaded).toEqual([]);
+      expect(result.skipped).toEqual([]);
+      expect(registry.getCards()).toHaveLength(0);
+    });
+
+    it('loads a valid card and registers it under extension:<name>', () => {
+      const root = 'C:\\repo\\.github\\extensions';
+      stubExtensionsDir(root, [{ dir: 'chamber-copilot', cardJson: JSON.stringify(VALID_CARD) }]);
+
+      const result = registry.loadExtensionCards(root);
+
+      expect(result.loaded).toEqual(['chamber-copilot']);
+      expect(result.skipped).toEqual([]);
+      expect(registry.getCard('extension:chamber-copilot')).not.toBeNull();
+      expect(registry.getCardByName('chamber-copilot')?.version).toBe('0.1.0');
+    });
+
+    it('extension card resolves via getCardByName for routing', () => {
+      const root = 'C:\\repo\\.github\\extensions';
+      stubExtensionsDir(root, [{ dir: 'chamber-copilot', cardJson: JSON.stringify(VALID_CARD) }]);
+      registry.loadExtensionCards(root);
+
+      const card = registry.getCardByName('chamber-copilot');
+      if (!card) throw new Error('expected card');
+      expect(card.supportedInterfaces[0].protocolBinding).toBe('COPILOT_EXTENSION');
+      expect(card.mindId).toBeUndefined();
+    });
+
+    it('skips entries without agent-card.json without throwing', () => {
+      const root = 'C:\\repo\\.github\\extensions';
+      stubExtensionsDir(root, [{ dir: 'no-card' }]);
+
+      const result = registry.loadExtensionCards(root);
+
+      expect(result.loaded).toEqual([]);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]).toEqual({ dir: 'no-card', reason: 'no agent-card.json' });
+    });
+
+    it('skips malformed JSON without throwing', () => {
+      const root = 'C:\\repo\\.github\\extensions';
+      stubExtensionsDir(root, [{ dir: 'broken', cardJson: '{ not valid json' }]);
+
+      const result = registry.loadExtensionCards(root);
+
+      expect(result.loaded).toEqual([]);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0].dir).toBe('broken');
+      expect(result.skipped[0].reason).toMatch(/invalid JSON/);
+    });
+
+    it('skips cards missing required fields', () => {
+      const root = 'C:\\repo\\.github\\extensions';
+      const incomplete = { name: 'partial', description: 'no version' };
+      stubExtensionsDir(root, [{ dir: 'partial', cardJson: JSON.stringify(incomplete) }]);
+
+      const result = registry.loadExtensionCards(root);
+
+      expect(result.loaded).toEqual([]);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0].reason).toMatch(/missing required field/);
+    });
+
+    it('does not collide with in-process Mind cards', () => {
+      const root = 'C:\\repo\\.github\\extensions';
+      stubExtensionsDir(root, [{ dir: 'chamber-copilot', cardJson: JSON.stringify(VALID_CARD) }]);
+
+      registry.register(makeMindContext({ mindId: 'q-123', identity: { name: 'Q', systemMessage: '' } }));
+      registry.loadExtensionCards(root);
+
+      expect(registry.getCard('q-123')?.name).toBe('Q');
+      expect(registry.getCard('extension:chamber-copilot')?.name).toBe('chamber-copilot');
+      expect(registry.getCards()).toHaveLength(2);
+    });
+  });
 });
 

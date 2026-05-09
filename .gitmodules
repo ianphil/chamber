@@ -1,0 +1,4 @@
+[submodule ".github/extensions/chamber-copilot"]
+	path = .github/extensions/chamber-copilot
+	url = https://github.com/patschmitt91/chamber-copilot.git
+	branch = master
