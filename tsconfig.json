@@ -9,6 +9,7 @@
       "@chamber/services": ["./packages/services/src/index.ts"],
       "@chamber/shared": ["./packages/shared/src/index.ts"],
       "@chamber/shared/*": ["./packages/shared/src/*"],
+      "@chamber/webapi": ["./apps/webapi/src/index.ts"],
       "@chamber/wire-contracts": ["./packages/wire-contracts/src/index.ts"]
     }
   },

@@ -3,15 +3,14 @@ import type { Context } from 'hono';
 import { getRequestListener } from '@hono/node-server';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
+import { registerA2ARoutes } from '@chamber/webapi';
 import {
   addMindHandler,
   cancelChatHandler,
-  getA2AAgentCardHandler,
   getAuthStatusHandler,
   getConfigHandler,
   getGenesisStatusHandler,
   healthHandler,
-  listA2AAgentsHandler,
   listAuthAccountsHandler,
   listChamberToolsHandler,
   listLensViewsHandler,
@@ -19,11 +18,8 @@ import {
   listMindsHandler,
   logoutAuthHandler,
   newConversationHandler,
-  registerA2AAgentCardHandler,
-  sendA2AMessageHandler,
   sendChatHandler,
   switchAuthAccountHandler,
-  unregisterA2AAgentCardHandler,
   uploadAttachmentHandler,
 } from './handlers';
 import { isAllowedOrigin, isAuthorized } from './auth';
@@ -130,28 +126,7 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
     return send(c, await logoutAuthHandler(toRequest(c), ctx));
   });
   app.get('/api/chamber-tools/list', authenticated(listChamberToolsHandler));
-  app.get('/api/a2a/agents', authenticated(listA2AAgentsHandler));
-  app.get('/api/a2a/agents/:recipient/card', authenticated(getA2AAgentCardHandler));
-  app.post('/api/a2a/agents', async (c) => {
-    const authFailure = requireAuth(c, ctx);
-    if (authFailure) return authFailure;
-    return send(c, await registerA2AAgentCardHandler(await toRequestWithBody(c), ctx));
-  });
-  app.delete('/api/a2a/agents/:recipient', async (c) => {
-    const authFailure = requireAuth(c, ctx);
-    if (authFailure) return authFailure;
-    return send(c, await unregisterA2AAgentCardHandler(toRequest(c), ctx));
-  });
-  app.post('/api/a2a/message:send', async (c) => {
-    const authFailure = requireAuth(c, ctx);
-    if (authFailure) return authFailure;
-    return send(c, await sendA2AMessageHandler(await toRequestWithBody(c), ctx));
-  });
-  app.post('/message:send', async (c) => {
-    const authFailure = requireAuth(c, ctx);
-    if (authFailure) return authFailure;
-    return send(c, await sendA2AMessageHandler(await toRequestWithBody(c), ctx));
-  });
+  registerA2ARoutes(app, ctx, { exposeInternalErrors: true });
   app.post('/api/attachments', async (c) => {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;

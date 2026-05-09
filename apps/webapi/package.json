@@ -1,0 +1,19 @@
+{
+  "name": "@chamber/webapi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@chamber/shared": "file:../../packages/shared",
+    "@hono/node-server": "^2.0.0",
+    "hono": "^4.10.6"
+  }
+}

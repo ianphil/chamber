@@ -4,9 +4,10 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { Server } from 'node:http';
 import started from 'electron-squirrel-startup';
 import { IPC } from '@chamber/shared';
+import { createA2AHttpServer } from '@chamber/webapi';
 
 import {
   A2aToolProvider,
@@ -82,7 +83,6 @@ import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import type sharpModule from 'sharp';
-import type { AgentCard, Message, SendMessageRequest } from '@chamber/shared/a2a-types';
 
 if (started) {
   app.quit();
@@ -337,7 +337,6 @@ const useDesktopA2AServer =
   process.env.CHAMBER_A2A_SERVER === '1' ||
   process.env.CHAMBER_A2A_PORT !== undefined ||
   process.env.CHAMBER_SERVER_PORT !== undefined;
-const MAX_DESKTOP_A2A_REQUEST_BYTES = 1_000_000;
 const updaterService = new UpdaterService({
   currentVersion: app.getVersion(),
   isPackaged: app.isPackaged,
@@ -426,16 +425,19 @@ async function startDesktopA2AServer(): Promise<void> {
   const port = Number(process.env.CHAMBER_A2A_PORT ?? process.env.CHAMBER_SERVER_PORT ?? 0);
   const token = process.env.CHAMBER_A2A_TOKEN ?? process.env.CHAMBER_SERVER_TOKEN ?? randomBytes(32).toString('base64url');
 
-  desktopA2AServer = createServer((request, response) => {
-    void handleDesktopA2ARequest(request, response, token).catch((error: unknown) => {
-      if (error instanceof DesktopA2ARequestBodyTooLargeError) {
-        sendDesktopA2AJson(response, 413, { error: 'request body too large' });
-        return;
-      }
-      log.warn('Desktop A2A request failed:', error);
-      sendDesktopA2AJson(response, 500, { error: 'internal server error' });
-    });
+  const controls = createA2AHttpServer({
+    token,
+    allowedOrigins: new Set(['http://127.0.0.1', 'http://localhost']),
+    listA2AAgents: () => agentCardRegistry.getCards(),
+    getA2AAgentCard: (recipient) =>
+      agentCardRegistry.getCard(recipient) ?? agentCardRegistry.getCardByName(recipient),
+    registerA2AAgentCard: (card, auth) => agentCardRegistry.registerRemote(card, auth),
+    unregisterA2AAgentCard: (recipient) => agentCardRegistry.unregisterRemote(recipient),
+    sendA2AMessage: (request, options) => messageRouter.sendMessage(request, options),
+  }, {
+    logger: { warn: (message, error) => log.warn(message, error) },
   });
+  desktopA2AServer = controls.server;
 
   await new Promise<void>((resolve, reject) => {
     desktopA2AServer?.once('error', reject);
@@ -461,139 +463,6 @@ function stopDesktopA2AServer(): Promise<void> {
     desktopA2AServer = null;
     server.close(() => resolve());
   });
-}
-
-async function handleDesktopA2ARequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  token: string,
-): Promise<void> {
-  if (request.method === 'GET' && request.url === '/api/health') {
-    sendDesktopA2AJson(response, 200, { ok: true });
-    return;
-  }
-
-  if (!isDesktopA2AAuthorized(request, token)) {
-    sendDesktopA2AJson(response, 401, { error: 'Unauthorized' });
-    return;
-  }
-
-  const url = new URL(request.url ?? '/', 'http://127.0.0.1');
-  if (request.method === 'GET' && url.pathname === '/api/a2a/agents') {
-    sendDesktopA2AJson(response, 200, { agents: agentCardRegistry.getCards() });
-    return;
-  }
-
-  if (request.method === 'POST' && url.pathname === '/api/a2a/agents') {
-    const body = await readDesktopA2AJson(request);
-    const card = isAgentCardRecord(body) ? body : isRecord(body) && isAgentCardRecord(body.card) ? body.card : null;
-    if (!card) {
-      sendDesktopA2AJson(response, 400, { error: 'valid agent card is required' });
-      return;
-    }
-    const inboundAuth = isRecord(body) && isRemoteA2AAgentAuth(body.inboundAuth) ? body.inboundAuth : undefined;
-    try {
-      agentCardRegistry.registerRemote(card, inboundAuth);
-    } catch (error) {
-      sendDesktopA2AJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
-      return;
-    }
-    sendDesktopA2AJson(response, 200, { ok: true, agent: card });
-    return;
-  }
-
-  if (request.method === 'DELETE' && url.pathname.startsWith('/api/a2a/agents/')) {
-    const recipient = decodeURIComponent(url.pathname.split('/').filter(Boolean).at(-1) ?? '');
-    agentCardRegistry.unregisterRemote(recipient);
-    sendDesktopA2AJson(response, 200, { ok: true });
-    return;
-  }
-
-  if (request.method === 'POST' && (url.pathname === '/api/a2a/message:send' || url.pathname === '/message:send')) {
-    const body = await readDesktopA2AJson(request);
-    if (!isSendMessageRequestRecord(body)) {
-      sendDesktopA2AJson(response, 400, { error: 'valid A2A SendMessageRequest is required' });
-      return;
-    }
-    try {
-      const result = await messageRouter.sendMessage(body, { allowRemoteRecipients: false });
-      sendDesktopA2AJson(response, 200, result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.startsWith('Unknown local recipient:')) {
-        sendDesktopA2AJson(response, 404, { error: message });
-        return;
-      }
-      log.warn('Desktop A2A message delivery failed:', error);
-      sendDesktopA2AJson(response, 502, { error: 'A2A message delivery failed' });
-    }
-    return;
-  }
-
-  sendDesktopA2AJson(response, 404, { error: 'not found' });
-}
-
-function isDesktopA2AAuthorized(request: IncomingMessage, token: string): boolean {
-  return request.headers.authorization === `Bearer ${token}`;
-}
-
-async function readDesktopA2AJson(request: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let totalBytes = 0;
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    totalBytes += buffer.length;
-    if (totalBytes > MAX_DESKTOP_A2A_REQUEST_BYTES) {
-      throw new DesktopA2ARequestBodyTooLargeError();
-    }
-    chunks.push(buffer);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as unknown;
-}
-
-class DesktopA2ARequestBodyTooLargeError extends Error {}
-
-function sendDesktopA2AJson(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  response.end(JSON.stringify(body));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isAgentCardRecord(value: unknown): value is AgentCard {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.name === 'string' &&
-    typeof value.description === 'string' &&
-    typeof value.version === 'string' &&
-    Array.isArray(value.supportedInterfaces) &&
-    Array.isArray(value.defaultInputModes) &&
-    Array.isArray(value.defaultOutputModes) &&
-    Array.isArray(value.skills) &&
-    isRecord(value.capabilities)
-  );
-}
-
-function isSendMessageRequestRecord(value: unknown): value is SendMessageRequest {
-  return isRecord(value) && typeof value.recipient === 'string' && isMessageRecord(value.message);
-}
-
-function isRemoteA2AAgentAuth(value: unknown): value is { scheme: 'bearer'; token: string } {
-  return isRecord(value) && value.scheme === 'bearer' && typeof value.token === 'string' && value.token.trim().length > 0;
-}
-
-function isMessageRecord(value: unknown): value is Message {
-  return (
-    isRecord(value) &&
-    typeof value.messageId === 'string' &&
-    (value.role === 'user' || value.role === 'agent') &&
-    Array.isArray(value.parts)
-  );
 }
 
 const showMainWindow = () => {

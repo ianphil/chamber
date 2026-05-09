@@ -19,6 +19,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '../apps/web/src'),
+      '@chamber/webapi': path.resolve(__dirname, '../apps/webapi/src/index.ts'),
     },
   },
 });
