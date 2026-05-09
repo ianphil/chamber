@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatEvent, ContentBlock } from '@chamber/shared/types';
+import type { ChatMessage, ChatEvent, ContentBlock, ConversationSummary } from '@chamber/shared/types';
 import type { Task, TaskState } from '@chamber/shared/a2a-types';
 import type { ChatroomMessage, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 import { isOrchestrationEvent } from '@chamber/shared/chatroom-types';
@@ -53,6 +53,22 @@ function setConversationView(
       ...patch,
     },
   };
+}
+
+function mergeConversationSummaries(
+  existing: ConversationSummary[] | undefined,
+  incoming: ConversationSummary[],
+): ConversationSummary[] {
+  if (!existing?.length) return incoming;
+  const existingById = new Map(existing.map((conversation) => [conversation.sessionId, conversation]));
+  return incoming.map((conversation) => {
+    const current = existingById.get(conversation.sessionId);
+    if (!current) return conversation;
+    const currentUpdatedAt = Date.parse(current.updatedAt);
+    const incomingUpdatedAt = Date.parse(conversation.updatedAt);
+    if (Number.isNaN(currentUpdatedAt) || Number.isNaN(incomingUpdatedAt)) return conversation;
+    return currentUpdatedAt > incomingUpdatedAt ? current : conversation;
+  });
 }
 
 export function handleChatEvent<T extends ChatMessage>(messages: T[], messageId: string, event: ChatEvent): T[] {
@@ -269,7 +285,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'SET_CONVERSATION_HISTORY': {
-      const activeSessionId = action.payload.conversations.find((conversation) => conversation.active)?.sessionId;
+      const conversations = mergeConversationSummaries(
+        state.conversationHistoryByMind[action.payload.mindId],
+        action.payload.conversations,
+      );
+      const activeSessionId = conversations.find((conversation) => conversation.active)?.sessionId;
       const currentView = conversationViewFor(state, action.payload.mindId);
       const hasLocalMessages = (state.messagesByMind[action.payload.mindId]?.length ?? 0) > 0;
       const shouldBindLocalReadyView = currentView.status === 'ready' && currentView.sessionId === undefined && hasLocalMessages;
@@ -279,7 +299,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         conversationHistoryByMind: {
           ...state.conversationHistoryByMind,
-          [action.payload.mindId]: action.payload.conversations,
+          [action.payload.mindId]: conversations,
         },
         activeConversationByMind: {
           ...state.activeConversationByMind,

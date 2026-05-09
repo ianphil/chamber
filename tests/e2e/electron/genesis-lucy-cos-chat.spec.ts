@@ -59,6 +59,7 @@ test.describe('electron Genesis Lucy Chief of Staff chat smoke', () => {
     await page.getByRole('button', { name: 'Begin' }).click();
     await expect(page.getByRole('button', { name: /Lucy Chief of Staff/i })).toBeVisible({ timeout: 60_000 });
     await page.getByRole('button', { name: /Lucy Chief of Staff/i }).click();
+    await page.getByRole('button', { name: 'Choose this voice' }).click();
 
     await expect(page.getByText('How can I help you today?')).toBeVisible({ timeout: 300_000 });
     await expect(page.getByText(lucyName)).toBeVisible();

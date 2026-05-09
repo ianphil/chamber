@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.49.13 (2026-05-09)
+
+### Renderer
+
+- **Make conversation history collapsible** — The right-side history panel now persists an expanded/collapsed preference, provides a narrow rail to recover chat width on smaller windows, shows distinct no-agent/loading/empty states, exposes row actions on keyboard focus, and uses an in-app delete confirmation dialog.
+- **Keep fresh history summaries from being overwritten** — Conversation history updates now preserve newer local summaries when a stale list response arrives later, preventing recent renames or first-prompt titles from briefly disappearing.
+
+### Testing
+
+- **Update Genesis template smokes for the confirmation pane** — Lucy Genesis smoke tests now select the template card and confirm with **Choose this voice**, matching the current template-detail UI.
+
 ## v0.49.12 (2026-05-09)
 
 ### Renderer
