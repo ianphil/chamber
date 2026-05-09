@@ -58,7 +58,7 @@ test.describe('electron Lens hot-load smoke', () => {
       return loaded;
     }, { pathToMind: mindPath, pathToInactiveMind: inactiveMindPath });
 
-    await page.getByRole('button', { name: /Active Lens Smoke Mind/ }).click();
+    await page.locator('button').filter({ hasText: /\bActive Lens Smoke Mind\b/ }).click();
 
     await page.evaluate(() => {
       const target = window as typeof window & { __lensHotloadEvents?: string[][] };
@@ -140,7 +140,7 @@ test.describe('electron Lens hot-load smoke', () => {
       }, { mindId: mind.mindId, viewId: refreshViewId }),
       { timeout: 10_000 },
     ).toBe(true);
-    await page.getByRole('button', { name: /Active Lens Smoke Mind/ }).click();
+    await page.locator('button').filter({ hasText: /\bActive Lens Smoke Mind\b/ }).click();
     await expect(page.getByRole('button', { name: 'Smoke Refresh Continuity' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Smoke Refresh Continuity' }).click();

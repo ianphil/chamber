@@ -307,7 +307,7 @@ function ProfileMarkdownEditor({
 
   return (
     <Dialog open={Boolean(file)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-4xl bg-slate-950 text-slate-100">
+      <DialogContent className="flex max-h-[88vh] max-w-4xl flex-col bg-slate-950 text-slate-100">
         <DialogHeader>
           <DialogTitle>{file?.label ?? 'Profile file'}</DialogTitle>
           <DialogDescription>{file?.relativePath}</DialogDescription>
@@ -317,7 +317,7 @@ function ProfileMarkdownEditor({
           value={value}
           onChange={(event) => setValue(event.target.value)}
           spellCheck={false}
-          className="min-h-[420px] w-full resize-none rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6 text-foreground outline-none focus:border-primary"
+          className="min-h-[200px] w-full flex-1 resize-none rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6 text-foreground outline-none focus:border-primary"
         />
         <DialogFooter>
           {dirty ? <span className="mr-auto self-center text-xs text-amber-300">Unsaved edits</span> : null}

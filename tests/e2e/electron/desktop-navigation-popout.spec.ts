@@ -46,7 +46,7 @@ test.describe('electron desktop navigation and popout smoke', () => {
   test('keeps Chamber focused when an agent message opens an external link', async () => {
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
     await page.waitForLoadState('domcontentloaded');
-    const mind = await loadMindInRenderer(page, externalMindPath, /External Link Smoke Mind/);
+    const mind = await loadMindInRenderer(page, externalMindPath, 'External Link Smoke Mind');
     const initialUrl = page.url();
 
     await hydrateChatState(page, mind.mindId, 'external-link-message', 'Open [external smoke link](https://example.com/chamber-smoke) please.');
@@ -64,7 +64,7 @@ test.describe('electron desktop navigation and popout smoke', () => {
   test('keeps chat messages visible in a popout and after it closes', async () => {
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
     await page.waitForLoadState('domcontentloaded');
-    const mind = await loadMindInRenderer(page, popoutMindPath, /Popout Continuity Smoke Mind/);
+    const mind = await loadMindInRenderer(page, popoutMindPath, 'Popout Continuity Smoke Mind');
     const message = 'Popout continuity smoke transcript';
 
     await hydrateChatState(page, mind.mindId, 'popout-continuity-message', message);
@@ -108,13 +108,14 @@ test.describe('electron desktop navigation and popout smoke', () => {
   }
 });
 
-async function loadMindInRenderer(page: Page, mindPath: string, buttonName: RegExp) {
+async function loadMindInRenderer(page: Page, mindPath: string, mindName: string) {
   const mind = await page.evaluate(async (pathToMind) => {
     const loaded = await window.electronAPI.mind.add(pathToMind);
     await window.electronAPI.mind.setActive(loaded.mindId);
     return loaded;
   }, mindPath);
-  await page.getByRole('button', { name: buttonName }).click();
+  const escaped = mindName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await page.locator('button').filter({ hasText: new RegExp(`\\b${escaped}\\b`) }).click();
   await expect(page.getByPlaceholder('Message your agent… (paste an image to attach)')).toBeEnabled();
   return mind;
 }

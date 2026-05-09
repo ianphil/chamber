@@ -2,7 +2,6 @@ import { chromium, type Browser, type Page } from '@playwright/test';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import keytar from 'keytar';
 
 export const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
@@ -100,10 +99,18 @@ function logsPreview(logs: string[]): string {
 /**
  * Returns true when Chamber's public GitHub API access or stored credentials can access the given repo.
  * Use with `test.skip()` to skip marketplace tests that need a private repo.
+ *
+ * Loads keytar lazily so the Playwright runner process doesn't hold the
+ * keytar.node native addon open. On Windows, an open keytar.node prevents
+ * `electron-forge start` from rebuilding it for Electron's ABI (EPERM on
+ * unlink), which breaks every Electron spec.
  */
 export async function canAccessRepo(nwo: string): Promise<boolean> {
   if (await canFetchRepo(nwo, null)) return true;
 
+  const keytarModule = await import('keytar');
+  const keytar = ((keytarModule as { default?: typeof import('keytar') }).default
+    ?? (keytarModule as unknown as typeof import('keytar')));
   const credentials = await keytar.findCredentials('copilot-cli');
   for (const credential of credentials) {
     if (credential.password && await canFetchRepo(nwo, credential.password)) {

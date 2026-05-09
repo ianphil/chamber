@@ -15,7 +15,6 @@ import {
   ViewDiscovery,
   type CredentialStore,
 } from '@chamber/services';
-import keytar from 'keytar';
 import path from 'node:path';
 import { createCredentialPrivilegedHandler } from './privileged-protocol';
 import type { ChamberCtx } from './types';
@@ -23,12 +22,29 @@ import type { ChamberCtx } from './types';
 const port = Number(process.env.CHAMBER_SERVER_PORT ?? 0);
 const allowedOrigin = process.env.CHAMBER_ALLOWED_ORIGIN ?? 'http://127.0.0.1';
 
+// Defer loading the keytar native addon until an auth method is actually
+// invoked. On Windows, keytar.node is locked the moment Node loads it, which
+// breaks `electron-forge start`'s rebuild step (it can't unlink keytar.node
+// to swap it for Electron's ABI). The loopback server runs as part of
+// Playwright's webServer during desktop smoke runs and never exercises auth
+// in CHAMBER_E2E mode, so deferring the load keeps Forge's rebuild unblocked.
+async function loadKeytar(): Promise<CredentialStore> {
+  const mod = await import('keytar');
+  return ((mod as { default?: CredentialStore }).default ?? (mod as unknown as CredentialStore));
+}
+const credentialStore: CredentialStore = {
+  findCredentials: async (service) => (await loadKeytar()).findCredentials(service),
+  setPassword: async (service, account, password) =>
+    (await loadKeytar()).setPassword(service, account, password),
+  deletePassword: async (service, account) => (await loadKeytar()).deletePassword(service, account),
+};
+
 const configService = new ConfigService();
 const saveActiveLogin = (login: string | null) => {
   const config = configService.load();
   configService.save({ ...config, activeLogin: login });
 };
-const authService = new AuthService(keytar as CredentialStore, () => configService.load().activeLogin, saveActiveLogin);
+const authService = new AuthService(credentialStore, () => configService.load().activeLogin, saveActiveLogin);
 const viewDiscovery = new ViewDiscovery();
 const mindManager = new MindManager(
   new CopilotClientFactory({ toolsBinDir: getChamberToolsBinDir() }),
@@ -112,7 +128,7 @@ const productionContext: ChamberCtx = createServerContext({
   shutdown: () => {
     void shutdown();
   },
-  handlePrivilegedRequest: createCredentialPrivilegedHandler(keytar as CredentialStore),
+  handlePrivilegedRequest: createCredentialPrivilegedHandler(credentialStore),
 });
 
 function buildE2EFakeChatContext(base: ChamberCtx): ChamberCtx {

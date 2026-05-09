@@ -68,8 +68,9 @@ test.describe('electron Monica existing mind smoke', () => {
     ).toEqual(['Monica']);
 
     expect(sameMind.mindId).toBe(mind.mindId);
-    await expect(page.getByRole('button', { name: 'Monica' })).toHaveCount(1);
-    await page.getByRole('button', { name: 'Monica' }).first().click();
+    const monicaSidebarButton = page.locator('button').filter({ hasText: /\bMonica\b/ });
+    await expect(monicaSidebarButton).toHaveCount(1);
+    await monicaSidebarButton.click();
     await expect(page.getByText('How can I help you today?')).toBeVisible();
     await expect(page.getByPlaceholder('Message your agent… (paste an image to attach)')).toBeEnabled();
     expect(mind.identity.name).toBe('Monica');

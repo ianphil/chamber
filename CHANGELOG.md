@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.49.11 (2026-05-09)
+
+### Testing
+
+- **Unblock `npm run smoke:desktop` on Windows** — The Playwright `webServer` (`apps/server/dist/bin.mjs`) and the shared Electron test helper (`tests/e2e/electron/electronApp.ts`) were both eagerly importing `keytar` at module load. Windows holds an exclusive lock on a loaded `.node` native addon, so when `electron-forge start` next ran `@electron/rebuild` to swap `keytar.node` to Electron's ABI it failed with `EPERM: operation not permitted, unlink 'keytar.node'` and 0 of 22 desktop smoke tests could even start. Both call sites now lazy-load keytar (`bin.ts` exposes a `CredentialStore` proxy that calls `require('keytar')` only when a credential operation actually fires; `electronApp.ts` inlines the require inside `canAccessRepo`). Linux/macOS were unaffected (POSIX allows unlinking open files). (#250)
+
+### Renderer
+
+- **Fix three `MindSidebar` selector regressions from #244** — PR #244 intentionally added three `role="button"` accessibility controls per mind row (Edit profile / Open in window / Remove) nested inside the outer `<button>`. Eight desktop smoke tests using `getByRole('button', { name: /MindName/ })` then matched four elements and tripped Playwright's strict-mode guard. Switched the affected selectors in `monica-open-existing.spec.ts`, `lens-hotload.spec.ts`, and `desktop-navigation-popout.spec.ts` to `page.locator('button').filter({ hasText: /\bMindName\b/ })`, which restricts to real `<button>` elements (excluding the new `role="button"` `<span>`s) and uses word boundaries so `Inactive Lens Smoke Mind` cannot collide with `Active Lens Smoke Mind`. The `MindSidebar` accessibility additions are unchanged. (#250)
+- **`ProfileMarkdownEditor` Save button stays in the viewport on small windows** — The new modal added in #244 wrapped its 420px-min textarea + header + footer in a `DialogContent` with no `max-height`, so on the default 800px Electron window the Save button rendered below the visible area and could not be reached by clicking, scrolling, or `scrollIntoViewIfNeeded` (the dialog is `position: fixed`, not part of the page scroll). `DialogContent` is now `flex max-h-[88vh] flex-col` and the textarea is `flex-1 min-h-[200px]`, matching the outer `AgentProfileModal` pattern: header/footer pinned, textarea scrolls internally. Save is now reachable in any reasonable window size. (#250)
+
 ## v0.49.10 (2026-05-08)
 
 ### Mind
