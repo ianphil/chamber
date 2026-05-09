@@ -2,15 +2,15 @@ import { BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import sharp from 'sharp';
 import { MindProfileService, type MindManager } from '@chamber/services';
 import type { AgentProfileAvatarSaveRequest, AgentProfileSaveRequest } from '@chamber/shared/types';
+import type sharpModule from 'sharp';
 
 const MAX_AVATAR_INPUT_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 24_000_000;
 const AVATAR_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
-export function setupMindProfileIPC(profileService: MindProfileService, mindManager: MindManager): void {
+export function setupMindProfileIPC(profileService: MindProfileService, mindManager: MindManager, sharp: typeof sharpModule): void {
   const avatarSources = new Map<string, string>();
 
   ipcMain.handle('mindProfile:get', async (_event, mindId: string) => {

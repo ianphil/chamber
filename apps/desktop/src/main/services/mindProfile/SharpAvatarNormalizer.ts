@@ -1,12 +1,14 @@
-import sharp from 'sharp';
 import type { AvatarNormalizeRequest, AvatarNormalizer } from '@chamber/services';
+import type sharpModule from 'sharp';
 
 const AVATAR_SIZE = 512;
 const MAX_INPUT_PIXELS = 24_000_000;
 
 export class SharpAvatarNormalizer implements AvatarNormalizer {
+  constructor(private readonly sharp: typeof sharpModule) {}
+
   async normalize({ inputPath, outputPath, crop }: AvatarNormalizeRequest): Promise<void> {
-    const metadata = await sharp(inputPath, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
+    const metadata = await this.sharp(inputPath, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
     const width = metadata.width ?? 0;
     const height = metadata.height ?? 0;
     if (width <= 0 || height <= 0) {
@@ -14,7 +16,7 @@ export class SharpAvatarNormalizer implements AvatarNormalizer {
     }
 
     const safeCrop = clampCrop(crop, width, height);
-    await sharp(inputPath, { limitInputPixels: MAX_INPUT_PIXELS })
+    await this.sharp(inputPath, { limitInputPixels: MAX_INPUT_PIXELS })
       .rotate()
       .extract(safeCrop)
       .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', withoutEnlargement: false })

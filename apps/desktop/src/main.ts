@@ -70,6 +70,7 @@ import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
 import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
+import type sharpModule from 'sharp';
 
 if (started) {
   app.quit();
@@ -111,6 +112,14 @@ function loadKeytar(): CredentialStore {
   return runtimeRequire(path.join(process.resourcesPath, 'keytar', 'lib', 'keytar.js')) as CredentialStore;
 }
 
+function loadSharp(): typeof sharpModule {
+  if (!app.isPackaged) {
+    return runtimeRequire('sharp') as typeof sharpModule;
+  }
+
+  return runtimeRequire(path.join(process.resourcesPath, 'sharp-runtime', 'node_modules', 'sharp')) as typeof sharpModule;
+}
+
 const notifier: Notifier = {
   notify: (alert) => {
     const notification = new Notification({
@@ -135,6 +144,7 @@ const saveActiveLogin = (login: string | null) => {
   configService.save({ ...config, activeLogin: login });
 };
 const credentialStore = loadKeytar();
+const sharp = loadSharp();
 const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore);
 const authService = new AuthService(
   credentialStore,
@@ -167,7 +177,7 @@ const mindManager: MindManager = new MindManager(clientFactory, identityLoader, 
 const mindProfileService = new MindProfileService({
   getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
   restartMind: (mindId) => mindManager.reloadMind(mindId),
-}, identityLoader, new SharpAvatarNormalizer());
+}, identityLoader, new SharpAvatarNormalizer(sharp));
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
 const messageRouter: MessageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
@@ -497,7 +507,7 @@ app.on('ready', async () => {
     rendererPath: MAIN_WINDOW_VITE_DEV_SERVER_URL ? undefined : path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     windowIcon,
   });
-  setupMindProfileIPC(mindProfileService, mindManager);
+  setupMindProfileIPC(mindProfileService, mindManager, sharp);
   setupLensIPC(viewDiscovery, mindManager, canvasService);
   setupGenesisIPC(
     mindManager,

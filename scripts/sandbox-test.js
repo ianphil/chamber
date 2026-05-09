@@ -37,6 +37,7 @@ if (!fs.existsSync(builderDir)) {
 }
 
 const packageDir = path.join(repoRoot, 'out', 'Chamber-win32-x64');
+const packageResourcesDir = path.join(packageDir, 'resources');
 const appAsarPath = path.join(packageDir, 'resources', 'app.asar');
 if (!fs.existsSync(appAsarPath)) {
   console.error(`No packaged app found at ${appAsarPath}. Run \`npm run make\` first.`);
@@ -47,6 +48,17 @@ const appAsarFiles = asar.listPackage(appAsarPath);
 const normalizedAppAsarFiles = appAsarFiles.map((file) => file.replaceAll('\\', '/'));
 if (!normalizedAppAsarFiles.includes(PACKAGED_RENDERER_ENTRY)) {
   console.error(`Packaged app is missing renderer entry ${PACKAGED_RENDERER_ENTRY}.`);
+  process.exit(1);
+}
+
+const sharpRuntimePath = path.join(packageResourcesDir, 'sharp-runtime', 'node_modules', 'sharp', 'package.json');
+const sharpNativePath = path.join(packageResourcesDir, 'sharp-runtime', 'node_modules', '@img', 'sharp-win32-x64', 'package.json');
+if (!fs.existsSync(sharpRuntimePath)) {
+  console.error(`Packaged app is missing sharp runtime metadata at ${sharpRuntimePath}.`);
+  process.exit(1);
+}
+if (!fs.existsSync(sharpNativePath)) {
+  console.error(`Packaged app is missing sharp native runtime metadata at ${sharpNativePath}.`);
   process.exit(1);
 }
 

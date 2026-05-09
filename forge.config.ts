@@ -31,6 +31,18 @@ function prepareCopilotRuntime(platform: string, arch: string): void {
   }
 }
 
+function prepareSharpRuntime(platform: string, arch: string): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-sharp-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath, platform, arch], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Failed to prepare packaged sharp runtime for ${platform}-${arch}.`);
+  }
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
@@ -47,6 +59,7 @@ const config: ForgeConfig = {
     extraResource: [
       './resources/node',
       './resources/copilot-runtime',
+      './resources/sharp-runtime',
       './apps/server/dist',
       './node_modules/keytar',
       './apps/desktop/src/main/assets/lens-skill',
@@ -69,6 +82,7 @@ const config: ForgeConfig = {
   hooks: {
     prePackage: async (_forgeConfig, platform, arch) => {
       prepareCopilotRuntime(platform, arch);
+      prepareSharpRuntime(platform, arch);
     },
   },
   makers: [
