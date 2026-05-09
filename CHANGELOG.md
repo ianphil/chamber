@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.49.3 (2026-05-08)
+
+### Tests
+
+- **Loopback HTTP and WebSocket route coverage** — Pin the server's loopback adapter behavior with 90 lines of unit tests for `isLoopbackHost`, `isAllowedOrigin`, and the constant-time `isAuthorized` Bearer-token check, plus 24 new HTTP and WebSocket scenarios for `honoAdapter` covering auth header enforcement, origin allowlist, route availability when capabilities are absent, shutdown, attachment upload, chat cancel, and WebSocket upgrade authorization. Pure characterization, no production code changes. (#142)
+
 ## v0.49.2 (2026-05-08)
 
 ### Tooling
