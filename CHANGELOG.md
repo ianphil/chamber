@@ -10,6 +10,10 @@
 
 - **Show profile avatars across agent surfaces** — Chat, chatroom, and sidebar views now render saved mind and user profile avatars consistently through shared profile hooks.
 
+### Packaging
+
+- **Ship the MSAL broker runtime with packaged builds** — The Windows package now materializes a pinned MSAL broker runtime alongside the Copilot and sharp runtimes so brokered Microsoft profile import can load its native dependencies after install.
+
 ## v0.49.13 (2026-05-09)
 
 ### Renderer

@@ -1,18 +1,15 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import {
   PromptValue,
   PublicClientApplication,
   type AccountInfo,
   type AuthenticationResult,
   type Configuration,
+  type ICachePlugin,
+  type INativeBrokerPlugin,
 } from '@azure/msal-node';
-import {
-  DataProtectionScope,
-  FilePersistenceWithDataProtection,
-  NativeBrokerPlugin,
-  PersistenceCachePlugin,
-} from '@azure/msal-node-extensions';
 import type { UserProfileImportResult, UserProfileSaveRequest } from '@chamber/shared/types';
 import type { UserProfileService } from './UserProfileService';
 
@@ -21,6 +18,7 @@ const GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me?$select=displayName,us
 const GRAPH_PHOTO_URL = 'https://graph.microsoft.com/v1.0/me/photos/96x96/$value';
 const MICROSOFT_TENANT_ID = '72f988bf-86f1-41af-91ab-2d7cd011db47';
 const VSCODE_CLIENT_ID = 'aebc6443-996d-45c2-90f0-388ff96faa56';
+const runtimeRequire = createRequire(__filename);
 
 export interface MicrosoftGraphToken {
   accessToken: string;
@@ -36,6 +34,17 @@ export interface MsalBrokerGraphTokenProviderOptions {
   openBrowser: (url: string) => Promise<void>;
   clientId?: string;
   tenantId?: string;
+}
+
+interface MsalNodeExtensionsModule {
+  DataProtectionScope: {
+    CurrentUser: 'CurrentUser';
+  };
+  FilePersistenceWithDataProtection: {
+    create(fileLocation: string, scope: 'CurrentUser'): Promise<object>;
+  };
+  PersistenceCachePlugin: new (persistence: object) => ICachePlugin;
+  NativeBrokerPlugin: new () => INativeBrokerPlugin;
 }
 
 interface GraphUser {
@@ -143,10 +152,11 @@ export class MsalBrokerGraphTokenProvider implements MicrosoftGraphTokenProvider
 }
 
 async function createBrokerApp(options: MsalBrokerGraphTokenProviderOptions): Promise<PublicClientApplication> {
+  const msalExtensions = loadMsalNodeExtensions();
   fs.mkdirSync(options.authDataDir, { recursive: true });
-  const persistence = await FilePersistenceWithDataProtection.create(
+  const persistence = await msalExtensions.FilePersistenceWithDataProtection.create(
     path.join(options.authDataDir, 'msal-cache.json'),
-    DataProtectionScope.CurrentUser,
+    msalExtensions.DataProtectionScope.CurrentUser,
   );
   const config: Configuration = {
     auth: {
@@ -154,13 +164,27 @@ async function createBrokerApp(options: MsalBrokerGraphTokenProviderOptions): Pr
       authority: `https://login.microsoftonline.com/${options.tenantId ?? MICROSOFT_TENANT_ID}`,
     },
     cache: {
-      cachePlugin: new PersistenceCachePlugin(persistence),
+      cachePlugin: new msalExtensions.PersistenceCachePlugin(persistence),
     },
     broker: {
-      nativeBrokerPlugin: new NativeBrokerPlugin(),
+      nativeBrokerPlugin: new msalExtensions.NativeBrokerPlugin(),
     },
   };
   return new PublicClientApplication(config);
+}
+
+function loadMsalNodeExtensions(): MsalNodeExtensionsModule {
+  const packagePath = resolveNativeBrokerPluginPackage();
+  return runtimeRequire(packagePath) as MsalNodeExtensionsModule;
+}
+
+function resolveNativeBrokerPluginPackage(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  if (resourcesPath) {
+    const packagedPath = path.join(resourcesPath, 'msal-runtime', 'node_modules', '@azure', 'msal-node-extensions');
+    if (fs.existsSync(packagedPath)) return packagedPath;
+  }
+  return '@azure/msal-node-extensions';
 }
 
 async function tryAcquireSilent(app: PublicClientApplication, account: AccountInfo): Promise<AuthenticationResult | null> {
