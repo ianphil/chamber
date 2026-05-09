@@ -30,6 +30,11 @@ export interface ServerAuthLoginResult {
   error?: string;
 }
 
+export interface RemoteA2AAgentAuth {
+  scheme: 'bearer';
+  token: string;
+}
+
 /**
  * Capabilities the loopback server requires from its host process. Every
  * field except `publish` is mandatory: a deployment that doesn't want to
@@ -62,7 +67,7 @@ export interface ChamberCtx {
   publish?: (sessionId: string, event: unknown) => void;
   listA2AAgents: () => AgentCard[] | Promise<AgentCard[]>;
   getA2AAgentCard: (recipient: string) => AgentCard | null | Promise<AgentCard | null>;
-  registerA2AAgentCard: (card: AgentCard) => void | Promise<void>;
+  registerA2AAgentCard: (card: AgentCard, auth?: RemoteA2AAgentAuth) => void | Promise<void>;
   unregisterA2AAgentCard: (recipient: string) => void | Promise<void>;
   sendA2AMessage: (
     request: SendMessageRequest,

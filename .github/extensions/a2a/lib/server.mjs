@@ -1,7 +1,9 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
-export function createA2AServer({ getAgentName, onMessage }) {
+const MAX_REQUEST_BYTES = 1_000_000;
+
+export function createA2AServer({ getAgentName, getInboundToken, onMessage, log = console.error }) {
   let server = null;
   let port = 0;
 
@@ -10,11 +12,15 @@ export function createA2AServer({ getAgentName, onMessage }) {
 
     server = createServer(async (request, response) => {
       try {
-        if (request.method === "GET" && request.url === "/agent-card") {
+        const url = new URL(request.url ?? "/", "http://127.0.0.1");
+        if (request.method === "GET" && url.pathname === "/agent-card") {
           return sendJson(response, 200, createAgentCard(getAgentName(), port));
         }
 
-        if (request.method === "POST" && (request.url === "/message:send" || request.url === "/a2a/message:send")) {
+        if (request.method === "POST" && (url.pathname === "/message:send" || url.pathname === "/a2a/message:send")) {
+          if (!isAuthorized(request.headers.authorization, getInboundToken())) {
+            return sendJson(response, 401, { error: "unauthorized" });
+          }
           const body = await readJson(request);
           if (!isSendMessageRequest(body)) {
             return sendJson(response, 400, { error: "valid A2A SendMessageRequest is required" });
@@ -33,7 +39,14 @@ export function createA2AServer({ getAgentName, onMessage }) {
 
         return sendJson(response, 404, { error: "not found" });
       } catch (error) {
-        return sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+        if (error instanceof RequestBodyTooLargeError) {
+          return sendJson(response, 413, { error: "request body too large" });
+        }
+        if (error instanceof SyntaxError) {
+          return sendJson(response, 400, { error: "request body must be valid JSON" });
+        }
+        log(`A2A loopback request failed: ${error instanceof Error ? error.message : String(error)}`);
+        return sendJson(response, 500, { error: "internal server error" });
       }
     });
 
@@ -54,6 +67,20 @@ export function createA2AServer({ getAgentName, onMessage }) {
     start,
     getPort: () => port,
     getAgentCard: async () => createAgentCard(getAgentName(), await start()),
+    getInboundAuth: () => ({ scheme: "bearer", token: getInboundToken() }),
+    stop: () => new Promise((resolve) => {
+      if (!server?.listening) {
+        server = null;
+        port = 0;
+        resolve();
+        return;
+      }
+      server.close(() => {
+        server = null;
+        port = 0;
+        resolve();
+      });
+    }),
   };
 }
 
@@ -87,11 +114,26 @@ function createAgentCard(name, serverPort) {
 
 async function readJson(request) {
   const chunks = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(chunk);
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > MAX_REQUEST_BYTES) {
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf-8") || "{}");
 }
+
+function isAuthorized(authorizationHeader, token) {
+  if (!authorizationHeader?.startsWith("Bearer ")) return false;
+  const actual = Buffer.from(authorizationHeader.slice("Bearer ".length), "utf8");
+  const expected = Buffer.from(token, "utf8");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+class RequestBodyTooLargeError extends Error {}
 
 function sendJson(response, status, body) {
   response.writeHead(status, {

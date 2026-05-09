@@ -140,7 +140,7 @@ const productionContext: ChamberCtx = createServerContext({
   listA2AAgents: () => agentCardRegistry.getCards(),
   getA2AAgentCard: (recipient) =>
     agentCardRegistry.getCard(recipient) ?? agentCardRegistry.getCardByName(recipient),
-  registerA2AAgentCard: (card) => agentCardRegistry.registerRemote(card),
+  registerA2AAgentCard: (card, auth) => agentCardRegistry.registerRemote(card, auth),
   unregisterA2AAgentCard: (recipient) => agentCardRegistry.unregisterRemote(recipient),
   sendA2AMessage: (request, options) => messageRouter.sendMessage(request, options),
   shutdown: () => {

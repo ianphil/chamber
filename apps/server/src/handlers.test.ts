@@ -199,7 +199,24 @@ describe('server handlers', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true, agent: card });
-    expect(registerA2AAgentCard).toHaveBeenCalledWith(card);
+    expect(registerA2AAgentCard).toHaveBeenCalledWith(card, undefined);
+  });
+
+  it('registers remote A2A inbound auth without putting it on the agent card', async () => {
+    const card = makeA2ACard('Copilot CLI');
+    const registerA2AAgentCard = vi.fn();
+    const inboundAuth = { scheme: 'bearer' as const, token: 'remote-secret' };
+
+    const response = await registerA2AAgentCardHandler({
+      method: 'POST',
+      path: '/api/a2a/agents',
+      headers: new Headers(),
+      body: { card, inboundAuth },
+    }, makeContext({ registerA2AAgentCard }));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, agent: card });
+    expect(registerA2AAgentCard).toHaveBeenCalledWith(card, inboundAuth);
   });
 
   it('sends A2A messages only to local recipients at the HTTP boundary', async () => {

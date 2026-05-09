@@ -5,6 +5,7 @@ import { AgentCardRegistry } from './AgentCardRegistry';
 import { buildA2ATools } from './tools';
 import type { MessageRouter } from './MessageRouter';
 import type { TaskSessionFactory } from './TaskManager';
+import type { MindContext } from '@chamber/shared/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,18 +33,12 @@ function makeMockMindManager(session = makeMockSession()) {
 
 function makeMockRegistry() {
   const registry = new AgentCardRegistry();
-  // Manually insert a card without touching the file system
-  (registry as unknown as { cards: Map<string, unknown> }).cards.set('mind-target', {
-    name: 'Target Agent',
-    description: 'A test agent',
-    version: '1.0.0',
-    supportedInterfaces: [],
-    capabilities: {},
-    defaultInputModes: ['text/plain'],
-    defaultOutputModes: ['text/plain'],
-    skills: [],
+  registry.register({
     mindId: 'mind-target',
-  });
+    mindPath: 'C:\\src\\target-agent',
+    identity: { name: 'Target Agent', systemMessage: 'A test agent' },
+    status: 'ready',
+  } as MindContext);
   return registry;
 }
 

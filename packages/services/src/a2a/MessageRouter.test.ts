@@ -9,6 +9,7 @@ const mockRegistry = {
   getCard: vi.fn(),
   getCards: vi.fn(),
   getCardByName: vi.fn(),
+  getRemoteAuth: vi.fn(),
 };
 
 const mockChatService = {
@@ -49,6 +50,7 @@ describe('MessageRouter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRegistry.getRemoteAuth.mockReturnValue(null);
     emitter = new EventEmitter();
     router = new MessageRouter(mockChatService as unknown as ChatService, mockRegistry as unknown as AgentCardRegistry, emitter);
   });
@@ -97,12 +99,45 @@ describe('MessageRouter', () => {
     const req = makeRequest('Copilot CLI', 'hello remote');
     const res = await router.sendMessage(req);
 
+    expect(fetchImpl).toHaveBeenCalled();
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    const requestBody = JSON.parse(init.body as string) as SendMessageRequest;
     expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:4123/a2a/message:send', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify(req),
+      body: expect.any(String),
     }));
+    expect(requestBody.message.contextId).toMatch(/^ctx-/);
+    expect(requestBody.message.metadata?.hopCount).toBe(1);
     expect(res.message?.messageId).toBe('remote-reply');
+    expect(res.message?.contextId).toBe(requestBody.message.contextId);
     expect(mockChatService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sendMessage() includes registered remote bearer auth when posting to loopback HTTP+JSON agents', async () => {
+    const remoteCard = makeCard({
+      mindId: undefined as never,
+      name: 'Copilot CLI',
+      supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+    });
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      message: { messageId: 'remote-reply', role: 'agent', parts: [{ text: 'ack' }], contextId: 'ctx-auth' },
+    }), { status: 200 }));
+    router = new MessageRouter(
+      mockChatService as unknown as ChatService,
+      mockRegistry as unknown as AgentCardRegistry,
+      emitter,
+      { fetch: fetchImpl as unknown as typeof fetch },
+    );
+    mockRegistry.getCard.mockReturnValue(remoteCard);
+    mockRegistry.getRemoteAuth.mockReturnValue({ scheme: 'bearer', token: 'remote-secret' });
+
+    await router.sendMessage(makeRequest('Copilot CLI', 'hello remote', {
+      message: { messageId: 'msg-auth', role: 'user', parts: [{ text: 'hello remote' }], contextId: 'ctx-auth' },
+    }));
+
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:4123/a2a/message:send', expect.objectContaining({
+      headers: expect.objectContaining({ authorization: 'Bearer remote-secret' }),
+    }));
   });
 
   it('sendMessage() refuses remote recipients when local-only delivery is requested', async () => {
@@ -147,24 +182,21 @@ describe('MessageRouter', () => {
     expect(res.message.contextId).toBe('ctx-123');
   });
 
-  it('sendMessage() rejects when context hops exceed MAX_HOPS', async () => {
+  it('sendMessage() rejects when forwarded message hops exceed MAX_HOPS', async () => {
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
-    const contextId = 'ctx-loop';
 
-    // Send 5 messages — each increments the context hop counter
-    for (let i = 0; i < 5; i++) {
-      await router.sendMessage(makeRequest('target-1', `msg-${i}`, {
-        message: { messageId: `msg-${i}`, role: 'user', parts: [{ text: `msg-${i}` }], contextId, metadata: { fromId: 'a', fromName: 'A' } },
-      }));
-    }
-
-    // 6th should be rejected (contextHops is now 5, exceeds MAX_HOPS)
     await expect(router.sendMessage(makeRequest('target-1', 'too many', {
-      message: { messageId: 'msg-6', role: 'user', parts: [{ text: 'too many' }], contextId, metadata: { fromId: 'a', fromName: 'A' } },
+      message: {
+        messageId: 'msg-6',
+        role: 'user',
+        parts: [{ text: 'too many' }],
+        contextId: 'ctx-loop',
+        metadata: { fromId: 'a', fromName: 'A', hopCount: 5 },
+      },
     }))).rejects.toThrow(/hop count/i);
   });
 
-  it('sendMessage() increments hop count per contextId', async () => {
+  it('sendMessage() increments hop count from the incoming message metadata', async () => {
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
     const contextId = 'ctx-hop-track';
 
@@ -175,7 +207,7 @@ describe('MessageRouter', () => {
     expect(mockChatService.sendMessage.mock.calls[0][1]).toContain('hop-count="1"');
 
     await router.sendMessage(makeRequest('target-1', 'second', {
-      message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'second' }], contextId, metadata: { fromId: 'a', fromName: 'A' } },
+      message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'second' }], contextId, metadata: { fromId: 'a', fromName: 'A', hopCount: 1 } },
     }));
     // Second message: hopCount should be 2
     expect(mockChatService.sendMessage.mock.calls[1][1]).toContain('hop-count="2"');

@@ -85,10 +85,17 @@ export async function registerA2AAgentCardHandler(request: ChamberRequest, ctx: 
     : {};
   const card = isAgentCard(body.card) ? body.card : isAgentCard(body) ? body : null;
   if (!card) return { status: 400, body: { error: 'valid agent card is required' } };
+  const inboundAuth = isRemoteA2AAgentAuth(body.inboundAuth) ? body.inboundAuth : undefined;
   try {
-    await ctx.registerA2AAgentCard(card);
+    await ctx.registerA2AAgentCard(card, inboundAuth);
   } catch (error) {
     return { status: 400, body: { error: error instanceof Error ? error.message : String(error) } };
+  }
+
+  function isRemoteA2AAgentAuth(value: unknown): value is { scheme: 'bearer'; token: string } {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const auth = value as Record<string, unknown>;
+    return auth.scheme === 'bearer' && typeof auth.token === 'string' && auth.token.trim().length > 0;
   }
   return { status: 200, body: { ok: true, agent: card } };
 }

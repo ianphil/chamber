@@ -20,7 +20,6 @@ export interface SendMessageOptions {
 }
 
 export class MessageRouter {
-  private contextHops = new Map<string, number>();
   private readonly fetchImpl: typeof fetch;
 
   constructor(
@@ -38,24 +37,15 @@ export class MessageRouter {
     if (!card) {
       throw new Error(`Unknown recipient: ${request.recipient}`);
     }
-    if (!card.mindId) {
-      if (options.allowRemoteRecipients === false) {
-        throw new Error(`Unknown local recipient: ${request.recipient}`);
-      }
-      return this.sendRemoteMessage(card, request);
-    }
-    const targetMindId = card.mindId;
-
     // 2. Assign/preserve contextId
     const contextId = request.message.contextId || generateContextId();
 
-    // 3. Resolve hop count from context tracking (not message metadata)
-    const currentHops = this.contextHops.get(contextId) ?? 0;
+    // 3. Resolve hop count from the forwarded message, not the whole context.
+    const currentHops = getMessageHopCount(request.message.metadata?.hopCount);
     if (currentHops >= MAX_HOPS) {
       throw new Error(`Message exceeded maximum hop count (${MAX_HOPS})`);
     }
     const nextHops = currentHops + 1;
-    this.contextHops.set(contextId, nextHops);
 
     // 4. Build the delivery message
     const deliveryMessage: Message = {
@@ -66,6 +56,17 @@ export class MessageRouter {
         hopCount: nextHops,
       },
     };
+
+    if (!card.mindId) {
+      if (options.allowRemoteRecipients === false) {
+        throw new Error(`Unknown local recipient: ${request.recipient}`);
+      }
+      return this.sendRemoteMessage(card, {
+        ...request,
+        message: deliveryMessage,
+      }, contextId);
+    }
+    const targetMindId = card.mindId;
 
     // 5. Serialize to XML for model injection
     const xmlPrompt = serializeMessageToXml(deliveryMessage);
@@ -110,7 +111,11 @@ export class MessageRouter {
     };
   }
 
-  private async sendRemoteMessage(card: AgentCard, request: SendMessageRequest): Promise<SendMessageResponse> {
+  private async sendRemoteMessage(
+    card: AgentCard,
+    request: SendMessageRequest,
+    contextId: string,
+  ): Promise<SendMessageResponse> {
     const iface = findHttpJsonInterface(card);
     if (!iface) {
       throw new Error(`Agent ${card.name} does not expose a HTTP+JSON A2A interface`);
@@ -119,15 +124,21 @@ export class MessageRouter {
       throw new Error(`Refusing non-loopback A2A interface for ${card.name}: ${iface.url}`);
     }
 
+    const auth = this.registry.getRemoteAuth(card.name);
+    const headers: Record<string, string> = {
+      'content-type': 'application/a2a+json',
+      accept: 'application/a2a+json, application/json',
+    };
+    if (auth?.scheme === 'bearer') {
+      headers.authorization = `Bearer ${auth.token}`;
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REMOTE_SEND_TIMEOUT_MS);
     try {
       const response = await this.fetchImpl(resolveMessageSendUrl(iface.url), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/a2a+json',
-          accept: 'application/a2a+json, application/json',
-        },
+        headers,
         body: JSON.stringify(request),
         signal: controller.signal,
       });
@@ -142,11 +153,19 @@ export class MessageRouter {
       if (!body.message && !body.task) {
         throw new Error(`A2A send to ${card.name} returned an invalid response`);
       }
+      if (body.message && !body.message.contextId) {
+        body.message = { ...body.message, contextId };
+      }
       return body;
     } finally {
       clearTimeout(timeout);
     }
+
   }
+}
+
+function getMessageHopCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 function findHttpJsonInterface(card: AgentCard): AgentInterface | null {

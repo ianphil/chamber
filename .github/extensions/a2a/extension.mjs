@@ -1,5 +1,6 @@
 import { approveAll } from "@github/copilot-sdk";
 import { joinSession } from "@github/copilot-sdk/extension";
+import { randomBytes } from "node:crypto";
 
 import { createA2AServer } from "./lib/server.mjs";
 import { createA2ATools } from "./tools/a2a-tools.mjs";
@@ -8,12 +9,14 @@ const state = {
   chamberBaseUrl: process.env.CHAMBER_A2A_URL ?? "",
   chamberToken: process.env.CHAMBER_A2A_TOKEN ?? "",
   agentName: process.env.CHAMBER_A2A_AGENT_NAME ?? "Copilot CLI",
+  inboundToken: process.env.CHAMBER_A2A_INBOUND_TOKEN ?? randomBytes(32).toString("base64url"),
   inbox: [],
   session: null,
 };
 
 const server = createA2AServer({
   getAgentName: () => state.agentName,
+  getInboundToken: () => state.inboundToken,
   onMessage: (payload) => {
     const fromName = payload.message?.metadata?.fromName ?? payload.message?.metadata?.fromId ?? "A2A peer";
     const fromId = payload.message?.metadata?.fromId ?? fromName;

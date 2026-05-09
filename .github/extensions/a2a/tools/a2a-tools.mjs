@@ -28,7 +28,7 @@ export function createA2ATools(state, server) {
         const card = await server.getAgentCard();
         const response = await chamberFetch(state, "/api/a2a/agents", {
           method: "POST",
-          body: JSON.stringify({ card }),
+          body: JSON.stringify({ card, inboundAuth: server.getInboundAuth() }),
         });
         return {
           registered: response.ok,

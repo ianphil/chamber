@@ -95,6 +95,23 @@ describe('AgentCardRegistry', () => {
     expect(registry.getCards().map((card) => card.name)).toEqual(['Q', 'Copilot CLI']);
   });
 
+  it('stores remote auth separately from public agent cards', () => {
+    registry.registerRemote({
+      name: 'Copilot CLI',
+      description: 'CLI peer',
+      version: '1.0.0',
+      supportedInterfaces: [{ url: 'http://127.0.0.1:4123', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+      capabilities: {},
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [],
+    }, { scheme: 'bearer', token: 'secret-token' });
+
+    expect(registry.getRemoteAuth('Copilot CLI')).toEqual({ scheme: 'bearer', token: 'secret-token' });
+    expect(JSON.stringify(registry.getCard('Copilot CLI'))).not.toContain('secret-token');
+    expect(JSON.stringify(registry.getCards())).not.toContain('secret-token');
+  });
+
   it('rejects remote cards that would collide with local card identifiers', () => {
     registry.register(makeMindContext({ mindId: 'q-123', identity: { name: 'Q', systemMessage: '' } }));
 

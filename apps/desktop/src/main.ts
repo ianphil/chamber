@@ -337,6 +337,7 @@ const useDesktopA2AServer =
   process.env.CHAMBER_A2A_SERVER === '1' ||
   process.env.CHAMBER_A2A_PORT !== undefined ||
   process.env.CHAMBER_SERVER_PORT !== undefined;
+const MAX_DESKTOP_A2A_REQUEST_BYTES = 1_000_000;
 const updaterService = new UpdaterService({
   currentVersion: app.getVersion(),
   isPackaged: app.isPackaged,
@@ -427,7 +428,12 @@ async function startDesktopA2AServer(): Promise<void> {
 
   desktopA2AServer = createServer((request, response) => {
     void handleDesktopA2ARequest(request, response, token).catch((error: unknown) => {
-      sendDesktopA2AJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+      if (error instanceof DesktopA2ARequestBodyTooLargeError) {
+        sendDesktopA2AJson(response, 413, { error: 'request body too large' });
+        return;
+      }
+      log.warn('Desktop A2A request failed:', error);
+      sendDesktopA2AJson(response, 500, { error: 'internal server error' });
     });
   });
 
@@ -485,8 +491,9 @@ async function handleDesktopA2ARequest(
       sendDesktopA2AJson(response, 400, { error: 'valid agent card is required' });
       return;
     }
+    const inboundAuth = isRecord(body) && isRemoteA2AAgentAuth(body.inboundAuth) ? body.inboundAuth : undefined;
     try {
-      agentCardRegistry.registerRemote(card);
+      agentCardRegistry.registerRemote(card, inboundAuth);
     } catch (error) {
       sendDesktopA2AJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
       return;
@@ -513,7 +520,12 @@ async function handleDesktopA2ARequest(
       sendDesktopA2AJson(response, 200, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sendDesktopA2AJson(response, message.startsWith('Unknown local recipient:') ? 404 : 502, { error: message });
+      if (message.startsWith('Unknown local recipient:')) {
+        sendDesktopA2AJson(response, 404, { error: message });
+        return;
+      }
+      log.warn('Desktop A2A message delivery failed:', error);
+      sendDesktopA2AJson(response, 502, { error: 'A2A message delivery failed' });
     }
     return;
   }
@@ -527,11 +539,19 @@ function isDesktopA2AAuthorized(request: IncomingMessage, token: string): boolea
 
 async function readDesktopA2AJson(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > MAX_DESKTOP_A2A_REQUEST_BYTES) {
+      throw new DesktopA2ARequestBodyTooLargeError();
+    }
+    chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as unknown;
 }
+
+class DesktopA2ARequestBodyTooLargeError extends Error {}
 
 function sendDesktopA2AJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
@@ -561,6 +581,10 @@ function isAgentCardRecord(value: unknown): value is AgentCard {
 
 function isSendMessageRequestRecord(value: unknown): value is SendMessageRequest {
   return isRecord(value) && typeof value.recipient === 'string' && isMessageRecord(value.message);
+}
+
+function isRemoteA2AAgentAuth(value: unknown): value is { scheme: 'bearer'; token: string } {
+  return isRecord(value) && value.scheme === 'bearer' && typeof value.token === 'string' && value.token.trim().length > 0;
 }
 
 function isMessageRecord(value: unknown): value is Message {
