@@ -26,8 +26,11 @@ describe('IdentityLoader', () => {
       const result = loader.load('/tmp/test');
       expect(result).toEqual({
         name: 'Q',
-        systemMessage: '# Q\nI am an agent.',
+        systemMessage: expect.stringContaining('# Q\nI am an agent.'),
       });
+      expect(result?.systemMessage).toContain('## Chamber');
+      expect(result?.systemMessage).toContain('operating inside Chamber as a Chamber agent');
+      expect(result?.systemMessage).toContain('https://github.com/ianphil/chamber');
     });
 
     it('extracts name from first H1 heading', () => {
@@ -155,6 +158,29 @@ describe('IdentityLoader', () => {
       vi.mocked(fs.readdirSync).mockReturnValue([]);
       const result = new IdentityLoader(() => []).load('/tmp/test');
       expect(result?.systemMessage).not.toContain('## Tools');
+      expect(result?.systemMessage).toContain('## Chamber');
+    });
+
+    it('appends Chamber guidance before installed tool guidance', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue('# Q\nI am an agent.');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const tools: InstalledTool[] = [{
+        id: 'workiq',
+        package: '@microsoft/workiq',
+        version: 'latest',
+        bin: 'workiq',
+        displayName: 'Microsoft Work IQ',
+        description: 'Query M365 data.',
+        source: { marketplaceId: 'github:ianphil/genesis-minds', pluginId: 'genesis-minds' },
+        installedAt: '2026-05-07T21:00:00.000Z',
+      }];
+
+      const result = new IdentityLoader(() => tools).load('/tmp/test');
+      const systemMessage = result?.systemMessage ?? '';
+
+      expect(systemMessage.indexOf('## Chamber')).toBeGreaterThan(systemMessage.indexOf('# Q'));
+      expect(systemMessage.indexOf('## Tools')).toBeGreaterThan(systemMessage.indexOf('## Chamber'));
     });
   });
 });

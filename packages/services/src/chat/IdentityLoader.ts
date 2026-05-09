@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { InstalledTool, MindIdentity } from '@chamber/shared/types';
 import { buildToolsSection } from '../tools/toolsSystemMessage';
+import { buildChamberSection } from './chamberSystemMessage';
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const H1_RE = /^#\s+(.+)$/m;
@@ -53,6 +54,8 @@ export class IdentityLoader {
 
     const parts = [...identityParts, ...memoryParts];
     if (parts.length === 0) return null;
+
+    parts.push(buildChamberSection());
 
     const toolsSection = buildToolsSection(this.getInstalledTools());
     if (toolsSection) parts.push(toolsSection);

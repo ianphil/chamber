@@ -21,6 +21,7 @@
         <nav class="nav" aria-label="Primary navigation">
           <a href="index.html">Guide Home</a>
           <a href="getting-started.html">Start</a>
+          <a href="a2a.html">A2A</a>
           <a href="chat.html">Chat</a>
           <a href="lens-and-canvas.html">Lens</a>
           <a href="privacy-safety-troubleshooting.html">Safety</a>
@@ -50,6 +51,7 @@
       <div class="guide-layout">
         <nav class="side-nav" aria-label="Guide pages">
           <strong>Guides</strong>
+          <a href="a2a.html">A2A collaboration</a>
           <a aria-current="page" href="tools-and-approvals.html">Tools and approvals</a>
           <a href="lens-and-canvas.html">Lens and canvas</a>
           <a href="scheduled-work.html">Scheduled work</a>
@@ -63,7 +65,8 @@
             <p>
               A tool call is a request from a mind to do something outside a normal chat
               reply. It may read a file, search a source, create a Lens view, open a Canvas
-              dashboard, schedule work, or perform another action Chamber supports.
+              dashboard, schedule work, talk to another mind through A2A, or perform another
+              action Chamber supports.
             </p>
             <ul>
               <li>Reading tools gather information so the mind can answer better.</li>
@@ -71,6 +74,111 @@
               <li>External tools may contact a service or use an account you connected.</li>
               <li>Scheduled tools can run later, even when you are not watching the chat.</li>
             </ul>
+          </article>
+
+          <article class="content-card" id="built-in-tools">
+            <h2>Built-in Chamber tools</h2>
+            <p>
+              Chamber gives minds several built-in tool groups. Marketplace tools can add
+              more, but these are the core Chamber-managed tools users are most likely to see.
+            </p>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <th>A2A collaboration</th>
+                  <td><code>a2a_list_agents</code>, <code>a2a_send_message</code>, <code>a2a_send_task</code>, <code>a2a_get_task</code>, <code>a2a_list_tasks</code>, and <code>a2a_cancel_task</code> let minds discover each other, exchange messages, delegate tracked tasks, check status, and stop in-flight work.</td>
+                </tr>
+                <tr>
+                  <th>Canvas</th>
+                  <td><code>canvas_show</code>, <code>canvas_update</code>, <code>canvas_close</code>, and <code>canvas_list</code> create, refresh, close, and list browser-based HTML canvases for dashboards, reports, forms, and rich visual output.</td>
+                </tr>
+                <tr>
+                  <th>Scheduled work</th>
+                  <td><code>cron_create</code>, <code>cron_list</code>, <code>cron_remove</code>, <code>cron_enable</code>, <code>cron_disable</code>, <code>cron_run_now</code>, and <code>cron_history</code> create and manage recurring prompts, process jobs, webhooks, notifications, and run history.</td>
+                </tr>
+                <tr>
+                  <th>Lens views</th>
+                  <td>Lens uses validated <code>view.json</code> files to render forms, tables, briefings, detail views, status boards, timelines, editors, and canvas-backed views inside Chamber.</td>
+                </tr>
+                <tr>
+                  <th>Marketplace CLI tools</th>
+                  <td>Marketplace sources can install npm-global or GitHub release asset tools. Chamber advertises each installed tool to minds with its command name, description, help command, and agent instructions.</td>
+                </tr>
+              </tbody>
+            </table>
+            <h3>Tool name directory</h3>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <th><code>a2a_list_agents</code></th>
+                  <td>Finds other available minds and their skills before delegating work.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_send_message</code></th>
+                  <td>Sends a quick peer message to another mind.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_send_task</code></th>
+                  <td>Creates a tracked asynchronous task for another mind.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_get_task</code></th>
+                  <td>Checks one task's state, history, artifacts, and result.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_list_tasks</code></th>
+                  <td>Lists tasks, optionally by shared context or status.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_cancel_task</code></th>
+                  <td>Cancels an in-progress A2A task.</td>
+                </tr>
+                <tr>
+                  <th><code>canvas_show</code></th>
+                  <td>Creates or opens a browser canvas from HTML content or an existing HTML file.</td>
+                </tr>
+                <tr>
+                  <th><code>canvas_update</code></th>
+                  <td>Updates an existing canvas and live-reloads the browser page.</td>
+                </tr>
+                <tr>
+                  <th><code>canvas_close</code></th>
+                  <td>Closes one canvas or all canvases for a mind.</td>
+                </tr>
+                <tr>
+                  <th><code>canvas_list</code></th>
+                  <td>Lists currently open canvases for the active mind.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_create</code></th>
+                  <td>Creates a scheduled prompt, process, webhook, or notification job.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_list</code></th>
+                  <td>Shows scheduled jobs with next run and recent run details.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_remove</code></th>
+                  <td>Deletes a scheduled job and its stored run history.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_enable</code></th>
+                  <td>Turns a paused job back on.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_disable</code></th>
+                  <td>Pauses a job without deleting it.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_run_now</code></th>
+                  <td>Runs a scheduled job immediately and records the result.</td>
+                </tr>
+                <tr>
+                  <th><code>cron_history</code></th>
+                  <td>Shows recent run history, optionally for one job.</td>
+                </tr>
+              </tbody>
+            </table>
           </article>
 
           <article class="content-card" id="approval-prompts">
@@ -132,6 +240,7 @@
             <p>Learn where tool results appear and how to review work from several minds.</p>
             <div class="related">
               <a href="lens-and-canvas.html">Lens and canvas</a>
+              <a href="a2a.html">A2A collaboration</a>
               <a href="scheduled-work.html">Scheduled work</a>
               <a href="chatrooms.html">Chatrooms</a>
               <a href="privacy-safety-troubleshooting.html">Safety help</a>

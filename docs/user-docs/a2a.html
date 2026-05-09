@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language guide to Chamber A2A, agent discovery, messages, tasks, context, and artifacts."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>A2A Collaboration | Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber A2A guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="a2a.html">A2A</a>
+          <a href="chat.html">Chat</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">A2A</p>
+          <h1>Agent-to-agent collaboration</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            A2A lets minds work together as agents, not just as tools. A mind can discover
+            other minds, send them messages, delegate stateful tasks, track progress, and
+            use results from one agent as input for another.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="A2A in one sentence">
+          <h2>The big idea</h2>
+          <p>
+            Use A2A when one mind should ask another mind for help, not when it only needs
+            a simple data lookup or one-off command.
+          </p>
+        </aside>
+      </section>
+
+      <div class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a aria-current="page" href="#why">Why A2A matters</a>
+          <a href="#concepts">Core concepts</a>
+          <a href="#tools">A2A tools</a>
+          <a href="#examples">When to use it</a>
+          <a href="#mcp">A2A vs tools</a>
+          <a href="#safety">Safety note</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <section class="guide-content">
+          <article class="content-card" id="why">
+            <h2>Why A2A matters in Chamber</h2>
+            <p>
+              Chamber is built around minds that can act like specialists. A2A gives those
+              specialists a common way to collaborate: one mind can identify another mind's
+              skills, ask for help, hand off a task, and keep track of the result.
+            </p>
+            <ul>
+              <li><strong>Discovery:</strong> minds can list other available agents and see what they are good at.</li>
+              <li><strong>Delegation:</strong> a mind can ask another mind to take on a piece of work.</li>
+              <li><strong>Continuity:</strong> related messages and tasks can share context instead of becoming disconnected chats.</li>
+              <li><strong>Accountability:</strong> tracked tasks have status, history, and results you can review.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="concepts">
+            <h2>Core A2A concepts</h2>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <th>Agent Card</th>
+                  <td>A description of an agent's identity, skills, capabilities, and how other agents can interact with it.</td>
+                </tr>
+                <tr>
+                  <th>Message</th>
+                  <td>A single turn between agents. Use it for quick questions, context sharing, or lightweight collaboration.</td>
+                </tr>
+                <tr>
+                  <th>Task</th>
+                  <td>A stateful unit of work. Use it when another mind should work asynchronously, report status, and produce results.</td>
+                </tr>
+                <tr>
+                  <th>Context ID</th>
+                  <td>A way to group related messages and tasks so a multi-step collaboration stays connected.</td>
+                </tr>
+                <tr>
+                  <th>Artifact</th>
+                  <td>A concrete result from a task, such as a summary, plan, document, dataset, image, or structured output.</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="content-card" id="tools">
+            <h2>A2A tools available to minds</h2>
+            <p>
+              These are model-facing Chamber tools. You usually do not call them by name;
+              you ask naturally, and the mind decides whether A2A is the right path.
+            </p>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <th><code>a2a_list_agents</code></th>
+                  <td>Lists other minds in the workspace with their names, descriptions, and skills.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_send_message</code></th>
+                  <td>Sends a message to another mind for quick peer input or context sharing.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_send_task</code></th>
+                  <td>Creates a tracked asynchronous task for another mind to work on.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_get_task</code></th>
+                  <td>Checks one task's state, history, artifacts, and latest result.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_list_tasks</code></th>
+                  <td>Lists tasks, optionally filtered by shared context or status.</td>
+                </tr>
+                <tr>
+                  <th><code>a2a_cancel_task</code></th>
+                  <td>Cancels an in-progress task that is no longer needed.</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="content-card" id="examples">
+            <h2>When to use A2A</h2>
+            <ul>
+              <li>Ask a research mind to gather background while a writing mind drafts the response.</li>
+              <li>Have a planner mind create tasks for specialist minds, then summarize their outputs.</li>
+              <li>Send a quick peer review request from one mind to another before making a decision.</li>
+              <li>Keep several related work items tied together with shared context and task history.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="mcp">
+            <h2>A2A vs tools</h2>
+            <p>
+              Tools and A2A solve different problems. Tools are good for specific actions:
+              search, read, write, open a Canvas, schedule a job, or call a service. A2A is
+              for working with another agent that can reason, plan, ask clarifying questions,
+              use its own tools, and produce durable work.
+            </p>
+          </article>
+
+          <aside class="callout" id="safety">
+            <strong>Safety note</strong>
+            <p>
+              A2A can multiply work quickly because more than one mind may use tools or ask
+              for follow-up actions. Review approvals based on the action and target, not
+              just the mind that requested them.
+            </p>
+          </aside>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <div class="related">
+              <a href="chatrooms.html">Chatrooms</a>
+              <a href="tools-and-approvals.html">Tools and approvals</a>
+              <a href="minds.html">Work with Minds</a>
+              <a href="scheduled-work.html">Scheduled work</a>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="page-footer">Chamber user documentation</footer>
+    </main>
+  </body>
+</html>

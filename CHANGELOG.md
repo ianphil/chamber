@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.51.0 (2026-05-09)
+
+### Agents
+
+- **Make Chamber minds Chamber-aware by default** - Minds now receive concise Chamber operating context in their system message, including where to find Chamber docs and source guidance so they can help users use the app. Closes #256.
+
+### Documentation
+
+- **Put A2A at the center of Chamber docs** - The README now leads with Agent-to-Agent collaboration, and the user guide adds A2A concepts plus a built-in Chamber tool directory covering A2A, Canvas, cron, Lens, and marketplace CLI tools. (#256)
+
 ## v0.50.0 (2026-05-09)
 
 ### Profile
