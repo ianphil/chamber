@@ -1,4 +1,5 @@
 import type { PrivilegedRequest, PrivilegedResponse } from './privileged-protocol';
+import type { AgentCard, SendMessageRequest, SendMessageResponse } from '@chamber/shared/a2a-types';
 import type { ModelDto, SendChatRequest } from '@chamber/wire-contracts';
 
 export interface ChamberRequest {
@@ -59,4 +60,12 @@ export interface ChamberCtx {
   shutdown: () => void;
   handlePrivilegedRequest: (request: PrivilegedRequest) => Promise<PrivilegedResponse>;
   publish?: (sessionId: string, event: unknown) => void;
+  listA2AAgents: () => AgentCard[] | Promise<AgentCard[]>;
+  getA2AAgentCard: (recipient: string) => AgentCard | null | Promise<AgentCard | null>;
+  registerA2AAgentCard: (card: AgentCard) => void | Promise<void>;
+  unregisterA2AAgentCard: (recipient: string) => void | Promise<void>;
+  sendA2AMessage: (
+    request: SendMessageRequest,
+    options?: { allowRemoteRecipients?: boolean },
+  ) => SendMessageResponse | Promise<SendMessageResponse>;
 }

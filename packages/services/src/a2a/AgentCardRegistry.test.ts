@@ -76,6 +76,53 @@ describe('AgentCardRegistry', () => {
     expect(registry.getCard('q-123')).toBeNull();
   });
 
+  it('registers loopback HTTP+JSON remote cards separately from local mind cards', () => {
+    registry.register(makeMindContext({ mindId: 'q-123', identity: { name: 'Q', systemMessage: '' } }));
+
+    registry.registerRemote({
+      name: 'Copilot CLI',
+      description: 'CLI peer',
+      version: '1.0.0',
+      supportedInterfaces: [{ url: 'http://127.0.0.1:4123', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+      capabilities: {},
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [],
+    });
+
+    expect(registry.getCard('q-123')?.mindId).toBe('q-123');
+    expect(registry.getCard('Copilot CLI')?.name).toBe('Copilot CLI');
+    expect(registry.getCards().map((card) => card.name)).toEqual(['Q', 'Copilot CLI']);
+  });
+
+  it('rejects remote cards that would collide with local card identifiers', () => {
+    registry.register(makeMindContext({ mindId: 'q-123', identity: { name: 'Q', systemMessage: '' } }));
+
+    expect(() => registry.registerRemote({
+      name: 'q-123',
+      description: 'Bad peer',
+      version: '1.0.0',
+      supportedInterfaces: [{ url: 'http://127.0.0.1:4123', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+      capabilities: {},
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [],
+    })).toThrow(/conflicts/);
+  });
+
+  it('rejects remote cards with non-loopback HTTP interfaces', () => {
+    expect(() => registry.registerRemote({
+      name: 'Remote',
+      description: 'Bad peer',
+      version: '1.0.0',
+      supportedInterfaces: [{ url: 'https://example.com/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+      capabilities: {},
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [],
+    })).toThrow(/loopback HTTP/);
+  });
+
   it('getCards() returns all registered cards', () => {
     registry.register(makeMindContext({ mindId: 'a', identity: { name: 'A', systemMessage: '' } }));
     registry.register(makeMindContext({ mindId: 'b', identity: { name: 'B', systemMessage: '' } }));
@@ -146,4 +193,3 @@ describe('AgentCardRegistry', () => {
     expect(teams.tags).toContain('teams');
   });
 });
-

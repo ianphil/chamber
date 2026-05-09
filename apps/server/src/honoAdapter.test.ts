@@ -403,6 +403,54 @@ describe('createHttpServer', () => {
       }
     });
   });
+
+  it('serves authenticated A2A agent registry routes', async () => {
+    const card = {
+      name: 'Dude',
+      description: 'Dude agent',
+      version: '1.0.0',
+      supportedInterfaces: [{ url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' }],
+      capabilities: {},
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [],
+      mindId: 'dude-1234',
+    };
+    const { port } = await startServer({
+      listA2AAgents: () => [card],
+      getA2AAgentCard: () => card,
+    });
+
+    const listResponse = await httpRequest(port, { method: 'GET', path: '/api/a2a/agents' });
+    expect(listResponse.statusCode).toBe(200);
+    expect(JSON.parse(listResponse.body)).toEqual({ agents: [card] });
+
+    const cardResponse = await httpRequest(port, { method: 'GET', path: '/api/a2a/agents/dude-1234/card' });
+    expect(cardResponse.statusCode).toBe(200);
+    expect(JSON.parse(cardResponse.body)).toEqual(card);
+  });
+
+  it('exposes standard message:send as an authenticated A2A alias', async () => {
+    const sendA2AMessage = async () => ({
+      message: { messageId: 'msg-1', role: 'user' as const, parts: [{ text: 'Hello' }] },
+    });
+    const { port } = await startServer({ sendA2AMessage });
+
+    const response = await httpRequest(port, {
+      method: 'POST',
+      path: '/message:send',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        recipient: 'dude-1234',
+        message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Hello' }] },
+      }),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Hello' }] },
+      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Hello' }] },
+    });
+  });
 });
 
 function notConfigured(name: string): () => never {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import started from 'electron-squirrel-startup';
 import { IPC } from '@chamber/shared';
 
@@ -81,6 +82,7 @@ import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import type sharpModule from 'sharp';
+import type { AgentCard, Message, SendMessageRequest } from '@chamber/shared/a2a-types';
 
 if (started) {
   app.quit();
@@ -325,11 +327,16 @@ let appTray: ElectronTray | null = null;
 let windowIcon: NativeImage | undefined;
 let isQuitting = false;
 let serverChild: ChildProcessWithoutNullStreams | null = null;
+let desktopA2AServer: Server | null = null;
 let mvpServerUrl: string | null = null;
 const launchProtocolUrl = findMarketplaceInstallUrl(process.argv);
 const pendingProtocolUrls: string[] = launchProtocolUrl ? [launchProtocolUrl] : [];
 const shouldMinimizeToTray = process.platform === 'win32';
 const useMvpServer = process.env.CHAMBER_MVP_SERVER === '1';
+const useDesktopA2AServer =
+  process.env.CHAMBER_A2A_SERVER === '1' ||
+  process.env.CHAMBER_A2A_PORT !== undefined ||
+  process.env.CHAMBER_SERVER_PORT !== undefined;
 const updaterService = new UpdaterService({
   currentVersion: app.getVersion(),
   isPackaged: app.isPackaged,
@@ -346,7 +353,7 @@ const requestQuit = () => {
   mindManager.shutdown()
     .then(() => {
       updaterService.stop();
-      return stopMvpServer();
+      return Promise.all([stopMvpServer(), stopDesktopA2AServer()]);
     })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
@@ -411,6 +418,158 @@ function stopMvpServer(): Promise<void> {
     });
     child.kill();
   });
+}
+
+async function startDesktopA2AServer(): Promise<void> {
+  if (!useDesktopA2AServer || desktopA2AServer) return;
+  const port = Number(process.env.CHAMBER_A2A_PORT ?? process.env.CHAMBER_SERVER_PORT ?? 0);
+  const token = process.env.CHAMBER_A2A_TOKEN ?? process.env.CHAMBER_SERVER_TOKEN ?? randomBytes(32).toString('base64url');
+
+  desktopA2AServer = createServer((request, response) => {
+    void handleDesktopA2ARequest(request, response, token).catch((error: unknown) => {
+      sendDesktopA2AJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    desktopA2AServer?.once('error', reject);
+    desktopA2AServer?.listen(port, '127.0.0.1', () => {
+      desktopA2AServer?.off('error', reject);
+      const address = desktopA2AServer?.address();
+      const actualPort = typeof address === 'object' && address ? address.port : port;
+      log.info(`Desktop A2A loopback ready at http://127.0.0.1:${actualPort}`);
+      console.log(JSON.stringify({ type: 'a2a-ready', host: '127.0.0.1', port: actualPort, token }));
+      resolve();
+    });
+  });
+}
+
+function stopDesktopA2AServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!desktopA2AServer?.listening) {
+      desktopA2AServer = null;
+      resolve();
+      return;
+    }
+    const server = desktopA2AServer;
+    desktopA2AServer = null;
+    server.close(() => resolve());
+  });
+}
+
+async function handleDesktopA2ARequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  token: string,
+): Promise<void> {
+  if (request.method === 'GET' && request.url === '/api/health') {
+    sendDesktopA2AJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (!isDesktopA2AAuthorized(request, token)) {
+    sendDesktopA2AJson(response, 401, { error: 'Unauthorized' });
+    return;
+  }
+
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+  if (request.method === 'GET' && url.pathname === '/api/a2a/agents') {
+    sendDesktopA2AJson(response, 200, { agents: agentCardRegistry.getCards() });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/a2a/agents') {
+    const body = await readDesktopA2AJson(request);
+    const card = isAgentCardRecord(body) ? body : isRecord(body) && isAgentCardRecord(body.card) ? body.card : null;
+    if (!card) {
+      sendDesktopA2AJson(response, 400, { error: 'valid agent card is required' });
+      return;
+    }
+    try {
+      agentCardRegistry.registerRemote(card);
+    } catch (error) {
+      sendDesktopA2AJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    sendDesktopA2AJson(response, 200, { ok: true, agent: card });
+    return;
+  }
+
+  if (request.method === 'DELETE' && url.pathname.startsWith('/api/a2a/agents/')) {
+    const recipient = decodeURIComponent(url.pathname.split('/').filter(Boolean).at(-1) ?? '');
+    agentCardRegistry.unregisterRemote(recipient);
+    sendDesktopA2AJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (request.method === 'POST' && (url.pathname === '/api/a2a/message:send' || url.pathname === '/message:send')) {
+    const body = await readDesktopA2AJson(request);
+    if (!isSendMessageRequestRecord(body)) {
+      sendDesktopA2AJson(response, 400, { error: 'valid A2A SendMessageRequest is required' });
+      return;
+    }
+    try {
+      const result = await messageRouter.sendMessage(body, { allowRemoteRecipients: false });
+      sendDesktopA2AJson(response, 200, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDesktopA2AJson(response, message.startsWith('Unknown local recipient:') ? 404 : 502, { error: message });
+    }
+    return;
+  }
+
+  sendDesktopA2AJson(response, 404, { error: 'not found' });
+}
+
+function isDesktopA2AAuthorized(request: IncomingMessage, token: string): boolean {
+  return request.headers.authorization === `Bearer ${token}`;
+}
+
+async function readDesktopA2AJson(request: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as unknown;
+}
+
+function sendDesktopA2AJson(response: ServerResponse, status: number, body: unknown): void {
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+  });
+  response.end(JSON.stringify(body));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isAgentCardRecord(value: unknown): value is AgentCard {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.name === 'string' &&
+    typeof value.description === 'string' &&
+    typeof value.version === 'string' &&
+    Array.isArray(value.supportedInterfaces) &&
+    Array.isArray(value.defaultInputModes) &&
+    Array.isArray(value.defaultOutputModes) &&
+    Array.isArray(value.skills) &&
+    isRecord(value.capabilities)
+  );
+}
+
+function isSendMessageRequestRecord(value: unknown): value is SendMessageRequest {
+  return isRecord(value) && typeof value.recipient === 'string' && isMessageRecord(value.message);
+}
+
+function isMessageRecord(value: unknown): value is Message {
+  return (
+    isRecord(value) &&
+    typeof value.messageId === 'string' &&
+    (value.role === 'user' || value.role === 'agent') &&
+    Array.isArray(value.parts)
+  );
 }
 
 const showMainWindow = () => {
@@ -592,6 +751,7 @@ app.on('ready', async () => {
   if (useMvpServer) {
     await startMvpServer();
   }
+  await startDesktopA2AServer();
 
   // Eagerly start the chamber-copilot ACP connection (when the flag is on)
   // so the cli_* tools are available to the very first mind load.

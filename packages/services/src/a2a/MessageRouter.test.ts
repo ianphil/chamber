@@ -77,6 +77,56 @@ describe('MessageRouter', () => {
     await expect(router.sendMessage(req)).rejects.toThrow('Unknown recipient: nobody');
   });
 
+  it('sendMessage() posts to loopback HTTP+JSON agents when the card is remote', async () => {
+    const remoteCard = makeCard({
+      mindId: undefined as never,
+      name: 'Copilot CLI',
+      supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+    });
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      message: { messageId: 'remote-reply', role: 'agent', parts: [{ text: 'ack' }] },
+    }), { status: 200 }));
+    router = new MessageRouter(
+      mockChatService as unknown as ChatService,
+      mockRegistry as unknown as AgentCardRegistry,
+      emitter,
+      { fetch: fetchImpl as unknown as typeof fetch },
+    );
+    mockRegistry.getCard.mockReturnValue(remoteCard);
+
+    const req = makeRequest('Copilot CLI', 'hello remote');
+    const res = await router.sendMessage(req);
+
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:4123/a2a/message:send', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify(req),
+    }));
+    expect(res.message?.messageId).toBe('remote-reply');
+    expect(mockChatService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sendMessage() refuses remote recipients when local-only delivery is requested', async () => {
+    mockRegistry.getCard.mockReturnValue(makeCard({
+      mindId: undefined as never,
+      name: 'Copilot CLI',
+      supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+    }));
+
+    await expect(router.sendMessage(makeRequest('Copilot CLI', 'hello'), {
+      allowRemoteRecipients: false,
+    })).rejects.toThrow('Unknown local recipient: Copilot CLI');
+  });
+
+  it('sendMessage() refuses non-loopback remote interfaces', async () => {
+    mockRegistry.getCard.mockReturnValue(makeCard({
+      mindId: undefined as never,
+      name: 'Remote',
+      supportedInterfaces: [{ url: 'https://example.com/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+    }));
+
+    await expect(router.sendMessage(makeRequest('Remote', 'hello'))).rejects.toThrow(/non-loopback/);
+  });
+
   it('sendMessage() assigns contextId on first message', async () => {
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
     const req = makeRequest('target-1', 'hello');

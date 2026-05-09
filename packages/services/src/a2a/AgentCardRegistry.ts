@@ -4,14 +4,15 @@ import type { AgentCard, AgentSkill } from './types';
 import type { MindContext } from '@chamber/shared/types';
 
 export class AgentCardRegistry {
-  private cards = new Map<string, AgentCard>();
+  private localCards = new Map<string, AgentCard>();
+  private remoteCards = new Map<string, AgentCard>();
 
-  getCard(mindId: string): AgentCard | null {
-    return this.cards.get(mindId) ?? null;
+  getCard(identifier: string): AgentCard | null {
+    return this.localCards.get(identifier) ?? this.remoteCards.get(identifier) ?? null;
   }
 
   getCards(): AgentCard[] {
-    return [...this.cards.values()];
+    return [...this.localCards.values(), ...this.remoteCards.values()];
   }
 
   getCardByName(name: string): AgentCard | null {
@@ -36,11 +37,45 @@ export class AgentCardRegistry {
       skills,
       mindId: ctx.mindId,
     };
-    this.cards.set(ctx.mindId, card);
+    this.localCards.set(ctx.mindId, card);
   }
 
   unregister(mindId: string): void {
-    this.cards.delete(mindId);
+    this.localCards.delete(mindId);
+  }
+
+  registerRemote(card: AgentCard): void {
+    this.validateRemoteCard(card);
+    this.remoteCards.set(card.name, card);
+  }
+
+  unregisterRemote(name: string): void {
+    this.remoteCards.delete(name);
+  }
+
+  private validateRemoteCard(card: AgentCard): void {
+    if (card.mindId) {
+      throw new Error('Remote agent cards must not include a Chamber mindId');
+    }
+    if (!card.name.trim()) {
+      throw new Error('Remote agent card name is required');
+    }
+    if (this.localCards.has(card.name) || this.getLocalCardByName(card.name)) {
+      throw new Error(`Remote agent card conflicts with local agent: ${card.name}`);
+    }
+    const httpInterfaces = card.supportedInterfaces.filter((iface) => iface.protocolBinding === 'HTTP+JSON');
+    if (httpInterfaces.length === 0) {
+      throw new Error('Remote agent card must declare a HTTP+JSON interface');
+    }
+    for (const iface of httpInterfaces) {
+      if (!isLoopbackHttpUrl(iface.url)) {
+        throw new Error(`Remote A2A interface must be loopback HTTP: ${iface.url}`);
+      }
+    }
+  }
+
+  private getLocalCardByName(name: string): AgentCard | null {
+    return [...this.localCards.values()].find((card) => card.name === name) ?? null;
   }
 
   private discoverSkills(mindPath: string): AgentSkill[] {
@@ -83,4 +118,17 @@ export class AgentCardRegistry {
     }
     return '';
   }
+}
+
+export function isLoopbackHttpUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === 'http:' &&
+    (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]')
+  );
 }
