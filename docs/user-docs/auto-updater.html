@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language guide to Chamber automatic updates, update icons, downloads, restarts, and retry states."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Auto Updater - Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber auto updater guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Updates</p>
+          <h1>Keep Chamber current</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Chamber can check for updates from the Activity Bar. The updater icon tells you
+            whether the app is current, downloading, ready to restart, or needs another try.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="Updater location">
+          <h2>Where to look</h2>
+          <p>
+            Look near the bottom of the left Activity Bar, just above Settings. If an update
+            needs attention, Chamber highlights the updater icon with a small yellow dot.
+          </p>
+          <div class="related">
+            <a class="button button-primary" href="#icon-states">See Icons</a>
+            <a class="button" href="settings-accounts-updates.html">Settings</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#recognize">Recognize Chamber</a>
+          <a href="#how-it-works">How updates work</a>
+          <a href="#icon-states">Icon states</a>
+          <a href="#install">Install safely</a>
+          <a href="#problems">If updates fail</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <div class="guide-content">
+          <article class="content-card" id="recognize">
+            <h2>Recognize Chamber and the Activity Bar</h2>
+            <p>
+              The Chamber app mark is a dark square with a white chamber shape. Inside the
+              app, the left Activity Bar holds Chat, Chatroom, Lens views, the updater, and
+              Settings. The updater appears near the bottom of that bar.
+            </p>
+            <div class="icon-grid" aria-label="Chamber orientation icons">
+              <div class="icon-card">
+                <img src="../assets/app.svg" alt="Chamber app icon" />
+                <h3>Chamber app</h3>
+                <p>Use this mark to recognize Chamber on the web, in shortcuts, and in docs.</p>
+              </div>
+              <div class="icon-card">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h3>Chat</h3>
+                <p>Open the current mind's conversation.</p>
+              </div>
+              <div class="icon-card">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <circle cx="9" cy="7" r="4" stroke-width="2" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h3>Chatroom</h3>
+                <p>Coordinate several minds in one shared conversation.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="content-card" id="how-it-works">
+            <h2>How Chamber updates work</h2>
+            <p>
+              Chamber checks whether a newer desktop version is available. If there is one,
+              you can download it from the updater icon and restart Chamber when the download
+              is ready to install.
+            </p>
+            <div class="steps">
+              <section class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Check for updates</h3>
+                  <p>Click the updater icon to ask Chamber to check again, even when it is already up to date.</p>
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Download when available</h3>
+                  <p>If a new version is available, click the download state and keep Chamber open while it downloads.</p>
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Restart to install</h3>
+                  <p>When the update is ready, save your work and click the restart state to finish installing.</p>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article class="content-card" id="icon-states">
+            <h2>Updater icon states</h2>
+            <p>
+              The updater uses the same icon language as Chamber's Activity Bar. These icons
+              are small in the app, so use the labels below to know what each state means.
+            </p>
+            <figure class="screenshot-figure">
+              <img
+                src="../assets/user-docs/updater-icon-states.png"
+                alt="Updater icon states showing check, download, downloading, restart, and retry states near the Settings icon."
+              />
+              <figcaption>
+                The updater sits above Settings. A yellow dot means a download or restart needs attention.
+              </figcaption>
+            </figure>
+            <div class="icon-grid">
+              <div class="icon-card">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M21 12a9 9 0 0 1-15.2 6.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M3 12A9 9 0 0 1 18.2 5.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M18 2v4h4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M6 22v-4H2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h3>Check</h3>
+                <p>Chamber is up to date, checking, or ready for a manual check.</p>
+              </div>
+              <div class="icon-card icon-card-attention">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M7 10l5 5 5-5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M12 15V3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h3>Download</h3>
+                <p>A new Chamber version is available. Click to download it.</p>
+              </div>
+              <div class="icon-card icon-card-attention">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4.5 16.5c-1 1-1.5 3-1.5 4.5 1.5 0 3.5-.5 4.5-1.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M9 15l-3-3a20 20 0 0 1 10-9l5 5a20 20 0 0 1-9 10z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M15 9h.01" stroke-width="3" stroke-linecap="round" />
+                </svg>
+                <h3>Restart</h3>
+                <p>The update is downloaded. Click when you are ready to restart and install.</p>
+              </div>
+              <div class="icon-card">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.5 9.5 0 0 1 6.7 2.8L21 8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M21 3v5h-5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M21 12a9 9 0 0 1-9 9 9.5 9.5 0 0 1-6.7-2.8L3 16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M3 21v-5h5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h3>Retry</h3>
+                <p>An update check or download had a problem. Click to try again.</p>
+              </div>
+              <div class="icon-card">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 2v4" stroke-width="2" stroke-linecap="round" />
+                  <path d="M12 18v4" stroke-width="2" stroke-linecap="round" />
+                  <path d="M4.93 4.93l2.83 2.83" stroke-width="2" stroke-linecap="round" />
+                  <path d="M16.24 16.24l2.83 2.83" stroke-width="2" stroke-linecap="round" />
+                  <path d="M2 12h4" stroke-width="2" stroke-linecap="round" />
+                  <path d="M18 12h4" stroke-width="2" stroke-linecap="round" />
+                </svg>
+                <h3>Busy</h3>
+                <p>Checking, downloading, or installing is in progress. Wait until it finishes.</p>
+              </div>
+              <div class="icon-card icon-card-attention">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" stroke-width="2" />
+                  <path d="M12 8v4" stroke-width="2" stroke-linecap="round" />
+                  <path d="M12 16h.01" stroke-width="3" stroke-linecap="round" />
+                </svg>
+                <h3>Yellow dot</h3>
+                <p>Something needs your attention, such as a download or restart.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="content-card" id="install">
+            <h2>Install updates safely</h2>
+            <p>
+              Updates can require Chamber to restart. Before clicking restart, pause or stop
+              long-running mind work, finish any approval prompt, and save anything important
+              outside Chamber.
+            </p>
+            <ul>
+              <li>Wait for active mind replies to finish if you need the answer.</li>
+              <li>Stop work that can be safely restarted later.</li>
+              <li>Do not approve new tool requests while you are preparing to restart.</li>
+              <li>After Chamber reopens, continue from your mind or conversation history.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="problems">
+            <h2>If an update fails</h2>
+            <p>
+              Most update problems are temporary. Try a manual check again, confirm you are
+              online, and make sure your computer allows Chamber to install updates.
+            </p>
+            <ul>
+              <li>If the icon shows retry, click it once after checking your connection.</li>
+              <li>If downloading stalls, leave Chamber open for a few minutes before retrying.</li>
+              <li>If installation fails, quit Chamber fully and open it again.</li>
+              <li>If the updater still fails, download the latest installer from the official release page.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <p>These guides explain nearby setup and troubleshooting topics.</p>
+            <div class="related">
+              <a href="settings-accounts-updates.html">Settings and Accounts</a>
+              <a href="privacy-safety-troubleshooting.html">Troubleshooting</a>
+              <a href="getting-started.html">Getting Started</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        Chamber user documentation
+      </footer>
+    </main>
+  </body>
+</html>
