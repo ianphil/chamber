@@ -27,6 +27,7 @@
     "test:coverage": "vitest run --config config/vitest.config.ts --coverage --no-file-parallelism --maxWorkers=1",
     "clean": "node scripts/clean-artifacts.js",
     "capture:hero": "node scripts/capture-readme-hero.js",
+    "capture:user-docs": "node scripts/capture-user-docs-screenshots.js",
     "playwright:install": "node scripts/install-playwright-browsers.js",
     "smoke:sdk": "node scripts/run-sdk-smoke-test.js",
     "smoke:server-sdk": "npm --workspace @chamber/server run build && node scripts/run-server-sdk-smoke-test.js",

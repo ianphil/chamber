@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Learn how to chat with a Chamber mind, use drafts and pasted images, stop work, read results, and switch models."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Chat - Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber chat guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Chat</p>
+          <h1>Ask, review, and stay in control</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Chat is where you tell a mind what you need and read its response. You can draft a
+            message, paste images, stop long work, review tool activity, and change models when
+            needed.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="Good first message">
+          <h2>Good first message</h2>
+          <p>
+            Be clear about the result you want. Add any important limits, such as length, audience,
+            deadline, or files the mind should not touch.
+          </p>
+          <div class="related">
+            <a class="button button-primary" href="#send">Send a Message</a>
+            <a class="button" href="minds.html">Choose a Mind</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#send" aria-current="page">Send messages</a>
+          <a href="#drafts">Drafts</a>
+          <a href="#images">Pasted images</a>
+          <a href="#stop">Stop control</a>
+          <a href="#reading">Read responses</a>
+          <a href="#panels">Tool and work-log panels</a>
+          <a href="#models">Model selection</a>
+          <a href="#safety">Safety notes</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <div class="guide-content">
+          <section id="send" class="content-card">
+            <h2>Send messages</h2>
+            <p>
+              Type what you want the mind to do in the message box, then send it. Short messages
+              are fine. More detail helps when the task has rules or a specific audience.
+            </p>
+            <div class="steps">
+              <article class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Say the outcome</h3>
+                  <p>Start with the result you want, such as a summary, plan, draft, or answer.</p>
+                </div>
+              </article>
+              <article class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Add useful context</h3>
+                  <p>Include details the mind needs, but do not include secrets or passwords.</p>
+                </div>
+              </article>
+              <article class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Send and wait</h3>
+                  <p>The mind may answer quickly or show progress while it works.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="drafts" class="content-card">
+            <h2>Use drafts</h2>
+            <p>
+              A draft is text you have typed but not sent yet. Use drafts to collect your thoughts
+              before asking the mind to act.
+            </p>
+            <ul>
+              <li>Edit the draft until it says exactly what you want.</li>
+              <li>Send only when you are ready for the mind to respond.</li>
+              <li>Clear the message box if you decide not to send the draft.</li>
+            </ul>
+          </section>
+
+          <section id="images" class="content-card">
+            <h2>Paste images</h2>
+            <p>
+              You can paste an image into chat when you want the mind to look at a screenshot,
+              diagram, chart, or other visual detail.
+            </p>
+            <ul>
+              <li>Copy the image from another app, then paste it into the chat message.</li>
+              <li>Add a sentence explaining what the mind should notice or answer.</li>
+              <li>Check the image before sending so you do not share private information by mistake.</li>
+            </ul>
+          </section>
+
+          <section id="stop" class="content-card">
+            <h2>Stop long work</h2>
+            <p>
+              If a mind is taking too long, going in the wrong direction, or working on something
+              you no longer need, use the stop control.
+            </p>
+            <ul>
+              <li>Stop ends the current response or task attempt.</li>
+              <li>You can send a new message afterward with clearer instructions.</li>
+              <li>If a tool already completed an action, stopping does not undo that action.</li>
+            </ul>
+          </section>
+
+          <section id="reading" class="content-card">
+            <h2>Read responses</h2>
+            <p>
+              Chamber formats replies so they are easier to scan. The mind may use headings,
+              lists, links, code blocks, or tables depending on the answer.
+            </p>
+            <ul>
+              <li><strong>Markdown:</strong> headings, bold text, lists, and links appear formatted.</li>
+              <li><strong>Code:</strong> technical snippets appear in separated blocks for easier reading.</li>
+              <li><strong>Tables:</strong> comparison or planning details may appear in rows and columns.</li>
+            </ul>
+          </section>
+
+          <section id="panels" class="content-card">
+            <h2>Tool and work-log panels</h2>
+            <p>
+              Some tasks need the mind to use tools or record progress. Chamber may show panels so
+              you can review what happened without mixing every detail into the main answer.
+            </p>
+            <figure class="screenshot-figure">
+              <img
+                src="../assets/user-docs/chat-work-log.png"
+                alt="Chamber chat showing a user prompt, an assistant reply, and an expanded work log with tool activity."
+              />
+              <figcaption>
+                Work logs show the steps a mind is taking, including tools it is using and progress while it works.
+              </figcaption>
+            </figure>
+            <ul>
+              <li><strong>Tool panel:</strong> shows tool requests, results, or approval prompts.</li>
+              <li><strong>Work-log panel:</strong> shows progress notes and steps the mind has taken.</li>
+              <li>Open panels when you want detail. Collapse them when you only need the answer.</li>
+            </ul>
+          </section>
+
+          <section id="models" class="content-card">
+            <h2>Choose and switch models</h2>
+            <p>
+              A model is the AI engine the mind uses to answer. Chamber may offer more than one.
+              You can switch models when you need a different balance of speed, depth, or cost.
+            </p>
+            <div class="steps">
+              <article class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Open model selection</h3>
+                  <p>Find the model control near the chat or mind settings when available.</p>
+                </div>
+              </article>
+              <article class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Pick the model for the task</h3>
+                  <p>Use faster models for quick work and stronger models for harder reasoning.</p>
+                </div>
+              </article>
+              <article class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Switch if the result is not right</h3>
+                  <p>Changing models affects future replies. It does not rewrite earlier messages.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="safety" class="callout">
+            <strong>Safety note</strong>
+            <p>
+              Review tool requests before approving them, especially if they could change files,
+              send data, or contact another service. Do not paste passwords, private keys, or other
+              secrets into chat.
+            </p>
+          </section>
+
+          <section id="related" class="content-card">
+            <h2>Related guides</h2>
+            <div class="related">
+              <a href="getting-started.html">Getting Started</a>
+              <a href="minds.html">Work with Minds</a>
+              <a href="conversation-history.html">Conversation History</a>
+              <a href="index.html">All User Guides</a>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="page-footer">Chamber user documentation</footer>
+    </main>
+  </body>
+</html>
