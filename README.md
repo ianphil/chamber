@@ -95,9 +95,14 @@ npm run lint           # TypeScript, ESLint, and dependency boundary checks
 npm test               # Unit, integration, regression, and component tests
 npm run smoke:web      # Browser app Playwright smoke test
 npm run smoke:desktop  # Electron Playwright smoke test
+npm run smoke:sdk      # Real-CLI smoke against the bundled @github/copilot SDK runtime
+npm run smoke:acp      # Real-CLI smoke against the chamber-copilot ACP extension (opt-in)
+npm run smoke:acp-desktop # End-to-end: launch desktop, activate a mind, verify a child copilot --acp worker spawns
 npm run capture:hero   # Refresh docs/assets/chamber-hero.png
 npm run make           # Build the Windows NSIS installer and updater metadata
 ```
+
+The chamber-copilot ACP extension is opt-in. Set `chamberCopilotEnabled: true` in `~/.chamber/config.json` to wire `ChamberCopilotService` into the mind tool providers; this exposes the `cli_*` tools (`cli_delegate`, `cli_status`, `cli_respond`, `cli_approve`, `cli_cancel`, `cli_list`) so minds can drive child `copilot --acp` workers. The flag defaults to `false`; the SDK runtime path is unaffected. Validate end-to-end with `COPILOT_REAL_CLI=1 npm run smoke:acp` (ACP protocol cycle against the bundled CLI) and `COPILOT_REAL_CLI=1 npm run smoke:acp-desktop` (full desktop boot → mind activation → spawned child).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for workflow, validation, versioning, changelog, and release expectations.
 

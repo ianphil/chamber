@@ -4,7 +4,15 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['keytar', 'sharp', '@azure/msal-node-extensions', '@azure/msal-node-runtime'],
+      external: [
+        'keytar',
+        'sharp',
+        '@azure/msal-node-extensions',
+        '@azure/msal-node-runtime',
+        'chamber-copilot',
+        'vscode-jsonrpc',
+        /^vscode-jsonrpc\//,
+      ],
     },
   },
 });

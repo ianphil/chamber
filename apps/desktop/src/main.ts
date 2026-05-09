@@ -13,6 +13,7 @@ import {
   ApprovalGate,
   AuthService,
   CanvasService,
+  ChamberCopilotService,
   ChatroomService,
   ChatService,
   ConfigService,
@@ -41,7 +42,10 @@ import {
   ViewDiscovery,
   configureSdkRuntimeLayout,
   getChamberToolsBinDir,
+  getPlatformCopilotBinaryPath,
+  resolveNodeModulesDir,
   type AppPaths,
+  type ChamberToolProvider,
   type CredentialStore,
   type GenesisMindTemplateMarketplaceSource,
   type Notifier,
@@ -238,7 +242,32 @@ const cronService = new CronService({
 });
 const a2aToolProvider = new A2aToolProvider(messageRouter, agentCardRegistry, taskManager);
 
-mindManager.setProviders([cronService, canvasService, a2aToolProvider]);
+const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
+
+if (configService.load().chamberCopilotEnabled === true) {
+  const { defaultAcpConnectionFactory, AcpConnection } = runtimeRequire('chamber-copilot') as typeof import('chamber-copilot');
+  // SECURITY/CORRECTNESS:
+  // - command: pin to the bundled @github/copilot CLI exactly the way
+  //   CopilotClientFactory does. Falling back to chamber-copilot's bare
+  //   "copilot" default would PATH-resolve, which both fails in packaged
+  //   installs (no copilot on PATH) and is vulnerable to PATH hijacking.
+  // - args: drop chamber-copilot's `--no-auto-login` default so the child
+  //   ACP process can load the user's cached auth (which the parent
+  //   Chamber session already requires). Otherwise every spawn fails with
+  //   "Authentication required" even for signed-in users.
+  const cliPath = getPlatformCopilotBinaryPath(resolveNodeModulesDir());
+  mindToolProviders.push(new ChamberCopilotService({
+    connectionFactory: () => new AcpConnection({
+      connectionFactory: defaultAcpConnectionFactory({
+        command: cliPath,
+        args: ['--acp', '--no-auto-update'],
+      }),
+    }),
+  }));
+  log.info('chamber-copilot ACP extension enabled', { cliPath });
+}
+
+mindManager.setProviders(mindToolProviders);
 
 wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
 
