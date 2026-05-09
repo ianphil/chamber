@@ -277,4 +277,71 @@ describe('ChamberCopilotService', () => {
     expect(connections[0].stop).toHaveBeenCalledOnce();
     expect(connections[1].stop).not.toHaveBeenCalled();
   });
+
+  it('prewarm starts the connection eagerly so the first getToolsForMind sees the cli_* tools', async () => {
+    const { service, connection } = buildHarness();
+
+    // Before prewarm: store is null, getToolsForMind returns [].
+    expect(service.getToolsForMind('mind-1', '/tmp/mind-1')).toEqual([]);
+
+    await service.prewarm();
+
+    expect(connection.start).toHaveBeenCalledOnce();
+
+    // After prewarm: getToolsForMind for ANY mind builds the per-mind
+    // scoped tool surface, even without a prior activateMind. This is
+    // the production-relevant behavior: MindManager.doLoadMind calls
+    // getSessionTools BEFORE activateProviders, so the cli_* tools must
+    // be available to that first call.
+    const tools = service.getToolsForMind('mind-1', '/tmp/mind-1');
+    expect(tools.map((tool) => tool.name)).toEqual([
+      'cli_delegate',
+      'cli_status',
+      'cli_respond',
+      'cli_approve',
+      'cli_cancel',
+      'cli_list',
+    ]);
+  });
+
+  it('prewarm swallows connection-start failures and leaves the service in a valid degraded state', async () => {
+    const failingConnection = new FakeAcpConnection();
+    failingConnection.start = vi.fn(async () => {
+      throw new Error('cli not found');
+    });
+
+    const { service } = buildHarness({
+      connectionFactory: () => failingConnection as unknown as AcpConnection,
+    });
+
+    // prewarm must not throw — composition root awaits it during app boot,
+    // and a failure must not take down the entire app.
+    await expect(service.prewarm()).resolves.toBeUndefined();
+
+    expect(failingConnection.start).toHaveBeenCalledOnce();
+    expect(service.getToolsForMind('mind-1', '/tmp/mind-1')).toEqual([]);
+  });
+
+  it('activateMind degrades gracefully when connection start fails so the mind still loads with empty tools', async () => {
+    const failingConnection = new FakeAcpConnection();
+    failingConnection.start = vi.fn(async () => {
+      throw new Error('cli spawn failed');
+    });
+
+    const { service } = buildHarness({
+      connectionFactory: () => failingConnection as unknown as AcpConnection,
+    });
+
+    // activateMind must NOT throw — MindManager.doLoadMind catches
+    // activate failures and aborts the entire mind load otherwise.
+    await expect(service.activateMind('mind-1', '/tmp/mind-1')).resolves.toBeUndefined();
+
+    expect(failingConnection.start).toHaveBeenCalledOnce();
+    expect(service.getToolsForMind('mind-1', '/tmp/mind-1')).toEqual([]);
+
+    // Releasing a mind that never made it past failed activate must be a
+    // safe no-op (the mind was never tracked in activeMinds).
+    await expect(service.releaseMind('mind-1')).resolves.toBeUndefined();
+    expect(failingConnection.stop).not.toHaveBeenCalled();
+  });
 });

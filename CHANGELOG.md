@@ -10,6 +10,10 @@
 
 - **Per-mind isolation for the chamber-copilot tool surface** — `ChamberCopilotService` now hands each mind its own `cli_*` tool surface backed by a `MindScopedJobs` adapter. Returned job ids are namespaced as `${mindId}:${realJobId}`; cross-mind `cli_status` / `cli_respond` / `cli_approve` / `cli_cancel` / `cli_list` calls are rejected with the same `Unknown job_id` shape a non-existent id produces, so probing minds cannot enumerate other minds' jobs. Releasing a mind cancels every still-running job that mind owned. Operators should still note that `cli_approve` allows a mind to autonomously authorize tool execution in its own delegated child worker — the `ApprovalGate` does not interpose on those child-worker tool calls. Any change to this surface must run `COPILOT_REAL_CLI=1 npm run smoke:acp-desktop` before merge. (#258)
 
+### Reliability
+
+- **Eager prewarm + degraded-mode lifecycle for chamber-copilot** — `ChamberCopilotService` now exposes `prewarm()`, awaited at app boot when the flag is on, so the AcpConnection is started before `MindManager.doLoadMind` calls `getSessionTools`. This guarantees the first mind in a fresh process sees the `cli_*` tools on its first session (previously they only appeared on the next session create). Both `prewarm()` and `activateMind` now swallow connection-start failures so a missing or unspawnable copilot CLI does NOT take down the entire mind-loading pipeline; the service stays in a valid degraded state where `getToolsForMind` returns `[]` and the next activate retries the start. (#258)
+
 ### Testing
 
 - **Add real-CLI smokes for the ACP runtime** — New `npm run smoke:acp` (gated on `COPILOT_REAL_CLI=1`) drives `chamber-copilot`'s `JobStore` through one delegate → session/update → idle cycle against the bundled CLI. New `npm run smoke:acp-desktop` boots the full Electron app with the flag enabled, drives `mind.add` via CDP, and verifies `ChamberCopilotService` actually spawns a child `copilot --acp` worker end-to-end. Both are excluded from the default `npm test`. (#258)

@@ -7,13 +7,21 @@
 // tools from `getToolsForMind`.
 //
 // Lifecycle invariants:
-//   * The connection is **lazy**: not started until the first mind activates.
+//   * The connection is started either lazily on first `activateMind` OR
+//     eagerly via `prewarm()`. The composition root is expected to call
+//     `prewarm()` at app boot when the feature flag is on, so the first
+//     mind load sees the cli_* tools immediately. Without prewarm,
+//     `MindManager.doLoadMind` calls `getSessionTools` BEFORE
+//     `activateProviders`, so the first mind in a fresh process boots
+//     its session without the cli_* tools.
 //   * A single connection is reused across every active mind.
-//   * The connection stops when the last activated mind is released, so
-//     packaging/runtime cost is zero when the feature is enabled but no
-//     mind is currently using it.
+//   * The connection stops when the last activated mind is released.
 //   * activate/release operations are serialized so concurrent activates
 //     don't race the connection start.
+//   * `activateMind` and `prewarm` swallow connection-start failures so a
+//     missing/unspawnable CLI does NOT take down the entire mind-loading
+//     pipeline. The service stays in a valid degraded state where
+//     `getToolsForMind` returns []; the next activate retries the start.
 //
 // Trust boundary:
 //   * Each mind sees a `MindScopedJobs` adapter — its job_ids are namespaced
@@ -79,12 +87,45 @@ export class ChamberCopilotService implements ChamberToolProvider {
 
   async activateMind(mindId: string, _mindPath: string): Promise<void> {
     void _mindPath;
-    await this.ensureStarted();
+    try {
+      await this.ensureStarted();
+    } catch (error) {
+      // Degrade gracefully: a missing/unspawnable copilot CLI must NOT
+      // take down the mind-loading pipeline. The mind still loads with
+      // its other tool providers; cli_* tools just aren't available
+      // until the next activate succeeds.
+      log.error(
+        `chamber-copilot activateMind failed for mind=${mindId}; cli_* tools will be unavailable until next activate succeeds`,
+        error,
+      );
+      return;
+    }
     this.activeMinds.add(mindId);
     // Eagerly create the per-mind scoped store so that a getToolsForMind
     // call before activation returns [], and after activation always
     // returns this mind's own scoped surface.
     this.getOrCreateScopedStore(mindId);
+  }
+
+  // Eagerly start the AcpConnection so the cli_* tools are available to
+  // the very first mind load. Without this, MindManager.doLoadMind calls
+  // getSessionTools BEFORE activateProviders, so getToolsForMind returns
+  // [] (because this.store is null) and the first mind boots its session
+  // without the cli_* tools.
+  //
+  // Safe to call multiple times. Failures are logged and swallowed; the
+  // service stays in a valid degraded state where getToolsForMind
+  // returns []. The composition root is expected to call this once
+  // during app boot when chamberCopilotEnabled === true.
+  async prewarm(): Promise<void> {
+    try {
+      await this.ensureStarted();
+    } catch (error) {
+      log.error(
+        'chamber-copilot prewarm failed; cli_* tools unavailable until next activate succeeds',
+        error,
+      );
+    }
   }
 
   async releaseMind(mindId: string): Promise<void> {
@@ -103,10 +144,11 @@ export class ChamberCopilotService implements ChamberToolProvider {
   private getOrCreateScopedStore(mindId: string): MindScopedJobs {
     let scoped = this.scopedStores.get(mindId);
     if (!scoped) {
-      if (!this.store) {
-        throw new Error('ChamberCopilotService: store unavailable; call activateMind first');
-      }
-      scoped = new MindScopedJobs(this.store, mindId);
+      // INVARIANT: callers (getToolsForMind / activateMind) verify
+      // `this.store` is non-null before reaching here. getToolsForMind
+      // short-circuits when `this.store` is null; activateMind only
+      // calls this after a successful `ensureStarted()`.
+      scoped = new MindScopedJobs(this.store!, mindId);
       this.scopedStores.set(mindId, scoped);
     }
     return scoped;

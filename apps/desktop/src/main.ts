@@ -243,6 +243,7 @@ const cronService = new CronService({
 const a2aToolProvider = new A2aToolProvider(messageRouter, agentCardRegistry, taskManager);
 
 const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
+let chamberCopilotService: ChamberCopilotService | null = null;
 
 if (configService.load().chamberCopilotEnabled === true) {
   const { defaultAcpConnectionFactory, AcpConnection } = runtimeRequire('chamber-copilot') as typeof import('chamber-copilot');
@@ -256,14 +257,15 @@ if (configService.load().chamberCopilotEnabled === true) {
   //   Chamber session already requires). Otherwise every spawn fails with
   //   "Authentication required" even for signed-in users.
   const cliPath = getPlatformCopilotBinaryPath(resolveNodeModulesDir());
-  mindToolProviders.push(new ChamberCopilotService({
+  chamberCopilotService = new ChamberCopilotService({
     connectionFactory: () => new AcpConnection({
       connectionFactory: defaultAcpConnectionFactory({
         command: cliPath,
         args: ['--acp', '--no-auto-update'],
       }),
     }),
-  }));
+  });
+  mindToolProviders.push(chamberCopilotService);
   log.info('chamber-copilot ACP extension enabled', { cliPath });
 }
 
@@ -541,6 +543,15 @@ app.on('ready', async () => {
 
   if (useMvpServer) {
     await startMvpServer();
+  }
+
+  // Eagerly start the chamber-copilot ACP connection (when the flag is on)
+  // so the cli_* tools are available to the very first mind load.
+  // MindManager.doLoadMind calls getSessionTools BEFORE activateProviders;
+  // without prewarm the first mind in a fresh process boots without the
+  // cli_* tools. prewarm() swallows failures and logs.
+  if (chamberCopilotService) {
+    await chamberCopilotService.prewarm();
   }
 
   // --- IPC adapters (thin, parameter-injected) ---
