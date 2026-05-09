@@ -157,11 +157,11 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   const isControlled = value !== undefined;
   const [internalInput, setInternalInput] = useState('');
   const input = isControlled ? value : internalInput;
-  const setInput = (next: string | ((prev: string) => string)) => {
+  const setInput = useCallback((next: string | ((prev: string) => string)) => {
     const resolved = typeof next === 'function' ? next(input) : next;
     if (isControlled) onValueChange?.(resolved);
     else setInternalInput(resolved);
-  };
+  }, [input, isControlled, onValueChange]);
   const [attachments, setAttachments] = useState<ChatImageAttachment[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [shortcodeMatch, setShortcodeMatch] = useState<ShortcodeMatch | null>(null);
@@ -227,7 +227,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
       textareaRef.current.setSelectionRange(caret, caret);
       resize(textareaRef.current);
     });
-  }, [resize]);
+  }, [resize, setInput]);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData?.items ?? []);
@@ -278,7 +278,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [input, attachments, isStreaming, disabled, onSend, onStop, closeShortcode]);
+  }, [input, attachments, isStreaming, disabled, onSend, onStop, closeShortcode, setInput]);
 
   const acceptShortcode = useCallback(
     (record: EmojiRecord) => {
@@ -311,7 +311,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         resize(textareaRef.current);
       });
     },
-    [shortcodeMatch, closeShortcode, resize],
+    [shortcodeMatch, closeShortcode, resize, setInput],
   );
 
   const handleEmojiSelect = useCallback(

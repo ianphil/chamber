@@ -360,6 +360,35 @@ describe('ChatInput controlled value (per-agent compose drafts #221)', () => {
     expect(textarea.value).toBe('draft for B');
   });
 
+  it('pasting an image after switching controlled drafts updates the current mind draft setter', async () => {
+    const onMindAValueChange = vi.fn();
+    const onMindBValueChange = vi.fn();
+    const { rerender } = render(
+      <ChatInput {...defaultProps} value="" onValueChange={onMindAValueChange} />,
+    );
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    rerender(
+      <ChatInput {...defaultProps} value="" onValueChange={onMindBValueChange} />,
+    );
+    const file = new File(['image-bytes'], 'paste.png', { type: 'image/png' });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{
+          kind: 'file',
+          type: 'image/png',
+          getAsFile: () => file,
+        }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(onMindBValueChange).toHaveBeenCalledWith('[📷 image-1.png]');
+    });
+    expect(onMindAValueChange).not.toHaveBeenCalled();
+  });
+
   it('clearing the controlled value to "" empties the textarea (post-send clear)', () => {
     const onValueChange = vi.fn();
     const { rerender } = render(
