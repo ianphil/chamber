@@ -1,5 +1,50 @@
 import { z } from 'zod';
-import type { ChatEvent } from '@chamber/shared/types';
+import type { PermissionRequest, SessionEventPayload } from '@github/copilot-sdk';
+import type { ChatEvent, PermissionRequestKind, PermissionOutcome } from '@chamber/shared/types';
+
+// Bind the local kind/outcome lists to the SDK-shipped types so any drift
+// in `@github/copilot-sdk` (a new permission kind, a renamed completion
+// kind) breaks `tsc --noEmit` instead of failing silently at runtime as
+// an opaque `SdkChatEventContractError` in chat. Shared types stay
+// literal because `@chamber/shared` is dependency-free; the linkage
+// lives here in services where the SDK is already a peer.
+type SdkPermissionRequestKind = PermissionRequest['kind'];
+type SdkPermissionCompletedKind =
+  SessionEventPayload<'permission.completed'>['data']['result']['kind'];
+
+const PERMISSION_REQUEST_KINDS = [
+  'shell',
+  'write',
+  'mcp',
+  'read',
+  'url',
+  'custom-tool',
+  'memory',
+  'hook',
+] as const satisfies readonly SdkPermissionRequestKind[] & readonly PermissionRequestKind[];
+
+const PERMISSION_COMPLETED_KINDS = [
+  'approved',
+  'approved-for-session',
+  'approved-for-location',
+  'denied-by-rules',
+  'denied-no-approval-rule-and-could-not-request-from-user',
+  'denied-interactively-by-user',
+  'denied-by-content-exclusion-policy',
+  'denied-by-permission-request-hook',
+] as const satisfies readonly SdkPermissionCompletedKind[];
+
+// Compile-time exhaustiveness — if the SDK adds a kind, the assignment
+// below stops type-checking and CI fails loud.
+const _exhaustiveRequestKinds: SdkPermissionRequestKind = '' as (typeof PERMISSION_REQUEST_KINDS)[number];
+const _exhaustiveCompletedKinds: SdkPermissionCompletedKind = '' as (typeof PERMISSION_COMPLETED_KINDS)[number];
+// Pair the local outcome alias with the SDK's completion kind set, and
+// surface drift in either direction as a type error.
+const _exhaustiveOutcomeAlias: Exclude<PermissionOutcome, 'pending'> =
+  '' as SdkPermissionCompletedKind;
+void _exhaustiveRequestKinds;
+void _exhaustiveCompletedKinds;
+void _exhaustiveOutcomeAlias;
 
 const sdkEvent = <Shape extends z.ZodRawShape>(shape: Shape) =>
   z.object({ data: z.object(shape).passthrough() }).passthrough();
@@ -66,16 +111,16 @@ const sdkSessionErrorEvent = sdkEvent({
 const sdkPermissionRequestedEvent = sdkEvent({
   requestId: z.string(),
   permissionRequest: z.object({
-    kind: z.enum(['shell', 'write', 'mcp', 'read', 'url', 'custom-tool', 'memory', 'hook']),
+    kind: z.enum(PERMISSION_REQUEST_KINDS),
     toolCallId: z.string().optional(),
     fullCommandText: z.string().optional(),     // shell
-    intention: z.string().optional(),           // shell, read, url
+    intention: z.string().optional(),           // shell, read, url, write
     path: z.string().optional(),                // read
-    paths: z.array(z.string()).optional(),      // write
+    fileName: z.string().optional(),            // write
     url: z.string().optional(),                 // url
     serverName: z.string().optional(),          // mcp
     toolTitle: z.string().optional(),           // mcp
-    toolName: z.string().optional(),            // mcp, custom-tool
+    toolName: z.string().optional(),            // mcp, custom-tool, hook
     fact: z.string().optional(),                // memory
     hookMessage: z.string().optional(),         // hook
   }).passthrough(),
@@ -84,16 +129,7 @@ const sdkPermissionRequestedEvent = sdkEvent({
 const sdkPermissionCompletedEvent = sdkEvent({
   requestId: z.string(),
   result: z.object({
-    kind: z.enum([
-      'approved',
-      'approved-for-session',
-      'approved-for-location',
-      'denied-by-rules',
-      'denied-no-approval-rule-and-could-not-request-from-user',
-      'denied-interactively-by-user',
-      'denied-by-content-exclusion-policy',
-      'denied-by-permission-request-hook',
-    ]),
+    kind: z.enum(PERMISSION_COMPLETED_KINDS),
   }).passthrough(),
   toolCallId: z.string().optional(),
 });
@@ -212,7 +248,7 @@ function summarizePermissionRequest(req: {
   fullCommandText?: string;
   intention?: string;
   path?: string;
-  paths?: string[];
+  fileName?: string;
   url?: string;
   serverName?: string;
   toolTitle?: string;
@@ -224,7 +260,7 @@ function summarizePermissionRequest(req: {
     case 'shell':
       return preview(req.fullCommandText) || preview(req.intention) || 'shell command';
     case 'write':
-      return preview((req.paths ?? []).join(', ')) || 'file write';
+      return preview(req.fileName) || preview(req.intention) || 'file write';
     case 'read':
       return preview(req.path) || preview(req.intention) || 'read';
     case 'url':
@@ -236,7 +272,7 @@ function summarizePermissionRequest(req: {
     case 'memory':
       return preview(req.fact) || 'memory';
     case 'hook':
-      return preview(req.hookMessage) || 'hook confirmation';
+      return preview(req.hookMessage) || preview(req.toolName) || 'hook confirmation';
     default:
       return req.kind;
   }

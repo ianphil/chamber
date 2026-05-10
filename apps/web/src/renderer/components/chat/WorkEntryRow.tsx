@@ -103,7 +103,7 @@ function iconAndTone(entry: WorkEntry): { Icon: ReturnType<typeof iconForToolNam
   }
   if (entry.kind === 'permission') {
     const iconClass = isDeniedOutcome(entry.block.outcome)
-      ? 'text-destructive-foreground'
+      ? 'text-destructive'
       : entry.block.outcome === 'pending'
         ? 'text-genesis'
         : 'text-foreground/80';
@@ -140,7 +140,7 @@ function PermissionGlyph({ outcome }: { outcome: PermissionOutcome }) {
     return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-genesis" aria-label="awaiting permission" />;
   }
   if (isDeniedOutcome(outcome)) {
-    return <ShieldAlert className="h-3 w-3 shrink-0 text-destructive-foreground" aria-label={outcome} />;
+    return <ShieldAlert className="h-3 w-3 shrink-0 text-destructive" aria-label={outcome} />;
   }
   return <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-400/80" aria-label={outcome} />;
 }
@@ -175,7 +175,7 @@ function EntryDetail({ entry }: { entry: WorkEntry }) {
         <div className="text-muted-foreground">
           <span className="text-foreground/80">{entry.block.kind}</span>: {entry.block.summary}
         </div>
-        <div className={cn('mt-1', denied ? 'text-destructive-foreground' : 'text-emerald-400/80')}>
+        <div className={cn('mt-1', denied ? 'text-destructive' : 'text-emerald-400/80')}>
           {permissionOutcomeLabel(entry.block.outcome)}
         </div>
       </div>

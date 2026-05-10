@@ -135,13 +135,15 @@ describe('sdkChatEventMapper', () => {
       });
     });
 
-    it('maps a write permission.requested event with the affected paths', () => {
+    it('maps a write permission.requested event with the affected file name', () => {
       const mapped = mapSdkPermissionRequested({
         data: {
           requestId: 'req-2',
           permissionRequest: {
             kind: 'write',
-            paths: ['./README.md', './CHANGELOG.md'],
+            fileName: './README.md',
+            diff: '--- a/README.md\n+++ b/README.md\n',
+            intention: 'document the change',
           },
         },
       });
@@ -149,7 +151,7 @@ describe('sdkChatEventMapper', () => {
         type: 'permission_request',
         requestId: 'req-2',
         kind: 'write',
-        summary: './README.md, ./CHANGELOG.md',
+        summary: './README.md',
       });
     });
 
@@ -188,6 +190,16 @@ describe('sdkChatEventMapper', () => {
         },
       });
       expect(mapped.summary).toBe('memory');
+    });
+
+    it('falls back to the gated tool name when a hook permission has no message', () => {
+      const mapped = mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-6',
+          permissionRequest: { kind: 'hook', toolName: 'bash' },
+        },
+      });
+      expect(mapped.summary).toBe('bash');
     });
 
     it('maps a permission.completed approved event to a permission_outcome event', () => {

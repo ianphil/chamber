@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.57.0 (2026-05-10)
+
+### SDK
+
+- **Surface SDK permission requests and denials in chat** — `ChatService` now subscribes to the SDK's `permission.requested` / `permission.completed` events and emits `permission_request` / `permission_outcome` chat events, with a per-kind summary builder (paths for write, command preview for shell, URL for url, server for mcp, tool for custom-tool, hook for hook, scope for read/memory). The renderer reducer pairs requests to outcomes by `requestId` and the chat work group renders an inline permission entry that updates from pending to approved/denied with kind-appropriate icons and human-readable outcome detail. (#131)
+
 ## v0.56.0 (2026-05-10)
 
 ### SDK
