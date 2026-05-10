@@ -46,8 +46,8 @@ function unknownJob(scopedJobId: string): Error {
 // store handed us a malformed id". See `unscope` below for why the
 // invariant matters.
 class MindScopedJobsInvariantError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'MindScopedJobsInvariantError';
   }
 }
@@ -76,8 +76,15 @@ export class MindScopedJobs {
     // shift the unscope boundary. Reject at the boundary so the failure
     // is loud and immediate, not a delayed "Unknown job_id" miles away.
     if (result.jobId.includes(SCOPED_ID_SEPARATOR)) {
+      let cancelFailure: unknown;
+      try {
+        await this.inner.cancel(result.jobId);
+      } catch (error) {
+        cancelFailure = error;
+      }
       throw new MindScopedJobsInvariantError(
         `MindScopedJobs invariant violated: inner JobStore returned a rawJobId containing the scope separator '${SCOPED_ID_SEPARATOR}' (jobId=${JSON.stringify(result.jobId)}). The scope/unscope split assumes rawJobIds do not contain '${SCOPED_ID_SEPARATOR}'. Use a different JobStoreOptions.idFactory.`,
+        cancelFailure === undefined ? undefined : { cause: cancelFailure },
       );
     }
     this.ownedJobIds.add(result.jobId);

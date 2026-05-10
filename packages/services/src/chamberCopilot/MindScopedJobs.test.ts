@@ -186,15 +186,17 @@ describe('MindScopedJobs', () => {
         delegate: vi.fn(async () => ({ jobId: 'has:colon', sessionId: 'sess-1' })),
         respond: vi.fn(),
         approve: vi.fn(),
-        cancel: vi.fn(),
+        cancel: vi.fn(async () => {}),
         status: vi.fn(),
-        list: vi.fn(),
+        list: vi.fn(() => [snap('has:colon')]),
       };
       const scoped = new MindScopedJobs(asJobStore(evilStore as unknown as FakeStore), 'mind-a');
 
       await expect(scoped.delegate({ cwd: '/repo', prompt: 'p' })).rejects.toThrow(
         /MindScopedJobs invariant violated.*colon/i,
       );
+      expect(evilStore.cancel).toHaveBeenCalledWith('has:colon');
+      expect(scoped.list()).toEqual([]);
     });
   });
 
