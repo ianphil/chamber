@@ -1,4 +1,4 @@
-import type { ContentBlock, TextBlock, ToolCallBlock, ReasoningBlock } from '@chamber/shared/types';
+import type { ContentBlock, TextBlock, ToolCallBlock, ReasoningBlock, PermissionBlock } from '@chamber/shared/types';
 
 export type WorkEntry =
   | {
@@ -14,6 +14,12 @@ export type WorkEntry =
       id: string;
       preview: string | null;
       block: ReasoningBlock;
+    }
+  | {
+      kind: 'permission';
+      id: string;
+      preview: string | null;
+      block: PermissionBlock;
     };
 
 export type RenderChunk =
@@ -86,6 +92,15 @@ function reasoningEntry(block: ReasoningBlock): WorkEntry {
   };
 }
 
+function permissionEntry(block: PermissionBlock): WorkEntry {
+  return {
+    kind: 'permission',
+    id: `perm:${block.requestId}`,
+    preview: derivePreview(block.summary),
+    block,
+  };
+}
+
 /**
  * Walk content blocks in order and emit alternating text / work chunks.
  * Consecutive non-text blocks (tool + reasoning) collapse into a single
@@ -123,6 +138,8 @@ export function groupBlocksIntoChunks(blocks: ReadonlyArray<ContentBlock>): Rend
       pending.push(toolEntry(block));
     } else if (block.type === 'reasoning') {
       pending.push(reasoningEntry(block));
+    } else if (block.type === 'permission') {
+      pending.push(permissionEntry(block));
     }
   }
   flushPending();

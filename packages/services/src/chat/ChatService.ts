@@ -12,6 +12,8 @@ import {
   mapSdkAssistantMessage,
   mapSdkAssistantMessageDelta,
   mapSdkAssistantReasoningDelta,
+  mapSdkPermissionCompleted,
+  mapSdkPermissionRequested,
   mapSdkToolExecutionComplete,
   mapSdkToolExecutionPartialResult,
   mapSdkToolExecutionProgress,
@@ -143,6 +145,21 @@ export class ChatService {
 
       unsubs.push(session.on('tool.execution_complete', (event) => {
         emitMapped(() => mapSdkToolExecutionComplete(event));
+      }));
+
+      // Permission events (issue #131 checklist 5). The SDK emits
+      // `permission.requested` when a tool/url/etc. asks for approval and
+      // `permission.completed` once the handler returns. We surface both
+      // as chat events so the UI can render an inline permission entry
+      // that updates from "pending" to its final outcome (approved /
+      // denied-*). Approval logic itself still lives in the
+      // onPermissionRequest handler wired by MindManager.
+      unsubs.push(session.on('permission.requested', (event) => {
+        emitMapped(() => mapSdkPermissionRequested(event));
+      }));
+
+      unsubs.push(session.on('permission.completed', (event) => {
+        emitMapped(() => mapSdkPermissionCompleted(event));
       }));
 
       // Set up idle/error listeners BEFORE send to avoid missing events

@@ -37,7 +37,36 @@ export interface ImageBlock {
   dataUrl: string;
 }
 
-export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock | ImageBlock;
+// Permission request/outcome surfaced inline in the chat stream so users
+// can see what the agent asked the SDK to do and how it was resolved.
+// Issue #131 checklist 5 — wired from the SDK's `permission.requested` /
+// `permission.completed` session events via `mapSdkPermissionRequested`
+// and `mapSdkPermissionCompleted`. The block status starts `pending`
+// when the request arrives and updates to one of the SDK's
+// `PermissionCompletedKind` values when the completion event fires.
+export type PermissionRequestKind = 'shell' | 'write' | 'mcp' | 'read' | 'url' | 'custom-tool' | 'memory' | 'hook';
+
+export type PermissionOutcome =
+  | 'pending'
+  | 'approved'
+  | 'approved-for-session'
+  | 'approved-for-location'
+  | 'denied-by-rules'
+  | 'denied-no-approval-rule-and-could-not-request-from-user'
+  | 'denied-interactively-by-user'
+  | 'denied-by-content-exclusion-policy'
+  | 'denied-by-permission-request-hook';
+
+export interface PermissionBlock {
+  type: 'permission';
+  requestId: string;
+  kind: PermissionRequestKind;
+  summary: string;
+  outcome: PermissionOutcome;
+  toolCallId?: string;
+}
+
+export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock | ImageBlock | PermissionBlock;
 
 // ---------------------------------------------------------------------------
 // Chat events — single sequenced IPC channel
@@ -51,6 +80,8 @@ export type ChatEvent =
   | { type: 'tool_done'; toolCallId: string; success: boolean; result?: string; error?: string }
   | { type: 'reasoning'; reasoningId: string; content: string }
   | { type: 'message_final'; sdkMessageId: string; content: string }
+  | { type: 'permission_request'; requestId: string; kind: PermissionRequestKind; summary: string; toolCallId?: string }
+  | { type: 'permission_outcome'; requestId: string; outcome: Exclude<PermissionOutcome, 'pending'> }
   | { type: 'reconnecting' }
   | { type: 'done' }
   | { type: 'timeout'; timeoutMs: number }

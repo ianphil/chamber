@@ -5,6 +5,8 @@ import {
   mapSdkAssistantMessage,
   mapSdkAssistantMessageDelta,
   mapSdkAssistantReasoningDelta,
+  mapSdkPermissionCompleted,
+  mapSdkPermissionRequested,
   mapSdkToolExecutionComplete,
   mapSdkToolExecutionPartialResult,
   mapSdkToolExecutionProgress,
@@ -109,5 +111,124 @@ describe('sdkChatEventMapper', () => {
     expect(() => getSdkSessionErrorMessage({
       data: { error: 'SDK session failed' },
     })).toThrow('SDK contract mismatch for session.error');
+  });
+
+  describe('permission events (issue #131 checklist 5)', () => {
+    it('maps a shell permission.requested event with the full command text as the summary', () => {
+      const mapped = mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-1',
+          permissionRequest: {
+            kind: 'shell',
+            toolCallId: 'tool-1',
+            fullCommandText: 'git status',
+            intention: 'check repo status',
+          },
+        },
+      });
+      expect(mapped).toEqual({
+        type: 'permission_request',
+        requestId: 'req-1',
+        kind: 'shell',
+        summary: 'git status',
+        toolCallId: 'tool-1',
+      });
+    });
+
+    it('maps a write permission.requested event with the affected paths', () => {
+      const mapped = mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-2',
+          permissionRequest: {
+            kind: 'write',
+            paths: ['./README.md', './CHANGELOG.md'],
+          },
+        },
+      });
+      expect(mapped).toEqual({
+        type: 'permission_request',
+        requestId: 'req-2',
+        kind: 'write',
+        summary: './README.md, ./CHANGELOG.md',
+      });
+    });
+
+    it('maps a url permission.requested event with the requested url', () => {
+      const mapped = mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-3',
+          permissionRequest: {
+            kind: 'url',
+            url: 'https://api.github.com/repos/ianphil/chamber',
+            intention: 'fetch repo metadata',
+          },
+        },
+      });
+      expect(mapped.kind).toBe('url');
+      expect(mapped.summary).toBe('https://api.github.com/repos/ianphil/chamber');
+    });
+
+    it('truncates long summaries so the chat UI does not blow up', () => {
+      const longCommand = 'echo "' + 'x'.repeat(200) + '"';
+      const mapped = mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-4',
+          permissionRequest: { kind: 'shell', fullCommandText: longCommand },
+        },
+      });
+      expect(mapped.summary.length).toBeLessThanOrEqual(80);
+      expect(mapped.summary.endsWith('…')).toBe(true);
+    });
+
+    it('falls back to a kind-derived label when no detail field is present', () => {
+      const mapped = mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-5',
+          permissionRequest: { kind: 'memory' },
+        },
+      });
+      expect(mapped.summary).toBe('memory');
+    });
+
+    it('maps a permission.completed approved event to a permission_outcome event', () => {
+      const mapped = mapSdkPermissionCompleted({
+        data: {
+          requestId: 'req-1',
+          result: { kind: 'approved-for-session' },
+          toolCallId: 'tool-1',
+        },
+      });
+      expect(mapped).toEqual({
+        type: 'permission_outcome',
+        requestId: 'req-1',
+        outcome: 'approved-for-session',
+      });
+    });
+
+    it('maps a permission.completed denied-* event without losing the denial reason', () => {
+      const mapped = mapSdkPermissionCompleted({
+        data: {
+          requestId: 'req-2',
+          result: { kind: 'denied-by-content-exclusion-policy' },
+        },
+      });
+      expect(mapped.outcome).toBe('denied-by-content-exclusion-policy');
+    });
+
+    it('rejects permission events with unexpected kinds so contract drift surfaces fast', () => {
+      expect(() => mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-x',
+          permissionRequest: { kind: 'totally-new-kind' },
+        },
+      })).toThrow(SdkChatEventContractError);
+
+      expect(() => mapSdkPermissionCompleted({
+        data: {
+          requestId: 'req-x',
+          result: { kind: 'sometimes-approved' },
+        },
+      })).toThrow(SdkChatEventContractError);
+    });
   });
 });

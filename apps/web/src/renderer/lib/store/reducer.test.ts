@@ -188,6 +188,67 @@ describe('handleChatEvent', () => {
     });
   });
 
+  describe('permission events (issue #131 checklist 5)', () => {
+    it('appends a permission block in pending state when permission_request arrives', () => {
+      const msgs = handleChatEvent(assistantMsg(), 'msg-1', makeChatEvent('permission_request', {
+        requestId: 'pr-1',
+        kind: 'shell',
+        summary: 'git status',
+        toolCallId: 'tc-1',
+      }));
+      expect(msgs[0].blocks).toHaveLength(1);
+      expect(msgs[0].blocks[0]).toMatchObject({
+        type: 'permission',
+        requestId: 'pr-1',
+        kind: 'shell',
+        summary: 'git status',
+        outcome: 'pending',
+        toolCallId: 'tc-1',
+      });
+    });
+
+    it('does not duplicate a permission block when the same requestId fires twice', () => {
+      let msgs = handleChatEvent(assistantMsg(), 'msg-1', makeChatEvent('permission_request', {
+        requestId: 'pr-1', kind: 'shell', summary: 'git status',
+      }));
+      msgs = handleChatEvent(msgs, 'msg-1', makeChatEvent('permission_request', {
+        requestId: 'pr-1', kind: 'shell', summary: 'git status',
+      }));
+      expect(msgs[0].blocks).toHaveLength(1);
+    });
+
+    it('updates the matching permission block when permission_outcome arrives', () => {
+      let msgs = handleChatEvent(assistantMsg(), 'msg-1', makeChatEvent('permission_request', {
+        requestId: 'pr-1', kind: 'url', summary: 'https://github.com',
+      }));
+      msgs = handleChatEvent(msgs, 'msg-1', makeChatEvent('permission_outcome', {
+        requestId: 'pr-1', outcome: 'approved-for-session',
+      }));
+      expect(msgs[0].blocks[0]).toMatchObject({ outcome: 'approved-for-session' });
+    });
+
+    it('preserves a denial outcome so the user sees why a tool was blocked', () => {
+      let msgs = handleChatEvent(assistantMsg(), 'msg-1', makeChatEvent('permission_request', {
+        requestId: 'pr-2', kind: 'write', summary: 'C:\\windows\\system32\\drivers\\etc\\hosts',
+      }));
+      msgs = handleChatEvent(msgs, 'msg-1', makeChatEvent('permission_outcome', {
+        requestId: 'pr-2', outcome: 'denied-by-content-exclusion-policy',
+      }));
+      expect(msgs[0].blocks[0]).toMatchObject({
+        type: 'permission',
+        outcome: 'denied-by-content-exclusion-policy',
+      });
+    });
+
+    it('is a no-op when permission_outcome arrives for an unknown requestId', () => {
+      const initial = assistantMsg();
+      const msgs = handleChatEvent(initial, 'msg-1', makeChatEvent('permission_outcome', {
+        requestId: 'pr-unknown', outcome: 'approved',
+      }));
+      expect(msgs[0].blocks).toHaveLength(0);
+    });
+  });
+
   it('ignores events for unknown messageId', () => {
     const initial = assistantMsg();
     const msgs = handleChatEvent(initial, 'wrong-id', makeChatEvent('chunk', { content: 'x' }));

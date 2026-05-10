@@ -60,6 +60,44 @@ const sdkSessionErrorEvent = sdkEvent({
   message: z.string(),
 });
 
+// permission.requested — full request details from the SDK session event.
+// We model the kind-specific fields with optional+passthrough so the schema
+// validates regardless of which permission kind fires.
+const sdkPermissionRequestedEvent = sdkEvent({
+  requestId: z.string(),
+  permissionRequest: z.object({
+    kind: z.enum(['shell', 'write', 'mcp', 'read', 'url', 'custom-tool', 'memory', 'hook']),
+    toolCallId: z.string().optional(),
+    fullCommandText: z.string().optional(),     // shell
+    intention: z.string().optional(),           // shell, read, url
+    path: z.string().optional(),                // read
+    paths: z.array(z.string()).optional(),      // write
+    url: z.string().optional(),                 // url
+    serverName: z.string().optional(),          // mcp
+    toolTitle: z.string().optional(),           // mcp
+    toolName: z.string().optional(),            // mcp, custom-tool
+    fact: z.string().optional(),                // memory
+    hookMessage: z.string().optional(),         // hook
+  }).passthrough(),
+});
+
+const sdkPermissionCompletedEvent = sdkEvent({
+  requestId: z.string(),
+  result: z.object({
+    kind: z.enum([
+      'approved',
+      'approved-for-session',
+      'approved-for-location',
+      'denied-by-rules',
+      'denied-no-approval-rule-and-could-not-request-from-user',
+      'denied-interactively-by-user',
+      'denied-by-content-exclusion-policy',
+      'denied-by-permission-request-hook',
+    ]),
+  }).passthrough(),
+  toolCallId: z.string().optional(),
+});
+
 function parseSdkEvent<Schema extends z.ZodTypeAny>(
   eventName: string,
   schema: Schema,
@@ -159,4 +197,68 @@ export function mapSdkToolExecutionComplete(event: unknown): Extract<ChatEvent, 
 export function getSdkSessionErrorMessage(event: unknown): string {
   const parsed = parseSdkEvent('session.error', sdkSessionErrorEvent, event);
   return parsed.data.message;
+}
+
+const PREVIEW_MAX = 80;
+
+function preview(value: string | undefined): string {
+  if (!value) return '';
+  const single = value.replace(/\s+/g, ' ').trim();
+  return single.length > PREVIEW_MAX ? `${single.slice(0, PREVIEW_MAX - 1)}…` : single;
+}
+
+function summarizePermissionRequest(req: {
+  kind: 'shell' | 'write' | 'mcp' | 'read' | 'url' | 'custom-tool' | 'memory' | 'hook';
+  fullCommandText?: string;
+  intention?: string;
+  path?: string;
+  paths?: string[];
+  url?: string;
+  serverName?: string;
+  toolTitle?: string;
+  toolName?: string;
+  fact?: string;
+  hookMessage?: string;
+}): string {
+  switch (req.kind) {
+    case 'shell':
+      return preview(req.fullCommandText) || preview(req.intention) || 'shell command';
+    case 'write':
+      return preview((req.paths ?? []).join(', ')) || 'file write';
+    case 'read':
+      return preview(req.path) || preview(req.intention) || 'read';
+    case 'url':
+      return preview(req.url) || preview(req.intention) || 'url access';
+    case 'mcp':
+      return preview([req.serverName, req.toolTitle ?? req.toolName].filter(Boolean).join(': ')) || 'mcp';
+    case 'custom-tool':
+      return preview(req.toolName) || 'custom tool';
+    case 'memory':
+      return preview(req.fact) || 'memory';
+    case 'hook':
+      return preview(req.hookMessage) || 'hook confirmation';
+    default:
+      return req.kind;
+  }
+}
+
+export function mapSdkPermissionRequested(event: unknown): Extract<ChatEvent, { type: 'permission_request' }> {
+  const parsed = parseSdkEvent('permission.requested', sdkPermissionRequestedEvent, event);
+  const req = parsed.data.permissionRequest;
+  return {
+    type: 'permission_request',
+    requestId: parsed.data.requestId,
+    kind: req.kind,
+    summary: summarizePermissionRequest(req),
+    ...(req.toolCallId ? { toolCallId: req.toolCallId } : {}),
+  };
+}
+
+export function mapSdkPermissionCompleted(event: unknown): Extract<ChatEvent, { type: 'permission_outcome' }> {
+  const parsed = parseSdkEvent('permission.completed', sdkPermissionCompletedEvent, event);
+  return {
+    type: 'permission_outcome',
+    requestId: parsed.data.requestId,
+    outcome: parsed.data.result.kind,
+  };
 }
