@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.52.1 (2026-05-10)
+
+### Dependencies
+
+- **Pin `chamber-copilot` exactly + add a runtime surface check** — `chamber-copilot` is now pinned to `0.5.11` (no caret) in root `package.json`, mirroring the discipline already enforced for `@github/copilot` in `chamber-copilot-runtime/package.json`. A new `packages/services/src/chamberCopilot/chamber-copilot-surface.test.ts` asserts every value-level symbol our hand-rolled `chamber-copilot.d.ts` shim declares exists at runtime, that `PERMISSION_MODES`, `DEFAULT_PERMISSION_MODE`, and `YOLO_ACP_ARGS` have the documented shapes, and that `MindScopedJobs.prototype` mirrors every shim-declared `JobStore.prototype` method — so the duck-typed `scoped as unknown as JobStore` cast in `ChamberCopilotService.getToolsForMind` cannot silently regress on a future bump. Closes #260.
+
 ## v0.52.0 (2026-05-09)
 
 ### Extensions
