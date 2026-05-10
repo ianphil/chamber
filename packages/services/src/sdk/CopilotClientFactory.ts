@@ -15,6 +15,16 @@ export interface CopilotClientFactoryOptions {
   env?: Record<string, string | undefined>;
 }
 
+// Side-effect tool kinds Chamber auto-approves at the CLI layer. The list
+// is intentionally narrow: only the patterns that the Copilot CLI exposes
+// as kinds requiring approval (see `copilot help permissions`):
+//   - `shell` — all shell commands (incl. git, gh, npm, pwsh, cmd)
+//   - `write` — all file create/modify operations
+// MCP-server tool kinds (`<server>(tool?)`) are not pre-approved — they
+// fall through to `onPermissionRequest`. URL access is controlled
+// separately by `--allow-url` / `--allow-all-urls`.
+export const TOOLS_AUTO_APPROVED: readonly string[] = ['shell', 'write'];
+
 export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
 
@@ -39,8 +49,8 @@ export class CopilotClientFactory {
     // SDK 0.3.0 enforces server-side permission rules (path verification, tool
     // gates, URL gates) that fire before our `onPermissionRequest` handler.
     // Chamber owns the security boundary itself (Electron sandbox + the
-    // chatroom ApprovalGate), so we tell the underlying CLI to defer all
-    // permission decisions to the SDK handler — which auto-approves.
+    // chatroom ApprovalGate), so anything not auto-approved at the CLI
+    // layer is forwarded to the SDK handler — which auto-approves today.
     // See: https://github.com/github/copilot-sdk/releases/tag/v0.3.0
     //
     // `--add-dir` is declared explicitly per-session for the mind cwd and
@@ -48,11 +58,17 @@ export class CopilotClientFactory {
     // scopes file access today, but listing it intentionally keeps the
     // allowed-paths surface visible in one place and prepares for a
     // follow-up that drops `--allow-all-paths`.
+    //
+    // `--allow-tool` is declared explicitly per-side-effect kind
+    // (issue #131 checklist 2). Read-only model tools (view, ask_user,
+    // str_replace, etc.) do not fire permission prompts so they need no
+    // entry. URL access is handled separately by --allow-url
+    // (issue #131 checklist 3).
     const cliArgs = [
       '--log-dir', logDir,
       '--add-dir', mindPath,
       '--add-dir', chamberRoot,
-      '--allow-all-tools',
+      ...TOOLS_AUTO_APPROVED.map((kind) => `--allow-tool=${kind}`),
       '--allow-all-paths',
       '--allow-all-urls',
     ];

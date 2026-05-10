@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.54.0 (2026-05-10)
+
+### SDK
+
+- **Replace broad SDK tool auto-approval with explicit tool kinds** — Primary Copilot SDK sessions now drop `--allow-all-tools` and pass only the side-effect tool kinds Chamber intentionally auto-approves at the CLI layer, leaving other tool permission requests to the SDK handler. (#131)
+
 ## v0.53.0 (2026-05-10)
 
 ### SDK
