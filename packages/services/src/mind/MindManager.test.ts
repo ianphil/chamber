@@ -1275,6 +1275,50 @@ describe('MindManager', () => {
     });
   });
 
+  describe('chamber mind config (#131 — per-mind excludedTools)', () => {
+    it('passes excludedTools through to createSession when .chamber.json declares them', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: ['shell', 'str_replace'] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          excludedTools: ['shell', 'str_replace'],
+        }),
+      );
+    });
+
+    it('omits excludedTools from session config when .chamber.json is absent', async () => {
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'excludedTools')).toBe(false);
+    });
+
+    it('omits excludedTools from session config when .chamber.json declares an empty array', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: [] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'excludedTools')).toBe(false);
+    });
+  });
+
   describe('provider integration', () => {
     it('activates providers after creating a mind session', async () => {
       await manager.loadMind('/tmp/agents/q');
