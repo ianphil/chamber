@@ -156,10 +156,14 @@ describe('MindManager', () => {
       void sessionId;
     });
     vi.mocked(fs.existsSync).mockImplementation((candidate) => {
-      // Default: every checked path exists EXCEPT `.mcp.json`. Tests that
-      // need MindManager to discover an `.mcp.json` opt in by overriding
-      // existsSync + readFileSync per test (#199).
-      return !String(candidate).endsWith('.mcp.json');
+      // Default: every checked path exists EXCEPT `.mcp.json` and
+      // `.chamber.json`. Tests that need MindManager to discover either
+      // file opt in by overriding existsSync + readFileSync per test
+      // (#199 / #131). Without the chamber.json exclusion, the default
+      // readFileSync stub ('# TestAgent\nSome content') fails JSON.parse
+      // and pollutes every test with a chamberMindConfig warn.
+      const s = String(candidate);
+      return !s.endsWith('.mcp.json') && !s.endsWith('.chamber.json');
     });
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     vi.mocked(fs.realpathSync.native).mockImplementation((candidate) => String(candidate));
@@ -1272,6 +1276,72 @@ describe('MindManager', () => {
       const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
       expect(config).toBeDefined();
       expect(Object.prototype.hasOwnProperty.call(config, 'mcpServers')).toBe(false);
+    });
+  });
+
+  describe('chamber mind config (#131 — per-mind excludedTools)', () => {
+    it('passes excludedTools through to createSession when .chamber.json declares them', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: ['shell', 'str_replace'] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          excludedTools: ['shell', 'str_replace'],
+        }),
+      );
+    });
+
+    it('omits excludedTools from session config when .chamber.json is absent', async () => {
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'excludedTools')).toBe(false);
+    });
+
+    it('omits excludedTools from session config when .chamber.json declares an empty array', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: [] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'excludedTools')).toBe(false);
+    });
+
+    it('passes excludedTools through to resumeSession when resuming a prior conversation', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: ['shell'] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+      const resumedSession = createSessionStub();
+      resumedSession.getMessages.mockResolvedValue([]);
+      mockResumeSession.mockResolvedValueOnce(resumedSession);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');
+      await manager.recreateSession(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+
+      await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      const resumeConfig = mockResumeSession.mock.calls[0][1] as Record<string, unknown>;
+      expect(resumeConfig.excludedTools).toEqual(['shell']);
     });
   });
 

@@ -12,6 +12,7 @@ import { Logger } from '../logger';
 import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInputHandler } from './types';
 import { generateMindId } from './generateMindId';
 import { loadMcpServersFromMindPath } from './mcpConfig';
+import { loadChamberMindConfig } from './chamberMindConfig';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
@@ -755,6 +756,7 @@ export class MindManager extends EventEmitter {
     sessionId?: string,
   ): Promise<CopilotSession> {
     const mcpServers = loadMcpServersFromMindPath(mindPath);
+    const chamberMindConfig = loadChamberMindConfig(mindPath);
     const sessionConfig: SessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
@@ -768,6 +770,9 @@ export class MindManager extends EventEmitter {
       },
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+      ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
+        ? { excludedTools: chamberMindConfig.excludedTools }
+        : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(model ? { model } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
@@ -799,6 +804,7 @@ export class MindManager extends EventEmitter {
     model?: string,
   ): Promise<CopilotSession> {
     const mcpServers = loadMcpServersFromMindPath(mindPath);
+    const chamberMindConfig = loadChamberMindConfig(mindPath);
     const sessionConfig: ResumeSessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
@@ -812,6 +818,9 @@ export class MindManager extends EventEmitter {
       },
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+      ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
+        ? { excludedTools: chamberMindConfig.excludedTools }
+        : {}),
       ...(model ? { model } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };

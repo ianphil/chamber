@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.58.0 (2026-05-10)
+
+### SDK
+
+- **Per-mind tool exclusion via `.chamber.json`** — Mind authors can drop a `.chamber.json` at the mind root with `"excludedTools": ["shell", "str_replace"]` to remove specific tool names from the agent's toolset on every session create + resume. Missing file, missing key, malformed JSON, and empty arrays are all treated as no exclusions so a typo never bricks the mind. Closes #131.
+
 ## v0.57.0 (2026-05-10)
 
 ### SDK
