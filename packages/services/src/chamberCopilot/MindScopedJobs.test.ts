@@ -141,6 +141,63 @@ describe('MindScopedJobs', () => {
     expect(() => scoped.status('')).toThrow(/Unknown job_id/);
   });
 
+  describe('separator robustness (issue #261)', () => {
+    // Real Chamber mindIds are derived from a directory basename plus a
+    // 4-char hex suffix (see generateMindId.ts). On Linux/macOS a basename
+    // can contain ':', so a mindId of the shape 'foo:bar-abcd' is not a
+    // theoretical concern. The scope/unscope split must therefore tolerate
+    // colons in the mindId portion. The complementary invariant — that
+    // the inner store never returns a colon-containing rawJobId — is now
+    // enforced at delegate time so a future custom JobStoreOptions.idFactory
+    // cannot regress the boundary silently.
+
+    it('round-trips a colon-containing mindId through scope/unscope', async () => {
+      const store = buildStore();
+      const scoped = new MindScopedJobs(asJobStore(store), 'mind:with:colons');
+
+      const { jobId } = await scoped.delegate({ cwd: '/repo', prompt: 'p' });
+      expect(jobId.startsWith('mind:with:colons:')).toBe(true);
+
+      // status must round-trip the same scoped jobId without throwing
+      // Unknown — i.e. the unscope split must recover ('mind:with:colons',
+      // 'job-1'), not ('mind', 'with:colons:job-1').
+      const snap = scoped.status(jobId);
+      expect(snap.jobId).toBe(jobId);
+    });
+
+    it('keeps cross-mind isolation when both mindIds contain colons', async () => {
+      const store = buildStore();
+      const scopedA = new MindScopedJobs(asJobStore(store), 'mind:a');
+      const scopedB = new MindScopedJobs(asJobStore(store), 'mind:b');
+
+      const { jobId: jobA } = await scopedA.delegate({ cwd: '/repo', prompt: 'p' });
+      // mindB must not be able to read mindA's job by reusing the same scoped id.
+      expect(() => scopedB.status(jobA)).toThrow(/Unknown job_id/);
+      // …or by spoofing the prefix.
+      const rawSuffix = jobA.slice('mind:a:'.length);
+      expect(() => scopedB.status(`mind:b:${rawSuffix}`)).toThrow(/Unknown job_id/);
+    });
+
+    it('rejects an inner JobStore.idFactory that returns colon-containing rawJobIds', async () => {
+      // A custom idFactory that produces ids carrying ':' would silently
+      // shift the unscope boundary on lastIndexOf. Reject it at the
+      // boundary so the failure mode is loud and immediate.
+      const evilStore = {
+        delegate: vi.fn(async () => ({ jobId: 'has:colon', sessionId: 'sess-1' })),
+        respond: vi.fn(),
+        approve: vi.fn(),
+        cancel: vi.fn(),
+        status: vi.fn(),
+        list: vi.fn(),
+      };
+      const scoped = new MindScopedJobs(asJobStore(evilStore as unknown as FakeStore), 'mind-a');
+
+      await expect(scoped.delegate({ cwd: '/repo', prompt: 'p' })).rejects.toThrow(
+        /MindScopedJobs invariant violated.*colon/i,
+      );
+    });
+  });
+
   it('releaseAll cancels every owned job and forgets ownership', async () => {
     const store = buildStore();
     const scoped = new MindScopedJobs(asJobStore(store), 'mind-a');
