@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell, Notification, type MessageBoxOptions, type NativeImage, type Tray as ElectronTray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, session, shell, Notification, type MessageBoxOptions, type NativeImage, type Tray as ElectronTray } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -54,6 +54,7 @@ import { Logger } from '@chamber/services';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
 import { installContextMenu } from './main/contextMenu/ContextMenu';
 import { installExternalNavigationGuard } from './main/navigationGuard';
+import { installContentSecurityPolicy, installPermissionHandlers } from './main/security/sessionSecurity';
 
 const log = Logger.create('main');
 import { enrollMarketplaceFromProtocolUrl, findMarketplaceInstallUrl, parseMarketplaceInstallUrl } from './main/protocol/marketplaceProtocol';
@@ -574,6 +575,10 @@ app.on('ready', async () => {
   if (runUpdaterSmoke(app)) {
     return;
   }
+
+  installContentSecurityPolicy(session.defaultSession, app.isPackaged ? 'production' : 'development');
+  installPermissionHandlers(session.defaultSession);
+
   cleanupLegacySquirrelInstall({ isPackaged: app.isPackaged })
     .then((result) => {
       if (result.status !== 'skipped') {

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.4 (2026-05-10)
+
+### Security
+
+- **Add Content-Security-Policy and lock down `setPermissionRequestHandler`** — Two missing Electron security checklist items. The renderer now receives a strict CSP via `session.webRequest.onHeadersReceived`: production uses `script-src 'self'`; development adds `'unsafe-eval'` only because Vite's HMR transform requires it. Both modes set `default-src 'self'`, `style-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`, `object-src 'none'`, `form-action 'none'`, `base-uri 'self'`, with `connect-src` allow-listed to `'self'` plus `https://api.github.com`, `https://api.githubcopilot.com`, `https://github.com`, and `localhost` for the loopback server and HMR. `session.setPermissionRequestHandler` and `setPermissionCheckHandler` now allow only `notifications` and deny every other Chromium permission (`media`, `geolocation`, `midi`, `pointerLock`, `fullscreen`, `clipboard-read`, ...), so a compromised mind canvas or Lens view cannot silently capture the microphone or camera. With `sandbox: false` (justified by the Copilot SDK preload bridge) these two controls are the highest-leverage XSS mitigations Chamber can adopt without regressing the SDK contract. Composition root in `apps/desktop/src/main.ts` wires the helpers; pure logic lives in `apps/desktop/src/main/security/sessionSecurity.ts` with 11 focused tests using a fake `Session`. Closes #274.
+
 ## v0.59.3 (2026-05-10)
 
 ### Refactoring
