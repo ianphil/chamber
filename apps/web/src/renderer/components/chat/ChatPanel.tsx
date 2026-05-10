@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { useChatStreaming } from '../../hooks/useChatStreaming';
 import { MessageList } from './MessageList';
@@ -44,6 +45,22 @@ export function ChatPanel() {
       });
   };
 
+  // Force-refresh the model catalog (#90). Restarts the underlying CLI
+  // subprocess via ChatService.refreshModels — the Copilot CLI keeps its
+  // model list in process memory for 30 minutes (LIST_MODELS_CACHE_TTL_MS),
+  // so a reload is the only way to bust it. The destructive part is gated
+  // behind a confirm dialog inside ChatInput.
+  const handleRefreshModels = useCallback(async () => {
+    if (!activeMindId) return;
+    try {
+      const fresh = await window.electronAPI.chat.refreshModels(activeMindId);
+      dispatch({ type: 'SET_AVAILABLE_MODELS', payload: fresh });
+    } catch (error) {
+      log.error('Failed to refresh models:', error);
+      throw error;
+    }
+  }, [activeMindId, dispatch]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {isConversationHydrating ? (
@@ -68,6 +85,7 @@ export function ChatPanel() {
         availableModels={availableModels}
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
+        onRefreshModels={activeMindId ? handleRefreshModels : undefined}
         placeholder={isModelSwitching ? 'Switching model…' : undefined}
         value={draft}
         onValueChange={handleDraftChange}

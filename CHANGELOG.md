@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.0 (2026-05-10)
+
+### Chat
+
+- **"Refresh models" affordance recycles the CLI subprocess in place** — A small refresh icon next to the model picker invokes a new `chat:refreshModels` IPC channel that calls a narrow `MindManager.recycleClientForMind` (destroy SDK client → create new client → resume the active session against the fresh client) and then returns a fresh `listModels()`. This is the only way to bust the Copilot CLI's 30-minute in-memory model cache (see #270 / `docs/model-cache-investigation.md`). The active conversation is preserved, chatroom orchestration is not torn down (no `mind:unloaded` teardown), and the call is serialized through `TurnQueue` so it cannot race a queued send. Refresh is gated behind a confirm dialog and is refused when a turn is mid-stream; if the call rejects, the dialog stays open with an inline error so the user can retry or cancel. A new `mind:client-recycled` event lets `ChatroomService` drop only its cached `SessionGroup` session for the recycled mind without affecting any active orchestrator or `disabledMindIds`. Closes #90.
+
 ## v0.58.1 (2026-05-10)
 
 ### Documentation

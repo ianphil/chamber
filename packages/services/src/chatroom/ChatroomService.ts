@@ -523,6 +523,16 @@ export class ChatroomService extends EventEmitter {
       this.sessionFactory.on('mind:unloaded', (...args: unknown[]) => {
         this.handleMindUnloaded(args[0] as string);
       });
+      // mind:client-recycled is fired by `MindManager.recycleClientForMind`
+      // (issue #90 refresh-models). The mind is still loaded and still in
+      // the chatroom; only its underlying SDK client + session were
+      // restarted to bust the CLI's model cache. We must drop our cached
+      // SessionGroup session for this mind so the next chatroom turn binds
+      // to the fresh client, but we MUST NOT cancel the active orchestrator
+      // or clear `disabledMindIds` — those belong to a true unload.
+      this.sessionFactory.on('mind:client-recycled', (...args: unknown[]) => {
+        this.handleMindClientRecycled(args[0] as string);
+      });
     }
   }
 
@@ -540,5 +550,15 @@ export class ChatroomService extends EventEmitter {
       this.persist();
       this.emitStateChanged();
     }
+  }
+
+  private handleMindClientRecycled(mindId: string): void {
+    // Drop the cached chatroom session for this mind only; the next
+    // chatroom turn will rebind to the freshly-created client. Leave
+    // `disabledMindIds` and any active orchestrator alone — refresh is
+    // gated by ChatService to refuse mid-stream, so there is nothing
+    // in-flight to cancel for this mind, and nothing about the
+    // chatroom's per-mind toggles changed.
+    this.sessionGroup.destroySession(mindId);
   }
 }

@@ -38,6 +38,8 @@ const mockMindManager = {
   deleteConversation: vi.fn(async () => ({ sessionId: 'session-1', messages: [], conversations: [] })),
   renameConversation: vi.fn(() => []),
   setMindModel: vi.fn(async () => null),
+  reloadMind: vi.fn(async () => ({ mindId: 'valid-mind' })),
+  recycleClientForMind: vi.fn(async () => ({ mindId: 'valid-mind' })),
 };
 
 describe('ChatService', () => {
@@ -240,6 +242,97 @@ describe('ChatService', () => {
       await expect(svc.listModels('drifted-models')).rejects.toThrow(
         'SDK contract mismatch for client.listModels',
       );
+    });
+  });
+
+  describe('refreshModels', () => {
+    it('recycles the SDK client to bust the CLI cache, then returns the fresh model list', async () => {
+      const fresh = [{ id: 'gpt-7-vision', name: 'GPT-7 Vision' }];
+      const recycledClient = {
+        modelsCache: {} as unknown,
+        listModels: vi.fn(async () => fresh.map((m) => ({ ...m, extra: true }))),
+      };
+      mockMindManager.recycleClientForMind.mockResolvedValueOnce({ mindId: 'valid-mind' });
+      // refreshModels does not call getMind in its precondition check; the
+      // single getMind call comes from listModels, AFTER the client recycle ran.
+      mockMindManager.getMind.mockReturnValueOnce({
+        session: mockSession,
+        client: recycledClient,
+      });
+
+      const result = await svc.refreshModels('valid-mind');
+
+      expect(mockMindManager.recycleClientForMind).toHaveBeenCalledWith('valid-mind');
+      expect(mockMindManager.reloadMind).not.toHaveBeenCalled();
+      expect(result).toEqual(fresh);
+      expect(recycledClient.modelsCache).toBeNull();
+    });
+
+    it('propagates a missing-mind error from recycleClientForMind', async () => {
+      mockMindManager.recycleClientForMind.mockRejectedValueOnce(
+        new Error('Mind nonexistent not found'),
+      );
+
+      await expect(svc.refreshModels('nonexistent')).rejects.toThrow('Mind nonexistent not found');
+    });
+
+    it('refuses to recycle a mind whose conversation is mid-stream', async () => {
+      // Drive a real send that parks on a never-fired session.idle event,
+      // mirroring how ChatService.sendMessage installs an AbortController
+      // for the duration of the streamTurn call. This proves the
+      // assertion fires on the real lifecycle, not just on a hand-set
+      // entry in the private map.
+      mockSession.on.mockImplementation(() => vi.fn());
+      const sendPromise = svc.sendMessage('valid-mind', 'hello', 'msg-park', vi.fn());
+      // Yield so the queued send body installs its AbortController before
+      // we race against it.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      try {
+        await expect(svc.refreshModels('valid-mind')).rejects.toThrow(
+          /streaming|in progress|active turn/i,
+        );
+        expect(mockMindManager.recycleClientForMind).not.toHaveBeenCalled();
+        expect(mockMindManager.reloadMind).not.toHaveBeenCalled();
+      } finally {
+        // Unblock the parked send so the test runner exits cleanly.
+        await svc.cancelMessage('valid-mind', 'msg-park');
+        await sendPromise.catch(() => { /* aborted */ });
+      }
+    });
+
+    it('serializes refresh against a queued send, even if the assertion would pass at call time', async () => {
+      // Reproduces the queue-race that the assertion alone cannot close:
+      // sendMessage is enqueued first, but its body has not executed yet,
+      // so no AbortController exists in the map. refreshModels would pass
+      // its precondition check and race the queued send. With both calls
+      // routed through TurnQueue.enqueue(mindId, ...), the refresh waits
+      // until the send body has finished before recycling the client.
+      const sendOrder: string[] = [];
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => {
+            sendOrder.push('send-completed');
+            cb();
+          }, 10);
+        }
+        return vi.fn();
+      });
+      mockMindManager.recycleClientForMind.mockImplementationOnce(async () => {
+        sendOrder.push('recycle-started');
+        return { mindId: 'valid-mind' };
+      });
+      mockMindManager.getMind.mockReturnValue({
+        session: mockSession,
+        client: validModelClient,
+      });
+
+      const sendPromise = svc.sendMessage('valid-mind', 'hello', 'msg-queued', vi.fn());
+      const refreshPromise = svc.refreshModels('valid-mind');
+
+      await Promise.all([sendPromise, refreshPromise]);
+
+      expect(sendOrder).toEqual(['send-completed', 'recycle-started']);
     });
   });
 

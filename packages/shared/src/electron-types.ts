@@ -49,6 +49,7 @@ export interface ElectronAPI {
     stop: (mindId: string, messageId: string) => Promise<void>;
     newConversation: (mindId: string) => Promise<ConversationResumeResult>;
     listModels: (mindId?: string) => Promise<ModelInfo[]>;
+    refreshModels: (mindId: string) => Promise<ModelInfo[]>;
     onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent) => void) => () => void;
   };
   conversationHistory: {
