@@ -28,14 +28,30 @@ export class CopilotClientFactory {
     const logDir = path.join(os.homedir(), '.chamber', 'logs');
     fs.mkdirSync(logDir, { recursive: true });
 
+    // Chamber config root. Listed under --add-dir so that --mcp servers,
+    // mind credential lookups, cron job state, and other shared chamber
+    // assets remain accessible to the CLI even after `--allow-all-paths`
+    // is dropped in a follow-up. Today this is a no-op (`--allow-all-paths`
+    // overrides per-directory entries) but it keeps the explicit
+    // allowed-paths list as the source of truth in one place.
+    const chamberRoot = path.join(os.homedir(), '.chamber');
+
     // SDK 0.3.0 enforces server-side permission rules (path verification, tool
     // gates, URL gates) that fire before our `onPermissionRequest` handler.
     // Chamber owns the security boundary itself (Electron sandbox + the
     // chatroom ApprovalGate), so we tell the underlying CLI to defer all
     // permission decisions to the SDK handler — which auto-approves.
     // See: https://github.com/github/copilot-sdk/releases/tag/v0.3.0
+    //
+    // `--add-dir` is declared explicitly per-session for the mind cwd and
+    // the Chamber config root (issue #131 checklist 1). cwd already
+    // scopes file access today, but listing it intentionally keeps the
+    // allowed-paths surface visible in one place and prepares for a
+    // follow-up that drops `--allow-all-paths`.
     const cliArgs = [
       '--log-dir', logDir,
+      '--add-dir', mindPath,
+      '--add-dir', chamberRoot,
       '--allow-all-tools',
       '--allow-all-paths',
       '--allow-all-urls',

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.53.0 (2026-05-10)
+
+### SDK
+
+- **Declare explicit SDK CLI add-dir entries** — Primary Copilot SDK sessions now pass `--add-dir` for the active mind cwd and the shared `~/.chamber` root, making the allowed-path surface explicit ahead of removing broad path allowances. Closes #131.
+
 ## v0.52.2 (2026-05-10)
 
 ### Reliability

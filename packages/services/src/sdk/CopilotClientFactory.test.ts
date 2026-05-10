@@ -81,6 +81,25 @@ describe('CopilotClientFactory', () => {
       expect(cliArgs).not.toContain(expect.stringMatching(/npm-loader\.js$/));
     });
 
+    it('declares the mind cwd and the Chamber config root as --add-dir entries (issue #131)', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const cliArgs = client.options.cliArgs as string[];
+
+      // Per-session mind cwd. cwd already scopes today, but listing it
+      // explicitly under --add-dir keeps the allowed-paths source of
+      // truth in the same place as the chamber-shared dirs and prepares
+      // for dropping --allow-all-paths in a follow-up.
+      const addDirIndices = cliArgs
+        .map((arg, i) => (arg === '--add-dir' ? i : -1))
+        .filter((i) => i >= 0);
+      const addDirValues = addDirIndices.map((i) => cliArgs[i + 1]);
+
+      expect(addDirValues).toContain('C:\\agents\\q');
+      // The Chamber config root (~/.chamber). Resolved via os.homedir so
+      // we just check the tail; the home prefix varies by user/CI runner.
+      expect(addDirValues.some((v) => v.endsWith('.chamber'))).toBe(true);
+    });
+
     it('prepends the Chamber tools bin directory to the CLI PATH when configured', async () => {
       factory = new CopilotClientFactory({ toolsBinDir: 'C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin' });
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
