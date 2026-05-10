@@ -7,8 +7,15 @@ import type {
 import type { OrchestrationContext } from './legacy-types';
 import { BaseStrategy } from './legacy-types';
 import { ObservabilityEmitter } from '../observability';
-import { textContent, extractJsonObject } from '../shared';
+import { textContent } from '../shared';
 import { Logger } from '../../logger';
+import { failTask, formatManagerResponse, parseManagerResponse } from './magenticParsers';
+import {
+  buildAssignPrompt,
+  buildPlanPrompt,
+  buildSynthesisPrompt,
+  buildWorkerPrompt,
+} from './magenticPrompts';
 
 const log = Logger.create('Chatroom:Magentic');
 import { sendToAgentWithRetry, TurnTimeoutError } from '../stream-session';
@@ -23,121 +30,6 @@ const DEFAULT_WORKER_TIMEOUT_MS = 120_000;
 export interface MagenticStrategyOptions {
   /** Override the per-worker turn timeout (ms). Default: 120_000. */
   workerTimeoutMs?: number;
-}
-
-/** Mark a task as failed and emit observability event */
-function failTask(
-  task: TaskLedgerItem,
-  err: unknown,
-  obs: ObservabilityEmitter,
-  extra: Record<string, unknown>,
-): void {
-  task.status = 'failed';
-  task.result = String(err);
-  obs.failure(task.result, extra);
-}
-
-/** Format manager's JSON response into human-readable text for display */
-function formatManagerResponse(raw: string): string {
-  const json = extractJsonObject(raw);
-  if (!json) return raw;
-
-  try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    const action = parsed.action as string;
-
-    if (action === 'update-plan' && Array.isArray(parsed.plan)) {
-      const tasks = parsed.plan as Array<{ id: string; description: string }>;
-      const lines = ['**Planning:** Breaking this into tasks:\n'];
-      for (const t of tasks) {
-        lines.push(`${t.id}. ${t.description}`);
-      }
-      return lines.join('\n');
-    }
-
-    if (action === 'plan-and-assign') {
-      const parts: string[] = [];
-      if (Array.isArray(parsed.plan)) {
-        const tasks = parsed.plan as Array<{ id: string; description: string }>;
-        parts.push('**Planning:** Breaking this into tasks:\n');
-        for (const t of tasks) {
-          parts.push(`${t.id}. ${t.description}`);
-        }
-      }
-      if (Array.isArray(parsed.assignments)) {
-        if (parts.length > 0) parts.push('');
-        parts.push('**Assigning tasks:**\n');
-        for (const a of parsed.assignments as Array<{ assignee: string; task_description?: string }>) {
-          parts.push(`- **${a.assignee}**: ${a.task_description ?? 'assigned task'}`);
-        }
-      }
-      return parts.length > 0 ? parts.join('\n') : raw;
-    }
-
-    if (action === 'assign') {
-      const assignments = Array.isArray(parsed.assignments)
-        ? (parsed.assignments as Array<{ assignee: string; task_description?: string }>)
-        : parsed.assignee
-          ? [{ assignee: parsed.assignee as string, task_description: parsed.task_description as string | undefined }]
-          : [];
-      if (assignments.length === 0) return raw;
-      const lines = ['**Assigning tasks:**\n'];
-      for (const a of assignments) {
-        lines.push(`- **${a.assignee}**: ${a.task_description ?? 'assigned task'}`);
-      }
-      return lines.join('\n');
-    }
-
-    if (action === 'complete') {
-      return `**Summary:** ${(parsed.summary as string) ?? 'All tasks completed.'}`;
-    }
-
-    return raw;
-  } catch {
-    return raw;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Manager response parsing
-// ---------------------------------------------------------------------------
-
-interface ManagerDecision {
-  action: 'assign' | 'complete' | 'update-plan' | 'plan-and-assign';
-  assignments?: Array<{ assignee: string; taskId?: string; taskDescription?: string }>;
-  assignee?: string;
-  taskDescription?: string;
-  taskId?: string;
-  planUpdate?: Array<{ id: string; description: string }>;
-  summary?: string;
-}
-
-function parseManagerResponse(text: string): ManagerDecision | null {
-  const json = extractJsonObject(text);
-  if (!json) return null;
-
-  try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    const validActions = ['assign', 'complete', 'update-plan', 'plan-and-assign'] as const;
-    const action = validActions.includes(parsed.action as typeof validActions[number])
-      ? (parsed.action as typeof validActions[number])
-      : 'assign';
-    return {
-      action,
-      assignments: Array.isArray(parsed.assignments)
-        ? (parsed.assignments as Array<{ assignee: string; taskId?: string; taskDescription?: string }>)
-        : undefined,
-      assignee: typeof parsed.assignee === 'string' ? parsed.assignee : undefined,
-      taskDescription: typeof parsed.task_description === 'string' ? parsed.task_description : undefined,
-      taskId: typeof parsed.task_id === 'string' ? parsed.task_id : undefined,
-      planUpdate: Array.isArray(parsed.plan)
-        ? (parsed.plan as Array<{ id: string; description: string }>)
-        : undefined,
-      summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +47,10 @@ function parseManagerResponse(text: string): ManagerDecision | null {
  * - Clean worker prompts (natural language, not XML directives)
  * - Parallel task execution via A2A when multiple tasks are assigned
  * - Control JSON stripped from history to prevent prompt injection warnings
+ *
+ * Helpers extracted to keep this class focused on orchestration:
+ * - `magenticPrompts.ts` — pure prompt-building functions
+ * - `magenticParsers.ts` — JSON envelope parsing + display formatting
  */
 export class MagenticStrategy extends BaseStrategy {
   readonly mode = 'magentic' as const;
@@ -210,7 +106,7 @@ export class MagenticStrategy extends BaseStrategy {
 
     // ── Phase 1: Manager creates initial plan ──
 
-    const planPrompt = this.buildPlanPrompt(userMessage, workers);
+    const planPrompt = buildPlanPrompt(userMessage, workers);
 
     context.emitEvent({
       mindId: manager.mindId,
@@ -230,7 +126,7 @@ export class MagenticStrategy extends BaseStrategy {
         prompt: planPrompt,
         roundId,
         context,
-        abortSignal: this.abortController!.signal,
+        abortSignal: this.requireAbortController().signal,
         unsubs: this.currentUnsubs,
         orchestrationMode: 'magentic',
         silent: true,
@@ -310,7 +206,7 @@ export class MagenticStrategy extends BaseStrategy {
       }
 
       // Ask manager to assign next task
-      const assignPrompt = this.buildAssignPrompt(userMessage, workers, ledger);
+      const assignPrompt = buildAssignPrompt(userMessage, workers, ledger);
 
       let assignRawContent: string;
       try {
@@ -319,7 +215,7 @@ export class MagenticStrategy extends BaseStrategy {
           prompt: assignPrompt,
           roundId,
           context,
-          abortSignal: this.abortController!.signal,
+          abortSignal: this.requireAbortController().signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'magentic',
           silent: true,
@@ -578,7 +474,7 @@ export class MagenticStrategy extends BaseStrategy {
     const failed = ledger.filter((t) => t.status === 'failed').length;
 
     try {
-      const prompt = this.buildSynthesisPrompt(userMessage, ledger);
+      const prompt = buildSynthesisPrompt(userMessage, ledger);
 
       // Emit turn-start so the typing indicator shows the manager synthesizing
       context.emitEvent({
@@ -595,7 +491,7 @@ export class MagenticStrategy extends BaseStrategy {
         prompt,
         roundId,
         context,
-        abortSignal: this.abortController!.signal,
+        abortSignal: this.requireAbortController().signal,
         unsubs: this.currentUnsubs,
         orchestrationMode: 'magentic',
       });
@@ -670,7 +566,7 @@ export class MagenticStrategy extends BaseStrategy {
     this.emitTurnStart(worker, roundId, context, step, isParallel);
     obs.agentStep(worker.mindId, { step, taskId: task.id, ...(isParallel ? { parallel: true } : {}) });
 
-    const workerPrompt = this.buildWorkerPrompt(userMessage, participants, task, ledger, context, worker);
+    const workerPrompt = buildWorkerPrompt(userMessage, participants, task, ledger, context, worker);
     const workerUnsubs: (() => void)[] = [];
 
     try {
@@ -679,7 +575,7 @@ export class MagenticStrategy extends BaseStrategy {
         prompt: workerPrompt,
         roundId,
         context,
-        abortSignal: this.abortController!.signal,
+        abortSignal: this.requireAbortController().signal,
         unsubs: workerUnsubs,
         orchestrationMode: 'magentic',
         turnTimeout: this.workerTimeoutMs,
@@ -717,126 +613,5 @@ export class MagenticStrategy extends BaseStrategy {
         data: { speaker: worker.identity.name, speakerMindId: worker.mindId, step, ...(parallel ? { parallel: true } : {}) },
       },
     });
-  }
-
-  // -------------------------------------------------------------------------
-  // Prompt building
-  // -------------------------------------------------------------------------
-
-  private buildPlanPrompt(userMessage: string, workers: MindContext[]): string {
-    const workerList = workers.map((w) => `  - ${w.identity.name}`).join('\n');
-
-    // Combined plan + first assignment in a single call to save one LLM round trip.
-    // The agent has tools and will try to answer directly — we must prevent that.
-    return [
-      `You are acting as a COORDINATOR in a multi-agent system. You do NOT answer questions yourself.`,
-      `Your ONLY job is to break the user's request into tasks, then assign ALL of them immediately.`,
-      ``,
-      `DO NOT use any tools. DO NOT answer the question. DO NOT provide analysis.`,
-      `DO NOT write files, search, or run commands. ONLY output the JSON below.`,
-      ``,
-      `User request: ${userMessage}`,
-      ``,
-      `Available agents who will do the actual work:`,
-      workerList,
-      ``,
-      `Break the request into 2-5 concrete tasks and assign each to the best-suited agent.`,
-      `Each task should be a self-contained unit of work that one agent can complete independently.`,
-      `Independent tasks will be executed in parallel, so assign them all at once.`,
-      ``,
-      `Output ONLY this JSON, nothing else:`,
-      `{"action": "plan-and-assign", "plan": [{"id": "1", "description": "first task"}], "assignments": [{"assignee": "agent name", "task_id": "1", "task_description": "detailed instructions"}]}`,
-      ``,
-      `Example for "Compare Redis vs Memcached and write a recommendation":`,
-      `{"action": "plan-and-assign", "plan": [{"id": "1", "description": "Research Redis"}, {"id": "2", "description": "Research Memcached"}, {"id": "3", "description": "Write comparison"}], "assignments": [{"assignee": "Agent A", "task_id": "1", "task_description": "Research Redis features, performance, and use cases"}, {"assignee": "Agent B", "task_id": "2", "task_description": "Research Memcached features, performance, and use cases"}]}`,
-      ``,
-      `Note: Only assign independent tasks now. Tasks that depend on other tasks' results (like task 3 above) should NOT be assigned yet — they will be assigned after their dependencies complete.`,
-    ].join('\n');
-  }
-
-  private buildAssignPrompt(
-    userMessage: string,
-    workers: MindContext[],
-    ledger: TaskLedgerItem[],
-  ): string {
-    const workerList = workers.map((w) => `  - ${w.identity.name}`).join('\n');
-    const ledgerLines = ledger.map(
-      (t) => `  [${t.id}] ${t.status}${t.assignee ? ` (${t.assignee})` : ''}: ${t.description}${t.result ? ` -> ${t.result.slice(0, 80)}` : ''}`,
-    ).join('\n');
-
-    return [
-      `You are acting as a COORDINATOR. You do NOT answer questions or use tools.`,
-      `Your ONLY job is to assign the next task(s) or declare completion.`,
-      ``,
-      `DO NOT use any tools. DO NOT answer the question. ONLY output JSON.`,
-      ``,
-      `User request: ${userMessage}`,
-      ``,
-      `Available agents:`,
-      workerList,
-      ``,
-      `Task ledger:`,
-      ledgerLines,
-      ``,
-      `If there are pending tasks, assign them. If all tasks are completed/failed, provide a summary.`,
-      `You may assign multiple independent tasks at once for parallel execution.`,
-      ``,
-      `Output ONLY one of these JSON formats:`,
-      ``,
-      `To assign: {"action": "assign", "assignments": [{"assignee": "agent name", "task_id": "1", "task_description": "what to do"}]}`,
-      `To complete: {"action": "complete", "summary": "brief summary of all results"}`,
-    ].join('\n');
-  }
-
-  private buildWorkerPrompt(
-    userMessage: string,
-    participants: MindContext[],
-    task: TaskLedgerItem,
-    ledger: TaskLedgerItem[],
-    context: OrchestrationContext,
-    forMind?: MindContext,
-  ): string {
-    const basePrompt = context.buildBasePrompt(userMessage, participants, forMind);
-
-    // Natural language context — no XML directives that trigger injection warnings
-    const completedTasks = ledger.filter((t) => t.status === 'completed' && t.result);
-    const parts: string[] = [];
-
-    if (completedTasks.length > 0) {
-      parts.push('Other team members have completed these related tasks:');
-      for (const t of completedTasks) {
-        parts.push(`- ${t.description}: ${t.result!.slice(0, 200)}`);
-      }
-      parts.push('');
-    }
-
-    parts.push(`Your task: ${task.description}`);
-    parts.push('');
-    parts.push('Respond concisely and directly. Focus only on this task — do not explore unrelated topics.');
-    parts.push('Prefer answering from your knowledge before using tools. Limit tool usage to at most 3 calls.');
-    parts.push('');
-
-    return parts.join('\n') + basePrompt;
-  }
-
-  private buildSynthesisPrompt(userMessage: string, ledger: TaskLedgerItem[]): string {
-    const results = ledger.map((t) => {
-      const status = t.status === 'completed' ? '✓' : '✗';
-      return `  ${status} [${t.id}] ${t.description}${t.result ? `: ${t.result.slice(0, 200)}` : ''}`;
-    }).join('\n');
-
-    return [
-      `You are a COORDINATOR wrapping up a multi-agent task. All work is done.`,
-      `Write a brief 2-4 sentence synthesis for the user summarizing what was accomplished.`,
-      ``,
-      `DO NOT use any tools. DO NOT start new work. Just summarize concisely.`,
-      ``,
-      `Original request: ${userMessage}`,
-      ``,
-      `Task results:`,
-      results,
-      ``,
-      `Write your synthesis now (plain text, not JSON):`,
-    ].join('\n');
   }
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.5 (2026-05-10)
+
+### Refactoring
+
+- **Extract MagenticStrategy prompts and parsers; replace unsafe `abortController!` assertions with a guarded helper** — Two clusters of TS3 + TS7 from the 2026-05-10 codebase review. The 744-LOC `MagenticStrategy.ts` (a security-critical orchestration surface per `AGENTS.md`) shrinks to 543 LOC by extracting `formatManagerResponse`, `parseManagerResponse`, `ManagerDecision`, and `failTask` into `magenticParsers.ts` and the four prompt builders (`buildPlanPrompt`, `buildAssignPrompt`, `buildWorkerPrompt`, `buildSynthesisPrompt`) into `magenticPrompts.ts` as pure functions. The runner methods (`runWorkerTask`, `executeAssignments`, `resolveAssignments`) remain on the class and are deferred to a follow-up — extracting them safely requires explicit dependency injection of the controller, unsubs, and worker timeout. `BaseStrategy` gains `protected requireAbortController(): AbortController` that throws a named error when the controller is missing instead of producing a deep TypeError inside the SDK call site; every `this.abortController!.signal` across `MagenticStrategy`, `GroupChatStrategy`, `HandoffStrategy`, and `SequentialStrategy` is replaced. Closes #276.
+
 ## v0.59.4 (2026-05-10)
 
 ### Security
