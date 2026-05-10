@@ -69,16 +69,31 @@ describe('CopilotClientFactory', () => {
       );
     });
 
-    it('passes allow-all flags so SDK 0.3.0 server-side rules defer to onPermissionRequest', async () => {
+    it('declares an explicit --allow-tool list instead of --allow-all-tools (issue #131)', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const cliArgs = client.options.cliArgs as string[];
+
+      expect(cliArgs).not.toContain('--allow-all-tools');
+
+      // Explicit auto-approval list: only the side-effect kinds Chamber
+      // intentionally auto-approves at the CLI layer. Read-only model
+      // tools (view, ask_user, str_replace, etc.) do not fire permission
+      // prompts so they need no entry. URL access is handled separately
+      // by --allow-url (issue #131 checklist 3).
+      expect(cliArgs).toEqual(expect.arrayContaining([
+        '--allow-tool=shell',
+        '--allow-tool=write',
+      ]));
+    });
+
+    it('keeps --allow-all-paths and --allow-all-urls until later checklist items drop them', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
       const cliArgs = client.options.cliArgs as string[];
 
       expect(cliArgs).toEqual(expect.arrayContaining([
-        '--allow-all-tools',
         '--allow-all-paths',
         '--allow-all-urls',
       ]));
-      expect(cliArgs).not.toContain(expect.stringMatching(/npm-loader\.js$/));
     });
 
     it('declares the mind cwd and the Chamber config root as --add-dir entries (issue #131)', async () => {
