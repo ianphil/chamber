@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.2 (2026-05-10)
+
+### Fixes
+
+- **Stop the chat box from leaking memory on long replies** — Two compounding causes during streaming addressed in the renderer: (1) `react-markdown` was re-parsing the entire growing assistant message on every token because `remarkPlugins` and `rehypePlugins` were declared as inline array literals (defeating the library's internal memoization) and `TextChunk` was not memoized; (2) the `BroadcastChannel` cross-window sync effect re-published the entire `messagesByMind` map on every reducer change, structured-cloning every block of every mind per token. Plugin arrays are now module-level constants, `TextChunk` is wrapped in `React.memo`, and the `BroadcastChannel` post is coalesced via `requestAnimationFrame` so a burst of streaming chunks results in at most one cross-window post per frame. Closes #273.
+
 ## v0.59.0 (2026-05-10)
 
 ### Chat

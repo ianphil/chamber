@@ -1,16 +1,21 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { StreamingMessage } from './StreamingMessage';
 import { makeTextBlock, makeToolCallBlock, makeReasoningBlock } from '@/test/helpers';
 
+const markdownMock = vi.fn(({ children }: { children: string }) => <div data-testid="markdown">{children}</div>);
+
 vi.mock('react-markdown', () => ({
-  default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
+  default: (props: { children: string }) => markdownMock(props),
 }));
 vi.mock('remark-gfm', () => ({ default: vi.fn() }));
 
 describe('StreamingMessage', () => {
+  beforeEach(() => {
+    markdownMock.mockClear();
+  });
   it('shows thinking dots when empty blocks and streaming', () => {
     render(<StreamingMessage blocks={[]} isStreaming={true} />);
     expect(screen.getByText('Thinking…')).toBeTruthy();
@@ -70,5 +75,31 @@ describe('StreamingMessage', () => {
     const { container } = render(<StreamingMessage blocks={[]} isStreaming={false} />);
     expect(container.querySelector('.animate-bounce')).toBeNull();
     expect(screen.queryByText('Thinking…')).toBeNull();
+  });
+
+  it('does not re-render Markdown for an unchanged text block when a sibling block updates', () => {
+    const stableText = makeTextBlock('alpha');
+    const initialTool = makeToolCallBlock({ toolCallId: 'tc-1', toolName: 'grep', status: 'running' });
+    const { rerender } = render(<StreamingMessage blocks={[stableText, initialTool]} isStreaming={true} />);
+    const callsAfterInitialRender = markdownMock.mock.calls.length;
+    expect(callsAfterInitialRender).toBeGreaterThanOrEqual(1);
+
+    const updatedTool = { ...initialTool, status: 'done' as const, output: 'finished' };
+    rerender(<StreamingMessage blocks={[stableText, updatedTool]} isStreaming={true} />);
+
+    expect(markdownMock.mock.calls.length).toBe(callsAfterInitialRender);
+  });
+
+  it('re-renders Markdown only for the changed text block when one of two text blocks updates', () => {
+    const stableText = makeTextBlock('alpha');
+    const growingTextV1 = makeTextBlock('beta');
+    const tool = makeToolCallBlock({ toolCallId: 'tc-1', toolName: 'grep', status: 'done' });
+    const { rerender } = render(<StreamingMessage blocks={[stableText, tool, growingTextV1]} isStreaming={true} />);
+    const callsAfterInitialRender = markdownMock.mock.calls.length;
+
+    const growingTextV2 = { ...growingTextV1, content: 'beta-extended' };
+    rerender(<StreamingMessage blocks={[stableText, tool, growingTextV2]} isStreaming={true} />);
+
+    expect(markdownMock.mock.calls.length).toBe(callsAfterInitialRender + 1);
   });
 });
