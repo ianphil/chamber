@@ -98,10 +98,11 @@ describe('CopilotClientFactory', () => {
       // outside this list flows through onPermissionRequest where the
       // SDK handler currently auto-approves. B5 (#131 checklist 5) will
       // surface those denials in the chat UI.
-      expect(cliArgs).toEqual(expect.arrayContaining([
+      const allowUrlArgs = cliArgs.filter((arg) => arg.startsWith('--allow-url='));
+      expect(allowUrlArgs).toEqual([
         '--allow-url=github.com',
         '--allow-url=*.github.com',
-      ]));
+      ]);
     });
 
     it('keeps --allow-all-paths until a later checklist item drops it', async () => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.55.0 (2026-05-10)
+
+### SDK
+
+- **Replace broad SDK URL auto-approval with explicit GitHub hosts** — Primary Copilot SDK sessions now drop `--allow-all-urls` and pass only the default first-party GitHub URL allowlist, leaving other URL permission requests to the SDK handler. (#131)
+
 ## v0.54.0 (2026-05-10)
 
 ### SDK
