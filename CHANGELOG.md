@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.52.2 (2026-05-10)
+
+### Reliability
+
+- **Split chamber-copilot scoped job IDs at the last separator** — `MindScopedJobs` now preserves mind IDs that contain `:` when validating `cli_*` job ownership, while rejecting colon-containing raw job IDs at delegate time so scoping remains unambiguous. Closes #261.
+
 ## v0.52.1 (2026-05-10)
 
 ### Dependencies
