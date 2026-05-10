@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language help for Chamber settings, GitHub accounts, updates, tray behavior, notifications, and links."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Settings, Accounts, and Updates - Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Settings, accounts, and updates guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Manage</p>
+          <h1>Settings, accounts, and updates</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Use this page when you need to sign in, switch GitHub accounts, adjust Chamber,
+            install updates, or understand what happens when the window closes.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="Quick answer">
+          <h2>Quick answer</h2>
+          <p>
+            Chamber uses your active GitHub sign-in for Copilot access, marketplace access,
+            and model availability. You can switch accounts or sign out from Settings.
+          </p>
+          <div class="related">
+            <a class="button button-primary" href="#accounts">Manage Accounts</a>
+            <a class="button" href="#updates">Check Updates</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#accounts">GitHub sign-in</a>
+          <a href="#switching">Switch accounts</a>
+          <a href="#settings">Settings</a>
+          <a href="#updates">Updates</a>
+          <a href="#desktop">Tray and desktop behavior</a>
+          <a href="#links">External links</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <div class="guide-content">
+          <article class="content-card" id="accounts">
+            <h2>GitHub sign-in and sign-out</h2>
+            <p>
+              Chamber asks you to sign in with GitHub so your minds can use your GitHub
+              Copilot access. Signing in also helps Chamber show the accounts, models, and
+              marketplace content available to you.
+            </p>
+            <div class="steps">
+              <section class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Open Settings</h3>
+                  <p>Use the Settings entry in Chamber or the account area shown in the app.</p>
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Choose Sign in with GitHub</h3>
+                  <p>
+                    Chamber opens a GitHub sign-in page in your browser. Follow the prompts,
+                    then return to Chamber when the browser says sign-in is complete.
+                  </p>
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Sign out when needed</h3>
+                  <p>
+                    In Settings, choose the signed-in account and select Sign out. Minds will
+                    stop using that account until you sign in again.
+                  </p>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <aside class="callout">
+            <strong>Good to know</strong>
+            <p>
+              Signing out of Chamber does not delete your GitHub account, cancel Copilot,
+              or remove your local mind folders. It only removes Chamber's access for that
+              signed-in account on this device.
+            </p>
+          </aside>
+
+          <article class="content-card" id="switching">
+            <h2>Switch between GitHub accounts</h2>
+            <p>
+              If you use more than one GitHub account, Chamber can switch which one is active.
+              The active account is the one Chamber uses when a mind talks to Copilot, checks
+              available models, or reaches GitHub-backed marketplace content.
+            </p>
+            <h3>How active account behavior works</h3>
+            <ul>
+              <li>The active account controls which Copilot plan and models are available.</li>
+              <li>Marketplace content may change when you switch accounts.</li>
+              <li>Existing mind folders stay on your computer; switching accounts does not move them.</li>
+              <li>If a mind was started with one account, start a fresh conversation after switching accounts.</li>
+            </ul>
+            <h3>Switch accounts safely</h3>
+            <ol>
+              <li>Open Settings.</li>
+              <li>Open the accounts area.</li>
+              <li>Choose the account you want to use.</li>
+              <li>If the account is not listed, sign in with GitHub and add it.</li>
+              <li>Start a new message or refresh the current screen if old account details are still shown.</li>
+            </ol>
+          </article>
+
+          <article class="content-card" id="settings">
+            <h2>Use Settings</h2>
+            <p>
+              Settings is where you review Chamber behavior for your device. Use it when you
+              want to check your account, update the app, review notifications, or change how
+              Chamber behaves in the background.
+            </p>
+            <figure class="screenshot-figure">
+              <img
+                src="../assets/user-docs/settings-accounts.png"
+                alt="Chamber Settings screen showing account and app management areas."
+              />
+              <figcaption>
+                Settings collects account, marketplace, update, and desktop behavior controls in one place.
+              </figcaption>
+            </figure>
+            <h3>Common settings to review</h3>
+            <ul>
+              <li>Account status: confirm which GitHub account is active.</li>
+              <li>Updates: check for a new Chamber version and open the updater guide when you need icon help.</li>
+              <li>Notifications: choose whether Chamber can alert you about completed work.</li>
+              <li>Desktop behavior: confirm whether closing the window keeps Chamber in the tray.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="updates">
+            <h2>Check, download, and install updates</h2>
+            <p>
+              Updates keep Chamber current with fixes and improvements. You can check for
+              updates from Settings. If an update is available, Chamber will guide you through
+              downloading and installing it.
+            </p>
+            <p>
+              Chamber also has a dedicated updater icon in the Activity Bar footer. See the
+              <a href="auto-updater.html">Auto Updater guide</a> for the download, restart,
+              retry, and yellow-dot icon meanings.
+            </p>
+            <div class="steps">
+              <section class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Check for updates</h3>
+                  <p>Open Settings, then choose the update option to ask Chamber to check.</p>
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Download the update</h3>
+                  <p>
+                    If Chamber finds a newer version, follow the prompt to download it. Keep
+                    the app open until the download finishes.
+                  </p>
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Install when ready</h3>
+                  <p>
+                    Save important work, then choose the install or restart option. Chamber may
+                    close and reopen during installation.
+                  </p>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <aside class="callout">
+            <strong>Before installing</strong>
+            <p>
+              If a mind is still working, wait for it to finish or stop it before restarting
+              Chamber. This avoids losing the current answer or approval prompt.
+            </p>
+          </aside>
+
+          <article class="content-card" id="desktop">
+            <h2>Tray behavior, close, quit, and notifications</h2>
+            <p>
+              Chamber is a desktop app. Depending on your settings and operating system, closing
+              the window may leave Chamber running in the tray so minds can finish work and send
+              notifications.
+            </p>
+            <h3>Close vs quit</h3>
+            <ul>
+              <li>Close hides the window. Chamber may keep running in the tray.</li>
+              <li>Quit fully exits Chamber and stops background work on this device.</li>
+              <li>Use quit before shutting down, switching users, or troubleshooting a stuck update.</li>
+            </ul>
+            <h3>Notifications</h3>
+            <ul>
+              <li>Chamber may notify you when work finishes, a scheduled item runs, or attention is needed.</li>
+              <li>If you do not see notifications, check both Chamber settings and your operating system notification settings.</li>
+              <li>Notifications can appear even when the main window is closed if Chamber is still running in the tray.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="links">
+            <h2>External links open in your browser</h2>
+            <p>
+              Links to GitHub, documentation, marketplace sources, and sign-in pages open in
+              your normal web browser instead of inside Chamber. This helps you see the real web
+              address before you sign in, download, or trust a source.
+            </p>
+            <h3>When a browser opens</h3>
+            <ul>
+              <li>Check that the address is the site you expected.</li>
+              <li>Use your browser's normal password manager and security warnings.</li>
+              <li>Return to Chamber after the browser step is finished.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <p>These pages explain nearby tasks in more detail.</p>
+            <div class="related">
+              <a href="getting-started.html">Getting Started</a>
+              <a href="auto-updater.html">Auto Updater</a>
+              <a href="tools-and-approvals.html">Tools and Approvals</a>
+              <a href="privacy-safety-troubleshooting.html">Safety and Troubleshooting</a>
+              <a href="marketplace.html">Marketplace</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        Chamber user documentation
+      </footer>
+    </main>
+  </body>
+</html>

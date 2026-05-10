@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Microsoft Graph Broker Auth Spike</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f141b;
+      --panel: #151c25;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --accent: #58a6ff;
+      --good: #56d364;
+      --warn: #f2cc60;
+      --bad: #ff7b72;
+      --border: #30363d;
+      --code: #0b1118;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0 0 12px;
+    }
+
+    h1 {
+      font-size: 34px;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin-top: 36px;
+      font-size: 22px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    h3 {
+      margin-top: 24px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin: 14px 0 20px;
+    }
+
+    pre code {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      font-size: 13px;
+    }
+
+    ul, ol {
+      margin-top: 0;
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .summary {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin: 22px 0;
+    }
+
+    .pill {
+      display: inline-block;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px 10px;
+      color: var(--muted);
+      margin: 0 6px 8px 0;
+      font-size: 13px;
+    }
+
+    .status-good {
+      color: var(--good);
+      font-weight: 600;
+    }
+
+    .status-warn {
+      color: var(--warn);
+      font-weight: 600;
+    }
+
+    .status-bad {
+      color: var(--bad);
+      font-weight: 600;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: #111821;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--panel);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Microsoft Graph Broker Auth Spike</h1>
+    <p>
+      This document records the Windows broker/WAM spike used to prove that Chamber can import a user profile
+      from Microsoft Graph without directly reading or reusing another app's token cache.
+    </p>
+
+    <div class="summary">
+      <p><strong>Outcome:</strong> <span class="status-good">brokered auth worked.</span></p>
+      <p>
+        Device-code auth with the A365/VS Code client ID was blocked with <code>You don't have access to this</code>,
+        but MSAL Node with <code>NativeBrokerPlugin</code> successfully acquired a Graph <code>User.Read</code>
+        token through the Windows broker and called <code>/v1.0/me</code>.
+      </p>
+      <span class="pill">Windows WAM</span>
+      <span class="pill">MSAL Node</span>
+      <span class="pill">NativeBrokerPlugin</span>
+      <span class="pill">Microsoft Graph /me</span>
+    </div>
+
+    <h2>Why this matters</h2>
+    <p>
+      Chamber wants a Settings profile avatar flow similar to Teams: click an avatar, use the user's existing
+      work account context where possible, then import name, role, location, and photo from Graph.
+    </p>
+    <p>
+      It is not safe or appropriate to scrape tokens from Windows Credential Manager, Teams, Office, VS Code, or
+      GitHub Copilot. Those tokens are scoped to their owning app and resource. Instead, Chamber should ask the
+      Windows broker for its own Graph token. The broker can satisfy that request from the signed-in Windows work
+      account/session when policy allows.
+    </p>
+
+    <h2>Tested approaches</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Approach</th>
+          <th>Result</th>
+          <th>Takeaway</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>MSAL device-code flow with A365/VS Code client ID</td>
+          <td><span class="status-bad">Blocked</span>: Microsoft returned <code>You don't have access to this</code>.</td>
+          <td>Do not use device-code as the production path for this feature.</td>
+        </tr>
+        <tr>
+          <td>MSAL Node + <code>NativeBrokerPlugin</code> with A365/VS Code client ID</td>
+          <td><span class="status-good">Succeeded</span>: broker discovered Windows accounts, <code>prompt=none</code> returned a Graph token, and <code>/me</code> returned profile fields.</td>
+          <td>Use broker/WAM first for the Graph profile import path.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Dependencies</h2>
+    <p>Install the MSAL packages used by the spike:</p>
+    <pre><code>npm install @azure/msal-node@5.2.0 @azure/msal-node-extensions@5.2.0</code></pre>
+
+    <p>Relevant package roles:</p>
+    <ul>
+      <li><code>@azure/msal-node</code>: public client app and token acquisition APIs.</li>
+      <li><code>@azure/msal-node-extensions</code>: Windows native broker/WAM integration and optional persistent cache support.</li>
+    </ul>
+
+    <h2>Working broker spike</h2>
+    <p>
+      This sample uses the A365/VS Code public client ID and Microsoft tenant ID, then asks the native broker for
+      <code>https://graph.microsoft.com/User.Read</code>. It first tries an existing broker account silently, then
+      tries <code>prompt=none</code>, then falls back to broker interactive UI.
+    </p>
+
+    <pre><code>import { createRequire } from 'node:module';
+
+const require = createRequire('C:/src/chamber/package.json');
+const { PublicClientApplication, PromptValue } = require('@azure/msal-node');
+const { NativeBrokerPlugin } = require('@azure/msal-node-extensions');
+
+const clientId = 'aebc6443-996d-45c2-90f0-388ff96faa56';
+const tenantId = '72f988bf-86f1-41af-91ab-2d7cd011db47';
+const scopes = ['https://graph.microsoft.com/User.Read'];
+
+const app = new PublicClientApplication({
+  auth: {
+    clientId,
+    authority: `https://login.microsoftonline.com/${tenantId}`,
+  },
+  broker: {
+    nativeBrokerPlugin: new NativeBrokerPlugin(),
+  },
+});
+
+console.log('Broker spike: discovering broker accounts...');
+const accounts = await app.getAllAccounts();
+console.log(`Broker spike: discovered ${accounts.length} account(s).`);
+
+async function acquireToken() {
+  if (accounts.length &gt; 0) {
+    try {
+      console.log(`Trying silent token for ${accounts[0].username ?? '(unknown account)'}.`);
+      return await app.acquireTokenSilent({
+        account: accounts[0],
+        scopes,
+      });
+    } catch (error) {
+      console.log(`Silent failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  try {
+    console.log('Trying prompt=none broker token.');
+    return await app.acquireTokenInteractive({
+      scopes,
+      prompt: PromptValue.NONE,
+    });
+  } catch (error) {
+    console.log(`prompt=none failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  console.log('Trying broker interactive token.');
+  return app.acquireTokenInteractive({ scopes });
+}
+
+const result = await acquireToken();
+if (!result?.accessToken) {
+  throw new Error('Broker MSAL returned no access token');
+}
+
+const response = await fetch('https://graph.microsoft.com/v1.0/me', {
+  headers: {
+    Authorization: `Bearer ${result.accessToken}`,
+    Accept: 'application/json',
+  },
+});
+
+const body = await response.text();
+if (!response.ok) {
+  throw new Error(`/me failed ${response.status}: ${body}`);
+}
+
+const me = JSON.parse(body);
+console.log(JSON.stringify({
+  ok: true,
+  accountUsername: result.account?.username,
+  displayName: me.displayName,
+  userPrincipalName: me.userPrincipalName,
+  jobTitle: me.jobTitle,
+  officeLocation: me.officeLocation,
+}, null, 2));</code></pre>
+
+    <h2>Observed successful output shape</h2>
+    <p>
+      The successful run returned user profile fields from Graph. Do not commit or log tokens. Profile fields are
+      enough to validate the flow.
+    </p>
+    <pre><code>{
+  "ok": true,
+  "accountUsername": "user@example.com",
+  "displayName": "Example User",
+  "userPrincipalName": "user@example.com",
+  "jobTitle": "Principal SWE Manager",
+  "officeLocation": "ATLANTA-170 17TH ST NW/Mobile"
+}</code></pre>
+
+    <h2>How it works</h2>
+    <ol>
+      <li>MSAL creates a public client application for the A365/VS Code client ID.</li>
+      <li><code>NativeBrokerPlugin</code> connects MSAL Node to the Windows Web Account Manager broker.</li>
+      <li><code>getAllAccounts()</code> asks the broker for accounts visible to that client ID.</li>
+      <li><code>acquireTokenSilent()</code> tries to use a discovered account without prompting.</li>
+      <li><code>acquireTokenInteractive({ prompt: PromptValue.NONE })</code> lets WAM choose the existing signed-in account/session without showing full login UI when possible.</li>
+      <li>If needed, broker interactive auth can show native account selection/consent UI.</li>
+      <li>The returned token is a Graph audience token, so it can call <code>https://graph.microsoft.com/v1.0/me</code>.</li>
+    </ol>
+
+    <h2>Production guidance for Chamber</h2>
+    <ul>
+      <li>Use broker/WAM first. Do not use device-code as the default Graph profile import path.</li>
+      <li>Do not scrape or reuse another app's token cache. Ask the broker for a Chamber/MSAL token.</li>
+      <li>Do not shell out to A365 tools. Chamber should own the Settings profile UX.</li>
+      <li>Keep Graph import Settings-only in the first PR; user chat/avatar consumers can follow later.</li>
+      <li>Store any Chamber-owned auth metadata under Chamber app data, such as <code>app.getPath('userData')\auth\microsoft\</code>.</li>
+      <li>Never persist access tokens in config files, mind directories, or <code>.working-memory</code>.</li>
+      <li>Log Graph request IDs on failures when available, but never log bearer tokens.</li>
+    </ul>
+
+    <h2>Graph profile import mapping</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Chamber field</th>
+          <th>Graph source</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Name</td>
+          <td><code>/me.displayName</code></td>
+          <td>Primary display name.</td>
+        </tr>
+        <tr>
+          <td>Work</td>
+          <td><code>/me.jobTitle</code>, fallback <code>/me.companyName</code></td>
+          <td>Keep this concise for Settings UI.</td>
+        </tr>
+        <tr>
+          <td>Location</td>
+          <td><code>/me.officeLocation</code>, fallback <code>/me.city</code></td>
+          <td>Office location may be more useful than city in enterprise tenants.</td>
+        </tr>
+        <tr>
+          <td>About</td>
+          <td>Manual only</td>
+          <td>Do not import About from Graph v1 <code>/me</code>; it is not reliably available.</td>
+        </tr>
+        <tr>
+          <td>Avatar</td>
+          <td><code>/me/photos/96x96/$value</code> or <code>/me/photo/$value</code></td>
+          <td>Prefer a sized endpoint or downscale before storing a data URL.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Photo fetch example</h2>
+    <pre><code>async function fetchGraphPhotoDataUrl(accessToken) {
+  const photo = await fetch('https://graph.microsoft.com/v1.0/me/photos/96x96/$value', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (photo.status === 404) {
+    return null;
+  }
+
+  if (!photo.ok) {
+    const requestId = photo.headers.get('request-id') ?? photo.headers.get('client-request-id');
+    throw new Error(`Graph photo failed ${photo.status}${requestId ? ` request-id=${requestId}` : ''}`);
+  }
+
+  const contentType = photo.headers.get('content-type') ?? 'image/jpeg';
+  const bytes = Buffer.from(await photo.arrayBuffer());
+  return `data:${contentType};base64,${bytes.toString('base64')}`;
+}</code></pre>
+
+    <h2>Known failure modes</h2>
+    <ul>
+      <li><span class="status-bad">Device-code flow:</span> can return <code>You don't have access to this</code> for this app/scope combination.</li>
+      <li><span class="status-warn">Silent broker token:</span> may return <code>interaction_required</code>; try <code>prompt=none</code> or broker interactive.</li>
+      <li><span class="status-warn">No photo:</span> Graph commonly returns 404. Treat it as successful profile import without avatar.</li>
+      <li><span class="status-bad">401/403 from Graph:</span> surface as an auth/tenant-policy error and include request ID if available.</li>
+      <li><span class="status-warn">Native handle lifetime:</span> spike scripts may keep Node alive after success because native broker handles remain open. Production code should run inside the app lifecycle; standalone scripts can be stopped after output.</li>
+    </ul>
+
+    <div class="note">
+      <strong>Bottom line:</strong> use MSAL Node broker auth for Windows profile import. It gives Chamber a proper
+      Graph token through WAM without stealing tokens from VS Code, Teams, Office, or GitHub Copilot.
+    </div>
+  </main>
+</body>
+</html>

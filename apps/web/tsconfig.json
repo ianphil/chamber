@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@chamber/client": ["../../packages/client/src/index.ts"],
+      "@chamber/shared": ["../../packages/shared/src/index.ts"],
+      "@chamber/shared/*": ["../../packages/shared/src/*"],
+      "@chamber/wire-contracts": ["../../packages/wire-contracts/src/index.ts"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

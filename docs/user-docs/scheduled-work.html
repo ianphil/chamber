@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language guide to scheduled work, reminders, and recurring jobs in Chamber."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Scheduled Work | Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber scheduled work guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Automate</p>
+          <h1>Scheduled work</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Scheduled work lets a mind remind you, run a recurring prompt, send a
+            notification, or start approved follow-up work at the right time.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="Before scheduling">
+          <h2>Before you schedule</h2>
+          <p>
+            Be clear about what should run, when it should run, and what result you expect.
+            Review scheduled jobs because they can run later without another chat message.
+          </p>
+        </aside>
+      </section>
+
+      <div class="guide-layout">
+        <nav class="side-nav" aria-label="Guide pages">
+          <strong>Guides</strong>
+          <a href="tools-and-approvals.html">Tools and approvals</a>
+          <a href="lens-and-canvas.html">Lens and canvas</a>
+          <a aria-current="page" href="scheduled-work.html">Scheduled work</a>
+          <a href="chatrooms.html">Chatrooms</a>
+          <a href="marketplace.html">Marketplace</a>
+        </nav>
+
+        <section class="guide-content">
+          <article class="content-card" id="what-it-is">
+            <h2>What scheduled work can do</h2>
+            <p>
+              Scheduled work is like a calendar reminder with a mind attached. You can use
+              simple times, such as every weekday morning, or cron-like schedules for regular
+              patterns.
+            </p>
+            <ul>
+              <li><strong>Reminders:</strong> ask a mind to remind you about a follow-up.</li>
+              <li><strong>Recurring prompts:</strong> run the same instruction on a schedule.</li>
+              <li><strong>Webhook jobs:</strong> call a saved web endpoint when approved.</li>
+              <li><strong>Process jobs:</strong> run a bounded Chamber process, not arbitrary shell work.</li>
+              <li><strong>Notification jobs:</strong> show a desktop notice when something is due.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="create">
+            <h2>Create a scheduled job</h2>
+            <div class="steps">
+              <div class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Describe the job</h3>
+                  <p>Tell the mind the task, the schedule, and where the result should appear.</p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Review the plan</h3>
+                  <p>Check the time, repeat pattern, account, links, and any action the job may take.</p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Approve if it is right</h3>
+                  <p>Approve only jobs you are comfortable letting run later. Deny and revise unclear jobs.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="content-card" id="manage">
+            <h2>Manage scheduled work</h2>
+            <p>
+              Review scheduled work regularly. Plans change, and old reminders can become
+              noisy or unsafe if they keep running after the original need is gone.
+            </p>
+            <ul>
+              <li><strong>Run now:</strong> start the job immediately to test or catch up.</li>
+              <li><strong>Enable:</strong> allow a paused job to run on its next schedule.</li>
+              <li><strong>Disable:</strong> pause a job without deleting its details.</li>
+              <li><strong>History:</strong> see when the job ran and whether it succeeded.</li>
+              <li><strong>Delete:</strong> remove jobs you no longer need.</li>
+            </ul>
+          </article>
+
+          <aside class="callout" id="safety">
+            <strong>Safety note</strong>
+            <p>
+              Do not schedule work that sends messages, changes data, or contacts services
+              unless you understand the exact trigger and expected result.
+            </p>
+          </aside>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <p>Scheduled work often uses tools, approvals, notifications, and views.</p>
+            <div class="related">
+              <a href="tools-and-approvals.html">Tools and approvals</a>
+              <a href="lens-and-canvas.html">Lens and canvas</a>
+              <a href="privacy-safety-troubleshooting.html">Safety help</a>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="page-footer">Chamber user documentation</footer>
+    </main>
+  </body>
+</html>

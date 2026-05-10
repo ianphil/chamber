@@ -8,13 +8,10 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { PACKAGED_RENDERER_NAME } from './config/packaged-renderer.cjs';
 
-const enableMacOSSigning = process.platform === 'darwin' && process.env.ENABLE_MACOS_SIGNING === 'true';
-const enableMacOSNotarization =
-  enableMacOSSigning &&
-  Boolean(process.env.APPLE_ID) &&
-  Boolean(process.env.APPLE_ID_PASSWORD) &&
-  Boolean(process.env.APPLE_TEAM_ID);
+const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'app');
+const WINDOWS_ICON_PATH = `${APP_ICON_PATH}.ico`;
 
 function prepareCopilotRuntime(platform: string, arch: string): void {
   const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-copilot-runtime.js');
@@ -34,28 +31,65 @@ function prepareCopilotRuntime(platform: string, arch: string): void {
   }
 }
 
+function prepareSharpRuntime(platform: string, arch: string): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-sharp-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath, platform, arch], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Failed to prepare packaged sharp runtime for ${platform}-${arch}.`);
+  }
+}
+
+function prepareAcpRuntime(): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-acp-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error('Failed to prepare packaged chamber-copilot ACP runtime.');
+  }
+}
+
+function prepareMsalRuntime(): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-msal-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error('Failed to prepare packaged MSAL broker runtime.');
+  }
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime}/**/*',
+    },
     executableName: 'chamber',
-    extraResource: ['./resources/node', './resources/copilot-runtime', './src/main/assets', './node_modules/keytar'],
-    ...(enableMacOSSigning
-      ? {
-          osxSign: {},
-          ...(enableMacOSNotarization
-            ? {
-                osxNotarize: {
-                   
-                  appleId: process.env.APPLE_ID!,
-                   
-                  appleIdPassword: process.env.APPLE_ID_PASSWORD!,
-                   
-                  teamId: process.env.APPLE_TEAM_ID!,
-                },
-              }
-            : {}),
-        }
-      : {}),
+    icon: APP_ICON_PATH,
+    protocols: [
+      {
+        name: 'Chamber',
+        schemes: ['chamber'],
+      },
+    ],
+    extraResource: [
+      './resources/node',
+      './resources/copilot-runtime',
+      './resources/sharp-runtime',
+      './resources/acp-runtime',
+      './resources/msal-runtime',
+      './apps/server/dist',
+      './node_modules/keytar',
+      './apps/desktop/src/main/assets/lens-skill',
+    ],
   },
   publishers: [
     {
@@ -74,12 +108,16 @@ const config: ForgeConfig = {
   hooks: {
     prePackage: async (_forgeConfig, platform, arch) => {
       prepareCopilotRuntime(platform, arch);
+      prepareSharpRuntime(platform, arch);
+      prepareAcpRuntime();
+      prepareMsalRuntime();
     },
   },
   makers: [
     new MakerSquirrel({
       name: 'chamber',
-      shortcutName: 'Chamber',
+      title: 'Chamber',
+      setupIcon: WINDOWS_ICON_PATH,
     }),
     new MakerZIP({}, ['darwin', 'linux']),
     new MakerDeb({}),
@@ -92,20 +130,20 @@ const config: ForgeConfig = {
       build: [
         {
           // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: 'src/main.ts',
-          config: 'vite.main.config.ts',
+          entry: 'apps/desktop/src/main.ts',
+          config: 'apps/desktop/vite.main.config.ts',
           target: 'main',
         },
         {
-          entry: 'src/preload.ts',
-          config: 'vite.preload.config.ts',
+          entry: 'apps/desktop/src/preload.ts',
+          config: 'apps/desktop/vite.preload.config.ts',
           target: 'preload',
         },
       ],
       renderer: [
         {
-          name: 'main_window',
-          config: 'vite.renderer.config.ts',
+          name: PACKAGED_RENDERER_NAME,
+          config: 'apps/web/vite.electron.config.ts',
         },
       ],
     }),

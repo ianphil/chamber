@@ -1,0 +1,277 @@
+// ChatService — thin message streaming layer.
+// Gets sessions from MindManager, streams SDK events via callback.
+
+import type { MindManager } from '../mind';
+import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, ConversationSummary, ModelInfo } from '@chamber/shared/types';
+import type { CopilotSession } from '../mind/types';
+import { isStaleSessionError, SEND_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
+import { Logger } from '../logger';
+import {
+  SdkChatEventContractError,
+  getSdkSessionErrorMessage,
+  mapSdkAssistantMessage,
+  mapSdkAssistantMessageDelta,
+  mapSdkAssistantReasoningDelta,
+  mapSdkToolExecutionComplete,
+  mapSdkToolExecutionPartialResult,
+  mapSdkToolExecutionProgress,
+  mapSdkToolExecutionStart,
+} from '../sdk/sdkChatEventMapper';
+import { clearCopilotModelsCache } from '../sdk/modelCacheCompat';
+import { mapSdkModelList } from '../sdk/sdkModelMapper';
+import { TurnQueue } from './TurnQueue';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext, type DateTimeContextProvider } from './currentDateTimeContext';
+
+const log = Logger.create('ChatService');
+
+export class ChatService {
+  private abortControllers = new Map<string, AbortController>();
+
+  constructor(
+    private readonly mindManager: MindManager,
+    private readonly turnQueue: TurnQueue,
+    private readonly dateTimeContextProvider: DateTimeContextProvider = getCurrentDateTimeContext,
+  ) {}
+
+  async sendMessage(
+    mindId: string,
+    prompt: string,
+    messageId: string,
+    emit: (event: ChatEvent) => void,
+    model?: string,
+    attachments?: ChatImageAttachment[],
+  ): Promise<void> {
+    return this.turnQueue.enqueue(mindId, async () => {
+      const abortController = new AbortController();
+      this.abortControllers.set(mindId, abortController);
+
+      try {
+        const context = this.mindManager.getMind(mindId);
+        if (!context?.session) {
+          throw new Error(`Mind ${mindId} not found or has no session`);
+        }
+
+        try {
+          const session = model ? await this.mindManager.setMindModel(mindId, model) : null;
+          const currentSession = session ? this.mindManager.getMind(mindId)?.session : context.session;
+          if (!currentSession) throw new Error(`Mind ${mindId} not found or has no session`);
+          await this.streamTurn(currentSession, prompt, abortController, emit, attachments, () => {
+            this.mindManager.markActiveConversationHasMessages(mindId, prompt);
+          });
+        } catch (err) {
+          if (abortController.signal.aborted) return;
+          if (!isStaleSessionError(err)) throw err;
+
+          // SDK forgot the session — recover once by reattaching, then retry.
+          // If reattach also fails stale, surface the error so the user can start a new chat.
+          emit({ type: 'reconnecting' });
+          const recoveredSession = await this.mindManager.recoverActiveConversationSession(mindId);
+          if (abortController.signal.aborted) return;
+          await this.streamTurn(recoveredSession, prompt, abortController, emit, attachments, () => {
+            this.mindManager.markActiveConversationHasMessages(mindId, prompt);
+          });
+        }
+      } catch (err) {
+        if (abortController.signal.aborted) return;
+        const message = err instanceof Error ? err.message : String(err);
+        emit({ type: 'error', message });
+      } finally {
+        this.abortControllers.delete(mindId);
+      }
+    });
+  }
+
+  private async streamTurn(
+    session: CopilotSession,
+    prompt: string,
+    abortController: AbortController,
+    emit: (event: ChatEvent) => void,
+    attachments?: ChatImageAttachment[],
+    onSendAccepted?: () => void,
+  ): Promise<void>{
+    if (abortController.signal.aborted) return;
+
+    const unsubs: (() => void)[] = [];
+    const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
+    let sdkContractFailed = false;
+    const failSdkContract = (error: unknown) => {
+      if (abortController.signal.aborted || sdkContractFailed) return;
+      sdkContractFailed = true;
+      const message = error instanceof SdkChatEventContractError
+        ? error.message
+        : 'SDK contract mismatch while streaming chat';
+      log.error(message, error);
+      emit({ type: 'error', message });
+      abortController.abort();
+    };
+    const emitMapped = (mapper: () => ChatEvent | null) => {
+      try {
+        const mapped = mapper();
+        if (mapped) guard(() => emit(mapped));
+      } catch (error) {
+        failSdkContract(error);
+      }
+    };
+    try {
+      // Text streaming
+      unsubs.push(session.on('assistant.message_delta', (event) => {
+        emitMapped(() => mapSdkAssistantMessageDelta(event));
+      }));
+
+      // Final assistant message
+      unsubs.push(session.on('assistant.message', (event) => {
+        emitMapped(() => mapSdkAssistantMessage(event));
+      }));
+
+      // Reasoning
+      unsubs.push(session.on('assistant.reasoning_delta', (event) => {
+        emitMapped(() => mapSdkAssistantReasoningDelta(event));
+      }));
+
+      // Tool execution
+      unsubs.push(session.on('tool.execution_start', (event) => {
+        emitMapped(() => mapSdkToolExecutionStart(event));
+      }));
+
+      unsubs.push(session.on('tool.execution_progress', (event) => {
+        emitMapped(() => mapSdkToolExecutionProgress(event));
+      }));
+
+      unsubs.push(session.on('tool.execution_partial_result', (event) => {
+        emitMapped(() => mapSdkToolExecutionPartialResult(event));
+      }));
+
+      unsubs.push(session.on('tool.execution_complete', (event) => {
+        emitMapped(() => mapSdkToolExecutionComplete(event));
+      }));
+
+      // Set up idle/error listeners BEFORE send to avoid missing events
+      // that fire synchronously inside session.send (regression-test guarded).
+      //
+      // INVARIANT: no fallback wall-clock deadline on the turn (#222).
+      // Long-running agent work - deep research, multi-step tool chains,
+      // big-codebase analysis - is a first-class Chamber use case. The
+      // user owns "this has gone on long enough" via the Stop button,
+      // which calls cancelMessage -> abortController.abort() -> session.abort().
+      // We rely on the SDK to eventually emit `session.idle`, `session.error`,
+      // or for the user to cancel. SEND_TIMEOUT_MS below still bounds the
+      // separate failure mode of `session.send()` itself wedging.
+      const turnDone = new Promise<void>((resolve, reject) => {
+        const unsubIdle = session.on('session.idle', () => {
+          unsubIdle();
+          resolve();
+        });
+        unsubs.push(unsubIdle);
+
+        const unsubError = session.on('session.error', (event) => {
+          unsubError();
+          try {
+            reject(new Error(getSdkSessionErrorMessage(event)));
+          } catch (error) {
+            failSdkContract(error);
+            resolve();
+          }
+        });
+        unsubs.push(unsubError);
+
+        abortController.signal.addEventListener('abort', () => {
+          resolve();
+        }, { once: true });
+      });
+      // Defensive no-op catch: if `session.send` throws and we never reach
+      // `await turnDone` below, this guarantees a later SDK error rejection is
+      // observed instead of surfacing as an unhandled rejection.
+      turnDone.catch(() => { /* observed in await below or intentionally discarded */ });
+
+      // Send with a timeout guard: if session.send() itself hangs (dead
+      // WebSocket, killed CLI), surface as a stale-session error so the
+      // outer catch can recreate the session and retry.
+      let sendTimerId: ReturnType<typeof setTimeout> | undefined;
+      const sendTimeout = new Promise<never>((_, reject) => {
+        sendTimerId = setTimeout(() => reject(sendTimeoutError()), SEND_TIMEOUT_MS);
+      });
+      try {
+        const sdkAttachments = attachments?.map((a) => ({
+          type: 'blob' as const,
+          data: a.data,
+          mimeType: a.mimeType,
+          displayName: a.name,
+        }));
+        const promptWithDateTime = injectCurrentDateTimeContext(prompt, this.dateTimeContextProvider());
+        await Promise.race([session.send(sdkAttachments ? { prompt: promptWithDateTime, attachments: sdkAttachments } : { prompt: promptWithDateTime }), sendTimeout]);
+        guard(() => onSendAccepted?.());
+      } finally {
+        if (sendTimerId) clearTimeout(sendTimerId);
+      }
+
+      // Wait for idle (listeners already active from before send).
+      await turnDone;
+
+      if (abortController.signal.aborted) return;
+      emit({ type: 'done' });
+    } finally {
+      for (const unsub of unsubs) unsub();
+    }
+  }
+
+  async cancelMessage(mindId: string, _messageId: string): Promise<void> {
+    void _messageId;
+    const controller = this.abortControllers.get(mindId);
+    if (controller) {
+      controller.abort();
+      this.abortControllers.delete(mindId);
+    }
+    const context = this.mindManager.getMind(mindId);
+    if (context?.session) {
+      await context.session.abort().catch(() => { /* noop */ });
+    }
+  }
+
+  async setMindModel(mindId: string, model: string | null): Promise<Awaited<ReturnType<MindManager['setMindModel']>>> {
+    return this.turnQueue.enqueue(mindId, () => this.mindManager.setMindModel(mindId, model));
+  }
+
+  async newConversation(mindId: string): Promise<ConversationResumeResult> {
+    this.assertCanSwitchConversation(mindId);
+    await this.mindManager.startNewConversation(mindId);
+    return {
+      sessionId: this.mindManager.getMind(mindId)?.activeSessionId ?? '',
+      messages: [],
+      conversations: this.mindManager.listConversationHistory(mindId),
+    };
+  }
+
+  listConversationHistory(mindId: string): ConversationSummary[] {
+    return this.mindManager.listConversationHistory(mindId);
+  }
+
+  async resumeConversation(mindId: string, sessionId: string): Promise<ConversationResumeResult> {
+    this.assertCanSwitchConversation(mindId);
+    return this.mindManager.resumeConversation(mindId, sessionId);
+  }
+
+  async deleteConversation(mindId: string, sessionId: string): Promise<ConversationResumeResult> {
+    this.assertCanSwitchConversation(mindId);
+    return this.mindManager.deleteConversation(mindId, sessionId);
+  }
+
+  renameConversation(mindId: string, sessionId: string, title: string): ConversationSummary[] {
+    return this.mindManager.renameConversation(mindId, sessionId, title);
+  }
+
+  async listModels(mindId: string): Promise<ModelInfo[]> {
+    const context = this.mindManager.getMind(mindId);
+    if (!context?.client) return [];
+    // The SDK caches models forever per CopilotClient instance.
+    // Clear the cache so we always get a fresh list from the CLI.
+    clearCopilotModelsCache(context.client);
+    const models = await context.client.listModels();
+    return mapSdkModelList(models);
+  }
+
+  private assertCanSwitchConversation(mindId: string): void {
+    if (this.abortControllers.has(mindId)) {
+      throw new Error('Cannot switch conversations while a message is still streaming.');
+    }
+  }
+}

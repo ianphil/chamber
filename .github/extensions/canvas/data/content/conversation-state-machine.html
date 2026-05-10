@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Conversation State Machine</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070b16;
+      --panel: #0f172a;
+      --panel-2: #111c33;
+      --line: #334155;
+      --muted: #94a3b8;
+      --text: #eef6ff;
+      --blue: #60a5fa;
+      --yellow: #fbbf24;
+      --green: #34d399;
+      --red: #fb7185;
+      --purple: #a78bfa;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background: radial-gradient(circle at top left, #101b35 0, var(--bg) 42%);
+      color: var(--text);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; }
+    .subtitle { color: #bfd0e5; font-size: 15px; line-height: 1.45; max-width: 940px; }
+    code { color: #bae6fd; background: rgba(14, 165, 233, .12); border: 1px solid rgba(14, 165, 233, .28); border-radius: 7px; padding: 2px 6px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 320px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; background: rgba(15, 23, 42, .75); border: 1px solid var(--line); color: #dbeafe; white-space: nowrap; }
+    .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; }
+    .blue { background: var(--blue); } .yellow { background: var(--yellow); } .green { background: var(--green); } .red { background: var(--red); } .purple { background: var(--purple); }
+    .layout { display: grid; grid-template-columns: minmax(860px, 1fr) 430px; gap: 22px; align-items: start; }
+    .panel { background: rgba(15, 23, 42, .86); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 22px 70px rgba(0,0,0,.42); overflow: hidden; }
+    .diagram { padding: 18px 18px 22px; }
+    svg { width: 100%; min-height: 700px; display: block; }
+    .lane-title { fill: #cbd5e1; font-weight: 800; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+    .lane-line { stroke: #243148; stroke-width: 1; stroke-dasharray: 4 7; }
+    .state-card { fill: #0b1222; stroke-width: 2.5; filter: drop-shadow(0 12px 22px rgba(0,0,0,.38)); }
+    .idle { stroke: var(--blue); }
+    .hydrating { stroke: var(--yellow); }
+    .ready { stroke: var(--green); }
+    .state-title { fill: #f8fafc; font-weight: 900; font-size: 25px; text-anchor: middle; letter-spacing: -0.03em; }
+    .state-sub { fill: #cbd5e1; font-size: 14px; text-anchor: middle; }
+    .field { fill: #101b33; stroke: #263654; stroke-width: 1; }
+    .field-text { fill: #dbeafe; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; text-anchor: middle; }
+    .edge { fill: none; stroke-width: 3; marker-end: url(#arrow); }
+    .edge.blue-edge { stroke: var(--blue); }
+    .edge.yellow-edge { stroke: var(--yellow); }
+    .edge.green-edge { stroke: var(--green); }
+    .edge.red-edge { stroke: var(--red); }
+    .edge.gray-edge { stroke: #9aa8bb; }
+    .edge.purple-edge { stroke: var(--purple); }
+    .edge-label-bg { fill: rgba(7, 11, 22, .94); stroke: #27364f; stroke-width: 1; rx: 8; }
+    .edge-label { fill: #f8fafc; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; font-weight: 800; text-anchor: middle; }
+    .edge-note { fill: #b8c5d8; font-size: 12px; text-anchor: middle; }
+    .flag-card { fill: rgba(30, 41, 79, .82); stroke: #3b82f6; stroke-width: 2; }
+    .flag-title { fill: #dbeafe; font-size: 16px; font-weight: 900; }
+    .flag-text { fill: #d7e6fb; font-size: 14px; }
+    .bug-card { fill: rgba(88, 28, 135, .22); stroke: var(--purple); stroke-width: 2; }
+    .bug-title { fill: #ede9fe; font-size: 15px; font-weight: 900; }
+    .bug-text { fill: #ddd6fe; font-size: 13px; }
+    .side { padding: 18px 20px 20px; }
+    .side h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: -0.01em; }
+    .transition { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 13px 0; border-top: 1px solid #26364f; }
+    .transition:first-of-type { border-top: 0; }
+    .num { width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; font-weight: 900; font-size: 12px; background: #172554; border: 1px solid #3b82f6; color: #dbeafe; }
+    .transition strong { display: block; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; color: #f8fafc; margin-bottom: 5px; }
+    .transition p { margin: 0; color: #cbd5e1; line-height: 1.4; font-size: 13px; }
+    .callout { margin-top: 18px; padding: 14px; border-radius: 16px; border: 1px solid #475569; background: rgba(2, 6, 23, .42); color: #d7e6fb; line-height: 1.45; font-size: 13px; }
+    .callout strong { color: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Conversation Lifecycle State Machine</h1>
+      <div class="subtitle">One explicit per-mind machine keeps the selected history row, active session id, and rendered chat messages in sync: <code>conversationViewByMind[mindId]</code>.</div>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span class="pill"><span class="dot blue"></span>selection/history</span>
+      <span class="pill"><span class="dot yellow"></span>async hydration</span>
+      <span class="pill"><span class="dot green"></span>safe to render</span>
+      <span class="pill"><span class="dot red"></span>failure</span>
+      <span class="pill"><span class="dot purple"></span>bug prevention</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="panel diagram">
+      <svg viewBox="0 0 1120 720" role="img" aria-label="Conversation lifecycle state machine">
+        <defs>
+          <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,8 L11,4 z" fill="context-stroke" />
+          </marker>
+        </defs>
+
+        <text x="36" y="48" class="lane-title">Main lifecycle</text>
+        <line x1="36" y1="64" x2="1084" y2="64" class="lane-line" />
+        <text x="36" y="392" class="lane-title">Orthogonal flags</text>
+        <line x1="36" y1="408" x2="1084" y2="408" class="lane-line" />
+        <text x="36" y="548" class="lane-title">Race prevention</text>
+        <line x1="36" y1="564" x2="1084" y2="564" class="lane-line" />
+
+        <rect x="70" y="130" width="250" height="150" rx="24" class="state-card idle" />
+        <text x="195" y="176" class="state-title">idle</text>
+        <text x="195" y="205" class="state-sub">active session is known</text>
+        <text x="195" y="226" class="state-sub">messages are not loaded</text>
+        <rect x="102" y="244" width="186" height="24" rx="8" class="field" />
+        <text x="195" y="261" class="field-text">sessionId</text>
+
+        <rect x="435" y="130" width="250" height="150" rx="24" class="state-card hydrating" />
+        <text x="560" y="176" class="state-title">hydrating</text>
+        <text x="560" y="205" class="state-sub">resume request is in flight</text>
+        <text x="560" y="226" class="state-sub">result must match guard</text>
+        <rect x="466" y="244" width="188" height="24" rx="8" class="field" />
+        <text x="560" y="261" class="field-text">pendingSessionId</text>
+
+        <rect x="800" y="130" width="250" height="150" rx="24" class="state-card ready" />
+        <text x="925" y="176" class="state-title">ready</text>
+        <text x="925" y="205" class="state-sub">messages and active history</text>
+        <text x="925" y="226" class="state-sub">agree for the same session</text>
+        <rect x="832" y="244" width="186" height="24" rx="8" class="field" />
+        <text x="925" y="261" class="field-text">sessionId + messages</text>
+
+        <path d="M320 205 L435 205" class="edge yellow-edge" />
+        <rect x="333" y="168" width="90" height="26" class="edge-label-bg" />
+        <text x="378" y="186" class="edge-label">HYDRATE</text>
+        <text x="378" y="220" class="edge-note">history click / startup</text>
+
+        <path d="M685 205 L800 205" class="edge green-edge" />
+        <rect x="700" y="168" width="86" height="26" class="edge-label-bg" />
+        <text x="743" y="186" class="edge-label">RESUME</text>
+        <text x="743" y="220" class="edge-note">matching session</text>
+
+        <path d="M560 280 C560 332, 348 342, 245 284" class="edge red-edge" />
+        <rect x="392" y="318" width="104" height="26" class="edge-label-bg" />
+        <text x="444" y="336" class="edge-label">FAILED</text>
+        <text x="444" y="360" class="edge-note">same pending session</text>
+
+        <path d="M925 130 C925 80, 195 80, 195 128" class="edge blue-edge" />
+        <rect x="420" y="76" width="280" height="26" class="edge-label-bg" />
+        <text x="560" y="94" class="edge-label">SET_CONVERSATION_HISTORY</text>
+        <text x="560" y="116" class="edge-note">different active session → idle</text>
+
+        <path d="M925 280 C882 350, 968 350, 925 282" class="edge green-edge" />
+        <rect x="820" y="324" width="210" height="26" class="edge-label-bg" />
+        <text x="925" y="342" class="edge-label">STREAM DONE / ERROR</text>
+        <text x="925" y="366" class="edge-note">ready, streaming=false</text>
+
+        <path d="M195 280 C158 348, 296 348, 260 282" class="edge blue-edge" />
+        <rect x="126" y="324" width="204" height="26" class="edge-label-bg" />
+        <text x="228" y="342" class="edge-label">NEW_CONVERSATION</text>
+        <text x="228" y="366" class="edge-note">clear content, await result</text>
+
+        <rect x="105" y="440" width="430" height="70" rx="18" class="flag-card" />
+        <text x="130" y="468" class="flag-title">streaming</text>
+        <text x="222" y="468" class="flag-text">turn output in progress; disables conflicting history actions</text>
+        <text x="130" y="493" class="flag-text">Set by assistant placeholder, cleared by done/error/timeout.</text>
+
+        <rect x="585" y="440" width="430" height="70" rx="18" class="flag-card" />
+        <text x="610" y="468" class="flag-title">modelSwitching</text>
+        <text x="750" y="468" class="flag-text">serialized through ChatService / TurnQueue</text>
+        <text x="610" y="493" class="flag-text">Disables input without changing idle/hydrating/ready.</text>
+
+        <rect x="105" y="594" width="910" height="82" rx="18" class="bug-card" />
+        <text x="132" y="626" class="bug-title">Stale resume guard</text>
+        <text x="280" y="626" class="bug-text">If the user switches sessions while an older resume is still running, the old result cannot overwrite the new selection.</text>
+        <text x="132" y="654" class="bug-text">Reducer rule: apply <tspan style="font-family: ui-monospace, SFMono-Regular, Consolas, monospace; fill: #f5d0fe;">RESUME_CONVERSATION</tspan> only when <tspan style="font-family: ui-monospace, SFMono-Regular, Consolas, monospace; fill: #f5d0fe;">payload.sessionId === pendingSessionId</tspan>.</text>
+      </svg>
+    </section>
+
+    <aside class="panel side">
+      <h2>Transitions, in order</h2>
+      <div class="transition"><div class="num">1</div><div><strong>SET_CONVERSATION_HISTORY</strong><p>Loads the sidebar and records the active session. If that session changed, the view becomes <code>idle</code>.</p></div></div>
+      <div class="transition"><div class="num">2</div><div><strong>CONVERSATION_HYDRATING</strong><p>Starts resume for the selected session and stores <code>pendingSessionId</code> as the guard.</p></div></div>
+      <div class="transition"><div class="num">3</div><div><strong>RESUME_CONVERSATION</strong><p>Moves to <code>ready</code>, but only for the currently pending session. Otherwise the result is ignored as stale.</p></div></div>
+      <div class="transition"><div class="num">4</div><div><strong>CONVERSATION_HYDRATE_FAILED</strong><p>Returns to <code>idle</code> for the same pending session and stores the error for diagnostics.</p></div></div>
+      <div class="transition"><div class="num">5</div><div><strong>ADD_ASSISTANT_MESSAGE</strong><p>Binds locally-created messages to the active conversation and sets <code>streaming: true</code>.</p></div></div>
+      <div class="transition"><div class="num">6</div><div><strong>CHAT_EVENT done/error/timeout</strong><p>Keeps the view <code>ready</code> and clears <code>streaming</code>.</p></div></div>
+      <div class="transition"><div class="num">7</div><div><strong>SET_MODEL_SWITCHING</strong><p>Toggles a per-mind flag; it does not compete with lifecycle state.</p></div></div>
+      <div class="transition"><div class="num">8</div><div><strong>NEW_CONVERSATION</strong><p>Clears local content for the target mind and returns to <code>idle</code>; the service result supplies the new active session.</p></div></div>
+      <div class="callout"><strong>Important UI behavior:</strong> while status is <code>hydrating</code>, the chat pane shows a loading state instead of the empty welcome screen. That prevents “history row selected, blank chat area” drift.</div>
+    </aside>
+  </div>
+</body>
+</html>

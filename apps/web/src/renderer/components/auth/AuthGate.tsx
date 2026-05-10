@@ -1,0 +1,55 @@
+import React, { useState, useEffect } from 'react';
+import { MacTitlebarDrag } from '../layout/MacTitlebarDrag';
+import { AuthScreen } from './AuthScreen';
+
+interface Props {
+  children: React.ReactNode;
+}
+
+export function AuthGate({ children }: Props) {
+  const [checking, setChecking] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+
+  useEffect(() => {
+    window.electronAPI.auth.getStatus().then((status) => {
+      setAuthenticated(status.authenticated);
+      setChecking(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    const unsub = window.electronAPI.auth.onLoggedOut(() => {
+      setAuthenticated(false);
+      setChecking(false);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = window.electronAPI.auth.onAccountSwitched(() => {
+      setAuthenticated(true);
+      setChecking(false);
+    });
+    return unsub;
+  }, []);
+
+  if (checking) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-background z-50" />
+        <MacTitlebarDrag />
+      </>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <>
+        <AuthScreen onAuthenticated={() => setAuthenticated(true)} />
+        <MacTitlebarDrag />
+      </>
+    );
+  }
+
+  return <>{children}</>;
+}

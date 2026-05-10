@@ -1,0 +1,10 @@
+{
+  "name": "@chamber/desktop",
+  "version": "0.31.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@chamber/services": "file:../../packages/services",
+    "@chamber/shared": "file:../../packages/shared"
+  }
+}

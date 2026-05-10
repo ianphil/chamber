@@ -1,459 +1,520 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chamber — Where AI Agents Are Born</title>
-<meta name="description" content="Chamber is a desktop app for creating and running AI agents. Download for Windows.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Chamber is a desktop workspace for creating and running AI agents."
+    />
+    <link rel="icon" type="image/svg+xml" href="assets/app.svg" />
+    <title>Chamber - Where AI agents are born</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111114;
+        --muted: #62636f;
+        --line: rgba(17, 17, 20, 0.14);
+        --panel: rgba(255, 255, 255, 0.62);
+        --violet: #7557df;
+        --violet-soft: rgba(117, 87, 223, 0.14);
+        --green: #77ba87;
+      }
 
-  :root {
-    --bg: #0a0a0f;
-    --surface: #12121a;
-    --surface-2: #1a1a26;
-    --border: #2a2a3a;
-    --text: #e4e4ed;
-    --text-muted: #8888a0;
-    --accent: #6366f1;
-    --accent-glow: rgba(99, 102, 241, 0.25);
-    --green: #22c55e;
-    --green-muted: rgba(34, 197, 94, 0.15);
-  }
+      * {
+        box-sizing: border-box;
+      }
 
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    overflow-x: hidden;
-  }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 72% 0%, rgba(255, 255, 255, 0.94), transparent 19rem),
+          radial-gradient(circle at 73% 46%, rgba(117, 87, 223, 0.18), transparent 13rem),
+          linear-gradient(180deg, #f2f3f7 0%, #e7e8ee 100%);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        overflow-x: hidden;
+      }
 
-  .glow {
-    position: fixed;
-    width: 600px;
-    height: 600px;
-    border-radius: 50%;
-    filter: blur(120px);
-    opacity: 0.12;
-    pointer-events: none;
-    z-index: 0;
-  }
-  .glow-1 { background: #6366f1; top: -200px; right: -100px; }
-  .glow-2 { background: #8b5cf6; bottom: -200px; left: -100px; }
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        content: "";
+        background-image:
+          linear-gradient(rgba(17, 17, 20, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(17, 17, 20, 0.04) 1px, transparent 1px);
+        background-size: 72px 72px;
+        mask-image: linear-gradient(to bottom, black, transparent 82%);
+      }
 
-  nav {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 100;
-    padding: 1rem 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    backdrop-filter: blur(20px);
-    background: rgba(10, 10, 15, 0.8);
-    border-bottom: 1px solid var(--border);
-  }
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-weight: 700;
-    font-size: 1.2rem;
-    letter-spacing: -0.02em;
-  }
-  .logo-icon {
-    width: 32px; height: 32px;
-    background: var(--accent);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-  }
-  nav a {
-    color: var(--text-muted);
-    text-decoration: none;
-    font-size: 0.9rem;
-    transition: color 0.2s;
-  }
-  nav a:hover { color: var(--text); }
-  .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+      body::after {
+        position: fixed;
+        inset: auto -8vw 0 -8vw;
+        z-index: -1;
+        height: 23vh;
+        content: "";
+        background:
+          radial-gradient(ellipse at center, rgba(10, 10, 13, 0.34), transparent 36%),
+          linear-gradient(180deg, transparent, rgba(10, 10, 13, 0.12));
+        filter: blur(2px);
+      }
 
-  .hero {
-    position: relative;
-    z-index: 1;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 8rem 2rem 4rem;
-  }
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 1rem;
-    background: var(--green-muted);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    border-radius: 999px;
-    font-size: 0.8rem;
-    color: var(--green);
-    font-weight: 500;
-    margin-bottom: 2rem;
-  }
-  .badge-dot {
-    width: 6px; height: 6px;
-    background: var(--green);
-    border-radius: 50%;
-    animation: pulse-dot 2s infinite;
-  }
-  @keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-  h1 {
-    font-size: clamp(2.5rem, 6vw, 4.5rem);
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
-    margin-bottom: 1.5rem;
-    background: linear-gradient(135deg, var(--text) 0%, var(--text-muted) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .subtitle {
-    font-size: 1.25rem;
-    color: var(--text-muted);
-    max-width: 540px;
-    margin: 0 auto 3rem;
-    line-height: 1.7;
-  }
+      #root {
+        min-height: 100vh;
+      }
 
-  .download-group {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .btn-download {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 1rem 2.5rem;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    font-size: 1.1rem;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: none;
-    transition: all 0.2s;
-    box-shadow: 0 0 30px var(--accent-glow);
-  }
-  .btn-download:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 0 50px var(--accent-glow);
-  }
-  .btn-download svg { width: 20px; height: 20px; }
-  .download-meta {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-  .download-meta span { margin: 0 0.3rem; }
-  #version-tag, #file-size { font-weight: 500; color: var(--text); }
+      .landing-shell {
+        min-height: 100vh;
+        padding: 46px clamp(28px, 7vw, 150px) 42px;
+      }
 
-  .features {
-    position: relative;
-    z-index: 1;
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 4rem 2rem 6rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1.5rem;
-  }
-  .feature-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 2rem;
-    transition: border-color 0.2s;
-  }
-  .feature-card:hover { border-color: var(--accent); }
-  .feature-icon {
-    width: 44px; height: 44px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.3rem;
-    margin-bottom: 1.25rem;
-  }
-  .feature-card h3 {
-    font-size: 1.05rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    letter-spacing: -0.01em;
-  }
-  .feature-card p {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    line-height: 1.6;
-  }
+      .site-header {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 34px;
+        align-items: center;
+        margin-bottom: clamp(82px, 13vh, 150px);
+      }
 
-  .requirements {
-    position: relative;
-    z-index: 1;
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 0 2rem 6rem;
-    text-align: center;
-  }
-  .requirements h2 {
-    font-size: 1.6rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    letter-spacing: -0.02em;
-  }
-  .requirements .sub {
-    color: var(--text-muted);
-    margin-bottom: 2rem;
-    font-size: 0.95rem;
-  }
-  .req-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    text-align: left;
-  }
-  .req-item {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1rem 1.25rem;
-  }
-  .req-check {
-    width: 28px; height: 28px;
-    background: var(--green-muted);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--green);
-    font-size: 0.85rem;
-    flex-shrink: 0;
-  }
-  .req-item .req-text { font-size: 0.9rem; }
-  .req-item .req-text small {
-    display: block;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    margin-top: 0.2rem;
-  }
+      .brand {
+        display: inline-flex;
+        gap: 16px;
+        align-items: center;
+        color: var(--ink);
+        text-decoration: none;
+      }
 
-  footer {
-    position: relative;
-    z-index: 1;
-    text-align: center;
-    padding: 2rem;
-    border-top: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 0.8rem;
-  }
-  footer a { color: var(--accent); text-decoration: none; }
-  footer a:hover { text-decoration: underline; }
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--line);
+        box-shadow: 0 0 0 7px rgba(117, 87, 223, 0.05);
+      }
 
-  .loading { opacity: 0.5; }
-</style>
-</head>
-<body>
+      .brand-word {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.48em;
+      }
 
-<div class="glow glow-1"></div>
-<div class="glow glow-2"></div>
+      .nav {
+        display: flex;
+        gap: clamp(22px, 3.2vw, 54px);
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+      }
 
-<nav>
-  <div class="logo">
-    <div class="logo-icon">⬡</div>
-    Chamber
-  </div>
-  <div class="nav-links">
-    <a href="https://github.com/ianphil/chamber" target="_blank">GitHub</a>
-    <a href="https://github.com/ianphil/chamber/releases" target="_blank">All Releases</a>
-  </div>
-</nav>
+      .nav a,
+      .github-link {
+        color: rgba(17, 17, 20, 0.74);
+        text-decoration: none;
+      }
 
-<section class="hero">
-  <div class="badge">
-    <span class="badge-dot"></span>
-    <span id="release-status">Checking latest release…</span>
-  </div>
+      .github-link {
+        justify-self: end;
+        display: inline-flex;
+        gap: 24px;
+        align-items: center;
+        justify-content: center;
+        min-width: 160px;
+        padding: 15px 22px;
+        border: 1px solid rgba(17, 17, 20, 0.34);
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+      }
 
-  <h1>Where AI Agents<br>Are Born</h1>
-  <p class="subtitle">
-    Chamber is a desktop app for creating and running AI agents.
-    Select a mind, start chatting — your agent handles the rest.
-  </p>
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(300px, 520px) minmax(480px, 1fr);
+        gap: clamp(42px, 8vw, 132px);
+        align-items: center;
+      }
 
-  <div class="download-group">
-    <a id="download-btn" class="btn-download loading" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      <span id="btn-text">Download for Windows</span>
-    </a>
-    <div class="download-meta">
-      <span id="version-tag">—</span> · <span id="file-size">—</span> · Windows x64
+      .eyebrow {
+        margin: 0 0 30px;
+        color: var(--violet);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.48em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 680px;
+        margin: 0;
+        font-size: clamp(46px, 5.7vw, 90px);
+        font-weight: 300;
+        line-height: 1.16;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .divider {
+        width: 128px;
+        height: 1px;
+        margin: 30px 0 28px;
+        background: linear-gradient(90deg, var(--line), var(--violet), var(--line));
+      }
+
+      .hero-copy {
+        max-width: 430px;
+        margin: 0 0 28px;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.7;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        align-items: center;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 47px;
+        padding: 0 26px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(17, 17, 20, 0.24);
+        border-radius: 6px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.24em;
+        text-decoration: none;
+        text-transform: uppercase;
+      }
+
+      .button-primary {
+        border-color: transparent;
+        background: linear-gradient(135deg, #896cf1, #6546cc);
+        color: white;
+        box-shadow: 0 20px 46px rgba(117, 87, 223, 0.26);
+      }
+
+      .platform-note {
+        margin: 14px 0 0;
+        color: rgba(17, 17, 20, 0.48);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+      }
+
+      .product-stage {
+        position: relative;
+        min-height: 430px;
+      }
+
+      .light-column {
+        position: absolute;
+        top: -220px;
+        right: 24%;
+        width: 150px;
+        height: 720px;
+        background:
+          radial-gradient(ellipse at center, rgba(255, 255, 255, 0.92), transparent 34%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0));
+        filter: blur(8px);
+      }
+
+      .platform-ring {
+        position: absolute;
+        right: 13%;
+        bottom: -82px;
+        width: 420px;
+        height: 88px;
+        border: 1px solid rgba(17, 17, 20, 0.18);
+        border-radius: 50%;
+        background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.9), rgba(17, 17, 20, 0.1));
+        box-shadow: 0 26px 42px rgba(17, 17, 20, 0.2);
+      }
+
+      .app-card {
+        position: relative;
+        z-index: 1;
+        margin-left: auto;
+        width: min(860px, 100%);
+        padding: 10px;
+        border: 1px solid rgba(17, 17, 20, 0.18);
+        border-radius: 12px;
+        background: rgba(17, 17, 20, 0.88);
+        box-shadow:
+          0 34px 90px rgba(45, 46, 58, 0.2),
+          0 12px 42px rgba(117, 87, 223, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.26);
+        backdrop-filter: blur(16px);
+      }
+
+      .app-screenshot {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        filter: saturate(0.96) contrast(1.02);
+      }
+
+      .features {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(130px, 1fr));
+        gap: 12px;
+        margin: clamp(92px, 14vh, 150px) 0 28px;
+      }
+
+      .feature-card {
+        min-height: 194px;
+        padding: 24px 18px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        text-align: center;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+      }
+
+      .feature-icon {
+        display: grid;
+        width: 54px;
+        height: 54px;
+        margin: 0 auto 28px;
+        place-items: center;
+        color: rgba(17, 17, 20, 0.48);
+        font-size: 34px;
+      }
+
+      .feature-card h2 {
+        margin: 0 0 16px;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+      }
+
+      .feature-card p {
+        margin: 0;
+        color: rgba(17, 17, 20, 0.46);
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      .install-strip {
+        display: flex;
+        gap: clamp(18px, 5vw, 70px);
+        align-items: center;
+        justify-content: center;
+        color: rgba(17, 17, 20, 0.6);
+        font-size: 15px;
+        letter-spacing: 0.12em;
+      }
+
+      .install-strip::before,
+      .install-strip::after {
+        width: 18vw;
+        height: 1px;
+        content: "";
+        background: var(--line);
+      }
+
+      .check {
+        display: inline-grid;
+        width: 28px;
+        height: 28px;
+        margin-right: 10px;
+        place-items: center;
+        border: 1px solid rgba(119, 186, 135, 0.42);
+        border-radius: 999px;
+        color: var(--green);
+      }
+
+      @media (max-width: 1180px) {
+        .site-header,
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        .nav,
+        .github-link {
+          justify-self: start;
+        }
+
+        .features {
+          grid-template-columns: repeat(3, minmax(170px, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .landing-shell {
+          padding: 28px 18px 36px;
+        }
+
+        .nav {
+          display: none;
+        }
+
+        .features {
+          grid-template-columns: 1fr;
+        }
+
+        .install-strip {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .install-strip::before,
+        .install-strip::after {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-background text-foreground antialiased">
+    <div id="root">
+      <main class="landing-shell" aria-label="Chamber landing page">
+        <header class="site-header">
+          <a class="brand" href="https://github.com/ianphil/chamber" aria-label="Chamber on GitHub">
+            <img class="brand-mark" src="assets/app.svg" alt="" />
+            <span class="brand-word">CHAMBER</span>
+          </a>
+          <nav class="nav" aria-label="Primary navigation">
+            <a href="#features">Features</a>
+            <a href="#features">Extensions</a>
+            <a href="user-docs/index.html">Docs</a>
+            <a href="https://github.com/ianphil/chamber/issues">Roadmap</a>
+            <a href="#install">About</a>
+          </nav>
+          <a class="github-link" href="https://github.com/ianphil/chamber">GitHub <span aria-hidden="true">↗</span></a>
+        </header>
+
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Chamber</p>
+            <h1>Where AI agents are born</h1>
+            <div class="divider" aria-hidden="true"></div>
+            <p class="hero-copy">
+              Chamber is a desktop app for creating and running AI agents. Select a mind,
+              start chatting, and let your agent handle the rest.
+            </p>
+            <div class="actions">
+              <a
+                id="downloadWindows"
+                class="button button-primary"
+                href="https://github.com/ianphil/chamber/releases/latest"
+                data-ready="false"
+              >
+                Preparing download...
+              </a>
+              <a class="button" href="https://github.com/ianphil/chamber">GitHub</a>
+            </div>
+            <p id="downloadStatus" class="platform-note" aria-live="polite">
+              Windows x64 · finding the latest installer
+            </p>
+          </div>
+
+          <div class="product-stage" aria-label="Chamber product preview">
+            <div class="light-column" aria-hidden="true"></div>
+            <div class="platform-ring" aria-hidden="true"></div>
+            <div class="app-card">
+              <img
+                class="app-screenshot"
+                src="assets/chamber-screenshot.png"
+                alt="Chamber desktop app showing agents, quick actions, and the chat composer."
+              />
+            </div>
+          </div>
+        </section>
+
+        <section id="features" class="features" aria-label="Chamber features">
+          <article class="feature-card">
+            <div class="feature-icon">◇</div>
+            <h2>Zero-config agents</h2>
+            <p>Spin up agents with no setup.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">◎</div>
+            <h2>Lens views</h2>
+            <p>See through specialized lenses.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">◷</div>
+            <h2>Cron & MCP</h2>
+            <p>Schedule tasks. Connect tools.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">▱</div>
+            <h2>IDEA knowledge</h2>
+            <p>Index everything. Retrieve instantly.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">✣</div>
+            <h2>Extension system</h2>
+            <p>Extend Chamber your way.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">▣</div>
+            <h2>Desktop native</h2>
+            <p>Built for focus. Built to last.</p>
+          </article>
+        </section>
+
+        <section id="install" class="install-strip" aria-label="Before you install">
+          <span><span class="check">✓</span>GitHub Account</span>
+          <span><span class="check">✓</span>GitHub Copilot License</span>
+          <span><span class="check">✓</span>Windows 10 or later</span>
+        </section>
+      </main>
     </div>
-  </div>
-</section>
+    <script>
+      const downloadLink = document.querySelector('#downloadWindows');
+      const downloadStatus = document.querySelector('#downloadStatus');
 
-<section class="features">
-  <div class="feature-card">
-    <div class="feature-icon">💬</div>
-    <h3>Zero-Config Agents</h3>
-    <p>Login with your GitHub account, name your agent, and start talking. No setup, no config files, no terminal required.</p>
-  </div>
-  <div class="feature-card">
-    <div class="feature-icon">🔮</div>
-    <h3>Lens Views</h3>
-    <p>Your agent can extend the UI with custom dashboards and panels — live data views that appear right in the sidebar.</p>
-  </div>
-  <div class="feature-card">
-    <div class="feature-icon">⚡</div>
-    <h3>Cron &amp; MCP</h3>
-    <p>Agents run autonomously — watching Teams, ADO, Calendar, and email on schedules you define. Always-on intelligence.</p>
-  </div>
-  <div class="feature-card">
-    <div class="feature-icon">🧠</div>
-    <h3>IDEA Knowledge</h3>
-    <p>Built-in knowledge system with semantic search. Your agent remembers context across conversations and grows smarter over time.</p>
-  </div>
-  <div class="feature-card">
-    <div class="feature-icon">🔌</div>
-    <h3>Extension System</h3>
-    <p>Mind-local extensions discovered automatically. Canvas, cron, IDEA adapters — the agent's capabilities grow with its mind.</p>
-  </div>
-  <div class="feature-card">
-    <div class="feature-icon">🖥️</div>
-    <h3>Desktop Native</h3>
-    <p>Not a browser tab. A real desktop app with system tray, native notifications, and full access to your local filesystem.</p>
-  </div>
-</section>
+      downloadLink.addEventListener('click', (event) => {
+        if (downloadLink.dataset.ready !== 'true') {
+          event.preventDefault();
+        }
+      });
 
-<section class="requirements">
-  <h2>Before You Install</h2>
-  <p class="sub">A few things you'll need to get started.</p>
-  <div class="req-list">
-    <div class="req-item">
-      <div class="req-check">✓</div>
-      <div class="req-text">
-        <strong>GitHub Account</strong>
-        <small>GitHub or GitHub EMU (Enterprise Managed Users)</small>
-      </div>
-    </div>
-    <div class="req-item">
-      <div class="req-check">✓</div>
-      <div class="req-text">
-        <strong>GitHub Copilot License</strong>
-        <small>Chamber uses the Copilot SDK under the hood</small>
-      </div>
-    </div>
-    <div class="req-item">
-      <div class="req-check">✓</div>
-      <div class="req-text">
-        <strong>Windows 10 or later</strong>
-        <small>x64 architecture · macOS &amp; Linux coming soon</small>
-      </div>
-    </div>
-  </div>
-</section>
+      async function resolveLatestInstaller() {
+        try {
+          const response = await fetch('https://api.github.com/repos/ianphil/chamber/releases/latest');
+          if (!response.ok) {
+            throw new Error(`GitHub release lookup failed with ${response.status}.`);
+          }
 
-<footer>
-  Built by <a href="https://github.com/ianphil" target="_blank">Ian Philpot</a> ·
-  <a href="https://github.com/ianphil/chamber" target="_blank">Source on GitHub</a>
-</footer>
+          const release = await response.json();
+          const assets = Array.isArray(release.assets) ? release.assets : [];
+          const installer = assets.find((asset) => (
+            typeof asset.name === 'string'
+            && /^Chamber-.+-x64\.exe$/i.test(asset.name)
+            && typeof asset.browser_download_url === 'string'
+          ));
 
-<script>
-(async function() {
-  const btn = document.getElementById('download-btn');
-  const btnText = document.getElementById('btn-text');
-  const versionTag = document.getElementById('version-tag');
-  const fileSize = document.getElementById('file-size');
-  const releaseStatus = document.getElementById('release-status');
+          if (!installer) {
+            throw new Error('Latest release does not include a Windows installer asset.');
+          }
 
-  try {
-    const res = await fetch('https://api.github.com/repos/ianphil/chamber/releases/latest');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const release = await res.json();
+          downloadLink.href = installer.browser_download_url;
+          downloadLink.dataset.ready = 'true';
+          downloadLink.textContent = 'Download for Windows';
+          downloadStatus.textContent = `Windows x64 · latest ${release.tag_name ?? 'release'}`;
+        } catch (error) {
+          downloadLink.dataset.ready = 'true';
+          downloadLink.textContent = 'View latest release';
+          downloadStatus.textContent = 'Windows x64 · open the latest release to download the installer';
+        }
+      }
 
-    const exe = release.assets.find(function(a) {
-      return a.name.endsWith('.exe') && a.name.toLowerCase().includes('setup');
-    }) || release.assets.find(function(a) {
-      return a.name.endsWith('.exe');
-    });
-
-    if (exe) {
-      btn.href = exe.browser_download_url;
-      btn.classList.remove('loading');
-      btnText.textContent = 'Download for Windows';
-      versionTag.textContent = release.tag_name;
-      fileSize.textContent = formatBytes(exe.size);
-      releaseStatus.textContent = release.tag_name + ' released ' + timeAgo(release.published_at);
-    } else {
-      btn.href = release.html_url;
-      btn.classList.remove('loading');
-      btnText.textContent = 'View Latest Release';
-      versionTag.textContent = release.tag_name;
-      fileSize.textContent = '\u2014';
-      releaseStatus.textContent = release.tag_name + ' \u2014 see release page for downloads';
-    }
-  } catch (err) {
-    btn.href = 'https://github.com/ianphil/chamber/releases/latest';
-    btn.classList.remove('loading');
-    btnText.textContent = 'View Releases on GitHub';
-    versionTag.textContent = 'latest';
-    fileSize.textContent = '\u2014';
-    releaseStatus.textContent = 'Visit GitHub for the latest release';
-  }
-
-  function formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
-    var k = 1024;
-    var sizes = ['B', 'KB', 'MB', 'GB'];
-    var i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  }
-
-  function timeAgo(dateStr) {
-    var seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
-    var intervals = [
-      [31536000, 'year'], [2592000, 'month'], [86400, 'day'],
-      [3600, 'hour'], [60, 'minute']
-    ];
-    for (var idx = 0; idx < intervals.length; idx++) {
-      var secs = intervals[idx][0];
-      var label = intervals[idx][1];
-      var count = Math.floor(seconds / secs);
-      if (count >= 1) return count + ' ' + label + (count > 1 ? 's' : '') + ' ago';
-    }
-    return 'just now';
-  }
-})();
-</script>
-
-</body>
+      void resolveLatestInstaller();
+    </script>
+  </body>
 </html>

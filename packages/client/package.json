@@ -1,0 +1,12 @@
+{
+  "name": "@chamber/client",
+  "version": "0.31.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@chamber/wire-contracts": "file:../wire-contracts"
+  }
+}

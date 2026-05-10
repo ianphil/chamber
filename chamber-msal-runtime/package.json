@@ -1,0 +1,7 @@
+{
+  "name": "chamber-msal-runtime",
+  "private": true,
+  "dependencies": {
+    "@azure/msal-node-extensions": "5.2.0"
+  }
+}

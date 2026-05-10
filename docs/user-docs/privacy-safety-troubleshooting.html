@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language help for Chamber privacy, safety, tool approvals, local data, and common troubleshooting steps."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Privacy, Safety, and Troubleshooting - Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Privacy, safety, and troubleshooting guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Help</p>
+          <h1>Privacy, safety, and troubleshooting</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Chamber gives minds useful abilities, but you stay in control. Use this guide to
+            understand what stays local, what to avoid sharing, and how to fix common issues.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="Safety summary">
+          <h2>Safety summary</h2>
+          <p>
+            Keep secrets out of chat, review tool approvals carefully, and only install minds
+            or marketplace sources you trust. If something feels wrong, stop the work first.
+          </p>
+          <div class="related">
+            <a class="button button-primary" href="#troubleshooting">Fix a Problem</a>
+            <a class="button" href="tools-and-approvals.html">Tool Approvals</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#local-data">Local data</a>
+          <a href="#share-carefully">What not to paste</a>
+          <a href="#trust">Marketplace trust</a>
+          <a href="#approvals">Tool approvals</a>
+          <a href="#views">Lens and Canvas safety</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <div class="guide-content">
+          <article class="content-card" id="local-data">
+            <h2>What stays on your device</h2>
+            <p>
+              Chamber stores mind folders on your computer so each mind can keep its profile,
+              notes, and local working files. These folders are meant for your use on this
+              device. Do not share a mind folder with people you do not trust.
+            </p>
+            <h3>Credentials</h3>
+            <p>
+              Sign-in credentials are stored in your operating system keychain, not inside mind
+              folders. On Windows this means the Windows credential store. On macOS it means
+              Keychain. On Linux it means your desktop keyring when available.
+            </p>
+            <h3>Mind folders</h3>
+            <ul>
+              <li>Mind folders can contain conversation context, notes, and files created for that mind.</li>
+              <li>They should not contain passwords, access tokens, private keys, or recovery codes.</li>
+              <li>Back up or delete mind folders with the same care you use for work documents.</li>
+            </ul>
+          </article>
+
+          <aside class="callout" id="share-carefully">
+            <strong>Do not paste secrets</strong>
+            <p>
+              Do not paste passwords, access tokens, private keys, payment details, personal
+              identification numbers, or private customer data into chat unless you are certain
+              you are allowed to share it and understand where it may be sent.
+            </p>
+          </aside>
+
+          <article class="content-card" id="trust">
+            <h2>Use marketplace sources you trust</h2>
+            <p>
+              Marketplace items can add minds, prompts, views, and helpful setup. Treat them
+              like software from any other source: install only from people or organizations you
+              trust, and remove anything that looks unexpected.
+            </p>
+            <h3>Before installing</h3>
+            <ul>
+              <li>Check who published the item.</li>
+              <li>Read what the item says it will add or change.</li>
+              <li>Avoid sources sent by strangers or copied from untrusted websites.</li>
+              <li>If your workplace manages approved sources, use those first.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="approvals">
+            <h2>Review tool approvals</h2>
+            <p>
+              Minds may ask to use tools to read files, create files, update views, or do other
+              work. Chamber shows approval prompts so you can decide what is allowed.
+            </p>
+            <h3>How to decide</h3>
+            <ul>
+              <li>Approve only if the action matches what you asked the mind to do.</li>
+              <li>Read file names, website names, and action descriptions before approving.</li>
+              <li>Deny the request if it mentions a private folder, unknown website, or action you did not expect.</li>
+              <li>Stop the mind if it keeps asking for actions that do not make sense.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="views">
+            <h2>Lens and Canvas safety expectations</h2>
+            <p>
+              Lens and Canvas help minds show dashboards, forms, reports, and other visual work.
+              They are designed to be separated from the app's private controls, but you should
+              still use the same caution you use with any generated content.
+            </p>
+            <h3>Lens views</h3>
+            <ul>
+              <li>Lens views should match the mind or task that created them.</li>
+              <li>If a view looks broken, blank, or unrelated, do not enter sensitive information.</li>
+              <li>Refresh the view or ask the mind to rebuild it if it appears incomplete.</li>
+            </ul>
+            <h3>Canvas pages</h3>
+            <ul>
+              <li>Canvas pages are for reports and dashboards, not password entry.</li>
+              <li>Do not sign in through a Canvas page unless you fully trust the source and expected it.</li>
+              <li>Close unexpected Canvas pages and ask the mind why it opened one.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="troubleshooting">
+            <h2>Troubleshooting common problems</h2>
+            <p>
+              Try the simplest fix first. If a problem started after switching accounts or
+              installing an update, quit and reopen Chamber before changing anything else.
+            </p>
+
+            <h3>Login problems</h3>
+            <ul>
+              <li>Make sure your browser finished the GitHub sign-in step.</li>
+              <li>Check that you signed in with the GitHub account you meant to use.</li>
+              <li>If the sign-in window is stuck, close it and start sign-in again from Settings.</li>
+              <li>If your organization requires extra approval, complete that step in GitHub first.</li>
+            </ul>
+
+            <h3>Marketplace access errors</h3>
+            <ul>
+              <li>Confirm you are online.</li>
+              <li>Switch to the GitHub account that has access to the source.</li>
+              <li>Check whether the source was removed, renamed, or made private.</li>
+              <li>Use only trusted sources if Chamber warns that access is blocked or unavailable.</li>
+            </ul>
+
+            <h3>A mind does not respond</h3>
+            <ul>
+              <li>Check your internet connection.</li>
+              <li>Send a short test message, such as "hello".</li>
+              <li>Start a new conversation if the current one seems stuck.</li>
+              <li>Quit and reopen Chamber if no minds respond.</li>
+            </ul>
+
+            <h3>An agent times out</h3>
+            <ul>
+              <li>Ask for a smaller task or split the request into steps.</li>
+              <li>Stop the current work before sending a new request.</li>
+              <li>Try again later if the service may be busy.</li>
+            </ul>
+
+            <h3>Models are missing</h3>
+            <ul>
+              <li>Check that the active GitHub account has the expected Copilot access.</li>
+              <li>Switch accounts if the wrong account is active.</li>
+              <li>Some models may not be available for every account, plan, or organization.</li>
+              <li>Sign out and sign in again if the model list looks outdated.</li>
+            </ul>
+
+            <h3>Views are broken or blank</h3>
+            <ul>
+              <li>Refresh the Lens or Canvas view.</li>
+              <li>Ask the mind to rebuild the view in simpler form.</li>
+              <li>Do not enter sensitive information into a broken or unexpected view.</li>
+              <li>Restart Chamber if all views stop loading.</li>
+            </ul>
+
+            <h3>Update or install issues</h3>
+            <ul>
+              <li>Quit Chamber fully, then open it again and retry the update.</li>
+              <li>Make sure you have permission to install apps on this computer.</li>
+              <li>Check that security software is not blocking the installer.</li>
+              <li>Download only from the official project page or a trusted workplace source.</li>
+            </ul>
+            <p>
+              If you are unsure what the updater icon means, see the
+              <a href="auto-updater.html">Auto Updater guide</a>.
+            </p>
+          </article>
+
+          <aside class="callout">
+            <strong>When in doubt</strong>
+            <p>
+              Stop the mind, do not approve new tool requests, and save any important work.
+              Then reopen Chamber and try a smaller request.
+            </p>
+          </aside>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <p>These guides explain nearby safety and setup topics.</p>
+            <div class="related">
+              <a href="settings-accounts-updates.html">Settings, Accounts, Updates</a>
+              <a href="auto-updater.html">Auto Updater</a>
+              <a href="tools-and-approvals.html">Tools and Approvals</a>
+              <a href="lens-and-canvas.html">Lens and Canvas</a>
+              <a href="marketplace.html">Marketplace</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        Chamber user documentation
+      </footer>
+    </main>
+  </body>
+</html>

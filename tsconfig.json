@@ -1,22 +1,16 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "commonjs",
-    "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "noImplicitAny": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "jsx": "react-jsx",
-    "strict": true,
     // INVARIANT: DO NOT RE-ENABLE ignoreDeprecations — fix the deprecations instead.
-    // "ignoreDeprecations": "6.0",
+    // "ignoreDeprecations": "6.0"
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./apps/web/src/*"],
+      "@chamber/client": ["./packages/client/src/index.ts"],
+      "@chamber/services": ["./packages/services/src/index.ts"],
+      "@chamber/shared": ["./packages/shared/src/index.ts"],
+      "@chamber/shared/*": ["./packages/shared/src/*"],
+      "@chamber/wire-contracts": ["./packages/wire-contracts/src/index.ts"]
     }
   },
-  "include": ["src/**/*", "forge.env.d.ts"]
+  "include": ["apps/**/*", "packages/**/*", "tests/**/*", "forge.env.d.ts"]
 }

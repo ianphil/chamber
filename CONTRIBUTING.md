@@ -18,9 +18,9 @@ npm start        # launch with hot reload
 
 ## Code Quality
 
-### Lint
+### Static validation
 
-ESLint runs on every commit via a pre-commit hook.
+Static validation runs TypeScript, ESLint, and dependency boundary checks.
 
 ```bash
 npm run lint
@@ -31,13 +31,46 @@ Zero errors, zero warnings. Fix lint issues before pushing.
 ### Tests
 
 ```bash
-npm test              # run all tests once
-npm run test:watch    # re-run on file changes
+npm test              # run all Vitest tests once
 npm run test:coverage # generate coverage report
-npm run test:ui       # interactive test UI
 ```
 
 All tests must pass before merging. If you change behavior, update or add tests to cover it.
+
+### End-to-end tests (Playwright)
+
+Two Playwright projects live under [tests/e2e/](tests/e2e):
+
+| Script | What it runs | Needs |
+|---|---|---|
+| `npm run smoke:web` | Vite web shell + fake-chat server | nothing extra |
+| `npm run smoke:desktop` | Spawns the Electron desktop app, connects via CDP | working Electron build |
+
+Both auto-install the Chromium headless shell on first run via `npm run playwright:install` (idempotent — fast no-op once the binary is present).
+
+### Smoke tests
+
+Run the smoke test that matches the surface you touched:
+
+| Script | Purpose |
+|---|---|
+| `npm run smoke:sdk` | Copilot SDK runtime smoke |
+| `npm run smoke:server-sdk` | Loopback server SDK smoke |
+| `npm run smoke:web` | Browser app smoke |
+| `npm run smoke:desktop` | Electron desktop app smoke |
+| `npm run smoke:packaged-runtime` | Packaged app/runtime smoke |
+
+Useful environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `CHAMBER_E2E_USER_DATA` | Override Electron's `userData` dir for test isolation. Honored by `apps/desktop/src/main.ts`. |
+| `CHAMBER_E2E_FAKE_CHAT=1` | Make the server short-circuit `chat.send` to a deterministic reply. Set automatically by the web project. |
+| `CHAMBER_E2E_FAKE_CHAT_REPLY` | Override the deterministic reply (default `CHAMBER_BROWSER_LOOPBACK_ACK`). |
+| `CHAMBER_E2E_GENESIS_BASE_PATH` | Force the Genesis wizard to write new minds under a temp dir. |
+| `CHAMBER_E2E_GENESIS_MEMORY_APPEND` | Inject text into a freshly-created mind's working memory before the first turn. |
+| `CHAMBER_E2E_LIVE_GENESIS=1` | Opt in to the live Copilot Genesis spec (requires a logged-in account, several minutes per run). Default off. |
+| `CHAMBER_E2E_*_CDP_PORT` | Per-spec CDP port overrides (default 9333–9337). |
 
 ### Type Checking
 
@@ -102,11 +135,13 @@ All work is tracked via [GitHub Issues](https://github.com/ianphil/chamber/issue
 4. Merge the PR to `master`.
 5. Tag the release: `git tag vX.Y.Z && git push --tags`.
 6. Build the distributable: `npm run make`.
+7. Confirm the release artifacts include `Chamber-X.Y.Z-x64.exe`, the matching `.blockmap`, and `latest.yml`.
 
 ## Stack
 
-- **Electron 41** + Forge + Vite
+- **Electron 41** + Forge/Vite bundling + electron-builder NSIS packaging
 - **React 19**, TypeScript, Tailwind CSS v4
 - **shadcn/ui** (Radix + CVA)
 - **@github/copilot-sdk**
+- **electron-updater** for desktop auto-update
 - **Vitest** for testing
