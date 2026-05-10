@@ -3,7 +3,6 @@ import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PolicyEngine } from './policy-engine';
-import type { EvaluationContext, PolicyDecision } from './policy-engine';
 
 // ---------------------------------------------------------------------------
 // Helpers
