@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Logger } from './Logger';
+import { Logger } from './logger';
 
 describe('Logger', () => {
   const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -10,10 +10,12 @@ describe('Logger', () => {
     logSpy.mockClear();
     warnSpy.mockClear();
     errorSpy.mockClear();
+    delete process.env.CHAMBER_LOG_LEVEL;
     Logger.resetLevel();
   });
 
   afterEach(() => {
+    delete process.env.CHAMBER_LOG_LEVEL;
     Logger.resetLevel();
   });
 
@@ -74,5 +76,39 @@ describe('Logger', () => {
     const obj = { key: 'value' };
     log.info('data:', obj, 42);
     expect(logSpy).toHaveBeenCalledWith('[Multi]', 'data:', obj, 42);
+  });
+
+  it('honors CHAMBER_LOG_LEVEL when no setLevel call has overridden the threshold', () => {
+    process.env.CHAMBER_LOG_LEVEL = 'debug';
+    const log = Logger.create('Env');
+    log.debug('from env');
+    expect(logSpy).toHaveBeenCalledWith('[Env]', 'from env');
+  });
+
+  it('ignores invalid CHAMBER_LOG_LEVEL values and falls back to info', () => {
+    process.env.CHAMBER_LOG_LEVEL = 'verbose';
+    const log = Logger.create('Env');
+    log.debug('hidden by fallback');
+    log.info('shown');
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith('[Env]', 'shown');
+  });
+
+  it('setLevel takes precedence over CHAMBER_LOG_LEVEL', () => {
+    process.env.CHAMBER_LOG_LEVEL = 'debug';
+    Logger.setLevel('error');
+    const log = Logger.create('Env');
+    log.debug('hidden');
+    log.info('hidden');
+    log.error('shown');
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith('[Env]', 'shown');
+  });
+
+  it('setLevel set before the env var stays in effect after the env var is later set', () => {
+    Logger.setLevel('error');
+    process.env.CHAMBER_LOG_LEVEL = 'debug';
+    Logger.create('Env').debug('hidden by sticky setLevel');
+    expect(logSpy).not.toHaveBeenCalled();
   });
 });
