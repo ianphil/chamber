@@ -43,6 +43,18 @@ function prepareSharpRuntime(platform: string, arch: string): void {
   }
 }
 
+function prepareAcpRuntime(): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-acp-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error('Failed to prepare packaged chamber-copilot ACP runtime.');
+  }
+}
+
 function prepareMsalRuntime(): void {
   const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-msal-runtime.js');
   const result = spawnSync(process.execPath, [scriptPath], {
@@ -72,6 +84,7 @@ const config: ForgeConfig = {
       './resources/node',
       './resources/copilot-runtime',
       './resources/sharp-runtime',
+      './resources/acp-runtime',
       './resources/msal-runtime',
       './apps/server/dist',
       './node_modules/keytar',
@@ -96,6 +109,7 @@ const config: ForgeConfig = {
     prePackage: async (_forgeConfig, platform, arch) => {
       prepareCopilotRuntime(platform, arch);
       prepareSharpRuntime(platform, arch);
+      prepareAcpRuntime();
       prepareMsalRuntime();
     },
   },

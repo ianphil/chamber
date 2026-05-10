@@ -3,6 +3,7 @@ export * from './a2a';
 export * from './auth';
 export * from './canvas';
 export * from './chamberTools';
+export * from './chamberCopilot';
 export * from './chat';
 export * from './chatroom';
 export * from './config';

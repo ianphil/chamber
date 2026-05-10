@@ -1,0 +1,9 @@
+{
+  "name": "chamber-copilot-acp-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned packaged runtime for the chamber-copilot ACP wrapper library and its vscode-jsonrpc dependency. Materialized into resources/acp-runtime/ at package time by scripts/prepare-acp-runtime.js.",
+  "dependencies": {
+    "chamber-copilot": "0.5.11"
+  }
+}

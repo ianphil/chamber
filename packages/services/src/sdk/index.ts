@@ -14,8 +14,10 @@ export { SdkModelListContractError, mapSdkModelList } from './sdkModelMapper';
 export { findSystemNode, requireSystemNode } from './nodeResolver';
 export {
   configureSdkRuntimeLayout,
+  getPlatformCopilotBinaryPath,
   getRuntimeManifestDir,
   getRuntimeNodeModulesDir,
   isPackagedRuntime,
   validateRuntime,
 } from './SdkBootstrap';
+export { resolveNodeModulesDir } from './sdkPaths';

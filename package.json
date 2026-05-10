@@ -1,7 +1,7 @@
 {
   "name": "chamber",
   "productName": "Chamber",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "Genesis Mind Interface — desktop chat UI for Genesis agents",
   "main": ".vite/build/main.js",
   "private": true,
@@ -30,6 +30,8 @@
     "capture:user-docs": "node scripts/capture-user-docs-screenshots.js",
     "playwright:install": "node scripts/install-playwright-browsers.js",
     "smoke:sdk": "node scripts/run-sdk-smoke-test.js",
+    "smoke:acp": "node scripts/run-acp-smoke-test.js",
+    "smoke:acp-desktop": "node scripts/run-acp-desktop-smoke.js",
     "smoke:server-sdk": "npm --workspace @chamber/server run build && node scripts/run-server-sdk-smoke-test.js",
     "smoke:web": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=web",
     "smoke:desktop": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1",
@@ -83,6 +85,7 @@
   "dependencies": {
     "@azure/msal-node": "^5.2.0",
     "@azure/msal-node-extensions": "^5.2.0",
+    "chamber-copilot": "^0.5.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

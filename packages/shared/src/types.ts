@@ -257,6 +257,13 @@ export interface AppConfig {
   userProfile?: UserProfile;
   marketplaceRegistries?: MarketplaceRegistry[];
   installedTools?: InstalledTool[];
+  /**
+   * Opt-in: enable the chamber-copilot ACP extension. When true,
+   * `ChamberCopilotService` is wired into the mind tool providers and
+   * exposes the `cli_*` ACP tools so minds can delegate work to a child
+   * `copilot --acp` process. Default false.
+   */
+  chamberCopilotEnabled?: boolean;
 }
 
 interface InstalledToolBase {
