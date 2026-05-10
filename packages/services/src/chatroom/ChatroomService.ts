@@ -103,8 +103,7 @@ export class ChatroomService extends EventEmitter {
   // Public API
   // -------------------------------------------------------------------------
 
-  async broadcast(userMessage: string, _model?: string, suppliedRoundId?: string): Promise<void> {
-    void _model;
+  async broadcast(userMessage: string, suppliedRoundId?: string): Promise<void> {
     // Cancel any in-flight agents from previous round
     this.stopAll();
 
