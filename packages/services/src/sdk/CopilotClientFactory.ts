@@ -25,6 +25,14 @@ export interface CopilotClientFactoryOptions {
 // separately by `--allow-url` / `--allow-all-urls`.
 export const TOOLS_AUTO_APPROVED: readonly string[] = ['shell', 'write'];
 
+// Default URL allow-list for the CLI's shell + web-fetch tools. Anything
+// outside this list flows through onPermissionRequest where the SDK
+// handler currently auto-approves. Patterns are protocol-aware and
+// default to https:// when no scheme is given (per the CLI permissions
+// docs). Subdomain coverage requires the `*.host` pattern in addition
+// to the bare host.
+export const URLS_ALLOWED: readonly string[] = ['github.com', '*.github.com'];
+
 export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
 
@@ -64,13 +72,18 @@ export class CopilotClientFactory {
     // str_replace, etc.) do not fire permission prompts so they need no
     // entry. URL access is handled separately by --allow-url
     // (issue #131 checklist 3).
+    //
+    // `--allow-url` is declared explicitly per first-party host
+    // (issue #131 checklist 3). Anything not in URLS_ALLOWED falls
+    // through to onPermissionRequest, where the SDK handler still
+    // auto-approves — B5 will surface those denials in the chat UI.
     const cliArgs = [
       '--log-dir', logDir,
       '--add-dir', mindPath,
       '--add-dir', chamberRoot,
       ...TOOLS_AUTO_APPROVED.map((kind) => `--allow-tool=${kind}`),
       '--allow-all-paths',
-      '--allow-all-urls',
+      ...URLS_ALLOWED.map((host) => `--allow-url=${host}`),
     ];
 
     const client = new sdk.CopilotClient({

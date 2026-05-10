@@ -87,14 +87,28 @@ describe('CopilotClientFactory', () => {
       ]);
     });
 
-    it('keeps --allow-all-paths and --allow-all-urls until later checklist items drop them', async () => {
+    it('declares an explicit --allow-url list instead of --allow-all-urls (issue #131)', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
       const cliArgs = client.options.cliArgs as string[];
 
+      expect(cliArgs).not.toContain('--allow-all-urls');
+
+      // Default first-party allow-list: github.com bare and the *.github.com
+      // wildcard that covers api., raw., gist., codeload., etc. Anything
+      // outside this list flows through onPermissionRequest where the
+      // SDK handler currently auto-approves. B5 (#131 checklist 5) will
+      // surface those denials in the chat UI.
       expect(cliArgs).toEqual(expect.arrayContaining([
-        '--allow-all-paths',
-        '--allow-all-urls',
+        '--allow-url=github.com',
+        '--allow-url=*.github.com',
       ]));
+    });
+
+    it('keeps --allow-all-paths until a later checklist item drops it', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const cliArgs = client.options.cliArgs as string[];
+
+      expect(cliArgs).toContain('--allow-all-paths');
     });
 
     it('declares the mind cwd and the Chamber config root as --add-dir entries (issue #131)', async () => {
