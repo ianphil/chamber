@@ -8,6 +8,7 @@ function snap(jobId: string, overrides: Partial<JobSnapshot> = {}): JobSnapshot 
     cwd: '/tmp',
     sessionId: `sess-${jobId}`,
     status: 'idle',
+    permissionMode: 'safe',
     eventLog: [],
     pendingApproval: null,
     createdAt: 0,
@@ -163,5 +164,46 @@ describe('MindScopedJobs', () => {
 
     await expect(scoped.releaseAll()).resolves.toBeUndefined();
     expect(store.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it('forwards permissionMode through delegate to the inner store', async () => {
+    const store = buildStore();
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a');
+
+    await scoped.delegate({ cwd: '/repo', prompt: 'safe-default' });
+    await scoped.delegate({ cwd: '/repo', prompt: 'explicit-safe', permissionMode: 'safe' });
+    await scoped.delegate({ cwd: '/repo', prompt: 'yolo-job', permissionMode: 'yolo' });
+
+    // Inner store sees the exact params object the mind asked for. The
+    // adapter never silently downgrades or upgrades the permission mode —
+    // the mode is the property of the job, set by the mind that delegated
+    // it, and audited by chamber-copilot's tool description.
+    expect(store.delegate).toHaveBeenNthCalledWith(1, { cwd: '/repo', prompt: 'safe-default' });
+    expect(store.delegate).toHaveBeenNthCalledWith(2, { cwd: '/repo', prompt: 'explicit-safe', permissionMode: 'safe' });
+    expect(store.delegate).toHaveBeenNthCalledWith(3, { cwd: '/repo', prompt: 'yolo-job', permissionMode: 'yolo' });
+  });
+
+  it('forwards permissionMode through list filter to the inner store', async () => {
+    const store = buildStore();
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a');
+    await scoped.delegate({ cwd: '/repo', prompt: 'p' });
+
+    scoped.list({ status: 'running', permissionMode: 'yolo' });
+
+    expect(store.list).toHaveBeenCalledWith({ status: 'running', permissionMode: 'yolo' });
+  });
+
+  it('preserves permissionMode on status snapshots so a mind can audit its yolo jobs', async () => {
+    const store = buildStore();
+    // Override status to return a yolo-mode snapshot for the job we're about to create.
+    store.status.mockImplementation((jobId: string) => snap(jobId, { permissionMode: 'yolo' }));
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a');
+    const { jobId } = await scoped.delegate({ cwd: '/repo', prompt: 'p', permissionMode: 'yolo' });
+
+    const status = scoped.status(jobId);
+
+    expect(status.permissionMode).toBe('yolo');
+    // The scoping rewrites jobId but leaves permissionMode intact.
+    expect(status.jobId).toBe('mind-a:job-1');
   });
 });

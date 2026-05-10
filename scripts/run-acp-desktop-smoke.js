@@ -4,7 +4,9 @@
 // launches the Chamber desktop app via `npm start`, loads a mind through
 // the renderer's IPC API, and verifies that ChamberCopilotService
 // actually spawned a child `copilot --acp` worker by looking for the
-// "chamber-copilot AcpConnection started" log line.
+// "chamber-copilot AcpConnection(s) started" log line. The exact suffix
+// depends on which permission-mode connections were wired (safe + yolo,
+// or safe-only after a yolo failure).
 //
 // Bypasses the Playwright harness (and its webServer prerequisite)
 // because this smoke only exercises Electron, not the browser app.
@@ -51,7 +53,7 @@ async function main() {
     await loadMindViaCdp(`http://127.0.0.1:${CDP_PORT}`, mindPath);
     console.log('[acp-desktop-smoke] Mind activation requested via window.electronAPI.mind.add.');
 
-    await waitForLog(logs, /chamber-copilot AcpConnection started/, 60_000);
+    await waitForLog(logs, /chamber-copilot AcpConnections? started/, 60_000);
     console.log('[acp-desktop-smoke] Child copilot --acp worker started successfully.');
 
     const text = logs.join('');

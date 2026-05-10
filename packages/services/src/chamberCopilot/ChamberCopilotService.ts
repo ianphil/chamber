@@ -2,26 +2,31 @@
 // to chamber minds via the ChamberToolProvider seam.
 //
 // Pattern mirrors CanvasService: the service owns its underlying
-// infrastructure (one shared `AcpConnection` + `JobStore`), participates in
-// the per-mind activation lifecycle, and returns an array of canvas-shape
-// tools from `getToolsForMind`.
+// infrastructure (one shared `AcpConnection` per permission mode plus a
+// shared `JobStore`), participates in the per-mind activation lifecycle,
+// and returns an array of canvas-shape tools from `getToolsForMind`.
 //
 // Lifecycle invariants:
-//   * The connection is started either lazily on first `activateMind` OR
+//   * Connections are started either lazily on first `activateMind` OR
 //     eagerly via `prewarm()`. The composition root is expected to call
 //     `prewarm()` at app boot when the feature flag is on, so the first
 //     mind load sees the cli_* tools immediately. Without prewarm,
 //     `MindManager.doLoadMind` calls `getSessionTools` BEFORE
 //     `activateProviders`, so the first mind in a fresh process boots
 //     its session without the cli_* tools.
-//   * A single connection is reused across every active mind.
-//   * The connection stops when the last activated mind is released.
+//   * The single shared JobStore is reused across every active mind.
+//   * The connections stop when the last activated mind is released.
 //   * activate/release operations are serialized so concurrent activates
 //     don't race the connection start.
 //   * `activateMind` and `prewarm` swallow connection-start failures so a
 //     missing/unspawnable CLI does NOT take down the entire mind-loading
 //     pipeline. The service stays in a valid degraded state where
 //     `getToolsForMind` returns []; the next activate retries the start.
+//   * The yolo connection (if wired) is best-effort: a yolo-start failure
+//     does NOT block the safe connection from coming up. The service runs
+//     in a degraded "safe-only" mode and any `cli_delegate({ permission_mode:
+//     'yolo' })` surfaces `UnsupportedPermissionModeError` from
+//     chamber-copilot — which is the correct fail-closed behavior.
 //
 // Trust boundary:
 //   * Each mind sees a `MindScopedJobs` adapter — its job_ids are namespaced
@@ -31,6 +36,10 @@
 //     mind's jobs. See `MindScopedJobs.ts` for the rationale.
 //   * Releasing a mind cancels all of its still-running delegated jobs so
 //     work doesn't outlive the mind that owns it.
+//   * Yolo posture: per-mind opt-in does NOT exist at this layer. Whether
+//     a delegated job runs in yolo mode is selected per-call by the calling
+//     mind via the `permission_mode` argument to `cli_delegate`. The
+//     upstream tool description warns the model about the trade-off.
 
 import {
   AcpConnection,
@@ -43,32 +52,37 @@ import { Logger } from '../logger';
 import type { Tool } from '../mind/types';
 import { MindScopedJobs } from './MindScopedJobs';
 import type {
-  AcpConnectionFactory,
   AcpToolFactory,
+  ChamberCopilotConnectionFactories,
   ChamberCopilotServiceOptions,
   JobStoreFactory,
 } from './types';
 
 const log = Logger.create('chamberCopilot');
 
-const defaultJobStoreFactory: JobStoreFactory = (connection) =>
-  new JobStore({ connection });
+const defaultJobStoreFactory: JobStoreFactory = (connections) =>
+  new JobStore({ connectionsByMode: connections });
 
 const defaultToolFactory: AcpToolFactory = (deps) => createAcpTools(deps);
 
+interface StartedConnections {
+  readonly safe: AcpConnection;
+  readonly yolo?: AcpConnection;
+}
+
 export class ChamberCopilotService implements ChamberToolProvider {
-  private readonly connectionFactory: AcpConnectionFactory;
+  private readonly connectionFactories: ChamberCopilotConnectionFactories;
   private readonly jobStoreFactory: JobStoreFactory;
   private readonly toolFactory: AcpToolFactory;
   private readonly activeMinds = new Set<string>();
   private readonly scopedStores = new Map<string, MindScopedJobs>();
   private readonly toolsByMind = new Map<string, AcpTool[]>();
-  private connection: AcpConnection | null = null;
+  private connections: StartedConnections | null = null;
   private store: JobStore | null = null;
   private startPromise: Promise<void> | null = null;
 
   constructor(options: ChamberCopilotServiceOptions) {
-    this.connectionFactory = options.connectionFactory;
+    this.connectionFactories = resolveFactories(options);
     this.jobStoreFactory = options.jobStoreFactory ?? defaultJobStoreFactory;
     this.toolFactory = options.toolFactory ?? defaultToolFactory;
   }
@@ -155,7 +169,7 @@ export class ChamberCopilotService implements ChamberToolProvider {
   }
 
   private async ensureStarted(): Promise<void> {
-    if (this.connection && this.store) return;
+    if (this.connections && this.store) return;
     if (this.startPromise) {
       return this.startPromise;
     }
@@ -168,30 +182,102 @@ export class ChamberCopilotService implements ChamberToolProvider {
   }
 
   private async startInternal(): Promise<void> {
-    const connection = this.connectionFactory();
+    // Safe MUST start successfully. A safe-start failure is fatal for the
+    // service: without the safe connection chamber-copilot cannot serve
+    // any delegated jobs (yolo alone is rejected at JobStore construction).
+    const safe = this.connectionFactories.safe();
     try {
-      await connection.start();
+      await safe.start();
     } catch (error) {
-      log.error('Failed to start chamber-copilot AcpConnection', error);
+      log.error('Failed to start chamber-copilot safe AcpConnection', error);
       throw error;
     }
-    this.connection = connection;
-    this.store = this.jobStoreFactory(connection);
-    log.info('chamber-copilot AcpConnection started');
+
+    // Yolo is best-effort. If wiring it fails (CLI permission denied,
+    // --yolo unsupported by an older bundled CLI, factory throws…) the
+    // service continues in safe-only mode. cli_delegate with
+    // permission_mode: 'yolo' will surface UnsupportedPermissionModeError
+    // from chamber-copilot — which is the correct fail-closed behavior.
+    let yolo: AcpConnection | undefined;
+    if (this.connectionFactories.yolo) {
+      try {
+        const yoloCandidate = this.connectionFactories.yolo();
+        await yoloCandidate.start();
+        yolo = yoloCandidate;
+      } catch (error) {
+        log.error(
+          'chamber-copilot yolo AcpConnection failed to start; running in safe-only mode',
+          error,
+        );
+      }
+    }
+
+    this.connections = yolo ? { safe, yolo } : { safe };
+    this.store = this.jobStoreFactory(this.connections);
+    log.info(
+      yolo
+        ? 'chamber-copilot AcpConnections started (safe + yolo)'
+        : 'chamber-copilot AcpConnection started (safe-only)',
+    );
   }
 
   private async shutdown(): Promise<void> {
-    const connection = this.connection;
-    this.connection = null;
+    const connections = this.connections;
+    this.connections = null;
     this.store = null;
     this.scopedStores.clear();
     this.toolsByMind.clear();
-    if (!connection) return;
-    try {
-      await connection.stop();
-      log.info('chamber-copilot AcpConnection stopped');
-    } catch (error) {
-      log.warn('chamber-copilot AcpConnection stop failed', error);
+    if (!connections) return;
+    await this.stopOne(connections.safe, 'safe');
+    if (connections.yolo) {
+      await this.stopOne(connections.yolo, 'yolo');
     }
   }
+
+  private async stopOne(connection: AcpConnection, label: 'safe' | 'yolo'): Promise<void> {
+    try {
+      await connection.stop();
+      log.info(`chamber-copilot ${label} AcpConnection stopped`);
+    } catch (error) {
+      log.warn(`chamber-copilot ${label} AcpConnection stop failed`, error);
+    }
+  }
+}
+
+function resolveFactories(
+  options: ChamberCopilotServiceOptions,
+): ChamberCopilotConnectionFactories {
+  const { connectionFactory, connectionsByMode } = options;
+  if (connectionFactory && connectionsByMode) {
+    throw new TypeError(
+      'ChamberCopilotService: pass either `connectionFactory` (back-compat shorthand for `{ safe }`) or `connectionsByMode`, not both.',
+    );
+  }
+  if (connectionsByMode) {
+    if (typeof connectionsByMode.safe !== 'function') {
+      throw new TypeError(
+        'ChamberCopilotService: `connectionsByMode.safe` is required and must be a factory function.',
+      );
+    }
+    if (
+      connectionsByMode.yolo !== undefined
+      && typeof connectionsByMode.yolo !== 'function'
+    ) {
+      throw new TypeError(
+        'ChamberCopilotService: `connectionsByMode.yolo`, when supplied, must be a factory function.',
+      );
+    }
+    return connectionsByMode;
+  }
+  if (connectionFactory) {
+    if (typeof connectionFactory !== 'function') {
+      throw new TypeError(
+        'ChamberCopilotService: `connectionFactory` must be a factory function.',
+      );
+    }
+    return { safe: connectionFactory };
+  }
+  throw new TypeError(
+    'ChamberCopilotService: pass `connectionFactory` (back-compat) or `connectionsByMode`.',
+  );
 }

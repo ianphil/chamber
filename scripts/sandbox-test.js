@@ -62,6 +62,22 @@ if (!fs.existsSync(sharpNativePath)) {
   process.exit(1);
 }
 
+const acpRuntimePath = path.join(packageResourcesDir, 'acp-runtime', 'node_modules', 'chamber-copilot', 'package.json');
+const acpRuntimeEntry = path.join(packageResourcesDir, 'acp-runtime', 'node_modules', 'chamber-copilot', 'index.mjs');
+const acpRuntimeJsonRpcPath = path.join(packageResourcesDir, 'acp-runtime', 'node_modules', 'vscode-jsonrpc', 'package.json');
+if (!fs.existsSync(acpRuntimePath)) {
+  console.error(`Packaged app is missing chamber-copilot ACP runtime metadata at ${acpRuntimePath}.`);
+  process.exit(1);
+}
+if (!fs.existsSync(acpRuntimeEntry)) {
+  console.error(`Packaged app is missing chamber-copilot ACP runtime entry at ${acpRuntimeEntry}.`);
+  process.exit(1);
+}
+if (!fs.existsSync(acpRuntimeJsonRpcPath)) {
+  console.error(`Packaged app is missing vscode-jsonrpc dependency at ${acpRuntimeJsonRpcPath}.`);
+  process.exit(1);
+}
+
 const sandboxOpenTarget = 'C:\\installer';
 
 const wsbXml = `<Configuration>

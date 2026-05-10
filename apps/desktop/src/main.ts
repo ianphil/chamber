@@ -129,6 +129,16 @@ function loadSharp(): typeof sharpModule {
   return runtimeRequire(path.join(process.resourcesPath, 'sharp-runtime', 'node_modules', 'sharp')) as typeof sharpModule;
 }
 
+function loadChamberCopilot(): typeof import('chamber-copilot') {
+  if (!app.isPackaged) {
+    return runtimeRequire('chamber-copilot') as typeof import('chamber-copilot');
+  }
+
+  return runtimeRequire(
+    path.join(process.resourcesPath, 'acp-runtime', 'node_modules', 'chamber-copilot'),
+  ) as typeof import('chamber-copilot');
+}
+
 const notifier: Notifier = {
   notify: (alert) => {
     const notification = new Notification({
@@ -246,7 +256,7 @@ const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2
 let chamberCopilotService: ChamberCopilotService | null = null;
 
 if (configService.load().chamberCopilotEnabled === true) {
-  const { defaultAcpConnectionFactory, AcpConnection } = runtimeRequire('chamber-copilot') as typeof import('chamber-copilot');
+  const { defaultAcpConnectionFactory, AcpConnection, YOLO_ACP_ARGS } = loadChamberCopilot();
   // SECURITY/CORRECTNESS:
   // - command: pin to the bundled @github/copilot CLI exactly the way
   //   CopilotClientFactory does, so Chamber has a SINGLE source of truth
@@ -258,21 +268,40 @@ if (configService.load().chamberCopilotEnabled === true) {
   //   chamber-copilot >= 0.5.x also makes `command` REQUIRED at runtime
   //   (defaultAcpConnectionFactory({}) throws), so this pin doubles as
   //   the type-system contract.
-  // - args: matches chamber-copilot's DEFAULT_ACP_ARGS (post-0.5.x, after
-  //   --no-auto-login was dropped). Kept explicit as defense-in-depth so
-  //   any future upstream default change cannot silently disable cached
-  //   host auth or re-enable auto-update on us.
+  // - args: the safe connection matches chamber-copilot's DEFAULT_ACP_ARGS
+  //   (post-0.5.x, after --no-auto-login was dropped). Kept explicit as
+  //   defense-in-depth so any future upstream default change cannot
+  //   silently disable cached host auth or re-enable auto-update on us.
+  // - yolo connection (chamber-copilot >= 0.5.11): a SECOND child worker
+  //   started with `--yolo`, equivalent to `--allow-all-tools
+  //   --allow-all-paths --allow-all-urls`. Any cli_delegate call carrying
+  //   `permission_mode: 'yolo'` routes here and runs without an approval
+  //   gate. The mode is per-call, opt-in by the delegating mind, and the
+  //   upstream tool description warns the model about the trade-off. We
+  //   wire it eagerly so a yolo-failure does not block safe startup
+  //   (ChamberCopilotService falls back to safe-only and surfaces
+  //   UnsupportedPermissionModeError for any yolo request).
   const cliPath = getPlatformCopilotBinaryPath(resolveNodeModulesDir());
   chamberCopilotService = new ChamberCopilotService({
-    connectionFactory: () => new AcpConnection({
-      connectionFactory: defaultAcpConnectionFactory({
-        command: cliPath,
-        args: ['--acp', '--no-auto-update'],
+    connectionsByMode: {
+      safe: () => new AcpConnection({
+        connectionFactory: defaultAcpConnectionFactory({
+          command: cliPath,
+          args: ['--acp', '--no-auto-update'],
+        }),
       }),
-    }),
+      yolo: () => new AcpConnection({
+        connectionFactory: defaultAcpConnectionFactory({
+          command: cliPath,
+          // Use upstream's frozen YOLO_ACP_ARGS directly so we cannot
+          // drift from chamber-copilot's own definition of "yolo".
+          args: [...YOLO_ACP_ARGS],
+        }),
+      }),
+    },
   });
   mindToolProviders.push(chamberCopilotService);
-  log.info('chamber-copilot ACP extension enabled', { cliPath });
+  log.info('chamber-copilot ACP extension enabled (safe + yolo)', { cliPath });
 }
 
 mindManager.setProviders(mindToolProviders);

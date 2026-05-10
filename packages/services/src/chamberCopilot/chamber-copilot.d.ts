@@ -1,14 +1,17 @@
 // Ambient module declarations for the published `chamber-copilot` package,
 // which ships pure ESM JavaScript with `"types": null` in package.json.
 //
-// This shim mirrors the chamber-copilot v0.5.x public surface that Chamber's
+// This shim mirrors the chamber-copilot v0.5.11 public surface that Chamber's
 // TypeScript code consumes directly:
 //
-//   - `apps/desktop/src/main.ts` — `defaultAcpConnectionFactory`, `AcpConnection`
+//   - `apps/desktop/src/main.ts` — `defaultAcpConnectionFactory`,
+//     `AcpConnection`, `YOLO_ACP_ARGS`
 //   - `packages/services/src/chamberCopilot/ChamberCopilotService.ts`
-//     — `AcpConnection`, `JobStore`, `createAcpTools`, `AcpTool`
+//     — `AcpConnection`, `JobStore`, `createAcpTools`, `AcpTool`,
+//       `ConnectionsByMode`
 //   - `packages/services/src/chamberCopilot/MindScopedJobs.ts`
-//     — `AcpPermissionOptionId`, `JobSnapshot`, `JobStore`
+//     — `AcpPermissionOptionId`, `JobSnapshot`, `JobStore`,
+//       `PermissionMode`, `JobListFilter`
 //   - `packages/services/src/chamberCopilot/types.ts`
 //     — `AcpConnection`, `JobStore`, `AcpTool`
 //   - `packages/services/src/chamberCopilot/*.test.ts`
@@ -23,6 +26,43 @@ declare module 'chamber-copilot' {
     | 'allow_always'
     | 'reject_once'
     | 'reject_always';
+
+  /**
+   * Per-job permission posture (chamber-copilot >= 0.5.11, issue #37).
+   *
+   * - `'safe'` — default. Job is bound to the safe AcpConnection (the
+   *   approval-gated child worker). Tool/path/url permission requests
+   *   surface through `pendingApproval` and require `cli_approve`.
+   * - `'yolo'` — opt-in. Job is bound to the yolo AcpConnection (the
+   *   child worker started with `--yolo`, equivalent to
+   *   `--allow-all-tools --allow-all-paths --allow-all-urls`). All
+   *   permissions are pre-approved with no approval gate.
+   *
+   * The mode is selected per `delegate()` call and is the property of
+   * the job for its entire lifetime.
+   */
+  export type PermissionMode = 'safe' | 'yolo';
+
+  export const PERMISSION_MODES: ReadonlySet<PermissionMode>;
+  export const DEFAULT_PERMISSION_MODE: 'safe';
+
+  /**
+   * Frozen args list for a yolo child worker. Hosts that wire a per-mode
+   * connection pool import this and pass it as `args` to
+   * `defaultAcpConnectionFactory` for the yolo connection.
+   */
+  export const YOLO_ACP_ARGS: ReadonlyArray<string>;
+
+  /**
+   * Thrown by `JobStore.delegate` when a caller requests a `permissionMode`
+   * that the JobStore was not constructed with (e.g. requesting `'yolo'`
+   * when only `connectionsByMode.safe` was wired).
+   */
+  export class UnsupportedPermissionModeError extends Error {
+    readonly name: 'UnsupportedPermissionModeError';
+    readonly permissionMode: string;
+    constructor(permissionMode: string, supported?: ReadonlyArray<string>);
+  }
 
   export interface AcpFactoryOptions {
     // `command` is REQUIRED at runtime in chamber-copilot >= 0.5.x:
@@ -67,6 +107,8 @@ declare module 'chamber-copilot' {
     readonly cwd: string;
     readonly sessionId: string;
     readonly status: string;
+    /** Permission mode the job was delegated under. Defaults to `'safe'`. */
+    readonly permissionMode: PermissionMode;
     readonly eventLog: ReadonlyArray<{ readonly at: number; readonly update: unknown }>;
     readonly pendingApproval: null | {
       readonly approvalId: string;
@@ -78,25 +120,52 @@ declare module 'chamber-copilot' {
     readonly lastStopReason: string | null;
   }
 
+  /**
+   * Per-mode AcpConnection registry. `safe` is required; `yolo` is
+   * optional. A JobStore constructed without a `yolo` connection rejects
+   * `delegate({ permissionMode: 'yolo' })` with
+   * `UnsupportedPermissionModeError`.
+   */
+  export interface ConnectionsByMode {
+    readonly safe: AcpConnection;
+    readonly yolo?: AcpConnection;
+  }
+
   export interface JobStoreOptions {
-    readonly connection: AcpConnection;
+    /**
+     * Back-compat shorthand for `{ connectionsByMode: { safe: connection } }`.
+     * If both `connection` and `connectionsByMode.safe` are supplied,
+     * `connectionsByMode` wins (no silent shadowing).
+     */
+    readonly connection?: AcpConnection;
+    readonly connectionsByMode?: ConnectionsByMode;
     readonly idFactory?: () => string;
     readonly now?: () => number;
     readonly cwdValidator?: (cwd: string) => string | null | undefined;
     readonly maxEventLogEntries?: number;
   }
 
+  export interface DelegateParams {
+    readonly cwd: string;
+    readonly prompt: string;
+    /** Defaults to `DEFAULT_PERMISSION_MODE` (`'safe'`). */
+    readonly permissionMode?: PermissionMode;
+  }
+
+  export interface JobListFilter {
+    readonly status?: string;
+    readonly cwd?: string;
+    readonly permissionMode?: PermissionMode;
+  }
+
   export class JobStore {
     constructor(options: JobStoreOptions);
-    delegate(params: {
-      readonly cwd: string;
-      readonly prompt: string;
-    }): Promise<{ readonly jobId: string; readonly sessionId: string }>;
+    delegate(params: DelegateParams): Promise<{ readonly jobId: string; readonly sessionId: string }>;
     respond(jobId: string, prompt: string): Promise<void>;
     approve(jobId: string, approvalId: string, optionId: AcpPermissionOptionId): Promise<void>;
     cancel(jobId: string): Promise<void>;
     status(jobId: string): JobSnapshot;
-    list(filter?: { readonly status?: string; readonly cwd?: string }): JobSnapshot[];
+    list(filter?: JobListFilter): JobSnapshot[];
   }
 
   /** Canvas-shape tool object. */

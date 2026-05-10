@@ -17,11 +17,21 @@
 //   The adapter intentionally satisfies the same call shape as
 //   chamber-copilot's `JobStore`, so it slots into `createAcpTools`
 //   without changes to the chamber-copilot tool surface.
+//
+//   Permission posture (chamber-copilot >= 0.5.11): each delegated job
+//   carries a `permissionMode` ('safe' | 'yolo') chosen per-call by the
+//   delegating mind via `cli_delegate({ permission_mode: ... })`. This
+//   adapter is mode-agnostic — it forwards `permissionMode` straight
+//   through to the underlying JobStore on `delegate` and `list` filter,
+//   and preserves it on `status` snapshots so the mind can audit which
+//   posture each of its jobs is running under.
 
 import type {
   AcpPermissionOptionId,
+  JobListFilter,
   JobSnapshot,
   JobStore,
+  PermissionMode,
 } from 'chamber-copilot';
 
 const SCOPED_ID_SEPARATOR = ':';
@@ -41,6 +51,7 @@ export class MindScopedJobs {
   async delegate(params: {
     readonly cwd: string;
     readonly prompt: string;
+    readonly permissionMode?: PermissionMode;
   }): Promise<{ readonly jobId: string; readonly sessionId: string }> {
     const result = await this.inner.delegate(params);
     this.ownedJobIds.add(result.jobId);
@@ -69,7 +80,7 @@ export class MindScopedJobs {
     return { ...snap, jobId: this.scope(snap.jobId) };
   }
 
-  list(filter?: { readonly status?: string; readonly cwd?: string }): JobSnapshot[] {
+  list(filter?: JobListFilter): JobSnapshot[] {
     return this.inner
       .list(filter)
       .filter((snap) => this.ownedJobIds.has(snap.jobId))

@@ -46,6 +46,7 @@ class FakeJobStore {
     cwd: '/tmp',
     sessionId: 'fake',
     status: 'idle',
+    permissionMode: 'safe',
     eventLog: [],
     pendingApproval: null,
     createdAt: 0,
@@ -86,6 +87,38 @@ function buildHarness(overrides: { connectionFactory?: () => AcpConnection } = {
   });
 
   return { service, connection, store, toolFactoryCalls, stubToolNames };
+}
+
+interface DualModeHarness {
+  readonly service: ChamberCopilotService;
+  readonly safeConnection: FakeAcpConnection;
+  readonly yoloConnection: FakeAcpConnection;
+  readonly safeFactory: ReturnType<typeof vi.fn>;
+  readonly yoloFactory: ReturnType<typeof vi.fn>;
+  readonly jobStoreFactoryCalls: Array<{ readonly safe: AcpConnection; readonly yolo?: AcpConnection }>;
+}
+
+function buildDualModeHarness(overrides: {
+  yoloConnection?: FakeAcpConnection;
+  yoloFactory?: () => AcpConnection;
+} = {}): DualModeHarness {
+  const safeConnection = new FakeAcpConnection();
+  const yoloConnection = overrides.yoloConnection ?? new FakeAcpConnection();
+  const safeFactory = vi.fn(() => safeConnection as unknown as AcpConnection);
+  const yoloFactory = vi.fn(overrides.yoloFactory ?? (() => yoloConnection as unknown as AcpConnection));
+  const store = new FakeJobStore();
+  const jobStoreFactoryCalls: Array<{ readonly safe: AcpConnection; readonly yolo?: AcpConnection }> = [];
+
+  const service = new ChamberCopilotService({
+    connectionsByMode: { safe: safeFactory, yolo: yoloFactory },
+    jobStoreFactory: (connections) => {
+      jobStoreFactoryCalls.push(connections);
+      return store as unknown as JobStore;
+    },
+    toolFactory: () => [],
+  });
+
+  return { service, safeConnection, yoloConnection, safeFactory, yoloFactory, jobStoreFactoryCalls };
 }
 
 function makeStubTool(name: string): AcpTool {
@@ -343,5 +376,115 @@ describe('ChamberCopilotService', () => {
     // safe no-op (the mind was never tracked in activeMinds).
     await expect(service.releaseMind('mind-1')).resolves.toBeUndefined();
     expect(failingConnection.stop).not.toHaveBeenCalled();
+  });
+
+  describe('connectionsByMode (yolo posture)', () => {
+    it('rejects passing both connectionFactory and connectionsByMode at the same time', () => {
+      const safe = vi.fn(() => new FakeAcpConnection() as unknown as AcpConnection);
+      expect(
+        () => new ChamberCopilotService({
+          connectionFactory: safe,
+          connectionsByMode: { safe },
+        }),
+      ).toThrow(/either `connectionFactory`.*or `connectionsByMode`/);
+    });
+
+    it('rejects connectionsByMode with a non-function safe factory', () => {
+      expect(
+        () => new ChamberCopilotService({
+          connectionsByMode: { safe: undefined as unknown as () => AcpConnection },
+        }),
+      ).toThrow(/connectionsByMode\.safe/);
+    });
+
+    it('starts both safe and yolo connections eagerly on prewarm and passes both to the JobStore factory', async () => {
+      const { service, safeConnection, yoloConnection, safeFactory, yoloFactory, jobStoreFactoryCalls } =
+        buildDualModeHarness();
+
+      await service.prewarm();
+
+      expect(safeFactory).toHaveBeenCalledOnce();
+      expect(yoloFactory).toHaveBeenCalledOnce();
+      expect(safeConnection.start).toHaveBeenCalledOnce();
+      expect(yoloConnection.start).toHaveBeenCalledOnce();
+
+      // The JobStore factory receives BOTH connections so chamber-copilot
+      // can route delegate({ permissionMode: 'yolo' }) to the yolo child.
+      expect(jobStoreFactoryCalls).toHaveLength(1);
+      expect(jobStoreFactoryCalls[0].safe).toBe(safeConnection as unknown as AcpConnection);
+      expect(jobStoreFactoryCalls[0].yolo).toBe(yoloConnection as unknown as AcpConnection);
+    });
+
+    it('stops both safe and yolo connections when the last mind is released', async () => {
+      const { service, safeConnection, yoloConnection } = buildDualModeHarness();
+
+      await service.activateMind('mind-1', '/tmp/mind-1');
+      await service.releaseMind('mind-1');
+
+      expect(safeConnection.stop).toHaveBeenCalledOnce();
+      expect(yoloConnection.stop).toHaveBeenCalledOnce();
+    });
+
+    it('runs safe-only when the yolo factory throws synchronously', async () => {
+      const { service, safeConnection, yoloConnection, jobStoreFactoryCalls } = buildDualModeHarness({
+        yoloFactory: () => {
+          throw new Error('--yolo unsupported by bundled CLI');
+        },
+      });
+
+      // prewarm must NOT throw — yolo failure is best-effort.
+      await expect(service.prewarm()).resolves.toBeUndefined();
+
+      expect(safeConnection.start).toHaveBeenCalledOnce();
+      // The JobStore factory receives only `safe` — `yolo` is omitted, so
+      // chamber-copilot will surface UnsupportedPermissionModeError for
+      // any cli_delegate({ permission_mode: 'yolo' }).
+      expect(jobStoreFactoryCalls).toHaveLength(1);
+      expect(jobStoreFactoryCalls[0].safe).toBe(safeConnection as unknown as AcpConnection);
+      expect(jobStoreFactoryCalls[0].yolo).toBeUndefined();
+      expect(yoloConnection.start).not.toHaveBeenCalled();
+    });
+
+    it('runs safe-only when the yolo connection.start() rejects', async () => {
+      const failingYolo = new FakeAcpConnection();
+      failingYolo.start = vi.fn(async () => {
+        throw new Error('yolo child spawn failed');
+      });
+      const { service, safeConnection, jobStoreFactoryCalls } = buildDualModeHarness({
+        yoloConnection: failingYolo,
+      });
+
+      await expect(service.prewarm()).resolves.toBeUndefined();
+
+      expect(safeConnection.start).toHaveBeenCalledOnce();
+      expect(failingYolo.start).toHaveBeenCalledOnce();
+      // Safe-only fallback: JobStore receives only `safe`.
+      expect(jobStoreFactoryCalls[0].yolo).toBeUndefined();
+    });
+
+    it('treats a safe-start failure as fatal (no yolo factory call attempted)', async () => {
+      const failingSafe = new FakeAcpConnection();
+      failingSafe.start = vi.fn(async () => {
+        throw new Error('safe child spawn failed');
+      });
+      const yoloFactory = vi.fn(() => new FakeAcpConnection() as unknown as AcpConnection);
+
+      const service = new ChamberCopilotService({
+        connectionsByMode: {
+          safe: () => failingSafe as unknown as AcpConnection,
+          yolo: yoloFactory,
+        },
+        jobStoreFactory: () => new FakeJobStore() as unknown as JobStore,
+        toolFactory: () => [],
+      });
+
+      // prewarm swallows the error (degraded mode), but yolo must never be
+      // attempted: without safe, chamber-copilot's JobStore would throw
+      // anyway, and we don't want to leak a yolo child that has no JobStore
+      // owner.
+      await expect(service.prewarm()).resolves.toBeUndefined();
+      expect(failingSafe.start).toHaveBeenCalledOnce();
+      expect(yoloFactory).not.toHaveBeenCalled();
+    });
   });
 });
