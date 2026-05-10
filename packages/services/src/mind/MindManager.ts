@@ -13,7 +13,7 @@ import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInpu
 import { generateMindId } from './generateMindId';
 import { loadMcpServersFromMindPath } from './mcpConfig';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
-import { approveAllCompat } from '../sdk/approveAllCompat';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext, stripInjectedCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import type { ChamberToolProvider } from '../chamberTools';
@@ -116,8 +116,8 @@ export class MindManager extends EventEmitter {
         identity.systemMessage,
         sessionTools,
         undefined,
-        approveAllCompat,
-        true,
+        approveForSessionCompat,
+        false,
         selectedModel,
         activeSessionId,
       );
@@ -357,8 +357,8 @@ export class MindManager extends EventEmitter {
       context.identity.systemMessage,
       sessionTools,
       undefined,
-      approveAllCompat,
-      true,
+      approveForSessionCompat,
+      false,
       context.selectedModel,
       conversation.sessionId,
     );
@@ -739,7 +739,7 @@ export class MindManager extends EventEmitter {
       sessionTools,
       undefined,
       onPermissionRequest,
-      !onPermissionRequest,
+      false,
     );
   }
 
@@ -749,8 +749,8 @@ export class MindManager extends EventEmitter {
     systemMessage: string,
     tools: Tool[],
     onUserInputRequest?: UserInputHandler,
-    onPermissionRequest: PermissionHandler = approveAllCompat,
-    approveAll = true,
+    onPermissionRequest: PermissionHandler = approveForSessionCompat,
+    useSetApproveAllShortcut = false,
     model?: string,
     sessionId?: string,
   ): Promise<CopilotSession> {
@@ -774,7 +774,13 @@ export class MindManager extends EventEmitter {
     };
     const session = await client.createSession(sessionConfig);
 
-    if (approveAll) {
+    // Issue #131 checklist 4: stop short-circuiting per-session approval
+    // through `setApproveAll`. The handler-driven `approve-for-session`
+    // path now owns the auto-approval decision, which lets B5 surface
+    // requests in the chat UI without losing chamber's existing safe
+    // defaults. The shortcut remains opt-in for legacy callers that
+    // still want the server-side flag.
+    if (useSetApproveAllShortcut) {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
 
@@ -788,8 +794,8 @@ export class MindManager extends EventEmitter {
     systemMessage: string,
     tools: Tool[],
     onUserInputRequest?: UserInputHandler,
-    onPermissionRequest: PermissionHandler = approveAllCompat,
-    approveAll = true,
+    onPermissionRequest: PermissionHandler = approveForSessionCompat,
+    useSetApproveAllShortcut = false,
     model?: string,
   ): Promise<CopilotSession> {
     const mcpServers = loadMcpServersFromMindPath(mindPath);
@@ -810,7 +816,7 @@ export class MindManager extends EventEmitter {
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };
     const session = await client.resumeSession(sessionId, sessionConfig);
-    if (approveAll) {
+    if (useSetApproveAllShortcut) {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
     return session;
@@ -832,8 +838,8 @@ export class MindManager extends EventEmitter {
         systemMessage,
         tools,
         undefined,
-        approveAllCompat,
-        true,
+        approveForSessionCompat,
+        false,
         model,
       );
     } catch (error) {
@@ -845,8 +851,8 @@ export class MindManager extends EventEmitter {
         systemMessage,
         tools,
         undefined,
-        approveAllCompat,
-        true,
+        approveForSessionCompat,
+        false,
         model,
         conversationSessionId,
       );

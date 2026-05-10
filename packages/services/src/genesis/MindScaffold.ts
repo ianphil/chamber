@@ -6,7 +6,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { Logger } from '../logger';
 import { CopilotClientFactory } from '../sdk/CopilotClientFactory';
-import { approveAllCompat } from '../sdk/approveAllCompat';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import { buildGenesisPrompt } from './genesisPrompt';
 import { GitHubRegistryClient } from './GitHubRegistryClient';
@@ -154,14 +154,18 @@ export class MindScaffold {
     const sessionConfig: Record<string, unknown> = {
       streaming: true,
       workingDirectory: mindPath,
-      onPermissionRequest: approveAllCompat,
+      onPermissionRequest: approveForSessionCompat,
     };
 
     const session = await client.createSession(
       sessionConfig as unknown as Parameters<typeof client.createSession>[0]
     );
 
-    await session.rpc.permissions.setApproveAll({ enabled: true });
+    // Issue #131 checklist 4: rely on `approveForSessionCompat` returning
+    // `approve-for-session` decisions for read/write/memory and `approve-once`
+    // for the rest, instead of short-circuiting through setApproveAll. The
+    // handler-driven path keeps genesis fully auto-approved while exposing
+    // the request stream so future PRs can surface activity to the UI.
 
     try {
       await session.send({ prompt: injectCurrentDateTimeContext(prompt, getCurrentDateTimeContext()) });
