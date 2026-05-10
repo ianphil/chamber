@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MindManager } from './MindManager';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import type { IdentityLoader } from '../chat/IdentityLoader';
 import type { ChamberToolProvider } from '../chamberTools';
@@ -464,6 +465,15 @@ describe('MindManager', () => {
       await manager.loadMind('/tmp/agents/q');
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({ mindPath: '/tmp/agents/q' }));
     });
+
+    it('wires approveForSessionCompat and does not short-circuit via setApproveAll (issue #131)', async () => {
+      const created = createSessionStub();
+      mockCreateSession.mockResolvedValueOnce(created);
+      await manager.loadMind('/tmp/agents/q');
+      const sessionConfig = mockCreateSession.mock.calls[0][0] as { onPermissionRequest?: unknown };
+      expect(sessionConfig.onPermissionRequest).toBe(approveForSessionCompat);
+      expect(created.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
+    });
   });
 
   describe('unloadMind', () => {
@@ -753,6 +763,22 @@ describe('MindManager', () => {
       expect(result.conversations.map((conversation) => conversation.sessionId)).toEqual(
         historyBeforeResume.map((conversation) => conversation.sessionId),
       );
+    });
+
+    it('wires approveForSessionCompat on resumed sessions and does not short-circuit via setApproveAll (issue #131)', async () => {
+      const resumedSession = createSessionStub();
+      resumedSession.getMessages.mockResolvedValue([]);
+      mockResumeSession.mockResolvedValueOnce(resumedSession);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');
+      await manager.recreateSession(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+
+      await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      const resumeConfig = mockResumeSession.mock.calls[0][1] as { onPermissionRequest?: unknown };
+      expect(resumeConfig.onPermissionRequest).toBe(approveForSessionCompat);
+      expect(resumedSession.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
     });
 
     it('hydrates the already-active conversation without resuming the SDK session again', async () => {

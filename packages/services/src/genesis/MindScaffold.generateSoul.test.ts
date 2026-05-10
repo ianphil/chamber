@@ -57,6 +57,7 @@ vi.mock('./genesisPrompt', () => ({
 }));
 
 import { MindScaffold } from './MindScaffold';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 
 describe('MindScaffold.generateSoul — CopilotClientFactory integration', () => {
   beforeEach(() => {
@@ -152,5 +153,25 @@ describe('MindScaffold.generateSoul — CopilotClientFactory integration', () =>
     const execCalls = vi.mocked(execSync).mock.calls
       .map(([command]) => String(command));
     expect(execCalls.some((command) => command.includes('install --all'))).toBe(false);
+  });
+
+  it('wires approveForSessionCompat for genesis sessions and does not short-circuit via setApproveAll (issue #131)', async () => {
+    const scaffold = new MindScaffold(undefined, fakeFactory as unknown as CopilotClientFactory);
+
+    await scaffold.create({
+      name: 'echo',
+      role: 'assistant',
+      voice: 'neutral',
+      voiceDescription: 'measured',
+      basePath: 'C:\\agents',
+    });
+
+    const sessionConfig = (mockCreateSession.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]?.[0];
+    expect(sessionConfig?.onPermissionRequest).toBe(approveForSessionCompat);
+
+    const session = await mockCreateSession.mock.results[0].value as {
+      rpc: { permissions: { setApproveAll: ReturnType<typeof vi.fn> } };
+    };
+    expect(session.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
   });
 });

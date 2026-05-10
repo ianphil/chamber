@@ -5,9 +5,9 @@ import type { PermissionHandler, PermissionRequest, PermissionRequestResult } fr
 // every kind in the SDK protocol, but several variants require detail
 // fields the handler-side request does not expose:
 //
-//   - `commands` requires `commandIdentifiers: string[]` (shell)
-//   - `mcp` and `mcp-sampling` require `serverName` (mcp / mcp-sampling)
-//   - `custom-tool` requires `toolName` (custom-tool)
+//   - `shell` requires `commandIdentifiers: string[]`
+//   - `mcp` requires `serverName`
+//   - `custom-tool` requires `toolName`
 //   - `url` and `hook` have no `approve-for-session` variant in the protocol
 //
 // For those kinds we fall back to `approve-once` until a future PR
