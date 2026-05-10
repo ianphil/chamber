@@ -1,0 +1,229 @@
+import type { ChatroomMessage, TaskLedgerItem } from '@chamber/shared/chatroom-types';
+import { isOrchestrationEvent } from '@chamber/shared/chatroom-types';
+import type { ChatEvent } from '@chamber/shared/types';
+import type { AppState, AppAction } from '../state';
+import { handleChatEvent } from './helpers';
+
+type Handler<T extends AppAction['type']> = (
+  state: AppState,
+  action: Extract<AppAction, { type: T }>,
+) => Partial<AppState> | AppState;
+
+function setChatroomHistory(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_CHATROOM_HISTORY' }>,
+): Partial<AppState> {
+  return { chatroomMessages: action.payload };
+}
+
+function chatroomUserMessage(
+  state: AppState,
+  action: Extract<AppAction, { type: 'CHATROOM_USER_MESSAGE' }>,
+): Partial<AppState> {
+  return {
+    chatroomMessages: [...state.chatroomMessages, action.payload],
+    chatroomActiveSpeaker: null,
+    chatroomMetrics: null,
+    chatroomTaskLedger: [],
+  };
+}
+
+function chatroomAgentMessage(
+  state: AppState,
+  action: Extract<AppAction, { type: 'CHATROOM_AGENT_MESSAGE' }>,
+): Partial<AppState> {
+  const { messageId, mindId, mindName, roundId, timestamp } = action.payload;
+  const agentMsg: ChatroomMessage = {
+    id: messageId,
+    role: 'assistant',
+    blocks: [],
+    timestamp,
+    isStreaming: true,
+    sender: { mindId, name: mindName },
+    roundId,
+  };
+  return {
+    chatroomMessages: [...state.chatroomMessages, agentMsg],
+    chatroomStreamingByMind: { ...state.chatroomStreamingByMind, [mindId]: true },
+  };
+}
+
+function chatroomEvent(
+  state: AppState,
+  action: Extract<AppAction, { type: 'CHATROOM_EVENT' }>,
+): Partial<AppState> | AppState {
+  const { mindId, mindName, messageId, roundId, event } = action.payload;
+
+  if (isOrchestrationEvent(event)) {
+    switch (event.type) {
+      case 'orchestration:turn-start':
+        return {
+          chatroomActiveSpeaker: {
+            mindId: event.data.speakerMindId ?? mindId,
+            mindName: event.data.speaker ?? mindName,
+            phase: 'speaking',
+          },
+        };
+
+      case 'orchestration:moderator-decision':
+        return {
+          chatroomActiveSpeaker: { mindId, mindName, phase: 'moderating' },
+        };
+
+      case 'orchestration:synthesis':
+        return {
+          chatroomActiveSpeaker: { mindId, mindName, phase: 'synthesizing' },
+        };
+
+      case 'orchestration:convergence':
+      case 'orchestration:handoff-terminated':
+      case 'orchestration:magentic-terminated':
+        return { chatroomActiveSpeaker: null };
+
+      case 'orchestration:handoff':
+        return {
+          chatroomActiveSpeaker: {
+            mindId: event.data.toMindId ?? mindId,
+            mindName: event.data.to ?? mindName,
+            phase: 'speaking',
+          },
+        };
+
+      case 'orchestration:manager-plan':
+      case 'orchestration:task-ledger-update':
+        return {
+          chatroomActiveSpeaker: { mindId, mindName, phase: 'moderating' },
+          ...(event.type === 'orchestration:task-ledger-update' && event.data.ledger
+            ? { chatroomTaskLedger: event.data.ledger as TaskLedgerItem[] }
+            : {}),
+        };
+
+      case 'orchestration:metrics':
+        return {
+          chatroomMetrics: event.data as AppState['chatroomMetrics'],
+        };
+
+      case 'orchestration:approval-requested':
+      case 'orchestration:approval-decided':
+      default:
+        return state;
+    }
+  }
+
+  // ChatEvent path (non-orchestration)
+  const chatEvent = event as ChatEvent;
+  let messages = state.chatroomMessages;
+
+  const exists = messages.some((m) => m.id === messageId);
+  if (!exists) {
+    const placeholder: ChatroomMessage = {
+      id: messageId,
+      role: 'assistant',
+      blocks: [],
+      timestamp: Date.now(),
+      isStreaming: true,
+      sender: { mindId, name: mindName },
+      roundId,
+    };
+    messages = [...messages, placeholder];
+  }
+
+  const newMessages = handleChatEvent(messages, messageId, chatEvent);
+  const isDone = chatEvent.type === 'done' || chatEvent.type === 'error' || chatEvent.type === 'timeout';
+  return {
+    chatroomMessages: newMessages,
+    chatroomStreamingByMind: isDone
+      ? { ...state.chatroomStreamingByMind, [mindId]: false }
+      : { ...state.chatroomStreamingByMind, [mindId]: true },
+    ...(isDone && state.chatroomActiveSpeaker?.mindId === mindId
+      ? { chatroomActiveSpeaker: null }
+      : {}),
+  };
+}
+
+function chatroomClear(): Partial<AppState> {
+  return {
+    chatroomMessages: [],
+    chatroomStreamingByMind: {},
+    chatroomActiveSpeaker: null,
+    chatroomTaskLedger: [],
+    chatroomMetrics: null,
+  };
+}
+
+function setChatroomTaskLedger(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_CHATROOM_TASK_LEDGER' }>,
+): Partial<AppState> {
+  return { chatroomTaskLedger: action.payload };
+}
+
+function setOrchestration(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_ORCHESTRATION' }>,
+): Partial<AppState> {
+  return { chatroomOrchestration: action.payload };
+}
+
+function setGroupChatConfig(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_GROUP_CHAT_CONFIG' }>,
+): Partial<AppState> {
+  return { chatroomGroupChatConfig: action.payload };
+}
+
+function setHandoffConfig(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_HANDOFF_CONFIG' }>,
+): Partial<AppState> {
+  return { chatroomHandoffConfig: action.payload };
+}
+
+function setMagenticConfig(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_MAGENTIC_CONFIG' }>,
+): Partial<AppState> {
+  return { chatroomMagenticConfig: action.payload };
+}
+
+function chatroomActiveSpeaker(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'CHATROOM_ACTIVE_SPEAKER' }>,
+): Partial<AppState> {
+  return { chatroomActiveSpeaker: action.payload };
+}
+
+function setChatroomDisabledMindIds(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_CHATROOM_DISABLED_MIND_IDS' }>,
+): Partial<AppState> {
+  return { chatroomDisabledMindIds: action.payload };
+}
+
+export const chatroomHandlers: {
+  SET_CHATROOM_HISTORY: Handler<'SET_CHATROOM_HISTORY'>;
+  CHATROOM_USER_MESSAGE: Handler<'CHATROOM_USER_MESSAGE'>;
+  CHATROOM_AGENT_MESSAGE: Handler<'CHATROOM_AGENT_MESSAGE'>;
+  CHATROOM_EVENT: Handler<'CHATROOM_EVENT'>;
+  CHATROOM_CLEAR: Handler<'CHATROOM_CLEAR'>;
+  SET_CHATROOM_TASK_LEDGER: Handler<'SET_CHATROOM_TASK_LEDGER'>;
+  SET_ORCHESTRATION: Handler<'SET_ORCHESTRATION'>;
+  SET_GROUP_CHAT_CONFIG: Handler<'SET_GROUP_CHAT_CONFIG'>;
+  SET_HANDOFF_CONFIG: Handler<'SET_HANDOFF_CONFIG'>;
+  SET_MAGENTIC_CONFIG: Handler<'SET_MAGENTIC_CONFIG'>;
+  CHATROOM_ACTIVE_SPEAKER: Handler<'CHATROOM_ACTIVE_SPEAKER'>;
+  SET_CHATROOM_DISABLED_MIND_IDS: Handler<'SET_CHATROOM_DISABLED_MIND_IDS'>;
+} = {
+  SET_CHATROOM_HISTORY: setChatroomHistory,
+  CHATROOM_USER_MESSAGE: chatroomUserMessage,
+  CHATROOM_AGENT_MESSAGE: chatroomAgentMessage,
+  CHATROOM_EVENT: chatroomEvent,
+  CHATROOM_CLEAR: chatroomClear,
+  SET_CHATROOM_TASK_LEDGER: setChatroomTaskLedger,
+  SET_ORCHESTRATION: setOrchestration,
+  SET_GROUP_CHAT_CONFIG: setGroupChatConfig,
+  SET_HANDOFF_CONFIG: setHandoffConfig,
+  SET_MAGENTIC_CONFIG: setMagenticConfig,
+  CHATROOM_ACTIVE_SPEAKER: chatroomActiveSpeaker,
+  SET_CHATROOM_DISABLED_MIND_IDS: setChatroomDisabledMindIds,
+};

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.3 (2026-05-10)
+
+### Refactoring
+
+- **Decompose 838-LOC `appReducer` god-switch into per-domain reducer slices** — `apps/web/src/renderer/lib/store/reducer.ts` was a single switch statement with ~50 cases (the symptom: a 1127-LOC test file). Now `reducer.ts` is a 1-line re-export and the implementation lives in `apps/web/src/renderer/lib/store/reducers/`: `messagesReducer.ts` (chat-message + compose actions, owns the exported `handleChatEvent`), `conversationReducer.ts` (history hydration), `mindsReducer.ts` (minds + models + active mind), `lifecycleReducer.ts` (UI + account + landing), `a2aReducer.ts` (A2A messages + task updates), `chatroomReducer.ts` (every `CHATROOM_*` plus orchestration config), `helpers.ts` (shared utilities), and `index.ts` (the dispatcher: `Record<AppAction['type'], (state, action) => Partial<AppState> | AppState>` with reference-identity short-circuit for no-op handlers). All 111 reducer tests preserved unchanged as the integration safety net; behavior parity verified end-to-end. Closes #275.
+
 ## v0.59.2 (2026-05-10)
 
 ### Fixes
