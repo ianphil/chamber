@@ -133,6 +133,32 @@ export function handleChatEvent<T extends ChatMessage>(messages: T[], messageId:
         return updateChatMessage(m, { blocks });
       }
 
+      case 'permission_request': {
+        // Skip duplicate request events (defensive — SDK shouldn't re-emit
+        // the same requestId, but handle it idempotently anyway).
+        if (blocks.some(b => b.type === 'permission' && b.requestId === event.requestId)) {
+          return m;
+        }
+        blocks.push({
+          type: 'permission',
+          requestId: event.requestId,
+          kind: event.kind,
+          summary: event.summary,
+          outcome: 'pending',
+          ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+        });
+        return updateChatMessage(m, { blocks });
+      }
+
+      case 'permission_outcome': {
+        const idx = blocks.findIndex(b => b.type === 'permission' && b.requestId === event.requestId);
+        if (idx >= 0) {
+          const block = blocks[idx] as Extract<ContentBlock, { type: 'permission' }>;
+          blocks[idx] = { ...block, outcome: event.outcome };
+        }
+        return updateChatMessage(m, { blocks });
+      }
+
       case 'reasoning': {
         const last = blocks[blocks.length - 1];
         if (last && last.type === 'reasoning' && last.reasoningId === event.reasoningId) {
