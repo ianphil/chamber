@@ -1,7 +1,7 @@
 // Ambient module declarations for the published `chamber-copilot` package,
-// which ships pure ESM JavaScript with no `.d.ts` files.
+// which ships pure ESM JavaScript with `"types": null` in package.json.
 //
-// This shim mirrors the chamber-copilot v0.4.x public surface that Chamber's
+// This shim mirrors the chamber-copilot v0.5.x public surface that Chamber's
 // TypeScript code consumes directly:
 //
 //   - `apps/desktop/src/main.ts` — `defaultAcpConnectionFactory`, `AcpConnection`
@@ -25,7 +25,11 @@ declare module 'chamber-copilot' {
     | 'reject_always';
 
   export interface AcpFactoryOptions {
-    readonly command?: string;
+    // `command` is REQUIRED at runtime in chamber-copilot >= 0.5.x:
+    // `defaultAcpConnectionFactory({})` throws TypeError if absent. The
+    // earlier silent `"copilot"` PATH-lookup default was removed because
+    // it was vulnerable to PATH-hijack and broke packaged installs.
+    readonly command: string;
     readonly args?: readonly string[];
     readonly cwd?: string;
     readonly env?: NodeJS.ProcessEnv;

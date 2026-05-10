@@ -249,13 +249,19 @@ if (configService.load().chamberCopilotEnabled === true) {
   const { defaultAcpConnectionFactory, AcpConnection } = runtimeRequire('chamber-copilot') as typeof import('chamber-copilot');
   // SECURITY/CORRECTNESS:
   // - command: pin to the bundled @github/copilot CLI exactly the way
-  //   CopilotClientFactory does. Falling back to chamber-copilot's bare
-  //   "copilot" default would PATH-resolve, which both fails in packaged
-  //   installs (no copilot on PATH) and is vulnerable to PATH hijacking.
-  // - args: drop chamber-copilot's `--no-auto-login` default so the child
-  //   ACP process can load the user's cached auth (which the parent
-  //   Chamber session already requires). Otherwise every spawn fails with
-  //   "Authentication required" even for signed-in users.
+  //   CopilotClientFactory does, so Chamber has a SINGLE source of truth
+  //   for "where the bundled CLI lives" across both the SDK runtime and
+  //   the chamber-copilot ACP path. chamber-copilot >= 0.5.x ships its
+  //   own resolveBundledCopilotBinary helper, but we deliberately reuse
+  //   getPlatformCopilotBinaryPath / resolveNodeModulesDir to avoid two
+  //   different resolvers drifting against each other.
+  //   chamber-copilot >= 0.5.x also makes `command` REQUIRED at runtime
+  //   (defaultAcpConnectionFactory({}) throws), so this pin doubles as
+  //   the type-system contract.
+  // - args: matches chamber-copilot's DEFAULT_ACP_ARGS (post-0.5.x, after
+  //   --no-auto-login was dropped). Kept explicit as defense-in-depth so
+  //   any future upstream default change cannot silently disable cached
+  //   host auth or re-enable auto-update on us.
   const cliPath = getPlatformCopilotBinaryPath(resolveNodeModulesDir());
   chamberCopilotService = new ChamberCopilotService({
     connectionFactory: () => new AcpConnection({
