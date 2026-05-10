@@ -80,10 +80,11 @@ describe('CopilotClientFactory', () => {
       // tools (view, ask_user, str_replace, etc.) do not fire permission
       // prompts so they need no entry. URL access is handled separately
       // by --allow-url (issue #131 checklist 3).
-      expect(cliArgs).toEqual(expect.arrayContaining([
+      const allowToolArgs = cliArgs.filter((arg) => arg.startsWith('--allow-tool='));
+      expect(allowToolArgs).toEqual([
         '--allow-tool=shell',
         '--allow-tool=write',
-      ]));
+      ]);
     });
 
     it('keeps --allow-all-paths and --allow-all-urls until later checklist items drop them', async () => {
