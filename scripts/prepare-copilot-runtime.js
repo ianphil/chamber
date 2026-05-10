@@ -218,36 +218,55 @@ function validateRuntimeDir(runtimeRoot, targetPlatform, targetArch, requiredVer
 
 function smokeTestRuntime(binaryPath, expectedCliVersion) {
   const output = runCommandCapture(binaryPath, ['--version']);
-  if (!output.includes(expectedCliVersion)) {
+  const reportedVersion = expectedCliVersion.split('-')[0];
+  if (!output.includes(reportedVersion)) {
     throw new Error(
-      `Copilot CLI smoke test output did not include ${expectedCliVersion}. Output: ${output.trim()}`
+      `Copilot CLI smoke test output did not include ${reportedVersion}. Output: ${output.trim()}`
     );
   }
 }
 
-function promoteRuntime() {
-  fs.rmSync(backupDir, { recursive: true, force: true });
+function isRecoverableRenameError(error) {
+  return error
+    && typeof error === 'object'
+    && (error.code === 'EPERM' || error.code === 'EXDEV');
+}
+
+function promoteDirectory(dirs, fsImpl = fs) {
+  fsImpl.rmSync(dirs.backupDir, { recursive: true, force: true });
 
   let movedExistingTarget = false;
   try {
-    if (fs.existsSync(targetDir)) {
-      fs.renameSync(targetDir, backupDir);
+    if (fsImpl.existsSync(dirs.targetDir)) {
+      fsImpl.renameSync(dirs.targetDir, dirs.backupDir);
       movedExistingTarget = true;
     }
 
-    fs.renameSync(stagingDir, targetDir);
-    fs.rmSync(backupDir, { recursive: true, force: true });
-  } catch (error) {
-    if (fs.existsSync(targetDir)) {
-      fs.rmSync(targetDir, { recursive: true, force: true });
+    try {
+      fsImpl.renameSync(dirs.stagingDir, dirs.targetDir);
+    } catch (error) {
+      if (!isRecoverableRenameError(error)) {
+        throw error;
+      }
+      fsImpl.rmSync(dirs.targetDir, { recursive: true, force: true });
+      fsImpl.cpSync(dirs.stagingDir, dirs.targetDir, { recursive: true });
     }
-    if (movedExistingTarget && fs.existsSync(backupDir)) {
-      fs.renameSync(backupDir, targetDir);
+    fsImpl.rmSync(dirs.backupDir, { recursive: true, force: true });
+  } catch (error) {
+    if (fsImpl.existsSync(dirs.targetDir)) {
+      fsImpl.rmSync(dirs.targetDir, { recursive: true, force: true });
+    }
+    if (movedExistingTarget && fsImpl.existsSync(dirs.backupDir)) {
+      fsImpl.renameSync(dirs.backupDir, dirs.targetDir);
     }
     throw error;
   } finally {
-    fs.rmSync(stagingDir, { recursive: true, force: true });
+    fsImpl.rmSync(dirs.stagingDir, { recursive: true, force: true });
   }
+}
+
+function promoteRuntime() {
+  promoteDirectory({ stagingDir, targetDir, backupDir });
 }
 
 function prepareCopilotRuntime({ targetPlatform, targetArch }) {
@@ -331,6 +350,7 @@ module.exports = {
   getPlatformBinaryPath,
   getPlatformPackageName,
   prepareCopilotRuntime,
+  promoteDirectory,
   readRequiredVersions,
   validateRuntimeDir,
 };

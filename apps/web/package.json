@@ -1,0 +1,14 @@
+{
+  "name": "@chamber/web",
+  "version": "0.31.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@chamber/client": "file:../../packages/client",
+    "@chamber/shared": "file:../../packages/shared"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@chamber/services": ["../../packages/services/src/index.ts"],
+      "@chamber/shared": ["../../packages/shared/src/index.ts"],
+      "@chamber/shared/*": ["../../packages/shared/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "../../packages/services/src/**/*.ts", "../../packages/shared/src/**/*.ts", "../../forge.env.d.ts"]
+}

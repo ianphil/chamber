@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Use Chamber conversation history to resume, rename, delete, collapse, and understand per-mind conversations."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Conversation History - Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber conversation history guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Conversation History</p>
+          <h1>Return to earlier work when you need it</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Conversation history keeps previous chats available for the selected mind. Resume a
+            useful thread, rename it so it is easy to find, or delete it when you no longer need it.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="History summary">
+          <h2>Remember</h2>
+          <p>
+            History belongs to the current mind. Switch minds to see that mind's conversations,
+            drafts, and empty starting points.
+          </p>
+          <div class="related">
+            <a class="button button-primary" href="#resume">Resume Work</a>
+            <a class="button" href="chat.html">Chat Guide</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#resume" aria-current="page">Resume</a>
+          <a href="#rename">Rename</a>
+          <a href="#delete">Delete</a>
+          <a href="#collapse">Collapse panel</a>
+          <a href="#isolation">Per-mind isolation</a>
+          <a href="#drafts">Empty drafts</a>
+          <a href="#safety">Safety notes</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <div class="guide-content">
+          <section id="resume" class="content-card">
+            <h2>Resume a conversation</h2>
+            <p>
+              Resume a conversation when you want the mind to continue from earlier messages instead
+              of starting over.
+            </p>
+            <figure class="screenshot-figure">
+              <img
+                src="../assets/user-docs/conversation-history.png"
+                alt="Chamber conversation history panel with named conversations next to the active chat."
+              />
+              <figcaption>
+                History belongs to the selected mind, so each helper can keep its own named threads.
+              </figcaption>
+            </figure>
+            <div class="steps">
+              <article class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Open history</h3>
+                  <p>Use the history panel for the current mind.</p>
+                </div>
+              </article>
+              <article class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Choose a conversation</h3>
+                  <p>Select the thread that matches the work you want to continue.</p>
+                </div>
+              </article>
+              <article class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Send the next message</h3>
+                  <p>Give the mind the next instruction or ask it to pick up where it left off.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="rename" class="content-card">
+            <h2>Rename a conversation</h2>
+            <p>
+              Rename conversations so you can find them later. Use names that describe the topic,
+              decision, or outcome.
+            </p>
+            <ul>
+              <li>Open the conversation options.</li>
+              <li>Choose rename.</li>
+              <li>Enter a short, clear title, then save it.</li>
+            </ul>
+          </section>
+
+          <section id="delete" class="content-card">
+            <h2>Delete a conversation</h2>
+            <p>
+              Delete conversations you no longer need. Read the confirmation before continuing,
+              because deleted history may not be recoverable.
+            </p>
+            <ul>
+              <li>Use delete for clutter, test chats, or work you no longer need to keep.</li>
+              <li>Do not delete a conversation if you still need its decisions or details.</li>
+              <li>If you are unsure, rename it first so you can review it later.</li>
+            </ul>
+          </section>
+
+          <section id="collapse" class="content-card">
+            <h2>Collapse the history panel</h2>
+            <p>
+              Collapse the history panel when you want more room for chat. Your conversations are
+              still available; the panel is only hidden or shortened.
+            </p>
+            <ul>
+              <li>Use the collapse control on the history panel.</li>
+              <li>Expand it again when you need to switch threads.</li>
+              <li>Collapsing the panel does not delete or change any conversation.</li>
+            </ul>
+          </section>
+
+          <section id="isolation" class="content-card">
+            <h2>History is separate for each mind</h2>
+            <p>
+              Each mind has its own conversation history. This helps keep projects, roles, and
+              routines separate.
+            </p>
+            <ul>
+              <li>Switching minds changes which history list you see.</li>
+              <li>A conversation from one mind does not appear under another mind.</li>
+              <li>If you cannot find a conversation, check that the correct mind is selected.</li>
+            </ul>
+          </section>
+
+          <section id="drafts" class="content-card">
+            <h2>Empty drafts and new conversations</h2>
+            <p>
+              An empty draft means there is no unsent message waiting in the message box. You can
+              start fresh, or choose a past conversation before typing.
+            </p>
+            <ul>
+              <li>Start a new conversation by typing into an empty message box.</li>
+              <li>Clear draft text if you do not want to send it.</li>
+              <li>Check the selected conversation before sending a message that depends on earlier context.</li>
+            </ul>
+          </section>
+
+          <section id="safety" class="callout">
+            <strong>Safety note</strong>
+            <p>
+              Conversation history can contain sensitive details you typed or pasted. Rename and
+              delete carefully, and avoid keeping private information in a chat longer than needed.
+            </p>
+          </section>
+
+          <section id="related" class="content-card">
+            <h2>Related guides</h2>
+            <div class="related">
+              <a href="getting-started.html">Getting Started</a>
+              <a href="minds.html">Work with Minds</a>
+              <a href="chat.html">Talk to a Mind</a>
+              <a href="index.html">All User Guides</a>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="page-footer">Chamber user documentation</footer>
+    </main>
+  </body>
+</html>

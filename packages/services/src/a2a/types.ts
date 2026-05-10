@@ -1,0 +1,26 @@
+// A2A protocol types — re-exported from shared/ (source of truth).
+// Local consumers can import from here for convenience.
+export type {
+  Role,
+  Part,
+  Message,
+  SendMessageRequest,
+  SendMessageConfiguration,
+  SendMessageResponse,
+  Task,
+  TaskState,
+  TaskStatus,
+  Artifact,
+  AgentCard,
+  AgentSkill,
+  AgentCapabilities,
+  AgentInterface,
+  AgentProvider,
+  AgentExtension,
+  TaskStatusUpdateEvent,
+  TaskArtifactUpdateEvent,
+  GetTaskRequest,
+  ListTasksRequest,
+  ListTasksResponse,
+  CancelTaskRequest,
+} from '@chamber/shared/a2a-types';

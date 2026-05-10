@@ -16,6 +16,8 @@ export default [
       'out/**',
       '.vite/**',
       'dist/**',
+      'apps/*/dist/**',
+      'packages/*/dist/**',
       'coverage/**',
       '**/*.js',
       '**/*.mjs',
@@ -45,7 +47,7 @@ export default [
       'import-x/resolver': {
         typescript: {
           alwaysTryTypes: true,
-          project: './tsconfig.json',
+          project: ['./tsconfig.json', './apps/*/tsconfig.json', './packages/*/tsconfig.json'],
         },
       },
       'import-x/core-modules': ['electron'],

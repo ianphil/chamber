@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alfred's Mind — Architecture</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.8rem;
+      font-weight: 300;
+      letter-spacing: 0.05em;
+      color: #e6edf3;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #7d8590;
+      margin-bottom: 48px;
+      font-style: italic;
+    }
+    .diagram {
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    /* === SOUL — top center === */
+    .soul {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .soul-box {
+      display: inline-block;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      border: 1px solid #b08c3a;
+      border-radius: 12px;
+      padding: 16px 40px;
+      position: relative;
+    }
+    .soul-box::before {
+      content: '♛';
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1.2rem;
+      color: #b08c3a;
+      background: #0d1117;
+      padding: 0 8px;
+    }
+    .soul-box h2 { font-size: 1.1rem; color: #e6c76a; font-weight: 500; }
+    .soul-box p { font-size: 0.75rem; color: #8b949e; margin-top: 4px; }
+
+    /* === Flow arrow === */
+    .flow-arrow {
+      text-align: center;
+      color: #30363d;
+      font-size: 1.4rem;
+      margin: 8px 0;
+      letter-spacing: 4px;
+    }
+
+    /* === Working Memory — central brain === */
+    .working-memory {
+      background: linear-gradient(135deg, #161b22, #1c2333);
+      border: 2px solid #388bfd44;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 32px;
+      position: relative;
+    }
+    .working-memory::before {
+      content: '🧠 WORKING MEMORY';
+      position: absolute;
+      top: -12px;
+      left: 24px;
+      background: #0d1117;
+      padding: 0 12px;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      color: #58a6ff;
+      font-weight: 600;
+    }
+    .wm-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .wm-card {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .wm-card h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .wm-card p {
+      font-size: 0.72rem;
+      color: #8b949e;
+      line-height: 1.5;
+    }
+    .wm-card.memory h3 { color: #79c0ff; }
+    .wm-card.rules h3 { color: #f0883e; }
+    .wm-card.log h3 { color: #7ee787; }
+
+    .wm-flow {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 0.7rem;
+      color: #484f58;
+    }
+    .wm-flow span { color: #58a6ff; }
+
+    /* === IDEA Quadrants === */
+    .idea-label {
+      text-align: center;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      color: #484f58;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    .idea-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .quadrant {
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+    .quadrant:hover { border-color: #484f58; }
+    .quadrant h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .quadrant .path {
+      font-size: 0.7rem;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      color: #484f58;
+      margin-bottom: 8px;
+    }
+    .quadrant p {
+      font-size: 0.75rem;
+      color: #8b949e;
+      line-height: 1.5;
+    }
+    .quadrant .tag {
+      display: inline-block;
+      font-size: 0.6rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-top: 8px;
+      font-weight: 500;
+    }
+
+    .q-initiatives { background: #161b22; }
+    .q-initiatives h3 { color: #d2a8ff; }
+    .q-initiatives .tag { background: #d2a8ff22; color: #d2a8ff; border: 1px solid #d2a8ff44; }
+
+    .q-domains { background: #161b22; }
+    .q-domains h3 { color: #79c0ff; }
+    .q-domains .tag { background: #79c0ff22; color: #79c0ff; border: 1px solid #79c0ff44; }
+
+    .q-expertise { background: #161b22; }
+    .q-expertise h3 { color: #7ee787; }
+    .q-expertise .tag { background: #7ee78722; color: #7ee787; border: 1px solid #7ee78744; }
+
+    .q-archive { background: #161b22; }
+    .q-archive h3 { color: #8b949e; }
+    .q-archive .tag { background: #8b949e22; color: #8b949e; border: 1px solid #8b949e44; }
+
+    /* === Inbox — entry point === */
+    .inbox-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .inbox-box {
+      background: #161b22;
+      border: 1px dashed #f0883e;
+      border-radius: 10px;
+      padding: 14px 28px;
+      text-align: center;
+    }
+    .inbox-box h3 { font-size: 0.85rem; color: #f0883e; margin-bottom: 4px; }
+    .inbox-box .path { font-size: 0.7rem; font-family: monospace; color: #484f58; }
+    .inbox-box p { font-size: 0.72rem; color: #8b949e; margin-top: 4px; }
+    .inbox-arrow {
+      font-size: 1.2rem;
+      color: #f0883e;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+    /* === Flows === */
+    .flow-section {
+      margin-top: 40px;
+      border-top: 1px solid #21262d;
+      padding-top: 24px;
+    }
+    .flow-section h2 {
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      color: #484f58;
+      text-align: center;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    .flow-lanes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .lane {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .lane h4 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .lane-capture h4 { color: #7ee787; }
+    .lane-session h4 { color: #79c0ff; }
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .step-num {
+      min-width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #21262d;
+      color: #8b949e;
+      font-size: 0.65rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step p {
+      font-size: 0.72rem;
+      color: #8b949e;
+      line-height: 1.4;
+    }
+    .step p strong { color: #c9d1d9; font-weight: 500; }
+
+    /* === Footer === */
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #21262d;
+      font-size: 0.7rem;
+      color: #30363d;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <h1>Alfred's Mind</h1>
+  <p class="subtitle">"I simply ensure that when something goes out the door, it goes out properly."</p>
+
+  <div class="diagram">
+
+    <!-- SOUL -->
+    <div class="soul">
+      <div class="soul-box">
+        <h2>SOUL.md</h2>
+        <p>Personality · Voice · Values · Mission</p>
+      </div>
+    </div>
+    <div class="flow-arrow">▼</div>
+
+    <!-- Working Memory -->
+    <div class="working-memory">
+      <div class="wm-grid">
+        <div class="wm-card memory">
+          <h3>📘 memory.md</h3>
+          <p>Curated long-term reference. Architecture, conventions, known fragile areas. Read first, every session. Updated only during consolidation.</p>
+        </div>
+        <div class="wm-card rules">
+          <h3>📐 rules.md</h3>
+          <p>Operational rules from mistakes. One-liners that compound. Every error becomes a rule so it never happens again.</p>
+        </div>
+        <div class="wm-card log">
+          <h3>📝 log.md</h3>
+          <p>Raw chronological observations. Append-only. Flaky tests, failure modes, coverage gaps. Includes emotional register.</p>
+        </div>
+      </div>
+      <div class="wm-flow">log.md <span>→ consolidates every ~14 days →</span> memory.md</div>
+    </div>
+
+    <div class="flow-arrow">▼</div>
+
+    <!-- Inbox -->
+    <div class="inbox-row">
+      <div class="inbox-box">
+        <h3>📥 Inbox</h3>
+        <div class="path">inbox/</div>
+        <p>Unprocessed inputs land here, then get triaged</p>
+      </div>
+      <span class="inbox-arrow">→</span>
+      <span style="font-size: 0.75rem; color: #8b949e;">triaged into the IDEA quadrants ↓</span>
+    </div>
+
+    <!-- IDEA Quadrants -->
+    <div class="idea-label">T H E &nbsp; I D E A &nbsp; M E T H O D</div>
+    <div class="idea-grid">
+      <div class="quadrant q-initiatives">
+        <h3>🎯 Initiatives</h3>
+        <div class="path">initiatives/</div>
+        <p>Active testing efforts with goals, status, and next-actions. Each has a main note + next-actions.md with Open / Done sections.</p>
+        <span class="tag">projects · campaigns · sprints</span>
+      </div>
+      <div class="quadrant q-domains">
+        <h3>🏗️ Domains</h3>
+        <div class="path">domains/</div>
+        <p>Systems, modules, components — the living context of what's being tested. How things interact, failure modes, architecture.</p>
+        <span class="tag">systems · modules · behavior</span>
+      </div>
+      <div class="quadrant q-expertise">
+        <h3>🧪 Expertise</h3>
+        <div class="path">expertise/</div>
+        <p>Durable knowledge — testing patterns, frameworks, defect taxonomies. Conventions that outlast any single initiative.</p>
+        <span class="tag">patterns · frameworks · conventions</span>
+      </div>
+      <div class="quadrant q-archive">
+        <h3>🗄️ Archive</h3>
+        <div class="path">Archive/</div>
+        <p>Completed or inactive material, preserved but out of the way. Where initiatives go when they're done.</p>
+        <span class="tag">completed · reference · history</span>
+      </div>
+    </div>
+
+    <!-- Operational Flows -->
+    <div class="flow-section">
+      <h2>O P E R A T I O N A L &nbsp; F L O W S</h2>
+      <div class="flow-lanes">
+        <div class="lane lane-capture">
+          <h4>↓ Capture Flow</h4>
+          <div class="step"><div class="step-num">1</div><p>User shares context — bug, feature, system detail</p></div>
+          <div class="step"><div class="step-num">2</div><p><strong>Search first</strong> — does a note already exist?</p></div>
+          <div class="step"><div class="step-num">3</div><p><strong>Classify</strong> — test strategy? defect? system behavior?</p></div>
+          <div class="step"><div class="step-num">4</div><p><strong>Place</strong> — route to the right quadrant</p></div>
+          <div class="step"><div class="step-num">5</div><p><strong>Link</strong> — wiki-link related notes together</p></div>
+        </div>
+        <div class="lane lane-session">
+          <h4>↻ Session Lifecycle</h4>
+          <div class="step"><div class="step-num">1</div><p>Wake → read <strong>SOUL.md</strong>, then all of <strong>.working-memory/</strong></p></div>
+          <div class="step"><div class="step-num">2</div><p>Anchor with <strong>Get-Date</strong> — no guessing at time</p></div>
+          <div class="step"><div class="step-num">3</div><p>Work — think adversarially, surface risks, test thoroughly</p></div>
+          <div class="step"><div class="step-num">4</div><p>Flush observations to <strong>log.md</strong> every ~30 min</p></div>
+          <div class="step"><div class="step-num">5</div><p>Handover — key findings, pending items, emotional register</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      mind-index.md catalogs every note · one concept per note · wikilinks bind them together
+    </div>
+  </div>
+</body>
+</html>

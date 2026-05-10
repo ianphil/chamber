@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language guide to Chamber marketplace templates, sources, and tools."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Marketplace | Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber marketplace guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Add</p>
+          <h1>Marketplace</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            The marketplace helps you add ready-made mind templates and trusted sources to
+            Chamber. It is the fastest way to start with a useful specialist.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="Choose carefully">
+          <h2>What it can add</h2>
+          <p>
+            A marketplace can add starter minds, connect a private template source, and offer
+            tools such as npm packages or release-built command files.
+          </p>
+        </aside>
+      </section>
+
+      <div class="guide-layout">
+        <nav class="side-nav" aria-label="Guide pages">
+          <strong>Guides</strong>
+          <a href="#templates">Templates</a>
+          <a href="#add-to-chamber">Add to Chamber</a>
+          <a href="#sources">Marketplace sources</a>
+          <a href="#json">Marketplace JSON</a>
+          <a href="#tools">Tools</a>
+          <a aria-current="page" href="marketplace.html">Marketplace</a>
+        </nav>
+
+        <section class="guide-content">
+          <article class="content-card" id="templates">
+            <h2>Mind templates</h2>
+            <p>
+              A mind template is a complete starter helper. The public Genesis marketplace
+              contains ready-made personalities such as Alfred, Annie, Commander Data, Grace,
+              Lucy, Maple, Mia, Miss Monet, Moneypenny, Pulse, Tracker, and Trixie. A private
+              team marketplace can offer a smaller approved set for your organization.
+            </p>
+            <ul>
+              <li>Use a template when you want a specialist without writing its profile yourself.</li>
+              <li>Read the name, role, voice, and description before you add it.</li>
+              <li>After adding a mind, you can still adjust its name, style, memory, and work habits.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="add-to-chamber">
+            <h2>Add to Chamber button</h2>
+            <p>
+              Marketplace pages can show an <strong>Add to Chamber</strong> button or badge.
+              It usually opens a friendly web page first, then hands the marketplace link to
+              the installed Chamber app.
+            </p>
+            <div class="steps">
+              <div class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Click the badge</h3>
+                  <p>The button points at an install page, such as <code>https://chmbr.dev/install.html?registry=...</code>.</p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Open Chamber</h3>
+                  <p>The install page creates a <code>chamber://install?registry=...</code> link. Your browser may ask before opening Chamber.</p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Approve the source</h3>
+                  <p>Chamber asks whether to add the Genesis marketplace. Add it only when you trust the GitHub repository.</p>
+                </div>
+              </div>
+            </div>
+            <a
+              class="badge-preview"
+              href="https://chmbr.dev/install.html?registry=https%3A%2F%2Fgithub.com%2Fowner%2Fgenesis-minds"
+              aria-label="Example Add to Chamber badge"
+            >
+              <img
+                src="https://img.shields.io/badge/Add%20to-Chamber-7c3aed"
+                alt="Add to Chamber"
+              />
+            </a>
+            <pre class="code-sample"><code>[![Add to Chamber](https://img.shields.io/badge/Add%20to-Chamber-7c3aed)](https://chmbr.dev/install.html?registry=https%3A%2F%2Fgithub.com%2Fowner%2Fgenesis-minds)</code></pre>
+          </article>
+
+          <article class="content-card" id="sources">
+            <h2>Marketplace sources and private access</h2>
+            <p>
+              A marketplace source is a GitHub repository Chamber can read. The default public
+              source uses the same structure as <code>C:\src\genesis-minds</code>. A private
+              or team source can use the same structure, like <code>C:\src\internal-genesis-minds</code>,
+              but require you to sign in with an account that has repository access.
+            </p>
+            <ul>
+              <li>Public marketplaces are good for general starter minds.</li>
+              <li>Private marketplaces are good for team-approved minds and organization tools.</li>
+              <li>If a private source cannot be read, sign in to Chamber with an account that can access the repository.</li>
+              <li>Disable or remove a source when you no longer trust it or no longer need it.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="json">
+            <h2>What the marketplace JSON means</h2>
+            <p>
+              You do not need to edit JSON to use the marketplace, but these files explain
+              what Chamber is reading when it previews a source.
+            </p>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <th><code>marketplace-config.json</code></th>
+                  <td>Identifies the repository as a marketplace and provides shared metadata such as name, description, version, and owner.</td>
+                </tr>
+                <tr>
+                  <th><code>plugins/genesis-minds/plugin.json</code></th>
+                  <td>Lists the mind templates and optional tools available from that marketplace.</td>
+                </tr>
+                <tr>
+                  <th><code>minds/*/mind.json</code></th>
+                  <td>Describes one mind: its display name, role, voice, version, root folder, agent file, and required files.</td>
+                </tr>
+                <tr>
+                  <th><code>requiredFiles</code></th>
+                  <td>Tells Chamber which template files must be copied when the mind is created.</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="content-card" id="tools">
+            <h2>Marketplace tools</h2>
+            <p>
+              A marketplace can also offer command-line tools for minds to use. Chamber lists
+              them from <code>plugin.json</code>, installs them when needed, and includes safe
+              usage notes in the mind's tool instructions.
+            </p>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <th><code>npm-global</code></th>
+                  <td>Installs a named npm package globally, such as a Work IQ-style tool with a package name, version, command, help command, and optional preflight step.</td>
+                </tr>
+                <tr>
+                  <th><code>github-release-asset</code></th>
+                  <td>Downloads a release asset from GitHub, checks its SHA-256 hash, and places the executable in Chamber's tools bin. On Windows this can be an <code>.exe</code> file such as a Teams, Mail, or Calendar CLI.</td>
+                </tr>
+                <tr>
+                  <th><code>agentInstructions</code></th>
+                  <td>Explains to the mind when to use the tool, how to authenticate, and which actions need explicit user intent.</td>
+                </tr>
+              </tbody>
+            </table>
+            <h3>What to review before installing tools</h3>
+            <ul>
+              <li>The marketplace source and repository owner.</li>
+              <li>The tool description and command name.</li>
+              <li>Whether it installs from npm or a GitHub release asset.</li>
+              <li>For release assets, the platform, architecture, file name, and checksum.</li>
+              <li>Any sign-in, license, or account requirements the tool mentions.</li>
+            </ul>
+          </article>
+
+          <aside class="callout" id="safety">
+            <strong>Safety note</strong>
+            <p>
+              A useful marketplace item should explain who made it, what it is for, what it
+              installs, and what it may ask Chamber to do. Skip sources that do not make that clear.
+            </p>
+          </aside>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <p>Marketplace minds may use tools, views, chatrooms, and scheduled work.</p>
+            <div class="related">
+              <a href="tools-and-approvals.html">Tools and approvals</a>
+              <a href="lens-and-canvas.html">Lens and canvas</a>
+              <a href="chatrooms.html">Chatrooms</a>
+              <a href="scheduled-work.html">Scheduled work</a>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="page-footer">Chamber user documentation</footer>
+    </main>
+  </body>
+</html>

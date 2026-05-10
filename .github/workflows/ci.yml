@@ -19,17 +19,41 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
+      - name: Static validation
         run: npm run lint
 
-      - name: Test
+      - name: Unit and integration tests
         run: npm test
 
-      - name: Build
+      - name: Build server
+        run: npm --workspace @chamber/server run build
+
+      - name: Build web
+        run: npm --workspace @chamber/web run build
+
+      - name: Detect version bump
+        id: version-bump
+        shell: pwsh
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          $basePackageJson = git show FETCH_HEAD:package.json | ConvertFrom-Json
+          $headPackageJson = Get-Content package.json -Raw | ConvertFrom-Json
+          $baseVersion = [version]$basePackageJson.version
+          $headVersion = [version]$headPackageJson.version
+          $runPackage = $headVersion.Major -gt $baseVersion.Major -or (
+            $headVersion.Major -eq $baseVersion.Major -and $headVersion.Minor -gt $baseVersion.Minor
+          )
+          "run-package=$($runPackage.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          Write-Host "Base package version: $baseVersion"
+          Write-Host "Head package version: $headVersion"
+          Write-Host "Run package: $runPackage"
+
+      - name: Package
+        if: steps.version-bump.outputs.run-package == 'true'
         run: npm run package

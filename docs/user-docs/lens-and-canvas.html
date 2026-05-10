@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plain-language guide to Chamber Lens views and Canvas dashboards."
+    />
+    <link rel="icon" type="image/svg+xml" href="../assets/app.svg" />
+    <link rel="stylesheet" href="user-guide.css" />
+    <title>Lens and Canvas | Chamber User Guide</title>
+  </head>
+  <body>
+    <main class="guide-shell" aria-label="Chamber Lens and Canvas guide">
+      <header class="site-header">
+        <a class="brand" href="../index.html" aria-label="Chamber home">
+          <img class="brand-mark" src="../assets/app.svg" alt="" />
+          <span class="brand-word">CHAMBER</span>
+        </a>
+        <nav class="nav" aria-label="Primary navigation">
+          <a href="index.html">Guide Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="chat.html">Chat</a>
+          <a href="lens-and-canvas.html">Lens</a>
+          <a href="privacy-safety-troubleshooting.html">Safety</a>
+        </nav>
+        <a class="github-link" href="https://github.com/ianphil/chamber">GitHub</a>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Views</p>
+          <h1>Self-building views and browser sites</h1>
+          <div class="divider" aria-hidden="true"></div>
+          <p class="hero-copy">
+            Lens and Canvas let a mind turn your request into a working interface. Instead of
+            only replying in chat, the mind can build a table, dashboard, form, report, or
+            browser page and keep improving it as the work changes.
+          </p>
+        </div>
+        <aside class="hero-card" aria-label="When to use views">
+          <h2>The big idea</h2>
+          <p>
+            If you can describe the screen you need, a mind can often create it. Ask for the
+            result, not the technical format: "make this a dashboard", "turn this into a
+            tracker", or "build a simple site I can open in my browser."
+          </p>
+        </aside>
+      </section>
+
+      <div class="guide-layout">
+        <nav class="side-nav" aria-label="On this page">
+          <strong>On this page</strong>
+          <a aria-current="page" href="#living-ui">Self-building UI</a>
+          <a href="#lens-types">Lens views</a>
+          <a href="#using-lens">Use a Lens view</a>
+          <a href="#refresh-and-actions">Refresh and revise</a>
+          <a href="#canvas">Browser sites</a>
+          <a href="#examples">Ideas to try</a>
+          <a href="#safety">Safety note</a>
+          <a href="#related">Related guides</a>
+        </nav>
+
+        <section class="guide-content">
+          <article class="content-card" id="living-ui">
+            <h2>What self-building UI means</h2>
+            <p>
+              Chamber gives minds a place to create screens inside the app. A mind can start
+              from a chat request, a pasted note, a file, a list of issues, a plan, or a messy
+              pile of information and turn it into something you can scan and use.
+            </p>
+            <figure class="screenshot-figure">
+              <img
+                src="../assets/user-docs/lens-status-board.png"
+                alt="Chamber Lens view showing a launch tracker status board created by a mind."
+              />
+              <figcaption>
+                Lens views turn a request into an app screen the mind can refresh and revise.
+              </figcaption>
+            </figure>
+            <ul>
+              <li><strong>Ask in normal language:</strong> describe the view you want and what it should help you decide.</li>
+              <li><strong>Review the generated screen:</strong> Chamber shows the view in the app or opens it in your browser.</li>
+              <li><strong>Iterate by chatting:</strong> ask the mind to add columns, change sections, group items, or simplify the layout.</li>
+              <li><strong>Keep it alive:</strong> refresh or update the view as the underlying work changes.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="lens-types">
+            <h2>Lens views inside Chamber</h2>
+            <p>
+              Lens is the self-modifying UI inside Chamber. A mind chooses a view type based
+              on the job, creates it for the active mind, and can revise it when you ask for a
+              better version. You do not need to build the view; ask for what you want to see.
+            </p>
+            <ul>
+              <li><strong>Briefing:</strong> a scan-friendly report with highlights, risks, and next steps.</li>
+              <li><strong>Table:</strong> rows and columns for lists, comparisons, owners, due dates, and status checks.</li>
+              <li><strong>Detail:</strong> one customer, issue, decision, candidate, incident, or item shown clearly.</li>
+              <li><strong>Status board:</strong> grouped work such as todo, in progress, blocked, and done.</li>
+              <li><strong>Timeline:</strong> events, milestones, release plans, or history in order.</li>
+              <li><strong>Editor:</strong> draft or review text in a focused writing area.</li>
+              <li><strong>Form:</strong> fields you can fill in to send structured information back to the mind.</li>
+              <li><strong>Canvas:</strong> a richer custom screen or browser page powered by Canvas.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="using-lens">
+            <h2>Use a Lens view</h2>
+            <div class="steps">
+              <div class="step">
+                <span class="step-number">1</span>
+                <div>
+                  <h3>Ask for the screen you wish existed</h3>
+                  <p>
+                    For example, ask "turn these meeting notes into a decision tracker",
+                    "show this launch plan as a status board", or "make a briefing I can
+                    send to my manager."
+                  </p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-number">2</span>
+                <div>
+                  <h3>Review the generated interface</h3>
+                  <p>
+                    Open the view, scan the sections, and use chat to ask for corrections,
+                    filters, new columns, clearer labels, or a different format.
+                  </p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-number">3</span>
+                <div>
+                  <h3>Use it as part of the workflow</h3>
+                  <p>
+                    When a view has action buttons, use them to send updates, complete items,
+                    edit details, or ask the mind to continue from the exact context on screen.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="content-card" id="refresh-and-actions">
+            <h2>Refresh, revise, and act</h2>
+            <p>
+              The first version does not have to be perfect. Treat Lens like a whiteboard the
+              mind can redraw. Ask it to revise the layout, refresh the data, add missing
+              context, or turn a rough list into a more useful working surface.
+            </p>
+            <ul>
+              <li>Refresh updates what you see when the source information may have changed.</li>
+              <li>Revision requests change the view itself, such as adding sections or simplifying labels.</li>
+              <li>Actions are for follow-up work, such as saving edits, moving a task, or sending a next step.</li>
+              <li>If an action prompt appears, review it the same way you review any tool approval.</li>
+            </ul>
+          </article>
+
+          <article class="content-card" id="canvas">
+            <h2>Browser sites with Canvas</h2>
+            <p>
+              Canvas is for moments when the right answer should feel like a small website,
+              not a chat reply. A mind can create a browser page from a brief, a dataset, a
+              plan, a report, a list of open questions, or almost any information you give it.
+              The page can include layout, sections, charts, cards, forms, and buttons.
+            </p>
+            <figure class="screenshot-figure">
+              <img
+                src="../assets/user-docs/canvas-browser-site.png"
+                alt="Canvas Lens showing a generated launch command center with dashboard cards."
+              />
+              <figcaption>
+                Canvas can turn a brief or dataset into a dashboard-style browser page with live updates.
+              </figcaption>
+            </figure>
+            <h3>Good Canvas requests</h3>
+            <ul>
+              <li>"Make an executive dashboard from this weekly update."</li>
+              <li>"Create a browser site that explains this project to a new teammate."</li>
+              <li>"Turn this customer research into a sortable insight board."</li>
+              <li>"Build a printable one-page report with risks, decisions, and next steps."</li>
+              <li>"Create an interactive intake form for this process."</li>
+            </ul>
+            <h3>Live updates</h3>
+            <p>
+              When the mind updates a Canvas, the browser page can reload automatically. That
+              makes Canvas useful for dashboards and reports you want to keep open while the
+              mind keeps working.
+            </p>
+          </article>
+
+          <article class="content-card" id="examples">
+            <h2>Ideas to try</h2>
+            <ul>
+              <li>Turn a project plan into a status board with owners, dates, and blockers.</li>
+              <li>Turn meeting notes into a briefing with decisions and follow-up tasks.</li>
+              <li>Turn a collection of links into a research hub with summaries and next actions.</li>
+              <li>Turn a long chat into a clean browser report for sharing or printing.</li>
+              <li>Turn a recurring workflow into a form that captures the same details every time.</li>
+            </ul>
+          </article>
+
+          <aside class="callout" id="safety">
+            <strong>Safety note</strong>
+            <p>
+              Lens and Canvas can make powerful interfaces quickly. Treat buttons in those
+              interfaces as real actions. If a button may send, save, schedule, or change
+              something, read any approval prompt before continuing.
+            </p>
+          </aside>
+
+          <article class="content-card" id="related">
+            <h2>Related guides</h2>
+            <p>Learn how views connect to tool approval, scheduled work, and mind templates.</p>
+            <div class="related">
+              <a href="tools-and-approvals.html">Tools and approvals</a>
+              <a href="scheduled-work.html">Scheduled work</a>
+              <a href="marketplace.html">Marketplace</a>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="page-footer">Chamber user documentation</footer>
+    </main>
+  </body>
+</html>

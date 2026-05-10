@@ -1,0 +1,5 @@
+{
+  "name": "copilot-canvas-extension",
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,476 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ChatService } from './ChatService';
+import { TurnQueue } from './TurnQueue';
+import type { MindManager } from '../mind';
+
+const mockSession = {
+  send: vi.fn().mockResolvedValue(undefined),
+  abort: vi.fn().mockResolvedValue(undefined),
+  destroy: vi.fn().mockResolvedValue(undefined),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  on: vi.fn((_event: string, _cb?: (...args: unknown[]) => void) => vi.fn()),
+};
+
+const validModelClient = {
+  modelsCache: {} as unknown,
+  listModels: vi.fn(async () => [{ id: 'm1', name: 'Model 1', extra: true }]),
+};
+
+const mockMindManager = {
+  getMind: vi.fn((mindId: string) => {
+    if (mindId === 'valid-mind') {
+      return { session: mockSession, client: validModelClient };
+    }
+    if (mindId === 'broken-models') {
+      return { session: mockSession, client: { listModels: vi.fn(async () => { throw new Error('model discovery failed'); }) } };
+    }
+    if (mindId === 'drifted-models') {
+      return { session: mockSession, client: { listModels: vi.fn(async () => [{ modelId: 'm1', displayName: 'Model 1' }]) } };
+    }
+    return undefined;
+  }),
+  recreateSession: vi.fn(),
+  recoverActiveConversationSession: vi.fn(),
+  startNewConversation: vi.fn(),
+  markActiveConversationHasMessages: vi.fn(),
+  listConversationHistory: vi.fn(() => []),
+  resumeConversation: vi.fn(async () => ({ sessionId: 'session-1', messages: [], conversations: [] })),
+  deleteConversation: vi.fn(async () => ({ sessionId: 'session-1', messages: [], conversations: [] })),
+  renameConversation: vi.fn(() => []),
+  setMindModel: vi.fn(async () => null),
+};
+
+describe('ChatService', () => {
+  let svc: ChatService;
+  let turnQueue: TurnQueue;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    validModelClient.modelsCache = {};
+    turnQueue = new TurnQueue();
+    svc = new ChatService(mockMindManager as unknown as MindManager, turnQueue, () => ({
+      currentDateTime: '2026-05-05T15:37:12.065Z',
+      timezone: 'America/New_York',
+    }));
+  });
+
+  describe('sendMessage', () => {
+    it('gets session from MindManager and calls send', async () => {
+      // Mock session.on to fire session.idle immediately
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(mockMindManager.getMind).toHaveBeenCalledWith('valid-mind');
+      expect(mockSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+      });
+      expect(mockMindManager.markActiveConversationHasMessages).toHaveBeenCalledWith('valid-mind', 'hello');
+      expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('persists model selection before sending with the mind session', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit, 'gpt-5.4');
+
+      expect(mockMindManager.setMindModel).toHaveBeenCalledWith('valid-mind', 'gpt-5.4');
+      expect(mockSession.send).toHaveBeenCalledWith(expect.objectContaining({
+        prompt: expect.stringContaining('hello'),
+      }));
+    });
+
+    it('throws for invalid mindId', async () => {
+      const emit = vi.fn();
+      await svc.sendMessage('nonexistent', 'hello', 'msg-1', emit);
+      expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+    });
+
+    it('does not arm a wall-clock fallback timer; long turns wait indefinitely for the SDK or user cancel (#222)', async () => {
+      vi.useFakeTimers();
+      try {
+        // session.send resolves but session.idle never fires.
+        mockSession.on.mockImplementation(() => vi.fn());
+        mockSession.send.mockResolvedValue(undefined);
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        // Drain enough microtasks to push past turnQueue.enqueue, send,
+        // Promise.race, and the inner finally that clears SEND_TIMEOUT_MS.
+        for (let i = 0; i < 10; i += 1) await Promise.resolve();
+
+        // Far past the prior 5-minute fallback. No timer must be armed for
+        // the turn deadline; the only timer in flight should be the 30s
+        // SEND_TIMEOUT_MS, which is already cleared by send resolving.
+        expect(vi.getTimerCount()).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(60 * 60_000); // one hour
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+        expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'timeout' }));
+        expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+
+        // User-pressed Stop: cancelMessage aborts the controller, the
+        // turnDone abort listener resolves, and the turn unwinds cleanly.
+        await svc.cancelMessage('valid-mind', 'msg-1');
+        await pending;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('emits a clear error when the SDK chat event contract drifts', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      let deltaListener: ((event: unknown) => void) | undefined;
+
+      mockSession.on.mockImplementation(
+        (event: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+          if (event === 'assistant.message_delta' && cb) {
+            deltaListener = cb as (event: unknown) => void;
+          }
+          return vi.fn();
+        },
+      );
+      mockSession.send.mockImplementation(async () => {
+        deltaListener?.({ data: { id: 'sdk-message-1', text: 'hello' } });
+      });
+
+      try {
+        const emit = vi.fn();
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        expect(emit).toHaveBeenCalledWith({
+          type: 'error',
+          message: 'SDK contract mismatch for assistant.message_delta',
+        });
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        consoleError.mockRestore();
+        mockSession.send.mockResolvedValue(undefined);
+      }
+    });
+  });
+
+  describe('cancelMessage', () => {
+    it('aborts the session for a mind', async () => {
+      mockSession.on.mockReturnValue(vi.fn());
+      await svc.cancelMessage('valid-mind', 'msg-1');
+      expect(mockSession.abort).toHaveBeenCalled();
+    });
+  });
+
+  describe('newConversation', () => {
+    it('delegates to mindManager.startNewConversation', async () => {
+      await svc.newConversation('valid-mind');
+      expect(mockMindManager.startNewConversation).toHaveBeenCalledWith('valid-mind');
+    });
+
+    it('rejects conversation switches while a message is streaming', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        void eventOrCb;
+        void cb;
+        return vi.fn();
+      });
+      const send = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+      await Promise.resolve();
+
+      await expect(svc.newConversation('valid-mind')).rejects.toThrow('Cannot switch conversations');
+
+      await svc.cancelMessage('valid-mind', 'msg-1');
+      await send;
+    });
+  });
+
+  describe('deleteConversation', () => {
+    it('delegates to mindManager.deleteConversation', async () => {
+      const result = await svc.deleteConversation('valid-mind', 'session-1');
+
+      expect(mockMindManager.deleteConversation).toHaveBeenCalledWith('valid-mind', 'session-1');
+      expect(result).toEqual({ sessionId: 'session-1', messages: [], conversations: [] });
+    });
+
+    it('rejects deletes while a message is streaming', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        void eventOrCb;
+        void cb;
+        return vi.fn();
+      });
+      const send = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+      await Promise.resolve();
+
+      await expect(svc.deleteConversation('valid-mind', 'session-1')).rejects.toThrow('Cannot switch conversations');
+
+      await svc.cancelMessage('valid-mind', 'msg-1');
+      await send;
+    });
+  });
+
+  describe('listModels', () => {
+    it('returns models from the minds client', async () => {
+      const models = await svc.listModels('valid-mind');
+      expect(models).toEqual([{ id: 'm1', name: 'Model 1' }]);
+    });
+
+    it('clears the SDK model cache before listing models', async () => {
+      await svc.listModels('valid-mind');
+      expect(validModelClient.modelsCache).toBeNull();
+    });
+
+    it('returns empty array for invalid mind', async () => {
+      const models = await svc.listModels('nonexistent');
+      expect(models).toEqual([]);
+    });
+
+    it('surfaces model discovery failures', async () => {
+      await expect(svc.listModels('broken-models')).rejects.toThrow('model discovery failed');
+    });
+
+    it('surfaces SDK model-list contract drift', async () => {
+      await expect(svc.listModels('drifted-models')).rejects.toThrow(
+        'SDK contract mismatch for client.listModels',
+      );
+    });
+  });
+
+  describe('stale session retry', () => {
+    it('retries once with fresh session on stale error', async () => {
+      // First session: send rejects with stale-session error
+      mockSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      // Fresh session returned by stale-session recovery
+      const freshSession = {
+        send: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
+          if (event === 'session.idle' && cb) setTimeout(() => cb(), 0);
+          return vi.fn();
+        }),
+      };
+      mockMindManager.recoverActiveConversationSession.mockResolvedValueOnce(freshSession);
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(mockMindManager.recoverActiveConversationSession).toHaveBeenCalledWith('valid-mind');
+      expect(mockMindManager.markActiveConversationHasMessages).toHaveBeenCalledTimes(1);
+      expect(mockMindManager.markActiveConversationHasMessages).toHaveBeenCalledWith('valid-mind', 'hello');
+      expect(freshSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+      });
+      expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('does not loop — surfaces error when reattach also fails with stale error', async () => {
+      mockSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      const freshSession = {
+        send: vi.fn().mockRejectedValueOnce(new Error('Session not found: def-456')),
+        abort: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn(() => vi.fn()),
+      };
+      mockMindManager.recoverActiveConversationSession.mockResolvedValueOnce(freshSession);
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error' }),
+      );
+      // Recovery is attempted exactly once; we surface the error rather than chain endless retries.
+      expect(mockMindManager.recoverActiveConversationSession).toHaveBeenCalledTimes(1);
+      expect(freshSession.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry on non-stale errors', async () => {
+      mockSession.send.mockRejectedValueOnce(new Error('Network error'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(mockMindManager.recoverActiveConversationSession).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error', message: 'Network error' }),
+      );
+    });
+
+    it('does not retry stale-session recovery after the user cancels', async () => {
+      mockSession.send.mockRejectedValueOnce(new Error('Session not found: abc-123'));
+      mockSession.on.mockReturnValue(vi.fn());
+
+      const freshSession = {
+        send: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn(() => vi.fn()),
+      };
+      let resolveRecovery: ((session: typeof freshSession) => void) | undefined;
+      mockMindManager.recoverActiveConversationSession.mockImplementationOnce(
+        () => new Promise<typeof freshSession>((resolve) => {
+          resolveRecovery = resolve;
+        }),
+      );
+
+      const emit = vi.fn();
+      const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      await vi.waitFor(() => {
+        expect(mockMindManager.recoverActiveConversationSession).toHaveBeenCalledWith('valid-mind');
+      });
+      await svc.cancelMessage('valid-mind', 'msg-1');
+      resolveRecovery?.(freshSession);
+      await pending;
+
+      expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+      expect(freshSession.send).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+      expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+    });
+  });
+
+  describe('listener ordering (regression: v0.25.0)', () => {
+    it('attaches session.idle listener BEFORE session.send is called', async () => {
+      // Simulate the SDK firing session.idle synchronously during send().
+      // If listeners are registered AFTER send resolves, this event is missed
+      // and turnDone hangs until the 5-minute timer expires.
+      let idleListener: (() => void) | undefined;
+
+      mockSession.on.mockImplementation(
+        (event: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+          if (event === 'session.idle' && cb) {
+            idleListener = cb as () => void;
+          }
+          return vi.fn();
+        },
+      );
+
+      mockSession.send.mockImplementation(async () => {
+        // SDK behavior: session.idle fires inside send() before it resolves.
+        // The listener MUST already be attached for this to be caught.
+        if (!idleListener) {
+          throw new Error(
+            'REGRESSION: session.idle listener was not attached before session.send() — this causes 5-minute hangs',
+          );
+        }
+        idleListener();
+      });
+
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('treats hung session.send as a stale session (30s send timeout)', async () => {
+      vi.useFakeTimers();
+      try {
+        // send() never resolves — simulates dead WebSocket / killed CLI.
+        mockSession.send.mockImplementation(() => new Promise(() => { /* hang */ }));
+        mockSession.on.mockReturnValue(vi.fn());
+
+        // Recreate returns a fresh, working session for the retry path.
+        const freshSession = {
+          send: vi.fn().mockResolvedValue(undefined),
+          abort: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+          on: vi.fn((event: string, cb?: (...args: unknown[]) => void) => {
+            if (event === 'session.idle' && cb) queueMicrotask(() => cb());
+            return vi.fn();
+          }),
+        };
+        mockMindManager.recoverActiveConversationSession.mockResolvedValueOnce(freshSession);
+
+        const emit = vi.fn();
+        const promise = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+        // Trip the 30s send-timeout guard.
+        await vi.advanceTimersByTimeAsync(30_000);
+        await promise;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'reconnecting' });
+        expect(mockMindManager.recoverActiveConversationSession).toHaveBeenCalledWith('valid-mind');
+        expect(freshSession.send).toHaveBeenCalledWith({
+          prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+        });
+      } finally {
+        vi.useRealTimers();
+        // Restore default impl so subsequent tests aren't left with a hung send.
+        mockSession.send.mockResolvedValue(undefined);
+      }
+    });
+  });
+
+  describe('TurnQueue integration', () => {
+    it('routes sendMessage through TurnQueue', async () => {
+      const enqueueSpy = vi.spyOn(turnQueue, 'enqueue');
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+      const emit = vi.fn();
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+      expect(enqueueSpy).toHaveBeenCalledWith('valid-mind', expect.any(Function));
+    });
+
+    it('concurrent sends to same mind are serialized', async () => {
+      const order: string[] = [];
+      const idleCallbacks: (() => void)[] = [];
+
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          idleCallbacks.push(cb);
+        }
+        return vi.fn();
+      });
+
+      mockSession.send.mockImplementation(async ({ prompt }: { prompt: string }) => {
+        order.push(`send-${prompt}`);
+      });
+
+      const emit1 = vi.fn();
+      const emit2 = vi.fn();
+      const p1 = svc.sendMessage('valid-mind', 'first', 'msg-1', emit1);
+      const p2 = svc.sendMessage('valid-mind', 'second', 'msg-2', emit2);
+
+      // Let microtasks settle so first send starts
+      await new Promise((r) => setTimeout(r, 10));
+      expect(order).toHaveLength(1);
+      expect(order[0]).toContain('\n\nfirst');
+
+      // Complete first message
+      idleCallbacks.shift()?.();
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Now second should have started
+      expect(order).toHaveLength(2);
+      expect(order[1]).toContain('\n\nsecond');
+
+      // Complete second message
+      idleCallbacks.shift()?.();
+      await Promise.all([p1, p2]);
+
+      expect(emit1).toHaveBeenCalledWith({ type: 'done' });
+      expect(emit2).toHaveBeenCalledWith({ type: 'done' });
+    });
+  });
+});

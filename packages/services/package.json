@@ -1,0 +1,12 @@
+{
+  "name": "@chamber/services",
+  "version": "0.31.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@chamber/shared": "file:../shared"
+  }
+}
