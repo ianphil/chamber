@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.56.0 (2026-05-10)
+
+### SDK
+
+- **Use session-scoped SDK permission approvals where supported** — Primary mind and Genesis SDK sessions now rely on `approveForSessionCompat`, returning session-wide approvals for read, write, and memory requests while preserving approve-once behavior for permission kinds that need richer request data. (#131)
+
 ## v0.55.0 (2026-05-10)
 
 ### SDK
