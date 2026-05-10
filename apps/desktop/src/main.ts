@@ -256,7 +256,7 @@ const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2
 let chamberCopilotService: ChamberCopilotService | null = null;
 
 if (configService.load().chamberCopilotEnabled === true) {
-  const { defaultAcpConnectionFactory, AcpConnection, YOLO_ACP_ARGS } = loadChamberCopilot();
+  const { defaultAcpConnectionFactory, AcpConnection, JobStore, createAcpTools, YOLO_ACP_ARGS } = loadChamberCopilot();
   // SECURITY/CORRECTNESS:
   // - command: pin to the bundled @github/copilot CLI exactly the way
   //   CopilotClientFactory does, so Chamber has a SINGLE source of truth
@@ -299,6 +299,14 @@ if (configService.load().chamberCopilotEnabled === true) {
         }),
       }),
     },
+    // jobStoreFactory + toolFactory are required, not defaulted, so that
+    // ChamberCopilotService.ts has zero value-level imports from
+    // chamber-copilot. Otherwise the bundled main.js would emit a
+    // top-level require('chamber-copilot') that runs BEFORE the
+    // app.isPackaged check in loadChamberCopilot() — producing the
+    // "Cannot find module 'chamber-copilot'" error from packaged builds.
+    jobStoreFactory: (connections) => new JobStore({ connectionsByMode: connections }),
+    toolFactory: (deps) => createAcpTools(deps),
   });
   mindToolProviders.push(chamberCopilotService);
   log.info('chamber-copilot ACP extension enabled (safe + yolo)', { cliPath });

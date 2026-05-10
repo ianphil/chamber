@@ -48,12 +48,26 @@ export type AcpToolFactory = (deps: { readonly store: JobStore }) => AcpTool[];
  * `{ connectionsByMode: { safe: connectionFactory } }`), or supply
  * `connectionsByMode` explicitly. Supplying neither throws at
  * construction; supplying both is also rejected (avoid silent shadowing).
+ *
+ * `jobStoreFactory` and `toolFactory` are REQUIRED, not defaulted. This
+ * keeps `ChamberCopilotService.ts` free of any value-level import from
+ * `chamber-copilot`, which matters because the desktop main bundle
+ * externalizes `chamber-copilot` and resolves it via a runtime-require
+ * indirection (`loadChamberCopilot()` in `apps/desktop/src/main.ts`) that
+ * switches between dev `node_modules` and the packaged
+ * `resources/acp-runtime/`. A static `import { JobStore, createAcpTools }
+ * from 'chamber-copilot'` in this file would get hoisted into the bundle
+ * as a top-level `require('chamber-copilot')` that runs BEFORE the
+ * indirection — that's exactly the failure mode that produced "Cannot
+ * find module 'chamber-copilot'" in the packaged installer. The
+ * composition root pulls `JobStore` and `createAcpTools` out of
+ * `loadChamberCopilot()` and wraps them as the required factories here.
  */
 export interface ChamberCopilotServiceOptions {
   readonly connectionFactory?: AcpConnectionFactory;
   readonly connectionsByMode?: ChamberCopilotConnectionFactories;
-  readonly jobStoreFactory?: JobStoreFactory;
-  readonly toolFactory?: AcpToolFactory;
+  readonly jobStoreFactory: JobStoreFactory;
+  readonly toolFactory: AcpToolFactory;
 }
 
 /** Re-exported for callers that want to type their `cli_delegate` wrappers. */

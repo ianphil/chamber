@@ -385,6 +385,8 @@ describe('ChamberCopilotService', () => {
         () => new ChamberCopilotService({
           connectionFactory: safe,
           connectionsByMode: { safe },
+          jobStoreFactory: () => new FakeJobStore() as unknown as JobStore,
+          toolFactory: () => [],
         }),
       ).toThrow(/either `connectionFactory`.*or `connectionsByMode`/);
     });
@@ -393,6 +395,8 @@ describe('ChamberCopilotService', () => {
       expect(
         () => new ChamberCopilotService({
           connectionsByMode: { safe: undefined as unknown as () => AcpConnection },
+          jobStoreFactory: () => new FakeJobStore() as unknown as JobStore,
+          toolFactory: () => [],
         }),
       ).toThrow(/connectionsByMode\.safe/);
     });

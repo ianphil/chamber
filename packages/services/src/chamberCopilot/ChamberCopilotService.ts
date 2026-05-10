@@ -41,11 +41,10 @@
 //     mind via the `permission_mode` argument to `cli_delegate`. The
 //     upstream tool description warns the model about the trade-off.
 
-import {
+import type {
   AcpConnection,
   JobStore,
-  createAcpTools,
-  type AcpTool,
+  AcpTool,
 } from 'chamber-copilot';
 import type { ChamberToolProvider } from '../chamberTools';
 import { Logger } from '../logger';
@@ -59,11 +58,6 @@ import type {
 } from './types';
 
 const log = Logger.create('chamberCopilot');
-
-const defaultJobStoreFactory: JobStoreFactory = (connections) =>
-  new JobStore({ connectionsByMode: connections });
-
-const defaultToolFactory: AcpToolFactory = (deps) => createAcpTools(deps);
 
 interface StartedConnections {
   readonly safe: AcpConnection;
@@ -83,8 +77,8 @@ export class ChamberCopilotService implements ChamberToolProvider {
 
   constructor(options: ChamberCopilotServiceOptions) {
     this.connectionFactories = resolveFactories(options);
-    this.jobStoreFactory = options.jobStoreFactory ?? defaultJobStoreFactory;
-    this.toolFactory = options.toolFactory ?? defaultToolFactory;
+    this.jobStoreFactory = options.jobStoreFactory;
+    this.toolFactory = options.toolFactory;
   }
 
   getToolsForMind(mindId: string, _mindPath: string): Tool[] {
