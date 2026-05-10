@@ -35,7 +35,11 @@ export function useAppSubscriptions() {
     viewsLoaded.current = false;
   }, [activeMindId]);
 
-  // Fetch models whenever active mind changes (no cache — always fresh)
+  // Fetch models whenever active mind changes. The IPC call is uncached
+  // here, but the @github/copilot CLI server caches its `/models` response
+  // in-memory for 30 minutes per CLI subprocess — so this returns the same
+  // list across mind switches until either the CLI restarts or the TTL
+  // expires. See docs/model-cache-investigation.md (issue #90).
   useEffect(() => {
     const connected = minds.length > 0 || !!activeMindId;
     if (!connected) return;
