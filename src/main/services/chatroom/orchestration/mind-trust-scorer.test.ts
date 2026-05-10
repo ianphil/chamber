@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MindTrustScorer } from './mind-trust-scorer';
-import type { TrustEvent, TrustTier } from './mind-trust-scorer';
+import type { TrustEvent } from './mind-trust-scorer';
 
 // ---------------------------------------------------------------------------
 // Helpers
