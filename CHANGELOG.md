@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.6 (2026-05-11)
+
+### Refactoring
+
+- **Apply focused MindManager fixes for session parameters, rollback, listener cleanup, and dead arguments** — Four findings (TS6, TS13, M7, TS18) from the 2026-05-10 codebase review applied as targeted edits ahead of the larger ConversationStore / MindSessionFactory / ProviderRegistry extraction (deferred to a follow-up). `MindManager.createSessionForMind` is converted from 9 positional parameters with a bare `true` boolean at call sites to a single `CreateSessionRequest` object; defaults preserved. `MindManager.doLoadMind`'s rollback now captures the prior `knownMindRecord` before the providers/views activation, extends the try/catch to cover `knownMindRecords.set` and `persistConfig`, and restores or deletes the record on any failure — closing the gap where a thrown `persistConfig()` would leave the mind registered with stale config. `MindManager.pushSystemPrompt`'s 120s timeout path now invokes the `session.idle` unsubscribe before resolving (was previously a guaranteed listener leak on every timeout). `ChatroomService.broadcast` drops the unused model parameter; the IPC adapter and three test sites updated. Closes #277.
+
 ## v0.59.5 (2026-05-10)
 
 ### Refactoring
@@ -65,7 +71,6 @@
 ### SDK
 
 - **Replace broad SDK URL auto-approval with explicit GitHub hosts** — Primary Copilot SDK sessions now drop `--allow-all-urls` and pass only the default first-party GitHub URL allowlist, leaving other URL permission requests to the SDK handler. (#131)
-
 ## v0.54.0 (2026-05-10)
 
 ### SDK
