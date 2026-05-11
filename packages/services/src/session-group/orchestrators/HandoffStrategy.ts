@@ -151,7 +151,7 @@ export class HandoffStrategy extends BaseStrategy {
           prompt,
           roundId,
           context,
-          abortSignal: this.abortController!.signal,
+          abortSignal: this.requireAbortController().signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'handoff',
           transformContent: (raw) => stripControlJson(raw, (a) => a === 'handoff' || a === 'done'),

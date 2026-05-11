@@ -52,6 +52,20 @@ export abstract class BaseStrategy implements OrchestrationStrategy {
     return this.abortController?.signal.aborted ?? false;
   }
 
+  /**
+   * Return the current AbortController, throwing if `begin()` has not been
+   * called. Replaces the unsafe `this.abortController!` non-null assertion
+   * scattered across strategy implementations — if the controller is missing
+   * we want a clear error at the boundary, not a deep TypeError inside the
+   * SDK call site.
+   */
+  protected requireAbortController(): AbortController {
+    if (!this.abortController) {
+      throw new Error(`${this.mode} strategy: abortController missing — execute() called without begin()?`);
+    }
+    return this.abortController;
+  }
+
   stop(): void {
     this.abortController?.abort();
     for (const unsub of this.currentUnsubs) unsub();
