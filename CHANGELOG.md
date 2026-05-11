@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.58.1 (2026-05-10)
+
+### Documentation
+
+- **Diagnose `@github/copilot` model-cache location and TTL** — Document the actual cache topology in `docs/model-cache-investigation.md`: the SDK and renderer don't cache, but the CLI subprocess holds a 30-minute in-memory `LIST_MODELS_CACHE` keyed by `${baseURL}:${Authorization}` with no on-disk persistence and no remote-clear JSON-RPC method. Adds `scripts/diagnose-model-cache.js` (read-only probe) and corrects three stale source comments that claimed no caching. Refs #90.
+
 ## v0.58.0 (2026-05-10)
 
 ### SDK
