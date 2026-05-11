@@ -1,20 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Detect whether the current invocation needs the web/server pair. The electron
-// project drives the packaged Electron app directly and has no dependency on
-// either the @chamber/server HTTP API or the @chamber/web dev server, so we
-// skip the (slow, build-heavy) webServer block when only electron projects are
-// selected. Detection is based on `--project=<name>` flags in argv.
-const selectedProjects = process.argv
-  .flatMap((arg, index, all) => {
-    if (arg === '--project') return [all[index + 1]];
-    if (arg.startsWith('--project=')) return [arg.slice('--project='.length)];
-    return [];
-  })
-  .filter((value): value is string => Boolean(value));
-const electronOnly =
-  selectedProjects.length > 0 && selectedProjects.every((name) => name === 'electron');
-
 export default defineConfig({
   testDir: '../tests/e2e',
   outputDir: '../test-results/playwright',
@@ -38,7 +23,7 @@ export default defineConfig({
       use: {},
     },
   ],
-  webServer: electronOnly ? undefined : [
+  webServer: [
     {
       command: 'npm --workspace @chamber/server run build && node ../apps/server/dist/bin.mjs',
       url: 'http://127.0.0.1:33441/api/health',

@@ -1,7 +1,11 @@
 {
   "name": "chamber",
   "productName": "Chamber",
-  "version": "0.59.1",
+<<<<<<< HEAD
+  "version": "0.59.0",
+=======
+  "version": "0.58.2",
+>>>>>>> 1ac2984 (refactor: consolidate Logger and escapeXml into @chamber/shared)
   "description": "Genesis Mind Interface — desktop chat UI for Genesis agents",
   "main": ".vite/build/main.js",
   "private": true,
