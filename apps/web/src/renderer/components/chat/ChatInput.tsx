@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { ModelInfo, ChatImageAttachment } from '@chamber/shared/types';
 import {
@@ -19,6 +20,14 @@ import {
   CommandList,
   CommandItem,
 } from '../ui/command';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { pushRecentEmoji } from '../../lib/emoji-recents';
 import { loadEmojiData, type EmojiRecord } from '../../lib/emoji-data';
 import { getTextareaCaretCoords } from '../../lib/textarea-caret';
@@ -35,6 +44,14 @@ interface Props {
   availableModels: ModelInfo[];
   selectedModel: string | null;
   onModelChange: (model: string) => void;
+  /**
+   * Optional handler that restarts the underlying CLI subprocess and
+   * returns a fresh model catalog. The renderer surfaces a confirmation
+   * dialog before invoking this because the operation tears down the
+   * in-flight conversation. See `docs/model-cache-investigation.md`
+   * (issue #90).
+   */
+  onRefreshModels?: () => Promise<void>;
   placeholder?: string;
   /**
    * When provided, the textarea is controlled — `value` drives display and
@@ -153,7 +170,7 @@ function getShortcodePopoverPlacement(anchor: ShortcodeAnchor): ShortcodePopover
   };
 }
 
-export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder, value, onValueChange }: Props) {
+export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, onRefreshModels, placeholder, value, onValueChange }: Props) {
   const isControlled = value !== undefined;
   const [internalInput, setInternalInput] = useState('');
   const input = isControlled ? value : internalInput;
@@ -168,6 +185,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   const [shortcodeResults, setShortcodeResults] = useState<EmojiRecord[]>([]);
   const [shortcodeIndex, setShortcodeIndex] = useState(0);
   const [shortcodeAnchor, setShortcodeAnchor] = useState<ShortcodeAnchor | null>(null);
+  const [refreshDialogOpen, setRefreshDialogOpen] = useState(false);
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const isComposingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pastedSeq = useRef(0);
@@ -478,22 +498,36 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               </Popover>
 
               {availableModels.length > 0 ? (
-                <Select
-                  value={selectedModel ?? undefined}
-                  onValueChange={onModelChange}
-                  disabled={isStreaming || disabled}
-                >
-                  <SelectTrigger className="h-6 w-auto gap-1.5 border-none bg-transparent px-0 text-xs text-muted-foreground shadow-none hover:text-foreground focus:ring-0">
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id} className="text-xs">
-                        {model.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-1">
+                  <Select
+                    value={selectedModel ?? undefined}
+                    onValueChange={onModelChange}
+                    disabled={isStreaming || disabled}
+                  >
+                    <SelectTrigger className="h-6 w-auto gap-1.5 border-none bg-transparent px-0 text-xs text-muted-foreground shadow-none hover:text-foreground focus:ring-0">
+                      <SelectValue placeholder="Select model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id} className="text-xs">
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {onRefreshModels ? (
+                    <button
+                      type="button"
+                      onClick={() => setRefreshDialogOpen(true)}
+                      disabled={isStreaming || disabled || refreshingModels}
+                      aria-label="Refresh model list"
+                      title="Refresh model list (restarts the agent — ends the current conversation)"
+                      className="h-5 w-5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <RefreshCw size={11} className={cn(refreshingModels && 'animate-spin')} />
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 <span className="text-xs text-muted-foreground">
                   {disabled ? '' : 'Loading models…'}
@@ -567,6 +601,72 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
             document.body,
           )
         : null}
+      <Dialog open={refreshDialogOpen} onOpenChange={(open) => {
+        if (refreshingModels) return;
+        setRefreshDialogOpen(open);
+        if (!open) setRefreshError(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Refresh model list?</DialogTitle>
+            <DialogDescription>
+              The Copilot CLI caches its model catalog for 30 minutes. Refreshing
+              restarts this agent's CLI subprocess so the next request fetches the
+              live list. The active conversation is preserved; any reply that is
+              still streaming must finish first.
+            </DialogDescription>
+          </DialogHeader>
+          {refreshError ? (
+            <div
+              role="alert"
+              className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {refreshError}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => {
+                setRefreshDialogOpen(false);
+                setRefreshError(null);
+              }}
+              disabled={refreshingModels}
+              className="px-3 py-1.5 text-sm rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!onRefreshModels) {
+                  setRefreshDialogOpen(false);
+                  return;
+                }
+                setRefreshError(null);
+                setRefreshingModels(true);
+                try {
+                  await onRefreshModels();
+                  setRefreshDialogOpen(false);
+                } catch (err) {
+                  // Keep the dialog open so the user can retry or cancel
+                  // after seeing why the refresh did not happen (e.g. a
+                  // turn was still streaming, or the CLI failed to
+                  // restart). Errors that escape `onRefreshModels` are
+                  // surfaced inline rather than silently dismissed.
+                  setRefreshError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setRefreshingModels(false);
+                }
+              }}
+              disabled={refreshingModels}
+              className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {refreshingModels ? 'Refreshing…' : 'Refresh models'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
