@@ -18,7 +18,15 @@ const GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me?$select=displayName,us
 const GRAPH_PHOTO_URL = 'https://graph.microsoft.com/v1.0/me/photos/96x96/$value';
 const MICROSOFT_TENANT_ID = '72f988bf-86f1-41af-91ab-2d7cd011db47';
 const VSCODE_CLIENT_ID = 'aebc6443-996d-45c2-90f0-388ff96faa56';
-const runtimeRequire = createRequire(__filename);
+// `runtimeRequire` lazily resolves the native MSAL broker addon at runtime.
+// Rooting `createRequire` at `process.execPath` keeps the same code path
+// working in every module context Chamber runs under: the apps/server tsdown
+// ESM bundle (where `__filename` is undefined), CJS-mode TS loaders such as
+// Playwright's (where `import.meta` is a parse error), and the packaged
+// Electron app (where the resolved path lives under `process.resourcesPath`).
+// `loadMsalNodeExtensions` only ever asks for absolute paths or bare
+// specifiers, both of which are resolved correctly from any root.
+const runtimeRequire = createRequire(process.execPath);
 
 export interface MicrosoftGraphToken {
   accessToken: string;

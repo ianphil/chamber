@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { escapeXml } from '@chamber/shared/escapeXml';
 import type { Message, TaskState, TaskStatus, Artifact } from './types';
 
 export function generateMessageId(): string {
@@ -25,15 +26,6 @@ export function createTextMessage(
       hopCount: opts?.hopCount ?? 0,
     },
   };
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
 
 export function serializeMessageToXml(message: Message): string {

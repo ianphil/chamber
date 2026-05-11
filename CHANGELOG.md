@@ -6,6 +6,12 @@
 
 - **"Refresh models" affordance recycles the CLI subprocess in place** — A small refresh icon next to the model picker invokes a new `chat:refreshModels` IPC channel that calls a narrow `MindManager.recycleClientForMind` (destroy SDK client → create new client → resume the active session against the fresh client) and then returns a fresh `listModels()`. This is the only way to bust the Copilot CLI's 30-minute in-memory model cache (see #270 / `docs/model-cache-investigation.md`). The active conversation is preserved, chatroom orchestration is not torn down (no `mind:unloaded` teardown), and the call is serialized through `TurnQueue` so it cannot race a queued send. Refresh is gated behind a confirm dialog and is refused when a turn is mid-stream; if the call rejects, the dialog stays open with an inline error so the user can retry or cancel. A new `mind:client-recycled` event lets `ChatroomService` drop only its cached `SessionGroup` session for the recycled mind without affecting any active orchestrator or `disabledMindIds`. Closes #90.
 
+## v0.58.2 (2026-05-10)
+
+### Refactoring
+
+- **Consolidate `Logger` and `escapeXml` into `@chamber/shared`** — Two duplicate utilities had drifted in behavior. The renderer `Logger` (`apps/web/src/renderer/lib/logger.ts`) lacked `CHAMBER_LOG_LEVEL` env-var support and `resetLevel()` that the services `Logger` (`packages/services/src/logger/Logger.ts`) had; `escapeXml` had three incompatible copies (chained `.replace()` in `a2a/helpers.ts`, regex+lookup in `session-group/shared.ts`, and a 3-of-5-char version in `chat/currentDateTimeContext.ts`). One implementation each now lives in `@chamber/shared/logger` and `@chamber/shared/escapeXml`; legacy locations remain as 1-line re-exports so every existing import path continues to resolve. The `currentDateTimeContext` callsite now escapes `"` and `'` consistently with every other XML emitter — safe inside element content. Adds three new `Logger` tests for the previously-untested env-var branch. Net -257 LOC of duplicate code. Closes #272.
+
 ## v0.58.1 (2026-05-10)
 
 ### Documentation
