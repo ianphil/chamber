@@ -279,8 +279,11 @@ export class ChatService {
   async listModels(mindId: string): Promise<ModelInfo[]> {
     const context = this.mindManager.getMind(mindId);
     if (!context?.client) return [];
-    // The SDK caches models forever per CopilotClient instance.
-    // Clear the cache so we always get a fresh list from the CLI.
+    // Defensive: clear any SDK-level cache. As of @github/copilot-sdk@0.3.0
+    // this is a no-op (see modelCacheCompat). The cache that actually
+    // controls model freshness lives in the CLI server process with a
+    // 30-min TTL — only a CLI subprocess restart can bust it.
+    // See docs/model-cache-investigation.md (issue #90).
     clearCopilotModelsCache(context.client);
     const models = await context.client.listModels();
     return mapSdkModelList(models);
