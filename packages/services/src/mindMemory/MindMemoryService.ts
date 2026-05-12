@@ -101,6 +101,20 @@ export interface MindMemoryService {
   activateMind(mindId: string, mindPath: string): Promise<void>;
   releaseMind(mindId: string): Promise<void>;
   close(): Promise<void>;
+  /**
+   * Test/E2E-only accessor. Returns the live `DreamDaemon` plus the
+   * `dream.db` path for an active mind, or `null` if the mind is not
+   * currently activated. Production code must NOT depend on this surface;
+   * callers are expected to gate on `process.env.CHAMBER_E2E === '1'`.
+   *
+   * Lifecycle:
+   *   - returns `null` for unknown / disabled mind ids
+   *   - returns the same `daemon` reference handed back by `daemonFactory`
+   *     during `activateMind`
+   *   - returns `null` again after `releaseMind` (entry is removed from
+   *     the internal active map)
+   */
+  __debugGet(mindId: string): { readonly daemon: DreamDaemon; readonly dbPath: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +123,7 @@ export interface MindMemoryService {
 
 interface ActiveEntry {
   readonly mindPath: string;
+  readonly dbPath: string;
   readonly db: Database.Database;
   readonly daemon: DreamDaemon;
   readonly writer: DailyLogWriter;
@@ -151,7 +166,8 @@ export function createMindMemoryService(
     try {
       const vault = factories.vaultFactory(mindPath);
       const archive = factories.archiveFactory(mindPath);
-      db = factories.dbFactory(dreamDbPath(mindPath));
+      const dbPath = dreamDbPath(mindPath);
+      db = factories.dbFactory(dbPath);
 
       daemon = factories.daemonFactory({
         mindId,
@@ -196,7 +212,7 @@ export function createMindMemoryService(
 
       factories.chatService.addObserver(observer);
 
-      active.set(mindId, { mindPath, db, daemon, writer, observer });
+      active.set(mindId, { mindPath, dbPath, db, daemon, writer, observer });
     } catch (err) {
       // Unwind in reverse order — only what we successfully built. Each
       // step is wrapped to keep the original error as the surfaced one.
@@ -269,7 +285,13 @@ export function createMindMemoryService(
     }
   }
 
-  return { activateMind, releaseMind, close };
+  return { activateMind, releaseMind, close, __debugGet };
+
+  function __debugGet(mindId: string): { readonly daemon: DreamDaemon; readonly dbPath: string } | null {
+    const entry = active.get(mindId);
+    if (!entry) return null;
+    return { daemon: entry.daemon, dbPath: entry.dbPath };
+  }
 }
 
 // Re-export the default loader so the composition root can pass it as

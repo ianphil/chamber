@@ -661,3 +661,48 @@ describe('MindMemoryService — multi-mind isolation', () => {
     expect(chat.observers).toHaveLength(1);
   });
 });
+
+describe('MindMemoryService — __debugGet (E2E accessor)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns null for an unknown mind id', () => {
+    const { factories } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    expect(svc.__debugGet('does-not-exist')).toBeNull();
+  });
+
+  it('returns null for a disabled mind (activate was a no-op)', async () => {
+    const { factories } = makeFactories({ chamberConfig: DISABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    await svc.activateMind(MIND_ID, MIND_PATH);
+
+    expect(svc.__debugGet(MIND_ID)).toBeNull();
+  });
+
+  it('returns the live daemon + dbPath for an activated mind', async () => {
+    const { factories, daemon } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    await svc.activateMind(MIND_ID, MIND_PATH);
+
+    const entry = svc.__debugGet(MIND_ID);
+    expect(entry).not.toBeNull();
+    expect(entry!.daemon).toBe(daemon);
+    expect(entry!.dbPath).toBe(dreamDbPath(MIND_PATH));
+  });
+
+  it('returns null again after releaseMind', async () => {
+    const { factories } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    await svc.activateMind(MIND_ID, MIND_PATH);
+    expect(svc.__debugGet(MIND_ID)).not.toBeNull();
+
+    await svc.releaseMind(MIND_ID);
+    expect(svc.__debugGet(MIND_ID)).toBeNull();
+  });
+});
