@@ -3,15 +3,30 @@ import * as path from 'path';
 import type { InstalledTool, MindIdentity } from '@chamber/shared/types';
 import { buildToolsSection } from '../tools/toolsSystemMessage';
 import { buildChamberSection } from './chamberSystemMessage';
+import {
+  createWorkingMemoryComposer,
+  type WorkingMemoryComposer,
+  type WorkingMemoryComposerConfig,
+} from './WorkingMemoryComposer';
+import {
+  loadChamberMindConfig,
+  DEFAULT_WORKING_MEMORY_CONSOLIDATION,
+} from '../mind/chamberMindConfig';
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const H1_RE = /^#\s+(.+)$/m;
-const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
 export type InstalledToolsProvider = () => InstalledTool[];
 
 export class IdentityLoader {
-  constructor(private readonly getInstalledTools: InstalledToolsProvider = () => []) {}
+  private readonly composer: WorkingMemoryComposer;
+
+  constructor(
+    private readonly getInstalledTools: InstalledToolsProvider = () => [],
+    composer: WorkingMemoryComposer = createWorkingMemoryComposer(),
+  ) {
+    this.composer = composer;
+  }
 
   load(mindPath: string | null): MindIdentity | null {
     if (!mindPath) return null;
@@ -39,18 +54,10 @@ export class IdentityLoader {
     } catch { /* missing */ }
 
     try {
-      const memoryDir = path.join(mindPath, '.working-memory');
-      if (!fs.existsSync(memoryDir)) throw new Error('missing working-memory');
-      const files = fs.readdirSync(memoryDir)
-        .map((file) => String(file))
-        .filter((file) => WORKING_MEMORY_FILES.includes(file))
-        .sort((a, b) => WORKING_MEMORY_FILES.indexOf(a) - WORKING_MEMORY_FILES.indexOf(b));
-      for (const file of files) {
-        const filePath = path.join(memoryDir, file);
-        const content = fs.readFileSync(filePath, 'utf-8').trim();
-        if (content.length > 0) memoryParts.push(content);
-      }
-    } catch { /* missing */ }
+      const composerConfig = this.resolveComposerConfig(mindPath);
+      const memorySection = this.composer.compose(mindPath, composerConfig);
+      if (memorySection.length > 0) memoryParts.push(memorySection);
+    } catch { /* composer is defensive; defense-in-depth */ }
 
     const parts = [...identityParts, ...memoryParts];
     if (parts.length === 0) return null;
@@ -73,5 +80,26 @@ export class IdentityLoader {
       return match[1].trim().replace(/\s*[—–-]\s*Soul$/i, '').trim();
     }
     return path.basename(mindPath);
+  }
+
+  private resolveComposerConfig(mindPath: string): WorkingMemoryComposerConfig {
+    // .chamber.json is the source of truth for composer caps. loadChamberMindConfig
+    // already returns DEFAULT_WORKING_MEMORY_CONSOLIDATION when the file is missing,
+    // unparseable, or schema-invalid, so this never throws. Defaults are also
+    // exported here so a composer-only failure path still has a fallback.
+    try {
+      const c = loadChamberMindConfig(mindPath).workingMemory.consolidation;
+      return {
+        lastKTurns: c.lastKTurns,
+        perTurnMaxBytes: c.perTurnMaxBytes,
+        memoryMaxBytes: c.memoryMaxBytes,
+      };
+    } catch {
+      return {
+        lastKTurns: DEFAULT_WORKING_MEMORY_CONSOLIDATION.lastKTurns,
+        perTurnMaxBytes: DEFAULT_WORKING_MEMORY_CONSOLIDATION.perTurnMaxBytes,
+        memoryMaxBytes: DEFAULT_WORKING_MEMORY_CONSOLIDATION.memoryMaxBytes,
+      };
+    }
   }
 }

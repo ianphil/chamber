@@ -89,11 +89,27 @@ describe('IdentityLoader', () => {
         return [] as unknown as ReturnType<typeof fs.readdirSync>;
       });
 
-      const result = loader.load('/tmp/test');
+      // Use an injected composer so the test does not depend on `node:fs`
+      // (the real composer reads via `node:fs`, which the `vi.mock('fs')` setup
+      // above does not intercept). The composer contract here is only that
+      // IdentityLoader forwards mindPath and inserts the returned section.
+      const composer = {
+        compose: vi.fn(() => 'Curated memory\n\n---\n\nOperational rule'),
+      };
+      const customLoader = new IdentityLoader(() => [], composer);
+      const result = customLoader.load('/tmp/test');
 
+      expect(composer.compose).toHaveBeenCalledWith('/tmp/test', expect.objectContaining({
+        lastKTurns: expect.any(Number),
+        perTurnMaxBytes: expect.any(Number),
+        memoryMaxBytes: expect.any(Number),
+      }));
       expect(result?.systemMessage).toContain('Curated memory');
       expect(result?.systemMessage).toContain('Operational rule');
-      expect(result?.systemMessage).toContain('Chronological note');
+      // Unstructured log.md is filtered out by the composer; the IdentityLoader
+      // never includes it directly. The fake composer above returns no log
+      // section, so the chronological note must NOT appear.
+      expect(result?.systemMessage).not.toContain('Chronological note');
     });
 
     it('does not extract the mind name from working-memory headings', () => {
@@ -118,7 +134,9 @@ describe('IdentityLoader', () => {
         return [] as unknown as ReturnType<typeof fs.readdirSync>;
       });
 
-      const result = loader.load('/tmp/agents/fox');
+      const composer = { compose: vi.fn(() => '# Memory\nCurated memory') };
+      const customLoader = new IdentityLoader(() => [], composer);
+      const result = customLoader.load('/tmp/agents/fox');
 
       expect(result?.name).toBe('fox');
       expect(result?.systemMessage).toContain('# Memory');
@@ -181,6 +199,71 @@ describe('IdentityLoader', () => {
 
       expect(systemMessage.indexOf('## Chamber')).toBeGreaterThan(systemMessage.indexOf('# Q'));
       expect(systemMessage.indexOf('## Tools')).toBeGreaterThan(systemMessage.indexOf('## Chamber'));
+    });
+
+    it('uses a default WorkingMemoryComposer when none injected', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readFileSync).mockReturnValue('');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      // Should not throw — proves the default composer is constructed and called.
+      const defaultLoader = new IdentityLoader();
+      expect(() => defaultLoader.load('/tmp/test')).not.toThrow();
+    });
+
+    it('forwards mindPath and resolved config defaults to the composer', () => {
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith('SOUL.md');
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue('# Soul');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const composer = { compose: vi.fn(() => '') };
+      const loader2 = new IdentityLoader(() => [], composer);
+      loader2.load('/tmp/agents/widget');
+
+      expect(composer.compose).toHaveBeenCalledWith(
+        '/tmp/agents/widget',
+        {
+          // Defaults from chamberMindConfig (Phase 4) when no .chamber.json exists.
+          lastKTurns: 10,
+          perTurnMaxBytes: 2048,
+          memoryMaxBytes: 8192,
+        },
+      );
+    });
+
+    it('backward compat: builds a system prompt when composer returns empty', () => {
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith('SOUL.md');
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue('# Mind\nIdentity body');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const composer = { compose: vi.fn(() => '') };
+      const loader2 = new IdentityLoader(() => [], composer);
+      const result = loader2.load('/tmp/test');
+
+      expect(result).not.toBeNull();
+      expect(result?.systemMessage).toContain('Identity body');
+      expect(result?.systemMessage).toContain('## Chamber');
+    });
+
+    it('backward compat: does not crash when composer throws', () => {
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith('SOUL.md');
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue('# Soul');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const composer = {
+        compose: vi.fn(() => {
+          throw new Error('composer boom');
+        }),
+      };
+      const loader2 = new IdentityLoader(() => [], composer);
+      expect(() => loader2.load('/tmp/test')).not.toThrow();
+      const result = loader2.load('/tmp/test');
+      expect(result?.systemMessage).toContain('# Soul');
     });
   });
 });
