@@ -289,37 +289,6 @@ export class ChatService {
     return mapSdkModelList(models);
   }
 
-  async refreshModels(mindId: string): Promise<ModelInfo[]> {
-    // The CLI server process holds a 30-min in-memory model cache that
-    // cannot be busted in-place — see docs/model-cache-investigation.md
-    // (issue #90). The only way to force a fresh `/models` fetch is to
-    // restart the CLI subprocess, so we recycle the SDK client + active
-    // session in place via MindManager.recycleClientForMind. This keeps
-    // chatroom orchestration intact (no mind:unloaded teardown).
-    //
-    // Refusing mid-stream serves two purposes: (1) we don't yank the rug
-    // out from under an executing turn, and (2) routing the recycle call
-    // through TurnQueue.enqueue serializes it against any send that has
-    // already been enqueued but not yet pulled off the chain — so the
-    // assertion below is fast-fail UX, and the queue is the real lock.
-    this.assertCanRefreshModels(mindId);
-    return this.turnQueue.enqueue(mindId, async () => {
-      // Re-check inside the queue: a different actor could have parked an
-      // AbortController between our assertion and the queue acquiring the
-      // lock. With TurnQueue serializing all sends and refreshes for this
-      // mind, this branch is defensive but cheap.
-      this.assertCanRefreshModels(mindId);
-      await this.mindManager.recycleClientForMind(mindId);
-      return this.listModels(mindId);
-    });
-  }
-
-  private assertCanRefreshModels(mindId: string): void {
-    if (this.abortControllers.has(mindId)) {
-      throw new Error('Cannot refresh models while a message is still streaming.');
-    }
-  }
-
   private assertCanSwitchConversation(mindId: string): void {
     if (this.abortControllers.has(mindId)) {
       throw new Error('Cannot switch conversations while a message is still streaming.');

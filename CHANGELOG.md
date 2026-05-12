@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.7 (2026-05-12)
+
+### Fixes
+
+- **Revert the Refresh models subprocess recycle affordance** — Removes the `chat:refreshModels` IPC path, model-picker refresh button, `MindManager.recycleClientForMind`, and chatroom `mind:client-recycled` listener added in #271. The cache diagnosis from #270 remains, but Chamber no longer restarts a mind's Copilot CLI subprocess from the chat UI while #287 verifies the conversation-context risk. Closes #287.
+
 ## v0.59.6 (2026-05-11)
 
 ### Refactoring

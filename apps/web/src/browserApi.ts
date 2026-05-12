@@ -139,11 +139,6 @@ export function installBrowserApi(): void {
         return { sessionId: '', messages: [], conversations: [] };
       },
       listModels: (): Promise<ModelInfo[]> => client.listModels(),
-      refreshModels: async (): Promise<ModelInfo[]> => {
-        throw new Error(
-          'Refreshing the model cache requires restarting the underlying CLI subprocess and is only supported by the Chamber desktop app.',
-        );
-      },
       onEvent: (callback) => {
         chatEventHandlers.add(callback);
         void openEventSocket();

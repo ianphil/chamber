@@ -17,7 +17,6 @@ export const IPC = {
     STOP: 'chat:stop',
     NEW_CONVERSATION: 'chat:newConversation',
     LIST_MODELS: 'chat:listModels',
-    REFRESH_MODELS: 'chat:refreshModels',
     EVENT: 'chat:event',
   },
   CONVERSATION_HISTORY: {
