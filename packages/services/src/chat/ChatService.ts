@@ -1,8 +1,10 @@
 // ChatService — thin message streaming layer.
 // Gets sessions from MindManager, streams SDK events via callback.
 
+import { randomUUID } from 'node:crypto';
 import type { MindManager } from '../mind';
 import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, ConversationSummary, ModelInfo } from '@chamber/shared/types';
+import type { CompletedTurn, TurnCompletionObserver } from '@chamber/shared/turn-observer';
 import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError, SEND_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
 import { Logger } from '../logger';
@@ -28,12 +30,37 @@ const log = Logger.create('ChatService');
 
 export class ChatService {
   private abortControllers = new Map<string, AbortController>();
+  private readonly observers: TurnCompletionObserver[];
 
   constructor(
     private readonly mindManager: MindManager,
     private readonly turnQueue: TurnQueue,
     private readonly dateTimeContextProvider: DateTimeContextProvider = getCurrentDateTimeContext,
-  ) {}
+    initialObservers: readonly TurnCompletionObserver[] = [],
+  ) {
+    // Defensive copy — callers may mutate the array they passed in.
+    this.observers = [...initialObservers];
+  }
+
+  /**
+   * Register a turn-completion observer (Phase 11 wiring — used by
+   * MindMemoryService to attach the per-mind DailyLogWriter when a mind is
+   * activated). Adding an observer mid-flight is safe because
+   * `notifyTurnCompleted` reads the array at notify time.
+   */
+  addObserver(observer: TurnCompletionObserver): void {
+    this.observers.push(observer);
+  }
+
+  /**
+   * Remove a previously-registered observer (no-op if not present). Used
+   * by MindMemoryService.releaseMind so a swapped-out mind stops receiving
+   * turn frames.
+   */
+  removeObserver(observer: TurnCompletionObserver): void {
+    const i = this.observers.indexOf(observer);
+    if (i !== -1) this.observers.splice(i, 1);
+  }
 
   async sendMessage(
     mindId: string,
@@ -47,17 +74,21 @@ export class ChatService {
       const abortController = new AbortController();
       this.abortControllers.set(mindId, abortController);
 
+      const startedAt = new Date().toISOString();
+      const turnId = randomUUID();
+
       try {
         const context = this.mindManager.getMind(mindId);
         if (!context?.session) {
           throw new Error(`Mind ${mindId} not found or has no session`);
         }
 
+        let finalAssistantMessage: string | null = null;
         try {
           const session = model ? await this.mindManager.setMindModel(mindId, model) : null;
           const currentSession = session ? this.mindManager.getMind(mindId)?.session : context.session;
           if (!currentSession) throw new Error(`Mind ${mindId} not found or has no session`);
-          await this.streamTurn(currentSession, prompt, abortController, emit, attachments, () => {
+          finalAssistantMessage = await this.streamTurn(currentSession, prompt, abortController, emit, attachments, () => {
             this.mindManager.markActiveConversationHasMessages(mindId, prompt);
           });
         } catch (err) {
@@ -69,8 +100,28 @@ export class ChatService {
           emit({ type: 'reconnecting' });
           const recoveredSession = await this.mindManager.recoverActiveConversationSession(mindId);
           if (abortController.signal.aborted) return;
-          await this.streamTurn(recoveredSession, prompt, abortController, emit, attachments, () => {
+          finalAssistantMessage = await this.streamTurn(recoveredSession, prompt, abortController, emit, attachments, () => {
             this.mindManager.markActiveConversationHasMessages(mindId, prompt);
+          });
+        }
+
+        // Notify TurnCompletionObservers ONLY on successful completion. The
+        // streamTurn helper returns null whenever the turn was aborted by
+        // the user or torn down by an SDK contract failure; both branches
+        // skip notification. Errors thrown out of streamTurn fall through
+        // to the outer catch below, which also bypasses notification.
+        if (finalAssistantMessage !== null && !abortController.signal.aborted) {
+          const endedAt = new Date().toISOString();
+          const refreshed = this.mindManager.getMind(mindId);
+          this.notifyTurnCompleted({
+            turnId,
+            sessionId: refreshed?.activeSessionId ?? '',
+            model: model ?? refreshed?.selectedModel ?? '',
+            status: 'completed',
+            startedAt,
+            endedAt,
+            prompt,
+            finalAssistantMessage,
           });
         }
       } catch (err) {
@@ -83,6 +134,28 @@ export class ChatService {
     });
   }
 
+  /**
+   * Notify each observer of a completed turn. One observer throwing (sync
+   * or async) must NOT block subsequent observers and must NOT propagate
+   * back into the streaming path. Failures are logged at warn level with
+   * the offending observer's index for triage.
+   */
+  private notifyTurnCompleted(turn: CompletedTurn): void {
+    for (let i = 0; i < this.observers.length; i++) {
+      const observer = this.observers[i];
+      try {
+        const result = observer.onTurnCompleted(turn);
+        if (result && typeof (result as Promise<void>).then === 'function') {
+          Promise.resolve(result).catch((err: unknown) => {
+            log.warn(`TurnCompletionObserver[${i}] failed asynchronously`, err);
+          });
+        }
+      } catch (err) {
+        log.warn(`TurnCompletionObserver[${i}] failed`, err);
+      }
+    }
+  }
+
   private async streamTurn(
     session: CopilotSession,
     prompt: string,
@@ -90,10 +163,11 @@ export class ChatService {
     emit: (event: ChatEvent) => void,
     attachments?: ChatImageAttachment[],
     onSendAccepted?: () => void,
-  ): Promise<void>{
-    if (abortController.signal.aborted) return;
+  ): Promise<string | null>{
+    if (abortController.signal.aborted) return null;
 
     const unsubs: (() => void)[] = [];
+    let finalAssistantMessage = '';
     const guard = (fn: () => void) => { if (!abortController.signal.aborted) fn(); };
     let sdkContractFailed = false;
     const failSdkContract = (error: unknown) => {
@@ -120,9 +194,16 @@ export class ChatService {
         emitMapped(() => mapSdkAssistantMessageDelta(event));
       }));
 
-      // Final assistant message
+      // Final assistant message — also captured for TurnCompletionObservers
+      // so the observer payload carries the same text the renderer sees.
+      // The SDK can fire `assistant.message` more than once per turn (e.g.
+      // around tool use); keep the most recent non-null content.
       unsubs.push(session.on('assistant.message', (event) => {
-        emitMapped(() => mapSdkAssistantMessage(event));
+        emitMapped(() => {
+          const mapped = mapSdkAssistantMessage(event);
+          if (mapped) finalAssistantMessage = mapped.content;
+          return mapped;
+        });
       }));
 
       // Reasoning
@@ -224,8 +305,9 @@ export class ChatService {
       // Wait for idle (listeners already active from before send).
       await turnDone;
 
-      if (abortController.signal.aborted) return;
+      if (abortController.signal.aborted) return null;
       emit({ type: 'done' });
+      return finalAssistantMessage;
     } finally {
       for (const unsub of unsubs) unsub();
     }
