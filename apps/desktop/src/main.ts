@@ -51,6 +51,8 @@ import {
   type Notifier,
 } from '@chamber/services';
 import { Logger } from '@chamber/services';
+import type { MindContext } from '@chamber/shared';
+import { buildMindMemoryService } from './main/services/mindMemory/buildMindMemoryService';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
 import { installContextMenu } from './main/contextMenu/ContextMenu';
 import { installExternalNavigationGuard } from './main/navigationGuard';
@@ -315,6 +317,30 @@ if (configService.load().chamberCopilotEnabled === true) {
 
 mindManager.setProviders(mindToolProviders);
 
+// ---------------------------------------------------------------------------
+// MindMemory (Dream Daemon) — per-mind background memory consolidation.
+// Wires after providers so chatService observers + scheduler are ready before
+// any mind:loaded event fires. The lifecycle hooks below own the per-mind
+// activate/release dance; the composition root owns close() during quit.
+// ---------------------------------------------------------------------------
+const mindMemoryComposition = buildMindMemoryService({
+  mindManager,
+  chatService,
+  isPackaged: app.isPackaged,
+  resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+});
+const mindMemoryService = mindMemoryComposition.service;
+mindManager.on('mind:loaded', (ctx: MindContext) => {
+  mindMemoryService.activateMind(ctx.mindId, ctx.mindPath).catch((err) => {
+    log.warn('mindMemory: activateMind failed', { mindId: ctx.mindId, err: String(err) });
+  });
+});
+mindManager.on('mind:unloaded', (mindId: string) => {
+  mindMemoryService.releaseMind(mindId).catch((err) => {
+    log.warn('mindMemory: releaseMind failed', { mindId, err: String(err) });
+  });
+});
+
 wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
 
 // Wire Lens refresh to use the mind's session
@@ -343,7 +369,13 @@ const requestQuit = () => {
   if (isQuitting) return;
   isQuitting = true;
 
-  mindManager.shutdown()
+  // INVARIANT: close MindMemoryService BEFORE MindManager.shutdown so each
+  // mind's dream.db handle and scheduler entry tear down while the underlying
+  // Mind / SDK client is still alive — avoids cron ticks racing with mind
+  // teardown and leaves dream.db files cleanly closed on disk.
+  mindMemoryComposition.close()
+    .catch((err) => { log.warn('mindMemory: shutdown close failed', { err: String(err) }); })
+    .then(() => mindManager.shutdown())
     .then(() => {
       updaterService.stop();
       return stopMvpServer();
