@@ -350,7 +350,7 @@ const requestQuit = () => {
   mindManager.shutdown()
     .then(() => {
       updaterService.stop();
-      return stopMvpServer();
+      return Promise.allSettled([a2aRelayModeService.disconnect(), stopMvpServer()]);
     })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());

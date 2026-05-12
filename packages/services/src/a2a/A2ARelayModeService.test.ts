@@ -196,6 +196,52 @@ describe('A2ARelayModeService', () => {
     expect(relayClient.ackMessages).not.toHaveBeenCalled();
     await service.disconnect();
   });
+
+  it('disconnects an existing relay before reconnecting', async () => {
+    vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
+    await service.connect({
+      baseUrl: 'http://127.0.0.1:4100',
+      token: 'relay-secret',
+    });
+
+    await service.connect({
+      baseUrl: 'http://127.0.0.1:4101',
+      token: 'relay-secret-2',
+    });
+
+    expect(relayClient.unregisterAgent).toHaveBeenCalledWith('Agent A');
+    expect(relayClient.registerAgent).toHaveBeenCalledTimes(2);
+    expect(service.isConnected()).toBe(true);
+  });
+
+  it('records poll errors without rejecting the background poll loop', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
+      relayClient.pollMessages.mockRejectedValueOnce(new Error('relay down'));
+      const localDelivery = {
+        deliverToLocalMind: vi.fn(async (_mindId, request) => ({ message: request.message })),
+      };
+      service = new A2ARelayModeService(
+        localRegistry,
+        activeResolver,
+        () => relayClient as unknown as A2ARelayRegistryClientPort,
+        localDelivery,
+        1,
+      );
+
+      await service.connect({
+        baseUrl: 'http://127.0.0.1:4100',
+        token: 'relay-secret',
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(service.getLastPollError()).toBe('relay down');
+      await service.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function makeCard(mindId: string, name: string): AgentCard {

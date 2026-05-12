@@ -173,6 +173,6 @@ async function refreshRelayStatus(
     mode: 'relay',
     publishedAgentCount: relayModeService.getPublishedAgentCount(),
     relayAgentCount: await relayModeService.getRelayAgentCount(),
-    lastError: null,
+    lastError: relayModeService.getLastPollError(),
   };
 }

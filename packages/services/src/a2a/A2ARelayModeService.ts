@@ -2,6 +2,9 @@ import { ActiveA2AResolver } from './ActiveA2AResolver';
 import { AgentCardRegistry } from './AgentCardRegistry';
 import { RelayA2ARegistryClient, type RelayA2ARegistryClientOptions } from './RelayA2ARegistryClient';
 import type { A2ARelayQueuedMessage, AgentCard, SendMessageRequest, SendMessageResponse } from './types';
+import { Logger } from '../logger';
+
+const log = Logger.create('A2ARelayModeService');
 
 export interface A2ARelayRegistryClientPort {
   getCard(identifier: string): Promise<AgentCard | null>;
@@ -28,6 +31,7 @@ export class A2ARelayModeService {
   private readonly publishedAgentNamesByMindId = new Map<string, string>();
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private polling = false;
+  private lastPollError: string | null = null;
 
   constructor(
     private readonly localRegistry: AgentCardRegistry,
@@ -50,7 +54,15 @@ export class A2ARelayModeService {
     return this.relayClient ? (await this.relayClient.getCards()).length : 0;
   }
 
+  getLastPollError(): string | null {
+    return this.lastPollError;
+  }
+
   async connect(options: A2ARelayModeConnectOptions): Promise<void> {
+    if (this.relayClient) {
+      await this.disconnect();
+    }
+
     const client = this.createClient(options);
     const publishedCards = this.localRegistry.getCards().map(publishCard);
     const registeredNames: string[] = [];
@@ -70,6 +82,7 @@ export class A2ARelayModeService {
       if (card.mindId) this.publishedAgentNamesByMindId.set(card.mindId, card.name);
     }
     this.relayClient = client;
+    this.lastPollError = null;
     this.activeResolver.useRelay(client);
     this.schedulePoll();
   }
@@ -78,6 +91,7 @@ export class A2ARelayModeService {
     const client = this.relayClient;
     const publishedNames = [...this.publishedAgentNamesByMindId.values()];
     this.relayClient = null;
+    this.lastPollError = null;
     this.stopPolling();
     this.publishedAgentNamesByMindId.clear();
     this.activeResolver.useLocal();
@@ -142,6 +156,11 @@ export class A2ARelayModeService {
     this.polling = true;
     try {
       await this.pollOnce();
+      this.lastPollError = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lastPollError = message;
+      log.warn(`A2A relay poll failed: ${message}`, error);
     } finally {
       this.polling = false;
       if (this.relayClient) this.schedulePoll();

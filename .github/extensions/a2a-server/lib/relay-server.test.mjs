@@ -158,6 +158,61 @@ describe("A2A relay server", () => {
     expect((await second.json()).messages[0].attempts).toBe(2);
   });
 
+  it("evicts unacked messages after max delivery attempts", async () => {
+    relay = createA2ARelayServer({ token, leaseMs: 1, maxDeliveryAttempts: 2 });
+    const { port } = await relay.start();
+    await relayFetch(port, "/api/a2a/agents", {
+      method: "POST",
+      body: JSON.stringify({ card: makeCard("Copilot CLI") }),
+    });
+    await relayFetch(port, "/api/a2a/message:send", {
+      method: "POST",
+      body: JSON.stringify({
+        recipient: "Copilot CLI",
+        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+      }),
+    });
+
+    await relayFetch(port, "/api/a2a/messages:poll", {
+      method: "POST",
+      body: JSON.stringify({ recipients: ["Copilot CLI"] }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await relayFetch(port, "/api/a2a/messages:poll", {
+      method: "POST",
+      body: JSON.stringify({ recipients: ["Copilot CLI"] }),
+    });
+
+    expect(relay.listMessages()).toEqual([]);
+  });
+
+  it("enforces per-recipient queue limits", async () => {
+    relay = createA2ARelayServer({ token, maxQueueDepthPerRecipient: 1 });
+    const { port } = await relay.start();
+    await relayFetch(port, "/api/a2a/agents", {
+      method: "POST",
+      body: JSON.stringify({ card: makeCard("Copilot CLI") }),
+    });
+    await relayFetch(port, "/api/a2a/message:send", {
+      method: "POST",
+      body: JSON.stringify({
+        recipient: "Copilot CLI",
+        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+      }),
+    });
+
+    const response = await relayFetch(port, "/api/a2a/message:send", {
+      method: "POST",
+      body: JSON.stringify({
+        recipient: "Copilot CLI",
+        message: { messageId: "msg-2", role: "user", parts: [{ text: "again" }] },
+      }),
+    });
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({ error: "A2A relay message queue is full for Copilot CLI" });
+  });
+
   it("does not require target callback interfaces for queued delivery", async () => {
     relay = createA2ARelayServer({ token });
     const { port } = await relay.start();

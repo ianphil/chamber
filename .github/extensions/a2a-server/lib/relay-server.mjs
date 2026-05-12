@@ -3,13 +3,19 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 
 const MAX_REQUEST_BYTES = 1_000_000;
 const DEFAULT_MESSAGE_LEASE_MS = 30_000;
+const DEFAULT_MESSAGE_TTL_MS = 10 * 60_000;
+const DEFAULT_MAX_DELIVERY_ATTEMPTS = 10;
 const DEFAULT_MAX_QUEUE_DEPTH = 1_000;
+const DEFAULT_MAX_QUEUE_DEPTH_PER_RECIPIENT = 100;
 
 export function createA2ARelayServer({
   token,
   log = console.error,
   leaseMs = DEFAULT_MESSAGE_LEASE_MS,
+  messageTtlMs = DEFAULT_MESSAGE_TTL_MS,
+  maxDeliveryAttempts = DEFAULT_MAX_DELIVERY_ATTEMPTS,
   maxQueueDepth = DEFAULT_MAX_QUEUE_DEPTH,
+  maxQueueDepthPerRecipient = DEFAULT_MAX_QUEUE_DEPTH_PER_RECIPIENT,
 }) {
   const registry = new Map();
   const messages = [];
@@ -126,18 +132,25 @@ export function createA2ARelayServer({
   }
 
   function enqueueMessage(request) {
+    pruneMessages();
     const card = getCard(request.recipient);
     if (!card) throw new RelayRequestError(404, `agent not found: ${request.recipient}`);
     const recipientIdentifiers = getCardIdentifiers(card);
     if (messages.length >= maxQueueDepth) {
       throw new RelayRequestError(429, "A2A relay message queue is full");
     }
+    const recipientDepth = messages.filter((message) => message.recipient === card.name).length;
+    if (recipientDepth >= maxQueueDepthPerRecipient) {
+      throw new RelayRequestError(429, `A2A relay message queue is full for ${card.name}`);
+    }
+    const now = Date.now();
     const entry = {
       id: `relay-msg-${randomUUID()}`,
       recipient: card.name,
       recipientIdentifiers,
       request,
       enqueuedAt: new Date().toISOString(),
+      expiresAt: now + messageTtlMs,
       leasedUntil: 0,
       attempts: 0,
     };
@@ -150,6 +163,7 @@ export function createA2ARelayServer({
   }
 
   function pollMessages(recipients, limit = 25) {
+    pruneMessages();
     const recipientSet = new Set(recipients);
     const now = Date.now();
     const result = [];
@@ -171,6 +185,7 @@ export function createA2ARelayServer({
   }
 
   function ackMessages(messageIds) {
+    pruneMessages();
     const idSet = new Set(messageIds);
     let acknowledged = 0;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -179,6 +194,16 @@ export function createA2ARelayServer({
       acknowledged += 1;
     }
     return acknowledged;
+  }
+
+  function pruneMessages() {
+    const now = Date.now();
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.expiresAt <= now || message.attempts >= maxDeliveryAttempts) {
+        messages.splice(index, 1);
+      }
+    }
   }
 
   return {
@@ -199,14 +224,18 @@ export function createA2ARelayServer({
     getPort: () => port,
     getToken: () => token,
     listAgents: () => [...registry.values()],
-    listMessages: () => messages.map(({ id, recipient, request, enqueuedAt, leasedUntil, attempts }) => ({
+    listMessages: () => {
+      pruneMessages();
+      return messages.map(({ id, recipient, request, enqueuedAt, leasedUntil, expiresAt, attempts }) => ({
       id,
       recipient,
       request,
       enqueuedAt,
       leasedUntil,
+      expiresAt,
       attempts,
-    })),
+    }));
+    },
     registerAgent,
     unregisterAgent,
   };
