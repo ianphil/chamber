@@ -193,23 +193,7 @@ function startPolling(state, hooks) {
   if (state.pollTimer) return;
   const poll = async () => {
     try {
-      const response = await chamberFetch(state, "/api/a2a/messages:poll", {
-        method: "POST",
-        body: JSON.stringify({ recipients: [state.agentName], limit: 25 }),
-      });
-      const body = await response.json();
-      const ackIds = [];
-      for (const queuedMessage of Array.isArray(body.messages) ? body.messages : []) {
-        if (!queuedMessage?.id || !queuedMessage.request) continue;
-        hooks.onMessage(queuedMessage.request);
-        ackIds.push(queuedMessage.id);
-      }
-      if (ackIds.length > 0) {
-        await chamberFetch(state, "/api/a2a/messages:ack", {
-          method: "POST",
-          body: JSON.stringify({ messageIds: ackIds }),
-        });
-      }
+      await pollA2AMessages(state, hooks);
     } catch (error) {
       state.session?.log(`A2A relay poll failed: ${error instanceof Error ? error.message : String(error)}`, {
         level: "error",
@@ -220,6 +204,30 @@ function startPolling(state, hooks) {
     }
   };
   state.pollTimer = setTimeout(poll, 0);
+}
+
+export async function pollA2AMessages(state, hooks) {
+  const response = await chamberFetch(state, "/api/a2a/messages:poll", {
+    method: "POST",
+    body: JSON.stringify({ recipients: [state.agentName], limit: 25 }),
+  });
+  const body = await response.json();
+  let firstDeliveryError = null;
+  for (const queuedMessage of Array.isArray(body.messages) ? body.messages : []) {
+    if (!queuedMessage?.id || !queuedMessage.request) continue;
+    try {
+      hooks.onMessage(queuedMessage.request);
+      await chamberFetch(state, "/api/a2a/messages:ack", {
+        method: "POST",
+        body: JSON.stringify({ messageIds: [queuedMessage.id] }),
+      });
+    } catch (error) {
+      firstDeliveryError ??= error;
+    }
+  }
+  if (firstDeliveryError) {
+    throw firstDeliveryError;
+  }
 }
 
 function stopPolling(state) {
