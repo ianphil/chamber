@@ -11,6 +11,7 @@ export * from './cron';
 export * from './genesis';
 export * from './lens';
 export * from './mind';
+export * from './mindMemory';
 export * from './mindProfile';
 export * from './ports';
 export * from './sdk';
