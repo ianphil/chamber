@@ -70,7 +70,7 @@ function prepareMsalRuntime(): void {
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime}/**/*',
+      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime,better-sqlite3,bindings,file-uri-to-path}/**/*',
     },
     executableName: 'chamber',
     icon: APP_ICON_PATH,
