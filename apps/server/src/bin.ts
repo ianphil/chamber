@@ -5,6 +5,8 @@ import { Logger } from '@chamber/services';
 const log = Logger.create('server');
 import {
   A2aToolProvider,
+  A2ARelayModeService,
+  ActiveA2AResolver,
   AgentCardRegistry,
   AuthService,
   ChatService,
@@ -53,6 +55,8 @@ const authService = new AuthService(credentialStore, () => configService.load().
 const viewDiscovery = new ViewDiscovery();
 const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
+const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
+const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver);
 const mindManager = new MindManager(
   new CopilotClientFactory({ toolsBinDir: getChamberToolsBinDir() }),
   new IdentityLoader(() => configService.load().installedTools ?? []),
@@ -61,10 +65,20 @@ const mindManager = new MindManager(
 );
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService = new ChatService(mindManager, new TurnQueue());
-const messageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
-mindManager.setProviders([new A2aToolProvider(messageRouter, agentCardRegistry, taskManager)]);
-mindManager.on('mind:loaded', (mind) => agentCardRegistry.register(mind));
-mindManager.on('mind:unloaded', (mindId: string) => agentCardRegistry.unregister(mindId));
+const messageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
+mindManager.setProviders([new A2aToolProvider(messageRouter, activeA2AResolver, taskManager)]);
+mindManager.on('mind:loaded', (mind) => {
+  agentCardRegistry.register(mind);
+  a2aRelayModeService.publishLocalCard(mind.mindId).catch((error: unknown) => {
+    log.warn(`Failed to publish A2A card for ${mind.mindId}:`, error);
+  });
+});
+mindManager.on('mind:unloaded', (mindId: string) => {
+  a2aRelayModeService.unpublishLocalCard(mindId).catch((error: unknown) => {
+    log.warn(`Failed to unpublish A2A card for ${mindId}:`, error);
+  });
+  agentCardRegistry.unregister(mindId);
+});
 viewDiscovery.setRefreshHandler({
   sendBackgroundPrompt: (mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt),
 });
@@ -137,20 +151,15 @@ const productionContext: ChamberCtx = createServerContext({
     const id = mindId ?? mindManager.getActiveMindId() ?? mindManager.listMinds()[0]?.mindId;
     return id ? chatService.listModels(id) : [];
   },
-  listA2AAgents: () => agentCardRegistry.getCards(),
-  getA2AAgentCard: (recipient) =>
-    agentCardRegistry.getCard(recipient) ?? agentCardRegistry.getCardByName(recipient),
-  registerA2AAgentCard: (card, auth) => agentCardRegistry.registerRemote(card, auth),
-  unregisterA2AAgentCard: (recipient) => agentCardRegistry.unregisterRemote(recipient),
-  sendA2AMessage: (request, options) => messageRouter.sendMessage(request, options),
   shutdown: () => {
     void shutdown();
   },
   handlePrivilegedRequest: createCredentialPrivilegedHandler(credentialStore),
 });
 
-function buildE2EFakeChatContext(base: ChamberCtx): ChamberCtx {
 const useFakeChat = process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_FAKE_CHAT === '1';
+
+function buildE2EFakeChatContext(base: ChamberCtx): ChamberCtx {
   const fakeMinds = new Map<string, {
     mindId: string;
     mindPath: string;

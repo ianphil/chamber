@@ -1,21 +1,23 @@
 import { randomUUID } from "node:crypto";
 
-export function createA2ATools(state, server) {
+const POLL_INTERVAL_MS = 1_000;
+
+export function createA2ATools(state, hooks) {
   return [
     {
       name: "chamber_a2a_connect",
       description:
-        "Connect this Copilot CLI session to Chamber's loopback A2A API and register the CLI agent card.",
+        "Connect this Copilot CLI session to an A2A relay and register the CLI agent card.",
       parameters: {
         type: "object",
         properties: {
           base_url: {
             type: "string",
-            description: "Chamber server base URL, for example http://127.0.0.1:3210. Defaults to CHAMBER_A2A_URL.",
+            description: "A2A relay base URL, for example http://127.0.0.1:3210. Defaults to CHAMBER_A2A_URL.",
           },
           token: {
             type: "string",
-            description: "Chamber server bearer token. Defaults to CHAMBER_A2A_TOKEN.",
+            description: "A2A relay bearer token. Defaults to CHAMBER_A2A_TOKEN.",
           },
           agent_name: {
             type: "string",
@@ -25,11 +27,12 @@ export function createA2ATools(state, server) {
       },
       handler: async (args) => {
         updateConnection(state, args);
-        const card = await server.getAgentCard();
+        const card = createAgentCard(state.agentName);
         const response = await chamberFetch(state, "/api/a2a/agents", {
           method: "POST",
-          body: JSON.stringify({ card, inboundAuth: server.getInboundAuth() }),
+          body: JSON.stringify({ card }),
         });
+        startPolling(state, hooks);
         return {
           registered: response.ok,
           agent: card,
@@ -40,7 +43,7 @@ export function createA2ATools(state, server) {
     },
     {
       name: "chamber_a2a_list_agents",
-      description: "List A2A agent cards currently registered in Chamber.",
+      description: "List A2A agent cards currently registered in the connected relay.",
       parameters: { type: "object", properties: {} },
       handler: async () => {
         const response = await chamberFetch(state, "/api/a2a/agents", { method: "GET" });
@@ -49,13 +52,13 @@ export function createA2ATools(state, server) {
     },
     {
       name: "chamber_a2a_send_message",
-      description: "Send a message from this Copilot CLI session to a Chamber mind via A2A.",
+      description: "Send a message from this Copilot CLI session to another registered A2A agent.",
       parameters: {
         type: "object",
         properties: {
           recipient: {
             type: "string",
-            description: "Target Chamber mindId or unique agent name.",
+            description: "Target A2A agent id or unique agent name.",
           },
           message: {
             type: "string",
@@ -114,7 +117,7 @@ export function createA2ATools(state, server) {
           },
           recipient: {
             type: "string",
-            description: "Override target Chamber mindId or name. Defaults to the inbound message sender id.",
+            description: "Override target A2A agent id or name. Defaults to the inbound message sender id.",
           },
           message: {
             type: "string",
@@ -165,6 +168,39 @@ function findReplySource(inbox, messageId) {
   return inbox.at(-1) ?? null;
 }
 
+function startPolling(state, hooks) {
+  if (state.pollTimer) return;
+  const poll = async () => {
+    try {
+      const response = await chamberFetch(state, "/api/a2a/messages:poll", {
+        method: "POST",
+        body: JSON.stringify({ recipients: [state.agentName], limit: 25 }),
+      });
+      const body = await response.json();
+      const ackIds = [];
+      for (const queuedMessage of Array.isArray(body.messages) ? body.messages : []) {
+        if (!queuedMessage?.id || !queuedMessage.request) continue;
+        hooks.onMessage(queuedMessage.request);
+        ackIds.push(queuedMessage.id);
+      }
+      if (ackIds.length > 0) {
+        await chamberFetch(state, "/api/a2a/messages:ack", {
+          method: "POST",
+          body: JSON.stringify({ messageIds: ackIds }),
+        });
+      }
+    } catch (error) {
+      state.session?.log(`A2A relay poll failed: ${error instanceof Error ? error.message : String(error)}`, {
+        level: "error",
+        ephemeral: true,
+      });
+    } finally {
+      state.pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+    }
+  };
+  state.pollTimer = setTimeout(poll, 0);
+}
+
 function updateConnection(state, args) {
   if (typeof args.base_url === "string" && args.base_url.trim()) {
     state.chamberBaseUrl = args.base_url.trim().replace(/\/$/, "");
@@ -177,12 +213,40 @@ function updateConnection(state, args) {
   }
 }
 
+function createAgentCard(name) {
+  return {
+    name,
+    description: "A Copilot CLI session available for message-only A2A conversation.",
+    version: "1.0.0",
+    supportedInterfaces: [
+      {
+        url: "relay:mailbox",
+        protocolBinding: "A2A_RELAY_MAILBOX",
+        protocolVersion: "1.0",
+      },
+    ],
+    capabilities: { streaming: false, pushNotifications: false },
+    defaultInputModes: ["text/plain"],
+    defaultOutputModes: ["text/plain"],
+    skills: [
+      {
+        id: "conversation",
+        name: "Conversation",
+        description: "Receives A2A text messages into the active Copilot CLI session.",
+        tags: ["a2a", "conversation"],
+        inputModes: ["text/plain"],
+        outputModes: ["text/plain"],
+      },
+    ],
+  };
+}
+
 async function chamberFetch(state, path, options) {
   if (!state.chamberBaseUrl) {
-    throw new Error("Chamber base URL is not configured. Run chamber_a2a_connect with base_url first.");
+    throw new Error("A2A relay base URL is not configured. Run chamber_a2a_connect with base_url first.");
   }
   if (!state.chamberToken) {
-    throw new Error("Chamber token is not configured. Run chamber_a2a_connect with token first.");
+    throw new Error("A2A relay token is not configured. Run chamber_a2a_connect with token first.");
   }
   const response = await fetch(`${state.chamberBaseUrl}${path}`, {
     ...options,

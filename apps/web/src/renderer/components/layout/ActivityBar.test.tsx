@@ -36,6 +36,19 @@ describe('ActivityBar', () => {
     expect(settingsButton.closest('[data-testid="activity-bar-footer"]')).toBeTruthy();
   });
 
+  it('renders the A2A Relay button above settings', () => {
+    renderActivityBar();
+    const relayButton = screen.getByLabelText('A2A Relay');
+    const settingsButton = screen.getByLabelText('Settings');
+    const footer = relayButton.closest('[data-testid="activity-bar-footer"]');
+    expect(footer).toBeTruthy();
+    expect(settingsButton.closest('[data-testid="activity-bar-footer"]')).toBe(footer);
+    const buttons = Array.from(footer!.querySelectorAll('button'));
+    expect(buttons.findIndex((button) => button === relayButton)).toBeLessThan(
+      buttons.findIndex((button) => button === settingsButton),
+    );
+  });
+
   it('renders chat and chatroom buttons', () => {
     renderActivityBar();
     expect(screen.getByLabelText('Chat')).toBeTruthy();

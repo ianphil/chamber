@@ -1,5 +1,5 @@
-import type { AgentCard, AgentInterface, SendMessageRequest, SendMessageResponse, Message } from './types';
-import { isLoopbackHttpUrl, type AgentCardRegistry } from './AgentCardRegistry';
+import type { SendMessageRequest, SendMessageResponse, Message } from './types';
+import type { A2AAgentResolver } from './ActiveA2AResolver';
 import type { ChatService } from '../chat/ChatService';
 import type { EventEmitter } from 'events';
 import { generateMessageId, generateContextId, serializeMessageToXml } from './helpers';
@@ -8,32 +8,16 @@ import { Logger } from '../logger';
 const log = Logger.create('MessageRouter');
 
 const MAX_HOPS = 5;
-const REMOTE_SEND_TIMEOUT_MS = 30_000;
-const MAX_REMOTE_RESPONSE_BYTES = 1_000_000;
-
-export interface MessageRouterOptions {
-  fetch?: typeof fetch;
-}
-
-export interface SendMessageOptions {
-  allowRemoteRecipients?: boolean;
-}
-
 export class MessageRouter {
-  private readonly fetchImpl: typeof fetch;
-
   constructor(
     private readonly chatService: ChatService,
-    private readonly registry: AgentCardRegistry,
+    private readonly resolver: A2AAgentResolver,
     private readonly ipcEmitter: EventEmitter,
-    options: MessageRouterOptions = {},
-  ) {
-    this.fetchImpl = options.fetch ?? fetch;
-  }
+  ) {}
 
-  async sendMessage(request: SendMessageRequest, options: SendMessageOptions = {}): Promise<SendMessageResponse> {
+  async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
     // 1. Resolve recipient — try by mindId first, then by name
-    const card = this.registry.getCard(request.recipient) ?? this.registry.getCardByName(request.recipient);
+    const card = await this.resolver.getCard(request.recipient) ?? await this.resolver.getCardByName(request.recipient);
     if (!card) {
       throw new Error(`Unknown recipient: ${request.recipient}`);
     }
@@ -57,30 +41,56 @@ export class MessageRouter {
       },
     };
 
-    if (!card.mindId) {
-      if (options.allowRemoteRecipients === false) {
-        throw new Error(`Unknown local recipient: ${request.recipient}`);
-      }
-      return this.sendRemoteMessage(card, {
+    if (!card.mindId && this.resolver.canSendMessage?.() === true && this.resolver.sendMessage) {
+      return this.resolver.sendMessage({
         ...request,
         message: deliveryMessage,
-      }, contextId);
+      });
+    }
+
+    if (!card.mindId) {
+      throw new Error(`Unknown local recipient: ${request.recipient}`);
     }
     const targetMindId = card.mindId;
 
-    // 5. Serialize to XML for model injection
+    return this.deliverLocalMessage(targetMindId, deliveryMessage, request.configuration?.returnImmediately !== false);
+  }
+
+  async deliverToLocalMind(
+    targetMindId: string,
+    request: SendMessageRequest,
+  ): Promise<SendMessageResponse> {
+    const contextId = request.message.contextId || generateContextId();
+    const currentHops = getMessageHopCount(request.message.metadata?.hopCount);
+    if (currentHops >= MAX_HOPS) {
+      throw new Error(`Message exceeded maximum hop count (${MAX_HOPS})`);
+    }
+    const deliveryMessage: Message = {
+      ...request.message,
+      contextId,
+      metadata: {
+        ...request.message.metadata,
+        hopCount: currentHops + 1,
+      },
+    };
+    return this.deliverLocalMessage(targetMindId, deliveryMessage, request.configuration?.returnImmediately !== false);
+  }
+
+  private async deliverLocalMessage(
+    targetMindId: string,
+    deliveryMessage: Message,
+    returnImmediately: boolean,
+  ): Promise<SendMessageResponse> {
+    const contextId = deliveryMessage.contextId || generateContextId();
     const xmlPrompt = serializeMessageToXml(deliveryMessage);
     const replyMessageId = generateMessageId();
 
-    // 6. Emit a2a:incoming for renderer (before delivery)
     this.ipcEmitter.emit('a2a:incoming', {
       targetMindId,
-      message: deliveryMessage,
+      message: { ...deliveryMessage, contextId },
       replyMessageId,
     });
 
-    // 7. Deliver via ChatService — emit callback forwards events via IPC bus
-    const returnImmediately = request.configuration?.returnImmediately !== false;
     const deliveryPromise = this.chatService.sendMessage(
       targetMindId,
       xmlPrompt,
@@ -102,7 +112,6 @@ export class MessageRouter {
       });
     }
 
-    // 8. Return response
     return {
       message: {
         ...deliveryMessage,
@@ -111,68 +120,8 @@ export class MessageRouter {
     };
   }
 
-  private async sendRemoteMessage(
-    card: AgentCard,
-    request: SendMessageRequest,
-    contextId: string,
-  ): Promise<SendMessageResponse> {
-    const iface = findHttpJsonInterface(card);
-    if (!iface) {
-      throw new Error(`Agent ${card.name} does not expose a HTTP+JSON A2A interface`);
-    }
-    if (!isLoopbackHttpUrl(iface.url)) {
-      throw new Error(`Refusing non-loopback A2A interface for ${card.name}: ${iface.url}`);
-    }
-
-    const auth = this.registry.getRemoteAuth(card.name);
-    const headers: Record<string, string> = {
-      'content-type': 'application/a2a+json',
-      accept: 'application/a2a+json, application/json',
-    };
-    if (auth?.scheme === 'bearer') {
-      headers.authorization = `Bearer ${auth.token}`;
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REMOTE_SEND_TIMEOUT_MS);
-    try {
-      const response = await this.fetchImpl(resolveMessageSendUrl(iface.url), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(request),
-        signal: controller.signal,
-      });
-      const text = await response.text();
-      if (text.length > MAX_REMOTE_RESPONSE_BYTES) {
-        throw new Error(`A2A response from ${card.name} exceeded ${MAX_REMOTE_RESPONSE_BYTES} bytes`);
-      }
-      if (!response.ok) {
-        throw new Error(`A2A send to ${card.name} failed with HTTP ${response.status}: ${text}`);
-      }
-      const body = text ? JSON.parse(text) as SendMessageResponse : {};
-      if (!body.message && !body.task) {
-        throw new Error(`A2A send to ${card.name} returned an invalid response`);
-      }
-      if (body.message && !body.message.contextId) {
-        body.message = { ...body.message, contextId };
-      }
-      return body;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-  }
 }
 
 function getMessageHopCount(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
-}
-
-function findHttpJsonInterface(card: AgentCard): AgentInterface | null {
-  return card.supportedInterfaces.find((iface) => iface.protocolBinding === 'HTTP+JSON') ?? null;
-}
-
-function resolveMessageSendUrl(baseUrl: string): string {
-  if (baseUrl.endsWith('/message:send')) return baseUrl;
-  return `${baseUrl.replace(/\/$/, '')}/message:send`;
 }

@@ -1,15 +1,29 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { EventEmitter } from 'events';
 import { IPC } from '@chamber/shared';
-import type { AgentCardRegistry, TaskManager } from '@chamber/services';
-import { isA2AIncomingPayload, narrowTaskState } from '@chamber/shared/a2a-types';
-import type { A2AIncomingPayload, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
+import type { A2ARelayModeService, AgentCardRegistry, TaskManager } from '@chamber/services';
+import { isA2AIncomingPayload, isA2ARelayConnectRequest, narrowTaskState } from '@chamber/shared/a2a-types';
+import type { A2AIncomingPayload, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
+
+interface A2ARelayIPCOptions {
+  relayModeService?: A2ARelayModeService;
+}
 
 export function setupA2AIPC(
   ipcEmitter: EventEmitter,
   agentCardRegistry: AgentCardRegistry,
   taskManager: TaskManager,
+  relayOptions: A2ARelayIPCOptions = {},
 ): void {
+  let relayStatus: A2ARelayStatus = createDisconnectedStatus();
+
+  const emitRelayStatus = (status: A2ARelayStatus) => {
+    relayStatus = status;
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IPC.A2A.RELAY_STATE_CHANGED, status);
+    }
+  };
+
   ipcMain.on(IPC.E2E.IS_ENABLED, (event) => {
     event.returnValue = process.env.CHAMBER_E2E === '1';
   });
@@ -63,6 +77,66 @@ export function setupA2AIPC(
     return taskManager.cancelTask(taskId);
   });
 
+  ipcMain.handle(IPC.A2A.RELAY_STATUS, async () => refreshRelayStatus(relayStatus, relayOptions.relayModeService));
+
+  ipcMain.handle(IPC.A2A.RELAY_CONNECT, async (_, request: unknown) => {
+    if (!relayOptions.relayModeService) {
+      throw new Error('A2A relay control is unavailable');
+    }
+    if (!isA2ARelayConnectRequest(request)) {
+      throw new Error('Invalid A2A relay connect request');
+    }
+
+    emitRelayStatus({
+      ...relayStatus,
+      state: 'connecting',
+      mode: 'local',
+      relayBaseUrl: request.relayBaseUrl,
+      publishedBaseUrl: null,
+      lastError: null,
+    });
+
+    try {
+      await relayOptions.relayModeService.connect({
+        baseUrl: request.relayBaseUrl,
+        token: request.relayToken,
+      });
+      const nextStatus = await refreshRelayStatus({
+        state: 'connected',
+        mode: 'relay',
+        relayBaseUrl: request.relayBaseUrl,
+        publishedBaseUrl: null,
+        publishedAgentCount: 0,
+        relayAgentCount: 0,
+        lastError: null,
+        connectedAt: Date.now(),
+      }, relayOptions.relayModeService);
+      emitRelayStatus(nextStatus);
+      return nextStatus;
+    } catch (error) {
+      await relayOptions.relayModeService.disconnect().catch(() => undefined);
+      const message = error instanceof Error ? error.message : String(error);
+      const nextStatus: A2ARelayStatus = {
+        ...createDisconnectedStatus(),
+        state: 'error',
+        lastError: message,
+      };
+      emitRelayStatus(nextStatus);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPC.A2A.RELAY_DISCONNECT, async () => {
+    if (!relayOptions.relayModeService) {
+      return relayStatus;
+    }
+    emitRelayStatus({ ...relayStatus, state: 'disconnecting' });
+    await relayOptions.relayModeService.disconnect();
+    const nextStatus = createDisconnectedStatus();
+    emitRelayStatus(nextStatus);
+    return nextStatus;
+  });
+
   if (process.env.CHAMBER_E2E === '1') {
     ipcMain.handle(IPC.E2E.A2A_INCOMING, async (_, payload: unknown) => {
       if (!isA2AIncomingPayload(payload)) {
@@ -71,4 +145,34 @@ export function setupA2AIPC(
       ipcEmitter.emit('a2a:incoming', payload);
     });
   }
+}
+
+function createDisconnectedStatus(): A2ARelayStatus {
+  return {
+    state: 'disconnected',
+    mode: 'local',
+    relayBaseUrl: null,
+    publishedBaseUrl: null,
+    publishedAgentCount: 0,
+    relayAgentCount: 0,
+    lastError: null,
+    connectedAt: null,
+  };
+}
+
+async function refreshRelayStatus(
+  status: A2ARelayStatus,
+  relayModeService?: A2ARelayModeService,
+): Promise<A2ARelayStatus> {
+  if (!relayModeService?.isConnected()) {
+    return status.state === 'error' ? status : createDisconnectedStatus();
+  }
+  return {
+    ...status,
+    state: 'connected',
+    mode: 'relay',
+    publishedAgentCount: relayModeService.getPublishedAgentCount(),
+    relayAgentCount: await relayModeService.getRelayAgentCount(),
+    lastError: null,
+  };
 }

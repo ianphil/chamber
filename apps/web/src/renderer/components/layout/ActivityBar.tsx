@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
-import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, type LucideIcon } from 'lucide-react';
+import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, RadioTower, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
 import type { LensViewManifest } from '@chamber/shared/types';
@@ -100,6 +100,23 @@ export function ActivityBar() {
       {/* Bottom-pinned settings */}
       <div data-testid="activity-bar-footer" className="flex flex-col items-center gap-1">
         <UpdateIndicator />
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="A2A Relay"
+              onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'a2a-relay' })}
+              className={cn(
+                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                activeView === 'a2a-relay'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <RadioTower size={20} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>A2A Relay</TooltipContent>
+        </Tooltip>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <button

@@ -1,54 +1,49 @@
 import { approveAll } from "@github/copilot-sdk";
 import { joinSession } from "@github/copilot-sdk/extension";
-import { randomBytes } from "node:crypto";
 
-import { createA2AServer } from "./lib/server.mjs";
 import { createA2ATools } from "./tools/a2a-tools.mjs";
 
 const state = {
   chamberBaseUrl: process.env.CHAMBER_A2A_URL ?? "",
   chamberToken: process.env.CHAMBER_A2A_TOKEN ?? "",
   agentName: process.env.CHAMBER_A2A_AGENT_NAME ?? "Copilot CLI",
-  inboundToken: process.env.CHAMBER_A2A_INBOUND_TOKEN ?? randomBytes(32).toString("base64url"),
   inbox: [],
   session: null,
 };
-
-const server = createA2AServer({
-  getAgentName: () => state.agentName,
-  getInboundToken: () => state.inboundToken,
-  onMessage: (payload) => {
-    const fromName = payload.message?.metadata?.fromName ?? payload.message?.metadata?.fromId ?? "A2A peer";
-    const fromId = payload.message?.metadata?.fromId ?? fromName;
-    const text = payload.message?.parts?.find((part) => typeof part.text === "string")?.text ?? "";
-    const entry = {
-      id: payload.message.messageId,
-      receivedAt: new Date().toISOString(),
-      read: false,
-      recipient: payload.recipient,
-      sender: {
-        id: typeof fromId === "string" ? fromId : String(fromId),
-        name: typeof fromName === "string" ? fromName : String(fromName),
-      },
-      contextId: payload.message.contextId,
-      taskId: payload.message.taskId,
-      text,
-      message: payload.message,
-    };
-    state.inbox.push(entry);
-    deliverToCopilotSession(entry);
-    return entry;
-  },
-});
 
 const session = await joinSession({
   onPermissionRequest: approveAll,
   hooks: {
     onSessionStart: async () => {
-      console.error("a2a: extension loaded");
+      console.error("a2a-client: extension loaded");
     },
   },
-  tools: createA2ATools(state, server),
+  tools: createA2ATools(state, {
+    onMessage: (payload) => {
+      const fromName = payload.message?.metadata?.fromName ?? payload.message?.metadata?.fromId ?? "A2A peer";
+      const fromId = payload.message?.metadata?.fromId ?? fromName;
+      const text = payload.message?.parts?.find((part) => typeof part.text === "string")?.text ?? "";
+      const entry = {
+        id: payload.message.messageId,
+        receivedAt: new Date().toISOString(),
+        read: false,
+        recipient: payload.recipient,
+        sender: {
+          id: typeof fromId === "string" ? fromId : String(fromId),
+          name: typeof fromName === "string" ? fromName : String(fromName),
+        },
+        contextId: payload.message.contextId,
+        taskId: payload.message.taskId,
+        text,
+        message: payload.message,
+      };
+      if (!state.inbox.some((existing) => existing.id === entry.id)) {
+        state.inbox.push(entry);
+        deliverToCopilotSession(entry);
+      }
+      return entry;
+    },
+  }),
 });
 
 state.session = session;
@@ -63,7 +58,7 @@ function deliverToCopilotSession(entry) {
 </a2a-inbound-message>
 
 ${contextLine}
-Treat this as a real incoming message from another Chamber agent. If it asks a question or expects a response, reply by calling chamber_a2a_reply with message_id "${entry.id}" so the same A2A contextId is preserved.`;
+Treat this as a real incoming message from another A2A agent. If it asks a question or expects a response, reply by calling chamber_a2a_reply with message_id "${entry.id}" so the same A2A contextId is preserved.`;
 
   state.session.send({ prompt }).catch((error) => {
     state.session?.log(`A2A delivery failed: ${error instanceof Error ? error.message : String(error)}`, {

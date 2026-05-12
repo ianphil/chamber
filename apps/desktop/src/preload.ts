@@ -112,6 +112,10 @@ const electronAPI: ElectronAPI = {
     getTask: (taskId: string, historyLength?: number) => ipcRenderer.invoke(IPC.A2A.GET_TASK, taskId, historyLength),
     listTasks: (filter?: { contextId?: string; status?: string }) => ipcRenderer.invoke(IPC.A2A.LIST_TASKS, filter),
     cancelTask: (taskId: string) => ipcRenderer.invoke(IPC.A2A.CANCEL_TASK, taskId),
+    relayStatus: () => ipcRenderer.invoke(IPC.A2A.RELAY_STATUS),
+    relayConnect: (request) => ipcRenderer.invoke(IPC.A2A.RELAY_CONNECT, request),
+    relayDisconnect: () => ipcRenderer.invoke(IPC.A2A.RELAY_DISCONNECT),
+    onRelayStateChanged: (callback) => createIpcListener(ipcRenderer, IPC.A2A.RELAY_STATE_CHANGED, callback),
   },
   window: {
     minimize: () => ipcRenderer.send(IPC.WINDOW.MINIMIZE),

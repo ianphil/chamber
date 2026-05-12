@@ -9,7 +9,6 @@ const mockRegistry = {
   getCard: vi.fn(),
   getCards: vi.fn(),
   getCardByName: vi.fn(),
-  getRemoteAuth: vi.fn(),
 };
 
 const mockChatService = {
@@ -50,7 +49,6 @@ describe('MessageRouter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRegistry.getRemoteAuth.mockReturnValue(null);
     emitter = new EventEmitter();
     router = new MessageRouter(mockChatService as unknown as ChatService, mockRegistry as unknown as AgentCardRegistry, emitter);
   });
@@ -79,87 +77,38 @@ describe('MessageRouter', () => {
     await expect(router.sendMessage(req)).rejects.toThrow('Unknown recipient: nobody');
   });
 
-  it('sendMessage() posts to loopback HTTP+JSON agents when the card is remote', async () => {
-    const remoteCard = makeCard({
+  it('sendMessage() refuses cards that are not backed by a local mind', async () => {
+    mockRegistry.getCard.mockReturnValue(makeCard({
       mindId: undefined as never,
       name: 'Copilot CLI',
       supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
-    });
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
-      message: { messageId: 'remote-reply', role: 'agent', parts: [{ text: 'ack' }] },
-    }), { status: 200 }));
-    router = new MessageRouter(
-      mockChatService as unknown as ChatService,
-      mockRegistry as unknown as AgentCardRegistry,
-      emitter,
-      { fetch: fetchImpl as unknown as typeof fetch },
-    );
-    mockRegistry.getCard.mockReturnValue(remoteCard);
-
-    const req = makeRequest('Copilot CLI', 'hello remote');
-    const res = await router.sendMessage(req);
-
-    expect(fetchImpl).toHaveBeenCalled();
-    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    const requestBody = JSON.parse(init.body as string) as SendMessageRequest;
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:4123/a2a/message:send', expect.objectContaining({
-      method: 'POST',
-      body: expect.any(String),
     }));
-    expect(requestBody.message.contextId).toMatch(/^ctx-/);
-    expect(requestBody.message.metadata?.hopCount).toBe(1);
-    expect(res.message?.messageId).toBe('remote-reply');
-    expect(res.message?.contextId).toBe(requestBody.message.contextId);
+
+    await expect(router.sendMessage(makeRequest('Copilot CLI', 'hello'))).rejects.toThrow('Unknown local recipient: Copilot CLI');
+  });
+
+  it('sendMessage() routes non-local cards through the active relay transport', async () => {
+    const sendMessage = vi.fn(async (request: SendMessageRequest) => ({ message: request.message }));
+    router = new MessageRouter(mockChatService as unknown as ChatService, {
+      getCard: vi.fn(() => makeCard({
+        mindId: undefined as never,
+        name: 'Copilot CLI',
+        supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+      })),
+      getCardByName: vi.fn(),
+      getCards: vi.fn(),
+      canSendMessage: () => true,
+      sendMessage,
+    }, emitter);
+
+    const response = await router.sendMessage(makeRequest('Copilot CLI', 'hello'));
+
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      recipient: 'Copilot CLI',
+      message: expect.objectContaining({ contextId: expect.stringMatching(/^ctx-/) }),
+    }));
     expect(mockChatService.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('sendMessage() includes registered remote bearer auth when posting to loopback HTTP+JSON agents', async () => {
-    const remoteCard = makeCard({
-      mindId: undefined as never,
-      name: 'Copilot CLI',
-      supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
-    });
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
-      message: { messageId: 'remote-reply', role: 'agent', parts: [{ text: 'ack' }], contextId: 'ctx-auth' },
-    }), { status: 200 }));
-    router = new MessageRouter(
-      mockChatService as unknown as ChatService,
-      mockRegistry as unknown as AgentCardRegistry,
-      emitter,
-      { fetch: fetchImpl as unknown as typeof fetch },
-    );
-    mockRegistry.getCard.mockReturnValue(remoteCard);
-    mockRegistry.getRemoteAuth.mockReturnValue({ scheme: 'bearer', token: 'remote-secret' });
-
-    await router.sendMessage(makeRequest('Copilot CLI', 'hello remote', {
-      message: { messageId: 'msg-auth', role: 'user', parts: [{ text: 'hello remote' }], contextId: 'ctx-auth' },
-    }));
-
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:4123/a2a/message:send', expect.objectContaining({
-      headers: expect.objectContaining({ authorization: 'Bearer remote-secret' }),
-    }));
-  });
-
-  it('sendMessage() refuses remote recipients when local-only delivery is requested', async () => {
-    mockRegistry.getCard.mockReturnValue(makeCard({
-      mindId: undefined as never,
-      name: 'Copilot CLI',
-      supportedInterfaces: [{ url: 'http://127.0.0.1:4123/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
-    }));
-
-    await expect(router.sendMessage(makeRequest('Copilot CLI', 'hello'), {
-      allowRemoteRecipients: false,
-    })).rejects.toThrow('Unknown local recipient: Copilot CLI');
-  });
-
-  it('sendMessage() refuses non-loopback remote interfaces', async () => {
-    mockRegistry.getCard.mockReturnValue(makeCard({
-      mindId: undefined as never,
-      name: 'Remote',
-      supportedInterfaces: [{ url: 'https://example.com/a2a', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
-    }));
-
-    await expect(router.sendMessage(makeRequest('Remote', 'hello'))).rejects.toThrow(/non-loopback/);
+    expect(response.message?.parts[0].text).toBe('hello');
   });
 
   it('sendMessage() assigns contextId on first message', async () => {

@@ -3,22 +3,15 @@ import * as path from 'path';
 import type { AgentCard, AgentSkill } from './types';
 import type { MindContext } from '@chamber/shared/types';
 
-export interface RemoteAgentAuth {
-  scheme: 'bearer';
-  token: string;
-}
-
 export class AgentCardRegistry {
   private localCards = new Map<string, AgentCard>();
-  private remoteCards = new Map<string, AgentCard>();
-  private remoteAuth = new Map<string, RemoteAgentAuth>();
 
   getCard(identifier: string): AgentCard | null {
-    return this.localCards.get(identifier) ?? this.remoteCards.get(identifier) ?? null;
+    return this.localCards.get(identifier) ?? null;
   }
 
   getCards(): AgentCard[] {
-    return [...this.localCards.values(), ...this.remoteCards.values()];
+    return [...this.localCards.values()];
   }
 
   getCardByName(name: string): AgentCard | null {
@@ -48,66 +41,6 @@ export class AgentCardRegistry {
 
   unregister(mindId: string): void {
     this.localCards.delete(mindId);
-  }
-
-  registerRemote(card: AgentCard, auth?: RemoteAgentAuth): void {
-    this.validateRemoteCard(card);
-    if (auth) this.validateRemoteAuth(auth);
-    this.remoteCards.set(card.name, card);
-    if (auth) {
-      this.remoteAuth.set(card.name, auth);
-    } else {
-      this.remoteAuth.delete(card.name);
-    }
-  }
-
-  unregisterRemote(name: string): void {
-    this.remoteCards.delete(name);
-    this.remoteAuth.delete(name);
-  }
-
-  getRemoteAuth(identifier: string): RemoteAgentAuth | null {
-    const card = this.remoteCards.get(identifier) ?? this.getRemoteCardByName(identifier);
-    if (!card) return null;
-    return this.remoteAuth.get(card.name) ?? null;
-  }
-
-  private validateRemoteCard(card: AgentCard): void {
-    if (card.mindId) {
-      throw new Error('Remote agent cards must not include a Chamber mindId');
-    }
-    if (!card.name.trim()) {
-      throw new Error('Remote agent card name is required');
-    }
-    if (this.localCards.has(card.name) || this.getLocalCardByName(card.name)) {
-      throw new Error(`Remote agent card conflicts with local agent: ${card.name}`);
-    }
-    const httpInterfaces = card.supportedInterfaces.filter((iface) => iface.protocolBinding === 'HTTP+JSON');
-    if (httpInterfaces.length === 0) {
-      throw new Error('Remote agent card must declare a HTTP+JSON interface');
-    }
-    for (const iface of httpInterfaces) {
-      if (!isLoopbackHttpUrl(iface.url)) {
-        throw new Error(`Remote A2A interface must be loopback HTTP: ${iface.url}`);
-      }
-    }
-  }
-
-  private getLocalCardByName(name: string): AgentCard | null {
-    return [...this.localCards.values()].find((card) => card.name === name) ?? null;
-  }
-
-  private getRemoteCardByName(name: string): AgentCard | null {
-    return [...this.remoteCards.values()].find((card) => card.name === name) ?? null;
-  }
-
-  private validateRemoteAuth(auth: RemoteAgentAuth): void {
-    if (auth.scheme !== 'bearer') {
-      throw new Error(`Unsupported remote A2A auth scheme: ${auth.scheme}`);
-    }
-    if (!auth.token.trim()) {
-      throw new Error('Remote A2A bearer token is required');
-    }
   }
 
   private discoverSkills(mindPath: string): AgentSkill[] {
@@ -150,17 +83,4 @@ export class AgentCardRegistry {
     }
     return '';
   }
-}
-
-export function isLoopbackHttpUrl(value: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  return (
-    url.protocol === 'http:' &&
-    (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]')
-  );
 }

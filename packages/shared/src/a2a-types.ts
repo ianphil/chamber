@@ -40,6 +40,8 @@ export interface SendMessageConfiguration {
 export interface SendMessageResponse {
   task?: Task;
   message?: Message;
+  queued?: boolean;
+  queueMessageId?: string;
 }
 
 export interface Task {
@@ -109,6 +111,8 @@ export interface AgentCard {
   skills: AgentSkill[];
   /** Chamber-specific: the mindId for in-process routing */
   mindId?: string;
+  /** Optional alternate recipient identifiers accepted by a relay. */
+  aliases?: string[];
 }
 
 export interface AgentSkill {
@@ -190,6 +194,63 @@ export interface A2AIncomingPayload {
   targetMindId: string;
   message: Message;
   replyMessageId: string;
+}
+
+export interface A2ARelayQueuedMessage {
+  id: string;
+  recipient: string;
+  request: SendMessageRequest;
+  enqueuedAt: string;
+  attempts: number;
+}
+
+export interface A2ARelayPollRequest {
+  recipients: string[];
+  limit?: number;
+}
+
+export interface A2ARelayPollResponse {
+  messages: A2ARelayQueuedMessage[];
+}
+
+export interface A2ARelayAckRequest {
+  messageIds: string[];
+}
+
+export interface A2ARelayAckResponse {
+  acknowledged: number;
+}
+
+export type A2ARelayConnectionState = 'disconnected' | 'connecting' | 'connected' | 'disconnecting' | 'error';
+
+export interface A2ARelayStatus {
+  state: A2ARelayConnectionState;
+  mode: 'local' | 'relay';
+  relayBaseUrl: string | null;
+  publishedBaseUrl: string | null;
+  publishedAgentCount: number;
+  relayAgentCount: number;
+  lastError: string | null;
+  connectedAt: number | null;
+}
+
+export interface A2ARelayConnectRequest {
+  relayBaseUrl: string;
+  relayToken: string;
+  publishedBaseUrl?: string;
+  inboundToken?: string;
+}
+
+export function isA2ARelayConnectRequest(value: unknown): value is A2ARelayConnectRequest {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.relayBaseUrl === 'string' &&
+    value.relayBaseUrl.trim().length > 0 &&
+    typeof value.relayToken === 'string' &&
+    value.relayToken.trim().length > 0 &&
+    (value.publishedBaseUrl === undefined || typeof value.publishedBaseUrl === 'string') &&
+    (value.inboundToken === undefined || typeof value.inboundToken === 'string')
+  );
 }
 
 export function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayload {

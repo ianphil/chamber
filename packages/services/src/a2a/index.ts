@@ -1,6 +1,14 @@
 export * from './types';
 export * from './helpers';
+export { A2AInboundDeliveryServer } from './A2AInboundDeliveryServer';
+export type { A2AInboundDeliveryServerOptions } from './A2AInboundDeliveryServer';
+export { A2ARelayModeService } from './A2ARelayModeService';
+export type { A2ARelayModeConnectOptions, A2ARelayRegistryClientPort } from './A2ARelayModeService';
+export { ActiveA2AResolver } from './ActiveA2AResolver';
+export type { A2AAgentResolver, A2AResolverMode, RelayA2AResolverClient } from './ActiveA2AResolver';
 export { AgentCardRegistry } from './AgentCardRegistry';
+export { RelayA2ARegistryClient } from './RelayA2ARegistryClient';
+export type { RelayA2ARegistryClientOptions, RelayAgentRegistration } from './RelayA2ARegistryClient';
 export { MessageRouter } from './MessageRouter';
 export { TaskManager } from './TaskManager';
 export { A2aToolProvider } from './A2aToolProvider';

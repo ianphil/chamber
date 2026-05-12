@@ -83,6 +83,10 @@ describe('IPC channel constants', () => {
     expect(IPC.A2A.GET_TASK).toBe('a2a:getTask');
     expect(IPC.A2A.LIST_TASKS).toBe('a2a:listTasks');
     expect(IPC.A2A.CANCEL_TASK).toBe('a2a:cancelTask');
+    expect(IPC.A2A.RELAY_STATUS).toBe('a2a:relay-status');
+    expect(IPC.A2A.RELAY_CONNECT).toBe('a2a:relay-connect');
+    expect(IPC.A2A.RELAY_DISCONNECT).toBe('a2a:relay-disconnect');
+    expect(IPC.A2A.RELAY_STATE_CHANGED).toBe('a2a:relay-state-changed');
 
     expect(IPC.WINDOW.MINIMIZE).toBe('window:minimize');
     expect(IPC.WINDOW.MAXIMIZE).toBe('window:maximize');

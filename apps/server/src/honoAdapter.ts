@@ -3,7 +3,6 @@ import type { Context } from 'hono';
 import { getRequestListener } from '@hono/node-server';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { registerA2ARoutes } from '@chamber/webapi';
 import {
   addMindHandler,
   cancelChatHandler,
@@ -126,7 +125,6 @@ export function createHonoApp(ctx: ChamberCtx): Hono {
     return send(c, await logoutAuthHandler(toRequest(c), ctx));
   });
   app.get('/api/chamber-tools/list', authenticated(listChamberToolsHandler));
-  registerA2ARoutes(app, ctx, { exposeInternalErrors: true });
   app.post('/api/attachments', async (c) => {
     const authFailure = requireAuth(c, ctx);
     if (authFailure) return authFailure;

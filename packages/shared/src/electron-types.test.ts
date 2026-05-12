@@ -28,6 +28,10 @@ describe('ElectronAPI contract', () => {
 
     expectTypeOf<ElectronAPI['updater']['getState']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['listAgents']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['relayStatus']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['relayConnect']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['relayDisconnect']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['onRelayStateChanged']>().toBeFunction();
   });
 
   it('declares window.electronAPI as ElectronAPI globally', () => {

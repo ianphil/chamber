@@ -23,7 +23,7 @@ module.exports = {
       severity: 'error',
       from: { path: '^(apps/(desktop|web)(/|$)|packages)' },
       to: { path: '^hono' },
-      comment: 'Only apps/server and apps/webapi own Hono route adapters; desktop consumes webapi factories.',
+      comment: 'Only apps/server owns Hono route adapters.',
     },
   ],
   options: {

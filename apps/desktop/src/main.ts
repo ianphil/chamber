@@ -4,13 +4,13 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import type { Server } from 'node:http';
 import started from 'electron-squirrel-startup';
 import { IPC } from '@chamber/shared';
-import { createA2AHttpServer } from '@chamber/webapi';
 
 import {
   A2aToolProvider,
+  A2ARelayModeService,
+  ActiveA2AResolver,
   AgentCardRegistry,
   ApprovalGate,
   AuthService,
@@ -195,6 +195,7 @@ const viewDiscovery = new ViewDiscovery();
 
 const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
+const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
 const turnQueue = new TurnQueue();
 const mindManager: MindManager = new MindManager(clientFactory, identityLoader, configService, viewDiscovery);
 const mindProfileService = new MindProfileService({
@@ -213,7 +214,8 @@ const microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
 );
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
-const messageRouter: MessageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
+const messageRouter: MessageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
+const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
 const chatroomApprovalGate = new ApprovalGate();
 chatroomApprovalGate.setApprovalHandler(async (request) => ({
   correlationId: request.correlationId,
@@ -253,7 +255,7 @@ const cronService = new CronService({
   },
   notifier,
 });
-const a2aToolProvider = new A2aToolProvider(messageRouter, agentCardRegistry, taskManager);
+const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
 
 const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
 let chamberCopilotService: ChamberCopilotService | null = null;
@@ -317,7 +319,7 @@ if (configService.load().chamberCopilotEnabled === true) {
 
 mindManager.setProviders(mindToolProviders);
 
-wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
+wireLifecycleEvents({ mindManager, agentCardRegistry, a2aRelayModeService, taskManager, a2aEventBus });
 
 // Wire Lens refresh to use the mind's session
 viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
@@ -327,16 +329,11 @@ let appTray: ElectronTray | null = null;
 let windowIcon: NativeImage | undefined;
 let isQuitting = false;
 let serverChild: ChildProcessWithoutNullStreams | null = null;
-let desktopA2AServer: Server | null = null;
 let mvpServerUrl: string | null = null;
 const launchProtocolUrl = findMarketplaceInstallUrl(process.argv);
 const pendingProtocolUrls: string[] = launchProtocolUrl ? [launchProtocolUrl] : [];
 const shouldMinimizeToTray = process.platform === 'win32';
 const useMvpServer = process.env.CHAMBER_MVP_SERVER === '1';
-const useDesktopA2AServer =
-  process.env.CHAMBER_A2A_SERVER === '1' ||
-  process.env.CHAMBER_A2A_PORT !== undefined ||
-  process.env.CHAMBER_SERVER_PORT !== undefined;
 const updaterService = new UpdaterService({
   currentVersion: app.getVersion(),
   isPackaged: app.isPackaged,
@@ -353,7 +350,7 @@ const requestQuit = () => {
   mindManager.shutdown()
     .then(() => {
       updaterService.stop();
-      return Promise.all([stopMvpServer(), stopDesktopA2AServer()]);
+      return stopMvpServer();
     })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
@@ -417,51 +414,6 @@ function stopMvpServer(): Promise<void> {
       resolve();
     });
     child.kill();
-  });
-}
-
-async function startDesktopA2AServer(): Promise<void> {
-  if (!useDesktopA2AServer || desktopA2AServer) return;
-  const port = Number(process.env.CHAMBER_A2A_PORT ?? process.env.CHAMBER_SERVER_PORT ?? 0);
-  const token = process.env.CHAMBER_A2A_TOKEN ?? process.env.CHAMBER_SERVER_TOKEN ?? randomBytes(32).toString('base64url');
-
-  const controls = createA2AHttpServer({
-    token,
-    allowedOrigins: new Set(['http://127.0.0.1', 'http://localhost']),
-    listA2AAgents: () => agentCardRegistry.getCards(),
-    getA2AAgentCard: (recipient) =>
-      agentCardRegistry.getCard(recipient) ?? agentCardRegistry.getCardByName(recipient),
-    registerA2AAgentCard: (card, auth) => agentCardRegistry.registerRemote(card, auth),
-    unregisterA2AAgentCard: (recipient) => agentCardRegistry.unregisterRemote(recipient),
-    sendA2AMessage: (request, options) => messageRouter.sendMessage(request, options),
-  }, {
-    logger: { warn: (message, error) => log.warn(message, error) },
-  });
-  desktopA2AServer = controls.server;
-
-  await new Promise<void>((resolve, reject) => {
-    desktopA2AServer?.once('error', reject);
-    desktopA2AServer?.listen(port, '127.0.0.1', () => {
-      desktopA2AServer?.off('error', reject);
-      const address = desktopA2AServer?.address();
-      const actualPort = typeof address === 'object' && address ? address.port : port;
-      log.info(`Desktop A2A loopback ready at http://127.0.0.1:${actualPort}`);
-      console.log(JSON.stringify({ type: 'a2a-ready', host: '127.0.0.1', port: actualPort, token }));
-      resolve();
-    });
-  });
-}
-
-function stopDesktopA2AServer(): Promise<void> {
-  return new Promise((resolve) => {
-    if (!desktopA2AServer?.listening) {
-      desktopA2AServer = null;
-      resolve();
-      return;
-    }
-    const server = desktopA2AServer;
-    desktopA2AServer = null;
-    server.close(() => resolve());
   });
 }
 
@@ -644,8 +596,6 @@ app.on('ready', async () => {
   if (useMvpServer) {
     await startMvpServer();
   }
-  await startDesktopA2AServer();
-
   // Eagerly start the chamber-copilot ACP connection (when the flag is on)
   // so the cli_* tools are available to the very first mind load.
   // MindManager.doLoadMind calls getSessionTools BEFORE activateProviders;
@@ -685,7 +635,9 @@ app.on('ready', async () => {
   setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);
   setupAuthIPC(authService, mindManager);
-  setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
+  setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
+    relayModeService: a2aRelayModeService,
+  });
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);
 

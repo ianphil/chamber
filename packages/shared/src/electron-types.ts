@@ -10,6 +10,8 @@
  */
 import type {
   A2AIncomingPayload,
+  A2ARelayConnectRequest,
+  A2ARelayStatus,
   AgentCard,
   ListTasksResponse,
   Task,
@@ -136,6 +138,10 @@ export interface ElectronAPI {
     getTask: (taskId: string, historyLength?: number) => Promise<Task | null>;
     listTasks: (filter?: { contextId?: string; status?: string }) => Promise<ListTasksResponse>;
     cancelTask: (taskId: string) => Promise<Task | { error: string }>;
+    relayStatus: () => Promise<A2ARelayStatus>;
+    relayConnect: (request: A2ARelayConnectRequest) => Promise<A2ARelayStatus>;
+    relayDisconnect: () => Promise<A2ARelayStatus>;
+    onRelayStateChanged: (callback: (status: A2ARelayStatus) => void) => () => void;
   };
   e2e?: {
     emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;
