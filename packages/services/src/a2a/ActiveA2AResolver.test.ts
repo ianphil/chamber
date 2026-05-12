@@ -42,7 +42,7 @@ describe('ActiveA2AResolver', () => {
   it('exposes relay message transport only in relay mode', async () => {
     const request = {
       recipient: 'relay-agent',
-      message: { messageId: 'msg-1', role: 'user' as const, parts: [{ text: 'hello' }] },
+      message: { messageId: 'msg-1', role: 'ROLE_USER' as const, parts: [{ text: 'hello' }] },
     };
     const response = { message: request.message };
 
@@ -104,7 +104,7 @@ function makeCard(mindId: string, name: string): AgentCard {
     name,
     description: `${name} description`,
     version: '1.0.0',
-    supportedInterfaces: [{ url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' }],
+    supportedInterfaces: [{ url: `chamber:mind:${encodeURIComponent(mindId)}`, protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' }],
     capabilities: { streaming: true },
     defaultInputModes: ['text/plain'],
     defaultOutputModes: ['text/plain'],

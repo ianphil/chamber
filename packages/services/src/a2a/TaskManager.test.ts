@@ -17,7 +17,7 @@ function makeCard(overrides: Partial<AgentCard> & { mindId: string; name: string
   return {
     description: 'Test agent',
     version: '1.0.0',
-    supportedInterfaces: [{ url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' }],
+    supportedInterfaces: [{ url: `chamber:mind:${encodeURIComponent(overrides.mindId)}`, protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' }],
     capabilities: { streaming: true },
     defaultInputModes: ['text/plain'],
     defaultOutputModes: ['text/plain'],
@@ -35,7 +35,7 @@ function makeRequest(
     recipient,
     message: {
       messageId: 'msg-test-1',
-      role: 'user',
+      role: 'ROLE_USER',
       parts: [{ text, mediaType: 'text/plain' }],
       metadata: { fromId: 'sender-1', fromName: 'Sender' },
       contextId: opts?.contextId,
@@ -110,7 +110,7 @@ describe('TaskManager', () => {
 
   it('sendTask() sets initial state to submitted', async () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
-    expect(task.status.state).toBe('submitted');
+    expect(task.status.state).toBe('TASK_STATE_SUBMITTED');
   });
 
 
@@ -129,7 +129,7 @@ describe('TaskManager', () => {
     await tm.sendTask(makeRequest('target-1', 'hello'));
     await flushPromises();
 
-    const workingEvent = events.find((e) => e.status.state === 'working');
+    const workingEvent = events.find((e) => e.status.state === 'TASK_STATE_WORKING');
     expect(workingEvent).toBeDefined();
   });
 
@@ -147,8 +147,8 @@ describe('TaskManager', () => {
 
     const fetched = tm.getTask(task.id);
     if (!fetched) throw new Error('Expected task to exist');
-    expect(fetched.status.state).toBe('completed');
-    expect(events.some((e) => e.status.state === 'completed')).toBe(true);
+    expect(fetched.status.state).toBe('TASK_STATE_COMPLETED');
+    expect(events.some((e) => e.status.state === 'TASK_STATE_COMPLETED')).toBe(true);
   });
 
 
@@ -164,14 +164,14 @@ describe('TaskManager', () => {
 
     const fetched = tm.getTask(task.id);
     if (!fetched) throw new Error('Expected task to exist');
-    expect(fetched.status.state).toBe('failed');
-    expect(events.some((e) => e.status.state === 'failed')).toBe(true);
+    expect(fetched.status.state).toBe('TASK_STATE_FAILED');
+    expect(events.some((e) => e.status.state === 'TASK_STATE_FAILED')).toBe(true);
   });
 
 
   it('sendTask() returns task immediately (state is submitted, not completed)', async () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
-    expect(task.status.state).toBe('submitted');
+    expect(task.status.state).toBe('TASK_STATE_SUBMITTED');
   });
 
 
@@ -233,7 +233,7 @@ describe('TaskManager', () => {
     // referenceTaskIds should be on the history's first message
     const fetched = tm.getTask(task.id);
     if (!fetched) throw new Error('Expected task to exist');
-    const userMsg = fetched.history?.find((m) => m.role === 'user');
+    const userMsg = fetched.history?.find((m) => m.role === 'ROLE_USER');
     expect(userMsg?.referenceTaskIds).toEqual(['task-prev-1', 'task-prev-2']);
   });
 
@@ -342,7 +342,7 @@ describe('TaskManager', () => {
     await tm.sendTask(makeRequest('target-1', 'b'));
 
     // task a should be completed, task b submitted/working
-    const completed = tm.listTasks({ status: 'completed' as TaskState });
+    const completed = tm.listTasks({ status: 'TASK_STATE_COMPLETED' as TaskState });
     expect(completed.tasks.length).toBe(1);
     expect(completed.tasks[0].id).toBe(task.id);
   });
@@ -351,7 +351,7 @@ describe('TaskManager', () => {
   it('cancelTask() sets state to canceled', async () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
     const canceled = tm.cancelTask(task.id);
-    expect(canceled.status.state).toBe('canceled');
+    expect(canceled.status.state).toBe('TASK_STATE_CANCELED');
   });
 
 
@@ -364,7 +364,7 @@ describe('TaskManager', () => {
 
     const taskBeforeCancel = tm.getTask(task.id);
     if (!taskBeforeCancel) throw new Error('Expected task to exist');
-    expect(taskBeforeCancel.status.state).toBe('completed');
+    expect(taskBeforeCancel.status.state).toBe('TASK_STATE_COMPLETED');
     expect(() => tm.cancelTask(task.id)).toThrow();
   });
 
@@ -387,7 +387,7 @@ describe('TaskManager', () => {
       const t = tm.getTask(id);
       expect(t).not.toBeNull();
       if (!t) throw new Error('Expected task to exist');
-      expect(t.status.state).toBe('completed');
+      expect(t.status.state).toBe('TASK_STATE_COMPLETED');
     }
 
     // Verify limit is documented
@@ -468,7 +468,7 @@ describe('TaskManager', () => {
 
       const fetched = tm.getTask(task.id);
       if (!fetched) throw new Error('Expected task to exist');
-      expect(fetched.status.state).toBe('input-required');
+      expect(fetched.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
     });
 
 
@@ -483,7 +483,7 @@ describe('TaskManager', () => {
       capturedOnUserInputRequest({ question: 'Need info' }, { sessionId: 'sess-1' });
       await flushPromises();
 
-      const inputRequiredEvent = events.find((e) => e.status.state === 'input-required');
+      const inputRequiredEvent = events.find((e) => e.status.state === 'TASK_STATE_INPUT_REQUIRED');
       expect(inputRequiredEvent).toBeDefined();
       expect(inputRequiredEvent!.status.message).toBeDefined();
       expect(inputRequiredEvent!.status.message!.parts[0].text).toBe('Need info');
@@ -502,7 +502,7 @@ describe('TaskManager', () => {
       // Resume with user answer
       const answerMessage: Message = {
         messageId: 'msg-answer-1',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'Blue', mediaType: 'text/plain' }],
       };
       tm.resumeTask(task.id, answerMessage);
@@ -524,25 +524,25 @@ describe('TaskManager', () => {
 
       const answerMessage: Message = {
         messageId: 'msg-answer-2',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'Yes', mediaType: 'text/plain' }],
       };
       tm.resumeTask(task.id, answerMessage);
 
       const fetched = tm.getTask(task.id);
       if (!fetched) throw new Error('Expected task to exist');
-      expect(fetched.status.state).toBe('working');
+      expect(fetched.status.state).toBe('TASK_STATE_WORKING');
     });
 
 
     it('resumeTask on non-input-required task throws', async () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
       await flushPromises();
-      // Task is in 'working' state, not 'input-required'
+      // Task is in 'TASK_STATE_WORKING' state, not 'TASK_STATE_INPUT_REQUIRED'
 
       const answerMessage: Message = {
         messageId: 'msg-answer-3',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'answer', mediaType: 'text/plain' }],
       };
       expect(() => tm.resumeTask(task.id, answerMessage)).toThrow(/not in input-required state/);
@@ -552,7 +552,7 @@ describe('TaskManager', () => {
     it('resumeTask on unknown task throws', () => {
       const answerMessage: Message = {
         messageId: 'msg-answer-4',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'answer', mediaType: 'text/plain' }],
       };
       expect(() => tm.resumeTask('nonexistent-task', answerMessage)).toThrow(/not found/);
@@ -569,7 +569,7 @@ describe('TaskManager', () => {
 
       const answerMessage: Message = {
         messageId: 'msg-snap-1',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'Blue', mediaType: 'text/plain' }],
       };
       const returned = tm.resumeTask(task.id, answerMessage);
@@ -583,10 +583,10 @@ describe('TaskManager', () => {
       expect(returned.artifacts).not.toBe(internal.artifacts);
 
       // Mutating returned must not affect internal
-      (returned.status as { state: string }).state = 'failed';
+      (returned.status as { state: string }).state = 'TASK_STATE_FAILED';
       const afterMutation = tm.getTask(task.id);
       if (!afterMutation) throw new Error('Expected task to exist');
-      expect(afterMutation.status.state).toBe('working');
+      expect(afterMutation.status.state).toBe('TASK_STATE_WORKING');
     });
 
 
@@ -598,7 +598,7 @@ describe('TaskManager', () => {
       await flushPromises();
 
       // Should be working now
-      expect(events.some((e) => e.status.state === 'working')).toBe(true);
+      expect(events.some((e) => e.status.state === 'TASK_STATE_WORKING')).toBe(true);
 
       // Agent asks for input
       if (!capturedOnUserInputRequest) throw new Error('Expected callback');
@@ -607,13 +607,13 @@ describe('TaskManager', () => {
 
       const taskAfterInput = tm.getTask(task.id);
       if (!taskAfterInput) throw new Error('Expected task to exist');
-      expect(taskAfterInput.status.state).toBe('input-required');
-      expect(events.some((e) => e.status.state === 'input-required')).toBe(true);
+      expect(taskAfterInput.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+      expect(events.some((e) => e.status.state === 'TASK_STATE_INPUT_REQUIRED')).toBe(true);
 
       // User provides answer
       const answerMessage: Message = {
         messageId: 'msg-answer-5',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'Red', mediaType: 'text/plain' }],
       };
       tm.resumeTask(task.id, answerMessage);
@@ -625,7 +625,7 @@ describe('TaskManager', () => {
       // Task should be back to working
       const taskAfterResume = tm.getTask(task.id);
       if (!taskAfterResume) throw new Error('Expected task to exist');
-      expect(taskAfterResume.status.state).toBe('working');
+      expect(taskAfterResume.status.state).toBe('TASK_STATE_WORKING');
 
       // Agent completes
       latestMockSession._emit('assistant.message', { data: { content: 'Done with Red' } });
@@ -634,14 +634,14 @@ describe('TaskManager', () => {
 
       const taskAfterComplete = tm.getTask(task.id);
       if (!taskAfterComplete) throw new Error('Expected task to exist');
-      expect(taskAfterComplete.status.state).toBe('completed');
+      expect(taskAfterComplete.status.state).toBe('TASK_STATE_COMPLETED');
 
       // Verify full state progression
       const states = events.map((e) => e.status.state);
-      expect(states).toContain('submitted');
-      expect(states).toContain('working');
-      expect(states).toContain('input-required');
-      expect(states).toContain('completed');
+      expect(states).toContain('TASK_STATE_SUBMITTED');
+      expect(states).toContain('TASK_STATE_WORKING');
+      expect(states).toContain('TASK_STATE_INPUT_REQUIRED');
+      expect(states).toContain('TASK_STATE_COMPLETED');
     });
   });
 
@@ -675,7 +675,7 @@ describe('TaskManager', () => {
       const completedTask = tm.getTask(task.id);
       if (!completedTask) throw new Error('Expected task to exist');
       if (!completedTask.artifacts) throw new Error('Expected artifacts');
-      expect(completedTask.status.state).toBe('completed');
+      expect(completedTask.status.state).toBe('TASK_STATE_COMPLETED');
       expect(completedTask.artifacts[0].parts[0].text).toBe('Done');
     });
 
@@ -702,7 +702,7 @@ describe('TaskManager', () => {
 
       const fetched = tm.getTask(task.id);
       if (!fetched) throw new Error('Expected task to exist');
-      expect(fetched.status.state).toBe('completed');
+      expect(fetched.status.state).toBe('TASK_STATE_COMPLETED');
       if (!fetched.artifacts) throw new Error('Expected artifacts');
       expect(fetched.artifacts.length).toBeGreaterThan(0);
       expect(fetched.artifacts[0].parts[0].text).toContain('real response');
@@ -728,7 +728,7 @@ describe('TaskManager', () => {
       // processTask's .catch() transitions to failed
       const failedTask1 = tm.getTask(task.id);
       if (!failedTask1) throw new Error('Expected task to exist');
-      expect(failedTask1.status.state).toBe('failed');
+      expect(failedTask1.status.state).toBe('TASK_STATE_FAILED');
       expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(2);
     });
 
@@ -743,7 +743,7 @@ describe('TaskManager', () => {
       // processTask's .catch() transitions to failed, no retry
       const failedTask2 = tm.getTask(task.id);
       if (!failedTask2) throw new Error('Expected task to exist');
-      expect(failedTask2.status.state).toBe('failed');
+      expect(failedTask2.status.state).toBe('TASK_STATE_FAILED');
       expect(mockMindManager.createTaskSession).toHaveBeenCalledTimes(1);
     });
   });
@@ -796,16 +796,16 @@ describe('TaskManager', () => {
       const fetched = tm.getTask(task.id);
       if (!fetched) throw new Error('Expected task to exist');
       // Mutate the returned object
-      (fetched.status as { state: string }).state = 'failed';
+      (fetched.status as { state: string }).state = 'TASK_STATE_FAILED';
       if (!fetched.history) throw new Error('Expected history');
-      (fetched.history as unknown[]).push({ messageId: 'rogue', role: 'user', parts: [] });
+      (fetched.history as unknown[]).push({ messageId: 'rogue', role: 'ROLE_USER', parts: [] });
       if (!fetched.artifacts) throw new Error('Expected artifacts');
       (fetched.artifacts as unknown[]).push({ artifactId: 'rogue' });
 
       // Internal state must be unchanged
       const internal = tm.getTask(task.id);
       if (!internal) throw new Error('Expected task to exist');
-      expect(internal.status.state).not.toBe('failed');
+      expect(internal.status.state).not.toBe('TASK_STATE_FAILED');
       if (!internal.history) throw new Error('Expected history');
       expect(internal.history.find((m: Message) => m.messageId === 'rogue')).toBeUndefined();
       if (!internal.artifacts) throw new Error('Expected artifacts');
@@ -816,12 +816,12 @@ describe('TaskManager', () => {
       await tm.sendTask(makeRequest('target-1', 'hello'));
 
       const listed = tm.listTasks().tasks[0];
-      (listed.status as { state: string }).state = 'failed';
+      (listed.status as { state: string }).state = 'TASK_STATE_FAILED';
       if (!listed.artifacts) throw new Error('Expected artifacts');
       (listed.artifacts as unknown[]).push({ artifactId: 'rogue' });
 
       const internal = tm.listTasks().tasks[0];
-      expect(internal.status.state).not.toBe('failed');
+      expect(internal.status.state).not.toBe('TASK_STATE_FAILED');
       if (!internal.artifacts) throw new Error('Expected artifacts');
       expect(internal.artifacts.find((a: Artifact) => a.artifactId === 'rogue')).toBeUndefined();
     });
@@ -830,13 +830,13 @@ describe('TaskManager', () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
       const canceled = tm.cancelTask(task.id);
 
-      (canceled.status as { state: string }).state = 'completed';
+      (canceled.status as { state: string }).state = 'TASK_STATE_COMPLETED';
       if (!canceled.artifacts) throw new Error('Expected artifacts');
       (canceled.artifacts as unknown[]).push({ artifactId: 'rogue' });
 
       const internal = tm.getTask(task.id);
       if (!internal) throw new Error('Expected task to exist');
-      expect(internal.status.state).toBe('canceled');
+      expect(internal.status.state).toBe('TASK_STATE_CANCELED');
       if (!internal.artifacts) throw new Error('Expected artifacts');
       expect(internal.artifacts.find((a: Artifact) => a.artifactId === 'rogue')).toBeUndefined();
     });

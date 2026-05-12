@@ -19,7 +19,7 @@ function makeCard(overrides: Partial<AgentCard> & { mindId: string; name: string
   return {
     description: 'Test agent',
     version: '1.0.0',
-    supportedInterfaces: [{ url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' }],
+    supportedInterfaces: [{ url: `chamber:mind:${encodeURIComponent(overrides.mindId)}`, protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' }],
     capabilities: { streaming: true },
     defaultInputModes: ['text/plain'],
     defaultOutputModes: ['text/plain'],
@@ -33,7 +33,7 @@ function makeRequest(recipient: string, text: string, opts?: Partial<SendMessage
     recipient,
     message: {
       messageId: 'msg-test-1',
-      role: 'user',
+      role: 'ROLE_USER',
       parts: [{ text, mediaType: 'text/plain' }],
       metadata: { fromId: 'sender-1', fromName: 'Sender', hopCount: 0 },
       ...opts?.message,
@@ -124,7 +124,7 @@ describe('MessageRouter', () => {
   it('sendMessage() reuses contextId on follow-up', async () => {
     mockRegistry.getCard.mockReturnValue(makeCard({ mindId: 'target-1', name: 'Target' }));
     const req = makeRequest('target-1', 'follow-up', {
-      message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'follow-up' }], contextId: 'ctx-123' },
+      message: { messageId: 'msg-2', role: 'ROLE_USER', parts: [{ text: 'follow-up' }], contextId: 'ctx-123' },
     });
     const res = await router.sendMessage(req);
     if (!res.message) throw new Error('Expected message in response');
@@ -137,7 +137,7 @@ describe('MessageRouter', () => {
     await expect(router.sendMessage(makeRequest('target-1', 'too many', {
       message: {
         messageId: 'msg-6',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'too many' }],
         contextId: 'ctx-loop',
         metadata: { fromId: 'a', fromName: 'A', hopCount: 5 },
@@ -150,13 +150,13 @@ describe('MessageRouter', () => {
     const contextId = 'ctx-hop-track';
 
     await router.sendMessage(makeRequest('target-1', 'first', {
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'first' }], contextId, metadata: { fromId: 'a', fromName: 'A' } },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'first' }], contextId, metadata: { fromId: 'a', fromName: 'A' } },
     }));
     // First message: hopCount should be 1
     expect(mockChatService.sendMessage.mock.calls[0][1]).toContain('hop-count="1"');
 
     await router.sendMessage(makeRequest('target-1', 'second', {
-      message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'second' }], contextId, metadata: { fromId: 'a', fromName: 'A', hopCount: 1 } },
+      message: { messageId: 'msg-2', role: 'ROLE_USER', parts: [{ text: 'second' }], contextId, metadata: { fromId: 'a', fromName: 'A', hopCount: 1 } },
     }));
     // Second message: hopCount should be 2
     expect(mockChatService.sendMessage.mock.calls[1][1]).toContain('hop-count="2"');
@@ -205,7 +205,7 @@ describe('MessageRouter', () => {
     expect(res.message).toBeDefined();
     if (!res.message) throw new Error('Expected message in response');
     expect(res.message.messageId).toBe('msg-test-1');
-    expect(res.message.role).toBe('user');
+    expect(res.message.role).toBe('ROLE_USER');
     expect(res.message.parts[0].text).toBe('response check');
     expect(res.message.contextId).toBeDefined();
   });
@@ -215,7 +215,7 @@ describe('MessageRouter', () => {
     const req = makeRequest('target-1', 'structured test', {
       message: {
         messageId: 'msg-xml',
-        role: 'user',
+        role: 'ROLE_USER',
         parts: [{ text: 'structured test', mediaType: 'text/plain' }],
         metadata: { fromId: 'sender-1', fromName: 'Sender', hopCount: 0 },
       },

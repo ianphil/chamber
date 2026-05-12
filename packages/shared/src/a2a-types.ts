@@ -1,7 +1,7 @@
 // Shared A2A types — source-of-truth definitions for the A2A v1.0 protocol.
 // Both main/ and renderer/ depend on these; this file must NOT import from either.
 
-export type Role = 'user' | 'agent';
+export type Role = 'ROLE_USER' | 'ROLE_AGENT';
 
 export interface Part {
   text?: string;
@@ -54,24 +54,24 @@ export interface Task {
 }
 
 export type TaskState =
-  | 'submitted'
-  | 'working'
-  | 'completed'
-  | 'failed'
-  | 'canceled'
-  | 'input-required'
-  | 'rejected'
-  | 'auth-required';
+  | 'TASK_STATE_SUBMITTED'
+  | 'TASK_STATE_WORKING'
+  | 'TASK_STATE_COMPLETED'
+  | 'TASK_STATE_FAILED'
+  | 'TASK_STATE_CANCELED'
+  | 'TASK_STATE_INPUT_REQUIRED'
+  | 'TASK_STATE_REJECTED'
+  | 'TASK_STATE_AUTH_REQUIRED';
 
 const VALID_TASK_STATES: ReadonlySet<string> = new Set<TaskState>([
-  'submitted',
-  'working',
-  'completed',
-  'failed',
-  'canceled',
-  'input-required',
-  'rejected',
-  'auth-required',
+  'TASK_STATE_SUBMITTED',
+  'TASK_STATE_WORKING',
+  'TASK_STATE_COMPLETED',
+  'TASK_STATE_FAILED',
+  'TASK_STATE_CANCELED',
+  'TASK_STATE_INPUT_REQUIRED',
+  'TASK_STATE_REJECTED',
+  'TASK_STATE_AUTH_REQUIRED',
 ]);
 
 export function isTaskState(value: unknown): value is TaskState {
@@ -261,7 +261,7 @@ export function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayloa
     typeof value.targetMindId === 'string' &&
     typeof value.replyMessageId === 'string' &&
     typeof message.messageId === 'string' &&
-    (message.role === 'user' || message.role === 'agent') &&
+    (message.role === 'ROLE_USER' || message.role === 'ROLE_AGENT') &&
     Array.isArray(message.parts)
   );
 }

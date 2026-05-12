@@ -54,7 +54,7 @@ describe("A2A extension loopback server", () => {
         recipient: "Copilot CLI",
         message: {
           messageId: "msg-big",
-          role: "user",
+          role: "ROLE_USER",
           parts: [{ text: "x".repeat(1_000_001), mediaType: "text/plain" }],
         },
       }),
@@ -87,7 +87,7 @@ function postMessage(port, token, path = "/message:send") {
       message: {
         messageId: "msg-1",
         contextId: "ctx-1",
-        role: "user",
+        role: "ROLE_USER",
         parts: [{ text: "Hello", mediaType: "text/plain" }],
       },
     }),

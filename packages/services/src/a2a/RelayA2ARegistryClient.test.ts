@@ -61,13 +61,13 @@ describe('RelayA2ARegistryClient', () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       queued: true,
       queueMessageId: 'relay-msg-1',
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
     }), { status: 200 }));
     const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
 
     await expect(client.sendMessage({
       recipient: 'agent-a',
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
     })).resolves.toEqual(expect.objectContaining({ queued: true, queueMessageId: 'relay-msg-1' }));
 
     expect(fetchImpl).toHaveBeenCalledWith(new URL('http://127.0.0.1:4100/api/a2a/message:send'), expect.objectContaining({
@@ -85,7 +85,7 @@ describe('RelayA2ARegistryClient', () => {
             recipient: 'agent-a',
             request: {
               recipient: 'agent-a',
-              message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+              message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
             },
             enqueuedAt: '2026-01-01T00:00:00.000Z',
             attempts: 1,

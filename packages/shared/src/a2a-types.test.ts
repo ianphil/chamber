@@ -3,8 +3,8 @@ import { isA2AIncomingPayload, isA2ARelayConnectRequest, isTaskState, narrowTask
 
 describe('A2A contract predicates', () => {
   it('narrows valid task states', () => {
-    expect(isTaskState('working')).toBe(true);
-    expect(narrowTaskState('completed')).toBe('completed');
+    expect(isTaskState('TASK_STATE_WORKING')).toBe(true);
+    expect(narrowTaskState('TASK_STATE_COMPLETED')).toBe('TASK_STATE_COMPLETED');
   });
 
   it('rejects invalid task states', () => {
@@ -30,7 +30,7 @@ describe('A2A contract predicates', () => {
   it('accepts incoming payloads with a valid user or agent message', () => {
     expect(isA2AIncomingPayload({
       targetMindId: 'agent-b',
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Hello' }] },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'Hello' }] },
       replyMessageId: 'reply-1',
     })).toBe(true);
   });
@@ -43,7 +43,7 @@ describe('A2A contract predicates', () => {
     })).toBe(false);
     expect(isA2AIncomingPayload({
       targetMindId: 'agent-b',
-      message: { messageId: 'msg-1', role: 'user' },
+      message: { messageId: 'msg-1', role: 'ROLE_USER' },
       replyMessageId: 'reply-1',
     })).toBe(false);
   });

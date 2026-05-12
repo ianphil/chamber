@@ -5,6 +5,7 @@ import type { A2ARelayQueuedMessage, AgentCard, SendMessageRequest, SendMessageR
 import { Logger } from '../logger';
 
 const log = Logger.create('A2ARelayModeService');
+const RELAY_MAILBOX_BINDING_URI = 'https://github.com/ianphil/chamber/a2a/bindings/relay-mailbox/v1';
 
 export interface A2ARelayRegistryClientPort {
   getCard(identifier: string): Promise<AgentCard | null>;
@@ -32,6 +33,7 @@ export class A2ARelayModeService {
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private polling = false;
   private lastPollError: string | null = null;
+  private relayBaseUrl: string | null = null;
 
   constructor(
     private readonly localRegistry: AgentCardRegistry,
@@ -64,7 +66,7 @@ export class A2ARelayModeService {
     }
 
     const client = this.createClient(options);
-    const publishedCards = this.localRegistry.getCards().map(publishCard);
+    const publishedCards = this.localRegistry.getCards().map((card) => publishCard(card, options.baseUrl));
     const registeredNames: string[] = [];
 
     try {
@@ -82,6 +84,7 @@ export class A2ARelayModeService {
       if (card.mindId) this.publishedAgentNamesByMindId.set(card.mindId, card.name);
     }
     this.relayClient = client;
+    this.relayBaseUrl = options.baseUrl;
     this.lastPollError = null;
     this.activeResolver.useRelay(client);
     this.schedulePoll();
@@ -91,6 +94,7 @@ export class A2ARelayModeService {
     const client = this.relayClient;
     const publishedNames = [...this.publishedAgentNamesByMindId.values()];
     this.relayClient = null;
+    this.relayBaseUrl = null;
     this.lastPollError = null;
     this.stopPolling();
     this.publishedAgentNamesByMindId.clear();
@@ -109,7 +113,7 @@ export class A2ARelayModeService {
     const card = this.localRegistry.getCard(mindId);
     if (!card) throw new Error(`Cannot publish unknown local A2A mind: ${mindId}`);
 
-    const publishedCard = publishCard(card);
+    const publishedCard = publishCard(card, this.relayBaseUrl ?? 'http://127.0.0.1');
     await this.relayClient.registerAgent({ card: publishedCard });
     this.publishedAgentNamesByMindId.set(mindId, publishedCard.name);
   }
@@ -179,12 +183,12 @@ export class A2ARelayModeService {
   }
 }
 
-function publishCard(card: AgentCard): AgentCard {
+function publishCard(card: AgentCard, relayBaseUrl: string): AgentCard {
   return {
     ...card,
     supportedInterfaces: [{
-      url: 'relay:mailbox',
-      protocolBinding: 'A2A_RELAY_MAILBOX',
+      url: new URL('/message:send', relayBaseUrl).toString(),
+      protocolBinding: RELAY_MAILBOX_BINDING_URI,
       protocolVersion: '1.0',
     }],
   };

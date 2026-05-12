@@ -48,7 +48,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Copilot CLI",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
 
@@ -75,7 +75,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Copilot CLI",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
     const { queueMessageId } = await send.json();
@@ -116,7 +116,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "mind-a",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
     const { queueMessageId } = await send.json();
@@ -140,7 +140,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Copilot CLI",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
 
@@ -169,7 +169,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Copilot CLI",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
 
@@ -197,7 +197,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Copilot CLI",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
 
@@ -205,7 +205,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Copilot CLI",
-        message: { messageId: "msg-2", role: "user", parts: [{ text: "again" }] },
+        message: { messageId: "msg-2", role: "ROLE_USER", parts: [{ text: "again" }] },
       }),
     });
 
@@ -225,7 +225,7 @@ describe("A2A relay server", () => {
       method: "POST",
       body: JSON.stringify({
         recipient: "Remote",
-        message: { messageId: "msg-1", role: "user", parts: [{ text: "hello" }] },
+        message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hello" }] },
       }),
     });
 

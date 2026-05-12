@@ -104,6 +104,7 @@ export class RelayA2ARegistryClient {
       ...init,
       headers: {
         authorization: `Bearer ${this.token}`,
+        'A2A-Version': '1.0',
         accept: 'application/a2a+json, application/json',
         'content-type': 'application/json',
         ...init.headers,

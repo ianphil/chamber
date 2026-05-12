@@ -49,8 +49,8 @@ describe('A2ARelayModeService', () => {
       card: expect.objectContaining({
         mindId: 'mind-a',
         supportedInterfaces: [{
-          url: 'relay:mailbox',
-          protocolBinding: 'A2A_RELAY_MAILBOX',
+          url: 'http://127.0.0.1:4100/message:send',
+          protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/relay-mailbox/v1',
           protocolVersion: '1.0',
         }],
       }),
@@ -135,7 +135,7 @@ describe('A2ARelayModeService', () => {
       recipient: 'Agent A',
       request: {
         recipient: 'Agent A',
-        message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+        message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
       },
       enqueuedAt: '2026-01-01T00:00:00.000Z',
       attempts: 1,
@@ -157,7 +157,7 @@ describe('A2ARelayModeService', () => {
     expect(relayClient.pollMessages).toHaveBeenCalledWith({ recipients: ['Agent A', 'mind-a'] });
     expect(localDelivery.deliverToLocalMind).toHaveBeenCalledWith('mind-a', {
       recipient: 'Agent A',
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
     });
     expect(relayClient.ackMessages).toHaveBeenCalledWith(['relay-msg-1']);
     await service.disconnect();
@@ -167,7 +167,7 @@ describe('A2ARelayModeService', () => {
     vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
     const localDelivery = {
       deliverToLocalMind: vi.fn()
-        .mockResolvedValueOnce({ message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] } })
+        .mockResolvedValueOnce({ message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] } })
         .mockRejectedValueOnce(new Error('delivery failed')),
     };
     relayClient.pollMessages.mockResolvedValueOnce([
@@ -176,7 +176,7 @@ describe('A2ARelayModeService', () => {
         recipient: 'Agent A',
         request: {
           recipient: 'Agent A',
-          message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+          message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
         },
         enqueuedAt: '2026-01-01T00:00:00.000Z',
         attempts: 1,
@@ -186,7 +186,7 @@ describe('A2ARelayModeService', () => {
         recipient: 'Agent A',
         request: {
           recipient: 'Agent A',
-          message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'again' }] },
+          message: { messageId: 'msg-2', role: 'ROLE_USER', parts: [{ text: 'again' }] },
         },
         enqueuedAt: '2026-01-01T00:00:00.000Z',
         attempts: 1,
@@ -221,7 +221,7 @@ describe('A2ARelayModeService', () => {
       recipient: 'Agent B',
       request: {
         recipient: 'Agent B',
-        message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+        message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
       },
       enqueuedAt: '2026-01-01T00:00:00.000Z',
       attempts: 1,
@@ -298,7 +298,7 @@ function makeCard(mindId: string, name: string): AgentCard {
     name,
     description: `${name} description`,
     version: '1.0.0',
-    supportedInterfaces: [{ url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' }],
+    supportedInterfaces: [{ url: `chamber:mind:${encodeURIComponent(mindId)}`, protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' }],
     capabilities: { streaming: true },
     defaultInputModes: ['text/plain'],
     defaultOutputModes: ['text/plain'],

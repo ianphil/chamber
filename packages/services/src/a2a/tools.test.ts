@@ -23,7 +23,7 @@ const mockRouter = {
     message: {
       messageId: req.message.messageId,
       contextId: 'ctx-assigned',
-      role: 'user',
+      role: 'ROLE_USER',
       parts: req.message.parts,
     },
   })),
@@ -38,7 +38,7 @@ const mockRegistry = {
       description: 'First agent',
       version: '1.0.0',
       supportedInterfaces: [
-        { url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' },
+        { url: 'chamber:mind:mind-a', protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' },
       ],
       capabilities: { streaming: true },
       defaultInputModes: ['text/plain'],
@@ -51,7 +51,7 @@ const mockRegistry = {
       description: 'Second agent',
       version: '1.0.0',
       supportedInterfaces: [
-        { url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' },
+        { url: 'chamber:mind:mind-a', protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' },
       ],
       capabilities: { streaming: true },
       defaultInputModes: ['text/plain'],
@@ -64,7 +64,7 @@ const mockRegistry = {
       description: 'Third agent',
       version: '1.0.0',
       supportedInterfaces: [
-        { url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' },
+        { url: 'chamber:mind:mind-a', protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1', protocolVersion: '1.0' },
       ],
       capabilities: { streaming: true },
       defaultInputModes: ['text/plain'],
@@ -130,7 +130,7 @@ describe('A2A Tools', () => {
 
     expect(mockRouter.sendMessage).toHaveBeenCalledTimes(1);
     const req = mockRouter.sendMessage.mock.calls[0][0];
-    expect(req.message.role).toBe('user');
+    expect(req.message.role).toBe('ROLE_USER');
     expect(req.message.parts[0].text).toBe('Hello B');
     expect(req.message.parts[0].mediaType).toBe('text/plain');
     expect(req.message.metadata!.fromId).toBe('mind-a');
@@ -265,7 +265,7 @@ describe('A2A Task Tools', () => {
   const fakeTask: Task = {
     id: 'task-123',
     contextId: 'ctx-456',
-    status: { state: 'submitted', timestamp: new Date().toISOString() },
+    status: { state: 'TASK_STATE_SUBMITTED', timestamp: new Date().toISOString() },
     artifacts: [],
     history: [],
   };
@@ -307,7 +307,7 @@ describe('A2A Task Tools', () => {
 
     expect(result.id).toBe('task-123');
     expect(result.contextId).toBe('ctx-456');
-    expect(result.status.state).toBe('submitted');
+    expect(result.status.state).toBe('TASK_STATE_SUBMITTED');
   });
 
   // 4. a2a_send_task has natural language description
@@ -361,9 +361,9 @@ describe('A2A Task Tools', () => {
     const response = { tasks: [], nextPageToken: '', pageSize: 0, totalSize: 0 };
     mockTaskManager.listTasks.mockReturnValueOnce(response);
     const tool = findTool('a2a_list_tasks');
-    await tool.handler({ context_id: 'ctx-456', status: 'working' });
+    await tool.handler({ context_id: 'ctx-456', status: 'TASK_STATE_WORKING' });
 
-    expect(mockTaskManager.listTasks).toHaveBeenCalledWith({ contextId: 'ctx-456', status: 'working' });
+    expect(mockTaskManager.listTasks).toHaveBeenCalledWith({ contextId: 'ctx-456', status: 'TASK_STATE_WORKING' });
   });
 
   // 9b. a2a_list_tasks rejects invalid status string with error message
@@ -377,13 +377,13 @@ describe('A2A Task Tools', () => {
 
   // 10. a2a_cancel_task cancels via TaskManager
   it('a2a_cancel_task cancels via TaskManager', async () => {
-    const canceledTask = { ...fakeTask, status: { state: 'canceled' as const, timestamp: new Date().toISOString() } };
+    const canceledTask = { ...fakeTask, status: { state: 'TASK_STATE_CANCELED' as const, timestamp: new Date().toISOString() } };
     mockTaskManager.cancelTask.mockReturnValueOnce(canceledTask);
     const tool = findTool('a2a_cancel_task');
     const result = await tool.handler({ task_id: 'task-123' });
 
     expect(mockTaskManager.cancelTask).toHaveBeenCalledWith('task-123');
-    expect((result as Task).status.state).toBe('canceled');
+    expect((result as Task).status.state).toBe('TASK_STATE_CANCELED');
   });
 
   // 11. a2a_cancel_task for terminal task returns error message

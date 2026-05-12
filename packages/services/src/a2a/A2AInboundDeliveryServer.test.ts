@@ -107,7 +107,7 @@ function makeRequest(recipient: string) {
     recipient,
     message: {
       messageId: 'msg-1',
-      role: 'user',
+      role: 'ROLE_USER',
       parts: [{ text: 'hello', mediaType: 'text/plain' }],
     },
   };

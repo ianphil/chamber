@@ -59,11 +59,11 @@ describe("A2A client tools", () => {
           messages: [
             {
               id: "relay-msg-1",
-              request: { recipient: "cli-one", message: { messageId: "msg-1", role: "user", parts: [{ text: "hi" }] } },
+              request: { recipient: "cli-one", message: { messageId: "msg-1", role: "ROLE_USER", parts: [{ text: "hi" }] } },
             },
             {
               id: "relay-msg-2",
-              request: { recipient: "cli-one", message: { messageId: "msg-2", role: "user", parts: [{ text: "boom" }] } },
+              request: { recipient: "cli-one", message: { messageId: "msg-2", role: "ROLE_USER", parts: [{ text: "boom" }] } },
             },
           ],
         });

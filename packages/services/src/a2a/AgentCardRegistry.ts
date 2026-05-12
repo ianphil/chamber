@@ -28,7 +28,11 @@ export class AgentCardRegistry {
       description,
       version: '1.0.0',
       supportedInterfaces: [
-        { url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' },
+        {
+          url: `chamber:mind:${encodeURIComponent(ctx.mindId)}`,
+          protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1',
+          protocolVersion: '1.0',
+        },
       ],
       capabilities: { streaming: true },
       defaultInputModes: ['text/plain'],

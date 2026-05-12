@@ -58,13 +58,13 @@ describe('AgentCardRegistry', () => {
     expect(card.mindId).toBe('q-123');
   });
 
-  it('supportedInterfaces uses IN_PROCESS binding', () => {
+  it('supportedInterfaces uses the Chamber in-process binding URI', () => {
     registry.register(makeMindContext());
     const card = registry.getCard('q-123');
     if (!card) throw new Error('expected card');
     const iface = card.supportedInterfaces[0];
 
-    expect(iface.protocolBinding).toBe('IN_PROCESS');
+    expect(iface.protocolBinding).toBe('https://github.com/ianphil/chamber/a2a/bindings/in-process/v1');
     expect(iface.protocolVersion).toBe('1.0');
   });
 

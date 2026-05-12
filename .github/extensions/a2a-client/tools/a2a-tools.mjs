@@ -28,7 +28,7 @@ export function createA2ATools(state, hooks) {
       handler: async (args) => {
         await disconnectA2AClient(state);
         updateConnection(state, args);
-        const card = createAgentCard(state.agentName);
+        const card = createAgentCard(state.agentName, state.chamberBaseUrl);
         const response = await chamberFetch(state, "/api/a2a/agents", {
           method: "POST",
           body: JSON.stringify({ card }),
@@ -169,7 +169,7 @@ async function sendA2AMessage(state, args) {
     message: {
       messageId: `msg-${randomUUID()}`,
       contextId: args.context_id,
-      role: "user",
+      role: "ROLE_USER",
       parts: [{ text: args.message, mediaType: "text/plain" }],
       metadata: { fromName: state.agentName, fromId: state.agentName },
     },
@@ -249,15 +249,15 @@ function updateConnection(state, args) {
   }
 }
 
-function createAgentCard(name) {
+function createAgentCard(name, relayBaseUrl) {
   return {
     name,
     description: "A Copilot CLI session available for message-only A2A conversation.",
     version: "1.0.0",
     supportedInterfaces: [
       {
-        url: "relay:mailbox",
-        protocolBinding: "A2A_RELAY_MAILBOX",
+        url: new URL("/message:send", relayBaseUrl).toString(),
+        protocolBinding: "https://github.com/ianphil/chamber/a2a/bindings/relay-mailbox/v1",
         protocolVersion: "1.0",
       },
     ],
@@ -290,6 +290,7 @@ async function chamberFetch(state, path, options) {
       "content-type": "application/json",
       accept: "application/json",
       authorization: `Bearer ${state.chamberToken}`,
+      "A2A-Version": "1.0",
       origin: "http://127.0.0.1",
       ...options.headers,
     },

@@ -135,7 +135,8 @@ function isSendMessageRequest(value: unknown): value is SendMessageRequest {
     (value as SendMessageRequest).message &&
     typeof (value as SendMessageRequest).message === 'object' &&
     typeof (value as SendMessageRequest).message.messageId === 'string' &&
-    ((value as SendMessageRequest).message.role === 'user' || (value as SendMessageRequest).message.role === 'agent') &&
+    ((value as SendMessageRequest).message.role === 'ROLE_USER' ||
+      (value as SendMessageRequest).message.role === 'ROLE_AGENT') &&
     Array.isArray((value as SendMessageRequest).message.parts),
   );
 }

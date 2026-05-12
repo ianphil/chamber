@@ -263,6 +263,7 @@ function isAuthorized(authorizationHeader, token) {
 function sendJson(response, status, body) {
   response.writeHead(status, {
     "content-type": "application/a2a+json; charset=utf-8",
+    "A2A-Version": "1.0",
     "cache-control": "no-store",
   });
   response.end(JSON.stringify(body));
@@ -296,7 +297,7 @@ function isSendMessageRequest(value) {
     value.message &&
     typeof value.message === "object" &&
     typeof value.message.messageId === "string" &&
-    (value.message.role === "user" || value.message.role === "agent") &&
+    (value.message.role === "ROLE_USER" || value.message.role === "ROLE_AGENT") &&
     Array.isArray(value.message.parts),
   );
 }
