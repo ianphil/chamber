@@ -1,12 +1,13 @@
 import { approveAll } from "@github/copilot-sdk";
 import { joinSession } from "@github/copilot-sdk/extension";
 
-import { createA2ATools } from "./tools/a2a-tools.mjs";
+import { createA2ATools, disconnectA2AClient } from "./tools/a2a-tools.mjs";
 
 const state = {
   chamberBaseUrl: process.env.CHAMBER_A2A_URL ?? "",
   chamberToken: process.env.CHAMBER_A2A_TOKEN ?? "",
   agentName: process.env.CHAMBER_A2A_AGENT_NAME ?? "Copilot CLI",
+  registeredAgentName: null,
   inbox: [],
   session: null,
 };
@@ -47,6 +48,7 @@ const session = await joinSession({
 });
 
 state.session = session;
+registerCleanupHandlers(state);
 
 function deliverToCopilotSession(entry) {
   if (!state.session) return;
@@ -64,6 +66,27 @@ Treat this as a real incoming message from another A2A agent. If it asks a quest
     state.session?.log(`A2A delivery failed: ${error instanceof Error ? error.message : String(error)}`, {
       level: "error",
       ephemeral: false,
+    });
+  });
+}
+
+function registerCleanupHandlers(connectionState) {
+  const cleanup = async () => {
+    await disconnectA2AClient(connectionState).catch((error) => {
+      connectionState.session?.log(`A2A relay cleanup failed: ${error instanceof Error ? error.message : String(error)}`, {
+        level: "error",
+        ephemeral: true,
+      });
+    });
+  };
+  process.once("beforeExit", () => {
+    void cleanup();
+  });
+  process.once("SIGTERM", () => {
+    const timeout = setTimeout(() => process.exit(0), 500);
+    void cleanup().finally(() => {
+      clearTimeout(timeout);
+      process.exit(0);
     });
   });
 }

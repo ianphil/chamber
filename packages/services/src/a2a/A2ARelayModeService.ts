@@ -130,17 +130,23 @@ export class A2ARelayModeService {
     if (recipients.length === 0) return 0;
 
     const messages = await this.relayClient.pollMessages({ recipients });
-    const ackedMessageIds: string[] = [];
+    let deliveredCount = 0;
+    let firstDeliveryError: unknown = null;
     for (const message of messages) {
       const targetMindId = findLocalMindId(this.localRegistry.getCards(), message.request.recipient);
       if (!targetMindId) continue;
-      await this.localDelivery.deliverToLocalMind(targetMindId, message.request);
-      ackedMessageIds.push(message.id);
+      try {
+        await this.localDelivery.deliverToLocalMind(targetMindId, message.request);
+        await this.relayClient.ackMessages([message.id]);
+        deliveredCount += 1;
+      } catch (error) {
+        firstDeliveryError ??= error;
+      }
     }
-    if (ackedMessageIds.length > 0) {
-      await this.relayClient.ackMessages(ackedMessageIds);
+    if (firstDeliveryError) {
+      throw firstDeliveryError;
     }
-    return ackedMessageIds.length;
+    return deliveredCount;
   }
 
   private schedulePoll(delayMs = this.pollIntervalMs): void {

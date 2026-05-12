@@ -26,18 +26,24 @@ export function createA2ATools(state, hooks) {
         },
       },
       handler: async (args) => {
+        await disconnectA2AClient(state);
         updateConnection(state, args);
         const card = createAgentCard(state.agentName);
         const response = await chamberFetch(state, "/api/a2a/agents", {
           method: "POST",
           body: JSON.stringify({ card }),
         });
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(`A2A relay registration failed: ${body?.error ?? response.statusText}`);
+        }
+        state.registeredAgentName = card.name;
         startPolling(state, hooks);
         return {
-          registered: response.ok,
+          registered: true,
           agent: card,
           chamber: state.chamberBaseUrl,
-          response: await response.json(),
+          response: body,
         };
       },
     },
@@ -142,6 +148,21 @@ export function createA2ATools(state, hooks) {
   ];
 }
 
+export async function disconnectA2AClient(state) {
+  stopPolling(state);
+  const registeredAgentName = state.registeredAgentName;
+  state.registeredAgentName = null;
+  if (!registeredAgentName || !state.chamberBaseUrl || !state.chamberToken) return;
+
+  const response = await chamberFetch(state, `/api/a2a/agents/${encodeURIComponent(registeredAgentName)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok && response.status !== 404) {
+    const body = await response.json().catch(() => null);
+    throw new Error(`A2A relay unregister failed: ${body?.error ?? response.statusText}`);
+  }
+}
+
 async function sendA2AMessage(state, args) {
   const request = {
     recipient: args.recipient,
@@ -199,6 +220,13 @@ function startPolling(state, hooks) {
     }
   };
   state.pollTimer = setTimeout(poll, 0);
+}
+
+function stopPolling(state) {
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+  }
 }
 
 function updateConnection(state, args) {

@@ -163,6 +163,54 @@ describe('A2ARelayModeService', () => {
     await service.disconnect();
   });
 
+  it('acks successfully delivered messages even when a later message fails', async () => {
+    vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
+    const localDelivery = {
+      deliverToLocalMind: vi.fn()
+        .mockResolvedValueOnce({ message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] } })
+        .mockRejectedValueOnce(new Error('delivery failed')),
+    };
+    relayClient.pollMessages.mockResolvedValueOnce([
+      {
+        id: 'relay-msg-1',
+        recipient: 'Agent A',
+        request: {
+          recipient: 'Agent A',
+          message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'hello' }] },
+        },
+        enqueuedAt: '2026-01-01T00:00:00.000Z',
+        attempts: 1,
+      },
+      {
+        id: 'relay-msg-2',
+        recipient: 'Agent A',
+        request: {
+          recipient: 'Agent A',
+          message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'again' }] },
+        },
+        enqueuedAt: '2026-01-01T00:00:00.000Z',
+        attempts: 1,
+      },
+    ]);
+    service = new A2ARelayModeService(
+      localRegistry,
+      activeResolver,
+      () => relayClient as unknown as A2ARelayRegistryClientPort,
+      localDelivery,
+      60_000,
+    );
+    await service.connect({
+      baseUrl: 'http://127.0.0.1:4100',
+      token: 'relay-secret',
+    });
+
+    await expect(service.pollOnce()).rejects.toThrow('delivery failed');
+
+    expect(relayClient.ackMessages).toHaveBeenCalledWith(['relay-msg-1']);
+    expect(relayClient.ackMessages).not.toHaveBeenCalledWith(['relay-msg-2']);
+    await service.disconnect();
+  });
+
   it('does not ack polled messages that cannot be mapped to a local mind', async () => {
     vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
     const localDelivery = {
