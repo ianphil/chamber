@@ -353,6 +353,13 @@ export function createDreamDaemon(opts: DreamDaemonOptions): DreamDaemon {
     phase = 'writing';
     await vault.write(MEMORY_REL_PATH, memoryMd);
 
+    // Test-only mid-cycle sleep used by M7 (mid-run append race).
+    // Honored ONLY when CHAMBER_E2E=1 so production builds never read the
+    // env var. Inserted between the memory.md write and the prune phase
+    // so a test can append a turn AFTER the snapshot was taken and assert
+    // the tail entry survives the prune.
+    await maybeTestSleep();
+
     // Step 7 — re-read log.md and prune only the snapshot turn ids. Tail
     // entries appended during the LLM call MUST survive.
     phase = 'pruning';
@@ -578,4 +585,23 @@ function isoMonthKey(date: Date): string {
   const yyyy = date.getUTCFullYear();
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   return `${yyyy}-${mm}`;
+}
+
+/**
+ * Test-only mid-cycle pause. Returns immediately unless BOTH:
+ *   - `CHAMBER_E2E=1` (the global test-surface gate the rest of the app
+ *     uses to expose `IPC.E2E.*` handlers and `electronAPI.e2e`)
+ *   - `CHAMBER_DREAM_TEST_SLEEP_MS` is a positive finite number
+ *
+ * Production builds never see CHAMBER_E2E=1, so this function is a no-op
+ * by construction. Used by M7 to inject an append between the snapshot
+ * and the prune.
+ */
+async function maybeTestSleep(): Promise<void> {
+  if (process.env.CHAMBER_E2E !== '1') return;
+  const raw = process.env.CHAMBER_DREAM_TEST_SLEEP_MS;
+  if (!raw) return;
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms <= 0) return;
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }

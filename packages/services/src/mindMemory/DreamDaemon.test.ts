@@ -14,7 +14,7 @@
  *   - injected clock for deterministic tiered-rollup gates
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
@@ -444,6 +444,64 @@ describe('DreamDaemon — mid-run append', () => {
     // cutoff advanced only to turn-pre, NOT past the tail entry.
     expect(result.toTurnId).toBe('turn-pre');
     expect(readState(db).lastConsolidatedTurnId).toBe('turn-pre');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E2E mid-cycle sleep shim (test-only)
+// ---------------------------------------------------------------------------
+
+describe('DreamDaemon — E2E mid-cycle sleep shim', () => {
+  it('is a no-op when CHAMBER_E2E is unset, even if CHAMBER_DREAM_TEST_SLEEP_MS is set', async () => {
+    vi.stubEnv('CHAMBER_E2E', '');
+    vi.stubEnv('CHAMBER_DREAM_TEST_SLEEP_MS', '5000');
+    try {
+      await seedLog([makeTurn({ turnId: 'turn-noop' })]);
+      incrementTurnCount(db, 1);
+      const daemon = makeDaemon();
+      const started = Date.now();
+      const result = await daemon.run();
+      const elapsed = Date.now() - started;
+      expect(result.status).toBe('success');
+      // Without the env gate, the sleep is bypassed entirely.
+      expect(elapsed).toBeLessThan(2000);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('pauses between the snapshot and the prune when CHAMBER_E2E=1 AND CHAMBER_DREAM_TEST_SLEEP_MS is positive', async () => {
+    vi.stubEnv('CHAMBER_E2E', '1');
+    vi.stubEnv('CHAMBER_DREAM_TEST_SLEEP_MS', '120');
+    try {
+      await seedLog([makeTurn({ turnId: 'turn-sleep' })]);
+      incrementTurnCount(db, 1);
+      const daemon = makeDaemon();
+      const started = Date.now();
+      const result = await daemon.run();
+      const elapsed = Date.now() - started;
+      expect(result.status).toBe('success');
+      expect(elapsed).toBeGreaterThanOrEqual(100);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('ignores a non-finite or non-positive CHAMBER_DREAM_TEST_SLEEP_MS value', async () => {
+    vi.stubEnv('CHAMBER_E2E', '1');
+    vi.stubEnv('CHAMBER_DREAM_TEST_SLEEP_MS', 'banana');
+    try {
+      await seedLog([makeTurn({ turnId: 'turn-bad-env' })]);
+      incrementTurnCount(db, 1);
+      const daemon = makeDaemon();
+      const started = Date.now();
+      const result = await daemon.run();
+      const elapsed = Date.now() - started;
+      expect(result.status).toBe('success');
+      expect(elapsed).toBeLessThan(2000);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

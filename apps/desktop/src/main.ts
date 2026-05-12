@@ -668,6 +668,15 @@ app.on('ready', async () => {
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);
 
+  // Test-only hook: expose the MindMemoryService on globalThis so a Playwright
+  // driver attached via `electronApp.evaluate(...)` can drive the Dream Daemon
+  // (forceRun, getStatus, dbPath) without us building a renderer-facing bridge
+  // and the production type contract that comes with it. Gated by CHAMBER_E2E.
+  if (process.env.CHAMBER_E2E === '1') {
+    (globalThis as { __chamberMindMemoryService?: typeof mindMemoryService }).__chamberMindMemoryService =
+      mindMemoryService;
+  }
+
   // Fire-and-forget tool reconciliation: install any new marketplace tools.
   // Errors are logged in ToolsService and surface via tools:list later.
   reconcileMarketplaceTools();
