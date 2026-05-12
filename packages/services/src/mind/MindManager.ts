@@ -274,16 +274,13 @@ export class MindManager extends EventEmitter {
         context.activeSessionId,
         context.selectedModel,
       )
-      : await this.createSessionForMind(
-        newClient,
-        context.mindPath,
-        context.identity.systemMessage,
-        sessionTools,
-        undefined,
-        approveForSessionCompat,
-        false,
-        context.selectedModel,
-      );
+      : await this.createSessionForMind({
+        client: newClient,
+        mindPath: context.mindPath,
+        systemMessage: context.identity.systemMessage,
+        tools: sessionTools,
+        model: context.selectedModel,
+      });
 
     context.client = newClient;
     context.session = newSession;
