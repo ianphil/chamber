@@ -97,6 +97,15 @@ const electronAPI: ElectronAPI = {
     getDisabledMindIds: () => ipcRenderer.invoke(IPC.CHATROOM.GET_DISABLED_MIND_IDS),
     onStateChanged: (callback) => createIpcListener(ipcRenderer, IPC.CHATROOM.STATE_CHANGED, callback),
   },
+  squad: {
+    selectRepository: () => ipcRenderer.invoke(IPC.SQUAD.SELECT_REPOSITORY),
+    getRoom: (repoPath?: string | null) => ipcRenderer.invoke(IPC.SQUAD.GET_ROOM, repoPath),
+    history: (roomId: string) => ipcRenderer.invoke(IPC.SQUAD.HISTORY, roomId),
+    send: (request) => ipcRenderer.invoke(IPC.SQUAD.SEND, request),
+    stop: (turnId: string) => ipcRenderer.invoke(IPC.SQUAD.STOP, turnId),
+    clear: (roomId: string) => ipcRenderer.invoke(IPC.SQUAD.CLEAR, roomId),
+    onEvent: (callback) => createIpcListener(ipcRenderer, IPC.SQUAD.EVENT, callback),
+  },
   updater: {
     getState: () => ipcRenderer.invoke(IPC.UPDATER.GET_STATE),
     check: () => ipcRenderer.invoke(IPC.UPDATER.CHECK),

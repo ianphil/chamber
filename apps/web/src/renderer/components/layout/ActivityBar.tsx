@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
 import type { LensViewManifest } from '@chamber/shared/types';
 import { UpdateIndicator } from './UpdateIndicator';
+import squadLogo from '../../assets/squad-logo.png';
 
 const iconMap: Record<string, LucideIcon> = {
   zap: Zap,
@@ -71,6 +72,25 @@ export function ActivityBar() {
           <TooltipContent side="right" sideOffset={8}>
             {isChatroomRunning ? 'Chatroom — agents running…' : 'Chatroom'}
           </TooltipContent>
+        </Tooltip>
+
+        {/* Squad Room — repo-backed Squad teams */}
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="Squad Room"
+              onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'squad' })}
+              className={cn(
+                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                activeView === 'squad'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <img src={squadLogo} alt="" className="h-7 w-7 object-contain brightness-0 invert" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>Squad Room</TooltipContent>
         </Tooltip>
 
         {discoveredViews.length > 0 && <Separator className="my-1 w-8" />}

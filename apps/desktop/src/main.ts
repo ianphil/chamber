@@ -35,6 +35,8 @@ import {
   MindManager,
   MindProfileService,
   MindScaffold,
+  SquadRoomService,
+  SquadToolProvider,
   TaskManager,
   ChildProcessRunner,
   ToolInstaller,
@@ -75,6 +77,7 @@ import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
 import { setupUserProfileIPC } from './main/ipc/userProfile';
+import { setupSquadIPC } from './main/ipc/squad';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -225,6 +228,10 @@ chatroomApprovalGate.setApprovalHandler(async (request) => ({
   reason: 'Chatroom approval UI is not wired yet; side-effect tools are blocked.',
 }));
 const chatroomService = new ChatroomService(mindManager, appPaths, chatroomApprovalGate);
+const squadRoomService = new SquadRoomService({
+  transcriptRoot: path.join(appPaths.userData, 'squad-room', 'transcripts'),
+});
+const squadToolProvider = new SquadToolProvider(squadRoomService);
 const canvasService = new CanvasService({
   onAction: (action) => {
     if (!action.lensViewId) {
@@ -257,7 +264,7 @@ const cronService = new CronService({
 });
 const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
 
-const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
+const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider, squadToolProvider];
 let chamberCopilotService: ChamberCopilotService | null = null;
 
 if (configService.load().chamberCopilotEnabled === true) {
@@ -639,6 +646,7 @@ app.on('ready', async () => {
     relayModeService: a2aRelayModeService,
   });
   setupChatroomIPC(chatroomService);
+  setupSquadIPC(squadRoomService);
   setupUpdaterIPC(updaterService);
 
   // Fire-and-forget tool reconciliation: install any new marketplace tools.

@@ -70,6 +70,14 @@ describe('IPC channel constants', () => {
     expect(IPC.CHATROOM.GET_DISABLED_MIND_IDS).toBe('chatroom:get-disabled-mind-ids');
     expect(IPC.CHATROOM.STATE_CHANGED).toBe('chatroom:state-changed');
 
+    expect(IPC.SQUAD.SELECT_REPOSITORY).toBe('squad:select-repository');
+    expect(IPC.SQUAD.GET_ROOM).toBe('squad:get-room');
+    expect(IPC.SQUAD.HISTORY).toBe('squad:history');
+    expect(IPC.SQUAD.SEND).toBe('squad:send');
+    expect(IPC.SQUAD.STOP).toBe('squad:stop');
+    expect(IPC.SQUAD.CLEAR).toBe('squad:clear');
+    expect(IPC.SQUAD.EVENT).toBe('squad:event');
+
     expect(IPC.UPDATER.GET_STATE).toBe('updater:get-state');
     expect(IPC.UPDATER.CHECK).toBe('updater:check');
     expect(IPC.UPDATER.DOWNLOAD).toBe('updater:download');
@@ -105,6 +113,7 @@ describe('IPC channel constants', () => {
     expectTypeOf<typeof IPC.CHAT.SEND>().toEqualTypeOf<'chat:send'>();
     expectTypeOf<'chat:send'>().toMatchTypeOf<IpcChannel>();
     expectTypeOf<'chatroom:set-orchestration'>().toMatchTypeOf<IpcChannel>();
+    expectTypeOf<'squad:get-room'>().toMatchTypeOf<IpcChannel>();
     // Sanity: an unrelated string is not assignable to IpcChannel.
     expectTypeOf<'not:a:channel'>().not.toMatchTypeOf<IpcChannel>();
   });

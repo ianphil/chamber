@@ -93,6 +93,15 @@ export const IPC = {
     GET_DISABLED_MIND_IDS: 'chatroom:get-disabled-mind-ids',
     STATE_CHANGED: 'chatroom:state-changed',
   },
+  SQUAD: {
+    SELECT_REPOSITORY: 'squad:select-repository',
+    GET_ROOM: 'squad:get-room',
+    HISTORY: 'squad:history',
+    SEND: 'squad:send',
+    STOP: 'squad:stop',
+    CLEAR: 'squad:clear',
+    EVENT: 'squad:event',
+  },
   UPDATER: {
     GET_STATE: 'updater:get-state',
     CHECK: 'updater:check',

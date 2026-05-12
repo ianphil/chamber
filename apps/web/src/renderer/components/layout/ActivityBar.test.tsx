@@ -53,6 +53,7 @@ describe('ActivityBar', () => {
     renderActivityBar();
     expect(screen.getByLabelText('Chat')).toBeTruthy();
     expect(screen.getByLabelText('Chatroom')).toBeTruthy();
+    expect(screen.getByLabelText('Squad Room')).toBeTruthy();
   });
 
   it('renders the updater action when an update is available', async () => {

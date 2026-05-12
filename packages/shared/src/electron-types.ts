@@ -19,6 +19,7 @@ import type {
   TaskStatusUpdateEvent,
 } from './a2a-types';
 import type { ChatroomAPI } from './chatroom-types';
+import type { SquadAPI } from './squad-types';
 import type {
   AgentProfile,
   AgentProfileActionResult,
@@ -123,6 +124,7 @@ export interface ElectronAPI {
     uninstall: (toolId: string) => Promise<{ success: boolean; error?: string }>;
   };
   chatroom: ChatroomAPI;
+  squad: SquadAPI;
   updater: {
     getState: () => Promise<DesktopUpdateState>;
     check: () => Promise<DesktopUpdateActionResult>;

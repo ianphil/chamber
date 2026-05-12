@@ -2,6 +2,7 @@
 // Vite handles these at build time; TS needs the module shapes to type-check.
 
 declare module '*.css';
+declare module '*.png';
 
 interface Window {
   desktop?: {

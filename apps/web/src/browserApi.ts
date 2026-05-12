@@ -282,6 +282,38 @@ export function installBrowserApi(): void {
       uninstall: async () => ({ success: false, error: 'Tool uninstall is desktop-only in browser mode.' }),
     },
     chatroom: createBrowserChatroomApi(),
+    squad: {
+      selectRepository: async () => {
+        const repoPath = window.prompt('Enter a local repository path on this computer:')?.trim();
+        return repoPath ? api.squad.getRoom(repoPath) : null;
+      },
+      getRoom: async (repoPath) => ({
+        id: repoPath || 'unselected',
+        repoPath: repoPath || null,
+        repoName: repoPath ? repoPath.split(/[\\/]/).filter(Boolean).at(-1) ?? repoPath : null,
+        squadPath: repoPath ? `${repoPath.replace(/[\\/]$/, '')}\\.squad` : null,
+        status: repoPath ? 'error' : 'unselected',
+        version: null,
+        coordinator: null,
+        agents: [],
+        routingRules: [],
+        decisions: [],
+        directives: null,
+        sessions: [],
+        lastError: repoPath
+          ? 'Squad Room repository inspection is desktop-only in browser mode.'
+          : null,
+      }),
+      history: async () => [],
+      send: async () => ({
+        success: false,
+        reason: 'desktop-only',
+        error: 'Squad messaging is desktop-only in browser mode.',
+      }),
+      stop: async () => unavailable('Squad messaging stop'),
+      clear: async () => unavailable('Squad transcript clear'),
+      onEvent: () => noopUnsubscribe,
+    },
     updater: {
       getState: async () => ({
         enabled: false,
