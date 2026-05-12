@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.60.0 (2026-05-12)
+
+### A2A
+
+- **Add mailbox-based A2A relay mode** — Splits the A2A extension into a polling `a2a-client` and an `a2a-server` relay, lets Chamber connect from the Relay panel, publish local mind cards, use the relay as the active A2A registry, enqueue outbound messages, poll/ack inbound mailbox messages, and fall back to local mode on disconnect. The relay baseline uses explicit queue/ack/lease semantics for Chamber/CLI interop; long-polling and optional WebSockets can build on the same contract later.
+
 ## v0.59.7 (2026-05-12)
 
 ### Fixes
