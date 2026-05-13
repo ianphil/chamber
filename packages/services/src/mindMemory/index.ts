@@ -32,6 +32,7 @@ export * from './dream-gates';
 export * from './consolidation-scheduler';
 export * from './LLMClient';
 export * from './CopilotLLMClient';
+export * from './oneShotSession';
 export * from './DreamDaemon';
 export * from './InternalScheduler';
 export * from './MindMemoryService';

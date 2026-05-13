@@ -19,6 +19,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import {
+  buildOneShotSession,
   createMindMemoryService,
   createInternalScheduler,
   createMindMemoryVault,
@@ -35,7 +36,6 @@ import {
   type OneShotSession,
 } from '@chamber/services';
 import type { TurnCompletionObserver } from '@chamber/shared';
-import type { PermissionHandler, MessageOptions, SessionConfig } from '@github/copilot-sdk';
 
 type BetterSqlite3Module = typeof import('better-sqlite3');
 type BetterSqlite3Database = import('better-sqlite3').Database;
@@ -81,16 +81,14 @@ function loadBetterSqlite3(isPackaged: boolean, resourcesPath: string | undefine
   return runtimeRequire('better-sqlite3') as BetterSqlite3Module;
 }
 
-const refusingPermissionHandler: PermissionHandler = () => ({
-  kind: 'reject',
-  feedback: 'Tool permissions are disabled for memory-consolidation sessions.',
-});
-
 /**
  * Build the createOneShotSession adapter for CopilotLLMClient. Each
  * synthesize call mints a fresh CopilotSession scoped to the mind's
  * working directory, with NO tools, NO config discovery, and a refusing
  * permission handler. The session is closed in the LLMClient's `finally`.
+ *
+ * The SDK-touching plumbing lives in `@chamber/services` `buildOneShotSession`
+ * so the same contract is exercised by the live-SDK integration test.
  */
 function makeCreateOneShotSession(
   mindManager: MindManager,
@@ -101,40 +99,13 @@ function makeCreateOneShotSession(
     if (!ctx) {
       throw new Error(`MindMemory: cannot create session — mind ${mindId} is not loaded`);
     }
-    const sessionConfig: SessionConfig = {
+    return buildOneShotSession({
+      client: ctx.client,
       workingDirectory: mindPath,
-      enableConfigDiscovery: false,
-      tools: [],
-      systemMessage: { mode: 'replace', content: '' },
-      onPermissionRequest: refusingPermissionHandler,
-    };
-    const session = await ctx.client.createSession(sessionConfig);
-
-    const onAbort = (): void => {
-      // Best-effort abort. The CLI may or may not have an in-flight call.
-      session.abort().catch(() => { /* noop */ });
-    };
-    if (signal.aborted) {
-      onAbort();
-    } else {
-      signal.addEventListener('abort', onAbort, { once: true });
-    }
-
-    return {
-      async send(prompt: string): Promise<string> {
-        const opts: MessageOptions = { prompt };
-        const event = await session.sendAndWait(opts);
-        return event?.data.content ?? '';
-      },
-      async close(): Promise<void> {
-        signal.removeEventListener('abort', onAbort);
-        try {
-          await session.disconnect();
-        } catch (err) {
-          logger.warn('mindMemory: session disconnect failed', { err: String(err) });
-        }
-      },
-    };
+      signal,
+      onDisconnectError: (err) =>
+        logger.warn('mindMemory: session disconnect failed', { err: String(err) }),
+    });
   };
 }
 
