@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.61.1 (2026-05-13)
+
+### Chat
+
+- **Unlock conversations after Stop and bound resume retries** — Clears the chat streaming guard when Stop cancels a wedged send and stops the history panel from repeatedly retrying a rejected resume; the failed selection now shows the IPC error inline instead of spamming `conversationHistory:resume`. Closes #292.
+
 ## v0.61.0 (2026-05-12)
 
 ### A2A
