@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
+import { getSdkSessionErrorMessage } from '../sdk';
 
 const log = Logger.create('TaskManager');
 
@@ -290,8 +291,10 @@ export class TaskManager extends EventEmitter {
       this.taskTargets.delete(task.id);
     });
 
-    session.on('session.error', () => {
+    session.on('session.error', (event) => {
       if (TERMINAL_STATES.has(task.status.state)) return;
+      const errorMessage = getSessionErrorMessage(event);
+      if (isStaleSessionError(new Error(errorMessage))) return;
       this.transitionState(task, 'TASK_STATE_FAILED');
       this.sessions.delete(task.id);
       this.taskTargets.delete(task.id);
@@ -332,5 +335,13 @@ export class TaskManager extends EventEmitter {
       targetMindId: this.taskTargets.get(task.id) ?? '',
     };
     this.emit('task:status-update', event);
+  }
+}
+
+function getSessionErrorMessage(event: unknown): string {
+  try {
+    return getSdkSessionErrorMessage(event);
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
