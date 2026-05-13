@@ -24,6 +24,7 @@
     "deps:check": "depcruise apps packages --config config/dependency-cruiser.cjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config config/vitest.config.ts --no-file-parallelism --maxWorkers=1",
+    "pretest": "node scripts/ensure-native-abi.cjs node",
     "test:coverage": "vitest run --config config/vitest.config.ts --coverage --no-file-parallelism --maxWorkers=1",
     "clean": "node scripts/clean-artifacts.js",
     "capture:hero": "node scripts/capture-readme-hero.js",
@@ -35,6 +36,7 @@
     "smoke:server-sdk": "npm --workspace @chamber/server run build && node scripts/run-server-sdk-smoke-test.js",
     "smoke:web": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=web",
     "smoke:desktop": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1",
+    "presmoke:desktop": "node scripts/ensure-native-abi.cjs electron",
     "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js"
   },
   "keywords": [],
