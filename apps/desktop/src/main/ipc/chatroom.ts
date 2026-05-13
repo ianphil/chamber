@@ -62,7 +62,7 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
       sendArgsSchema,
       { message, model, roundId },
     );
-    await chatroomService.broadcast(parsed.message, parsed.roundId);
+    await chatroomService.broadcast(parsed.message, parsed.roundId, parsed.model);
   });
 
   ipcMain.handle(IPC.CHATROOM.HISTORY, async () => {

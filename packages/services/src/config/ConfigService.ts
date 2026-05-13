@@ -155,6 +155,9 @@ function normalizeMindRecord(value: unknown): MindRecord | null {
     ...(typeof record.selectedModel === 'string' && record.selectedModel.trim().length > 0
       ? { selectedModel: record.selectedModel.trim() }
       : {}),
+    ...(record.selectedModelProvider === 'byo'
+      ? { selectedModelProvider: record.selectedModelProvider }
+      : {}),
     ...(typeof record.activeSessionId === 'string' && record.activeSessionId.trim().length > 0
       ? { activeSessionId: record.activeSessionId.trim() }
       : {}),

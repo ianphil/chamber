@@ -26,6 +26,8 @@ export interface MindDto {
   readonly identity: MindIdentityDto;
   readonly status: MindStatusDto;
   readonly error?: string;
+  readonly selectedModel?: string;
+  readonly selectedModelProvider?: 'byo';
   readonly windowed?: boolean;
 }
 
@@ -67,6 +69,7 @@ export interface CancelChatRequest {
 export interface ModelDto {
   readonly id: string;
   readonly name: string;
+  readonly provider?: 'byo';
 }
 
 export interface ListModelsResponse {

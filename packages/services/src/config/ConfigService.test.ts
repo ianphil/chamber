@@ -110,6 +110,7 @@ describe('ConfigService', () => {
           id: 'q-a1b2',
           path: '/tmp/agents/q',
           selectedModel: 'gpt-5.4',
+          selectedModelProvider: 'byo',
           activeSessionId: 'chamber-q-a1b2-conversation-1',
           conversations: [{
             sessionId: 'chamber-q-a1b2-conversation-1',
@@ -130,6 +131,7 @@ describe('ConfigService', () => {
         id: 'q-a1b2',
         path: '/tmp/agents/q',
         selectedModel: 'gpt-5.4',
+        selectedModelProvider: 'byo',
         activeSessionId: 'chamber-q-a1b2-conversation-1',
         conversations: [{
           sessionId: 'chamber-q-a1b2-conversation-1',

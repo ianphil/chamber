@@ -205,6 +205,14 @@ export function mockElectronAPI(): ElectronAPI {
       onAccountSwitched: vi.fn().mockReturnValue(vi.fn()),
       onLoggedOut: vi.fn().mockReturnValue(vi.fn()),
     },
+    byoLlm: {
+      get: vi.fn().mockResolvedValue(null),
+      save: vi.fn().mockResolvedValue({ success: true }),
+      disable: vi.fn().mockResolvedValue({ success: true }),
+      probe: vi.fn().mockResolvedValue({ ok: true, modelCount: 0, models: [] }),
+      restartAgents: vi.fn().mockResolvedValue({ success: true, restartedCount: 0 }),
+      onChanged: vi.fn().mockReturnValue(vi.fn()),
+    },
     genesis: {
       getDefaultPath: vi.fn().mockResolvedValue('C:\\Users\\test\\agents'),
       pickPath: vi.fn().mockResolvedValue(null),

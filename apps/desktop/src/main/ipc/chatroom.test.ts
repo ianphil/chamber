@@ -49,25 +49,25 @@ describe('Chatroom IPC', () => {
   it('chatroom:send invokes broadcast with message and model', async () => {
     const handler = getHandler('chatroom:send');
     await handler(EVT, 'Hello agents', 'gpt-4');
-    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined);
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined, 'gpt-4');
   });
 
   it('chatroom:send works without model', async () => {
     const handler = getHandler('chatroom:send');
     await handler(EVT, 'Hello agents');
-    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined);
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', undefined, undefined);
   });
 
   it('chatroom:send forwards renderer-supplied roundId to the service', async () => {
     const handler = getHandler('chatroom:send');
     await handler(EVT, 'Hello agents', 'gpt-4', 'renderer-round-1');
-    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'renderer-round-1');
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'renderer-round-1', 'gpt-4');
   });
 
   it('chatroom:send accepts roundId without a model', async () => {
     const handler = getHandler('chatroom:send');
     await handler(EVT, 'Hello agents', undefined, 'renderer-round-2');
-    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'renderer-round-2');
+    expect(mockService.broadcast).toHaveBeenCalledWith('Hello agents', 'renderer-round-2', undefined);
   });
 
   describe('chatroom:send input validation', () => {
@@ -111,7 +111,7 @@ describe('Chatroom IPC', () => {
     it('accepts undefined model', async () => {
       const handler = getHandler('chatroom:send');
       await handler(EVT, 'hello', undefined);
-      expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined);
+      expect(mockService.broadcast).toHaveBeenCalledWith('hello', undefined, undefined);
     });
 
     const invalidRoundIds: Array<[string, unknown]> = [
@@ -140,7 +140,7 @@ describe('Chatroom IPC', () => {
       const handler = getHandler('chatroom:send');
       const exact = 'x'.repeat(128);
       await handler(EVT, 'hello', undefined, exact);
-      expect(mockService.broadcast).toHaveBeenCalledWith('hello', exact);
+      expect(mockService.broadcast).toHaveBeenCalledWith('hello', exact, undefined);
     });
     it('TypeError message names the channel and the bad field by name', async () => {
       const handler = getHandler('chatroom:send');

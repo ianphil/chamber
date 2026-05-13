@@ -26,6 +26,9 @@ import type {
   AgentProfileAvatarSaveRequest,
   AgentProfileSaveRequest,
   AgentProfileSaveResult,
+  ByoLlmConfig,
+  ByoLlmProbeResult,
+  ByoLlmSaveResult,
   ChatEvent,
   ChatImageAttachment,
   ConversationResumeResult,
@@ -147,6 +150,14 @@ export interface ElectronAPI {
     emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;
     emitAuthProgress: (payload: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => Promise<void>;
     completeLoginStub: (payload: { success?: boolean; login?: string }) => Promise<void>;
+  };
+  byoLlm: {
+    get: () => Promise<ByoLlmConfig | null>;
+    save: (config: ByoLlmConfig) => Promise<ByoLlmSaveResult>;
+    disable: () => Promise<ByoLlmSaveResult>;
+    probe: (config: ByoLlmConfig) => Promise<ByoLlmProbeResult>;
+    restartAgents: () => Promise<{ success: boolean; restartedCount: number; error?: string }>;
+    onChanged: (callback: (config: ByoLlmConfig | null) => void) => () => void;
   };
   window: {
     minimize: () => void;

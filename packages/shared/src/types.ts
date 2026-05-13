@@ -111,6 +111,13 @@ export interface MindIdentity {
 
 export type MindStatus = 'loading' | 'ready' | 'error' | 'unloading';
 
+export type ModelProvider = 'byo';
+
+export interface ModelSelection {
+  id: string;
+  provider?: ModelProvider;
+}
+
 /** Shared mind context — safe for renderer consumption */
 export interface MindContext {
   readonly mindId: string;
@@ -119,6 +126,7 @@ export interface MindContext {
   readonly status: MindStatus;
   readonly error?: string;
   selectedModel?: string;
+  selectedModelProvider?: ModelProvider;
   activeSessionId?: string;
   readonly windowed?: boolean;
 }
@@ -128,6 +136,7 @@ export interface MindRecord {
   id: string;
   path: string;
   selectedModel?: string;
+  selectedModelProvider?: ModelProvider;
   activeSessionId?: string;
   conversations?: ChamberConversationRecord[];
 }
@@ -271,6 +280,8 @@ export type MarketplaceRegistryActionResult =
 export interface ModelInfo {
   id: string;
   name: string;
+  /** Optional provider tag — set to 'byo' for models from a Bring-Your-Own LLM endpoint. Omitted for SDK/Copilot models. */
+  provider?: ModelProvider;
 }
 
 /** @deprecated Use AppConfigV2 — kept for migration */
@@ -452,6 +463,49 @@ export interface DesktopUpdateState {
 export interface DesktopUpdateActionResult {
   success: boolean;
   message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// BYO LLM (Bring Your Own LLM) — custom OpenAI-compatible endpoint config
+// Maps to GitHub Copilot CLI's COPILOT_PROVIDER_* environment variables.
+// ---------------------------------------------------------------------------
+
+export type ByoLlmProviderType = 'openai' | 'azure' | 'anthropic';
+export type ByoLlmWireApi = 'completions' | 'responses';
+
+export interface ByoLlmConfig {
+  enabled: boolean;
+  baseUrl: string;
+  providerType?: ByoLlmProviderType;
+  apiKey?: string;
+  bearerToken?: string;
+  model?: string;
+  modelId?: string;
+  wireModel?: string;
+  wireApi?: ByoLlmWireApi;
+  azureApiVersion?: string;
+  customHeaders?: Record<string, string>;
+  maxPromptTokens?: number;
+  maxOutputTokens?: number;
+}
+
+export interface ByoLlmProbeSuccess {
+  ok: true;
+  modelCount: number;
+  models: Array<{ id: string; name?: string }>;
+}
+
+export interface ByoLlmProbeFailure {
+  ok: false;
+  error: string;
+  status?: number;
+}
+
+export type ByoLlmProbeResult = ByoLlmProbeSuccess | ByoLlmProbeFailure;
+
+export interface ByoLlmSaveResult {
+  success: boolean;
+  error?: string;
 }
 
 // `ElectronAPI` and the `Window.electronAPI` global declaration live in

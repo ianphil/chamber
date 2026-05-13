@@ -21,11 +21,13 @@ vi.mock('./SdkBootstrap', () => ({
 
 const mockStart = vi.fn();
 const mockStop = vi.fn();
+const mockForceStop = vi.fn();
 
 class FakeCopilotClient {
   options: Record<string, unknown>;
   start = mockStart;
   stop = mockStop;
+  forceStop = mockForceStop;
 
   constructor(options: Record<string, unknown>) {
     this.options = options;
@@ -44,6 +46,7 @@ describe('CopilotClientFactory', () => {
   beforeEach(() => {
     factory = new CopilotClientFactory();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   describe('createClient', () => {
@@ -165,6 +168,45 @@ describe('CopilotClientFactory', () => {
       await factory.createClient('C:\\agents\\fox');
       expect(loadSdkModule).toHaveBeenCalledTimes(1);
     });
+
+    it('BVT-F01: passes BYO LLM extraEnv into the spawned client env', async () => {
+      const client = await factory.createClient('C:\\agents\\q', {
+        extraEnv: {
+          COPILOT_PROVIDER_BASE_URL: 'https://example.com/v1',
+          COPILOT_PROVIDER_TYPE: 'openai',
+          COPILOT_PROVIDER_API_KEY: 'lm-studio',
+          COPILOT_MODEL: 'gemma-4-e4b',
+        },
+      }) as unknown as FakeCopilotClient;
+      const env = client.options.env as Record<string, string>;
+      expect(env.COPILOT_PROVIDER_BASE_URL).toBe('https://example.com/v1');
+      expect(env.COPILOT_PROVIDER_TYPE).toBe('openai');
+      expect(env.COPILOT_PROVIDER_API_KEY).toBe('lm-studio');
+      expect(env.COPILOT_MODEL).toBe('gemma-4-e4b');
+    });
+
+    it('BVT-F02: combines BYO extraEnv with toolsBinDir PATH munging', async () => {
+      factory = new CopilotClientFactory({
+        toolsBinDir: 'C:\\Chamber\\tools\\bin',
+        env: { Path: 'C:\\Windows\\System32', EXISTING_VAR: 'existing' },
+      });
+      const client = await factory.createClient('C:\\agents\\q', {
+        extraEnv: { COPILOT_PROVIDER_BASE_URL: 'https://example.com/v1' },
+      }) as unknown as FakeCopilotClient;
+      const env = client.options.env as Record<string, string>;
+      expect(env.Path).toBe('C:\\Chamber\\tools\\bin;C:\\Windows\\System32');
+      expect(env.EXISTING_VAR).toBe('existing');
+      expect(env.COPILOT_PROVIDER_BASE_URL).toBe('https://example.com/v1');
+    });
+
+    it('BVT-F03: omitted or empty extraEnv does not change behaviour', async () => {
+      const a = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      const b = await factory.createClient('C:\\agents\\q', { extraEnv: {} }) as unknown as FakeCopilotClient;
+      const envA = a.options.env as Record<string, string>;
+      const envB = b.options.env as Record<string, string>;
+      expect(envA.COPILOT_PROVIDER_BASE_URL).toBeUndefined();
+      expect(envB.COPILOT_PROVIDER_BASE_URL).toBeUndefined();
+    });
   });
 
   describe('destroyClient', () => {
@@ -178,6 +220,20 @@ describe('CopilotClientFactory', () => {
       mockStop.mockRejectedValueOnce(new Error('stop failed'));
       const client = await factory.createClient('C:\\agents\\q');
       await expect(factory.destroyClient(client)).resolves.not.toThrow();
+      expect(mockForceStop).toHaveBeenCalledTimes(1);
+    });
+
+    it('force-stops the client if graceful stop hangs', async () => {
+      vi.useFakeTimers();
+      factory = new CopilotClientFactory({ stopTimeoutMs: 10 });
+      mockStop.mockImplementationOnce(() => new Promise(() => undefined));
+
+      const client = await factory.createClient('C:\\agents\\q');
+      const destroy = factory.destroyClient(client);
+      await vi.advanceTimersByTimeAsync(10);
+
+      await expect(destroy).resolves.not.toThrow();
+      expect(mockForceStop).toHaveBeenCalledTimes(1);
     });
   });
 });

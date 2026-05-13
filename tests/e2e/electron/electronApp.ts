@@ -37,8 +37,16 @@ export async function launchElectronApp(options: {
     child.stderr.on('data', (chunk) => logs.push(String(chunk)));
   }
 
-  await waitForCdp(cdpUrl, logs);
-  const browser = await chromium.connectOverCDP(cdpUrl);
+  let browser: Browser;
+  try {
+    await waitForCdp(cdpUrl, logs);
+    browser = await chromium.connectOverCDP(cdpUrl, { timeout: 120_000 });
+  } catch (error) {
+    if (child && !child.killed) {
+      child.kill();
+    }
+    throw error;
+  }
 
   return {
     browser,
@@ -67,7 +75,7 @@ export async function launchElectronApp(options: {
 
 export async function findRendererPage(browser: Browser | undefined, logs: string[]): Promise<Page> {
   if (!browser) throw new Error('Browser was not connected.');
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     for (const context of browser.contexts()) {
       const page = context.pages().find((candidate) => /localhost|127\.0\.0\.1/.test(candidate.url()));

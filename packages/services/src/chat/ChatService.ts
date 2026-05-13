@@ -3,6 +3,7 @@
 
 import type { MindManager } from '../mind';
 import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, ConversationSummary, ModelInfo } from '@chamber/shared/types';
+import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import type { CopilotSession } from '../mind/types';
 import { isStaleSessionError, SEND_TIMEOUT_MS, sendTimeoutError } from '@chamber/shared/sessionErrors';
 import { Logger } from '../logger';
@@ -33,6 +34,15 @@ export class ChatService {
     private readonly mindManager: MindManager,
     private readonly turnQueue: TurnQueue,
     private readonly dateTimeContextProvider: DateTimeContextProvider = getCurrentDateTimeContext,
+    /**
+     * Optional provider injected by main.ts that returns BYO LLM models when
+     * BYO is enabled. Returning null/undefined falls back to the bundled SDK's
+     * `client.listModels()`. This is required because the SDK's listModels API
+     * always queries GitHub's official Copilot model catalog and does NOT honor
+     * the COPILOT_PROVIDER_BASE_URL env var even when BYOK mode is active for
+     * inference.
+     */
+    private readonly byoLlmModelsProvider?: () => Promise<ModelInfo[] | null>,
   ) {}
 
   async sendMessage(
@@ -75,8 +85,8 @@ export class ChatService {
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
-        const message = err instanceof Error ? err.message : String(err);
-        emit({ type: 'error', message });
+        const rawMessage = err instanceof Error ? err.message : String(err);
+        emit({ type: 'error', message: mapByoLlmError(rawMessage) });
       } finally {
         this.abortControllers.delete(mindId);
       }
@@ -278,15 +288,55 @@ export class ChatService {
 
   async listModels(mindId: string): Promise<ModelInfo[]> {
     const context = this.mindManager.getMind(mindId);
-    if (!context?.client) return [];
-    // Defensive: clear any SDK-level cache. As of @github/copilot-sdk@0.3.0
-    // this is a no-op (see modelCacheCompat). The cache that actually
-    // controls model freshness lives in the CLI server process with a
-    // 30-min TTL — only a CLI subprocess restart can bust it.
-    // See docs/model-cache-investigation.md (issue #90).
-    clearCopilotModelsCache(context.client);
-    const models = await context.client.listModels();
-    return mapSdkModelList(models);
+    let sdkModels: ModelInfo[] = [];
+    let sdkError: unknown = null;
+    if (context?.client) {
+      // Defensive: clear any SDK-level cache. As of @github/copilot-sdk@0.3.0
+      // this is a no-op (see modelCacheCompat). The cache that actually
+      // controls model freshness lives in the CLI server process with a
+      // 30-min TTL — only a CLI subprocess restart can bust it.
+      // See docs/model-cache-investigation.md (issue #90).
+      clearCopilotModelsCache(context.client);
+      try {
+        const raw = await context.client.listModels();
+        sdkModels = mapSdkModelList(raw);
+      } catch (err) {
+        sdkError = err;
+      }
+    }
+
+    let byoModels: ModelInfo[] = [];
+    if (this.byoLlmModelsProvider) {
+      try {
+        byoModels = (await this.byoLlmModelsProvider()) ?? [];
+      } catch (err) {
+        log.error('byoLlmModelsProvider failed (skipping BYO models):', err);
+      }
+    }
+
+    // If SDK errored AND we have no BYO fallback, propagate (preserves existing
+    // behavior so tests/UI can surface the SDK failure). If BYO is providing
+    // models, suppress the SDK error and return BYO-only — the user explicitly
+    // chose a custom endpoint and shouldn't be blocked by Copilot SDK issues.
+    if (sdkError && byoModels.length === 0) {
+      throw sdkError;
+    }
+
+    if (byoModels.length === 0) return sdkModels;
+
+    // Merge: append BYO models after SDK models. Keep same-id cloud/BYO entries
+    // distinct by provider-aware key so the renderer can route them differently.
+    const seen = new Set(sdkModels.map((m) => modelSelectionKeyFromModel(m)));
+    const merged = [...sdkModels];
+    for (const m of byoModels) {
+      const key = modelSelectionKeyFromModel(m);
+      if (!seen.has(key)) {
+        merged.push(m);
+        seen.add(key);
+      }
+    }
+    log.debug(`listModels: ${sdkModels.length} SDK + ${byoModels.length} BYO -> ${merged.length} merged`);
+    return merged;
   }
 
   private assertCanSwitchConversation(mindId: string): void {
@@ -294,4 +344,20 @@ export class ChatService {
       throw new Error('Cannot switch conversations while a message is still streaming.');
     }
   }
+}
+
+
+/**
+ * Friendly mapper for upstream LLM errors that originate from BYO LLM endpoints.
+ * Detects llama.cpp / LM Studio context-too-small responses and rewrites them
+ * into actionable guidance.
+ */
+export function mapByoLlmError(rawMessage: string): string {
+  if (/n_keep:\s*\d+\s*>=\s*n_ctx:\s*\d+/.test(rawMessage)) {
+    return `The local model's context window is too small for Chamber's system prompt. Either pick a larger-context model (e.g. qwen3.5-9b for 32K, gemma-4-26b for 128K) or increase the context length when loading the model in LM Studio. Original error: ${rawMessage}`;
+  }
+  if (/context.*(?:length|window)/i.test(rawMessage) && /(too|exceed|maximum)/i.test(rawMessage)) {
+    return `Model context window exceeded. Try a larger model or reduce the conversation history. Original: ${rawMessage}`;
+  }
+  return rawMessage;
 }

@@ -224,7 +224,7 @@ describe('SettingsView', () => {
 
     render(<SettingsView />);
 
-    const trigger = await screen.findByRole('combobox');
+    const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
 
     const options = await screen.findAllByRole('option');
@@ -238,7 +238,7 @@ describe('SettingsView', () => {
     render(<SettingsView />);
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox').textContent).toContain('bob');
+      expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('bob');
     });
   });
 
@@ -248,7 +248,7 @@ describe('SettingsView', () => {
 
     render(<SettingsView />);
 
-    const trigger = await screen.findByRole('combobox');
+    const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     fireEvent.click(await screen.findByRole('option', { name: 'bob' }));
 
@@ -263,7 +263,7 @@ describe('SettingsView', () => {
 
     render(<SettingsView />);
 
-    const trigger = await screen.findByRole('combobox');
+    const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     fireEvent.click(await screen.findByRole('option', { name: '+ Add Account' }));
 
@@ -297,7 +297,7 @@ describe('SettingsView', () => {
     onAccountSwitched!();
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox').textContent).toContain('bob');
+      expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('bob');
     });
   });
 
@@ -322,7 +322,7 @@ describe('SettingsView', () => {
     onAccountSwitched!();
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox').textContent).toContain('newuser');
+      expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('newuser');
     });
   });
 

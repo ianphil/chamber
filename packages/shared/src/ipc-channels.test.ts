@@ -58,6 +58,13 @@ describe('IPC channel constants', () => {
     expect(IPC.TOOLS.INSTALL).toBe('tools:install');
     expect(IPC.TOOLS.UNINSTALL).toBe('tools:uninstall');
 
+    expect(IPC.BYO_LLM.GET).toBe('byoLlm:get');
+    expect(IPC.BYO_LLM.SAVE).toBe('byoLlm:save');
+    expect(IPC.BYO_LLM.DISABLE).toBe('byoLlm:disable');
+    expect(IPC.BYO_LLM.PROBE).toBe('byoLlm:probe');
+    expect(IPC.BYO_LLM.RESTART_AGENTS).toBe('byoLlm:restartAgents');
+    expect(IPC.BYO_LLM.CHANGED).toBe('byoLlm:changed');
+
     expect(IPC.CHATROOM.SEND).toBe('chatroom:send');
     expect(IPC.CHATROOM.HISTORY).toBe('chatroom:history');
     expect(IPC.CHATROOM.TASK_LEDGER).toBe('chatroom:task-ledger');
@@ -104,6 +111,7 @@ describe('IPC channel constants', () => {
   it('exposes channels as readonly literals via IpcChannel', () => {
     expectTypeOf<typeof IPC.CHAT.SEND>().toEqualTypeOf<'chat:send'>();
     expectTypeOf<'chat:send'>().toMatchTypeOf<IpcChannel>();
+    expectTypeOf<'byoLlm:save'>().toMatchTypeOf<IpcChannel>();
     expectTypeOf<'chatroom:set-orchestration'>().toMatchTypeOf<IpcChannel>();
     // Sanity: an unrelated string is not assignable to IpcChannel.
     expectTypeOf<'not:a:channel'>().not.toMatchTypeOf<IpcChannel>();

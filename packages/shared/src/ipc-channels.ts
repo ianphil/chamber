@@ -80,6 +80,14 @@ export const IPC = {
     INSTALL: 'tools:install',
     UNINSTALL: 'tools:uninstall',
   },
+  BYO_LLM: {
+    GET: 'byoLlm:get',
+    SAVE: 'byoLlm:save',
+    DISABLE: 'byoLlm:disable',
+    PROBE: 'byoLlm:probe',
+    RESTART_AGENTS: 'byoLlm:restartAgents',
+    CHANGED: 'byoLlm:changed',
+  },
   CHATROOM: {
     SEND: 'chatroom:send',
     HISTORY: 'chatroom:history',

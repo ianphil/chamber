@@ -59,6 +59,14 @@ const electronAPI: ElectronAPI = {
     onAccountSwitched: (callback) => createIpcListener(ipcRenderer, IPC.AUTH.ACCOUNT_SWITCHED, callback),
     onLoggedOut: (callback) => createIpcListener(ipcRenderer, IPC.AUTH.LOGGED_OUT, callback),
   },
+  byoLlm: {
+    get: () => ipcRenderer.invoke(IPC.BYO_LLM.GET),
+    save: (config) => ipcRenderer.invoke(IPC.BYO_LLM.SAVE, config),
+    disable: () => ipcRenderer.invoke(IPC.BYO_LLM.DISABLE),
+    probe: (config) => ipcRenderer.invoke(IPC.BYO_LLM.PROBE, config),
+    restartAgents: () => ipcRenderer.invoke(IPC.BYO_LLM.RESTART_AGENTS),
+    onChanged: (callback) => createIpcListener(ipcRenderer, IPC.BYO_LLM.CHANGED, callback),
+  },
   genesis: {
     getDefaultPath: () => ipcRenderer.invoke(IPC.GENESIS.GET_DEFAULT_PATH),
     pickPath: () => ipcRenderer.invoke(IPC.GENESIS.PICK_PATH),

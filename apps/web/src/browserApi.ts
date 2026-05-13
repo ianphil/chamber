@@ -236,6 +236,15 @@ export function installBrowserApi(): void {
           loggedOutHandlers.delete(callback);
         };
       },
+      cancelLogin: async () => undefined,
+    },
+    byoLlm: {
+      get: async () => null,
+      save: async () => ({ success: false, error: 'BYO LLM management is desktop-only in browser mode.' }),
+      disable: async () => ({ success: false, error: 'BYO LLM management is desktop-only in browser mode.' }),
+      probe: async () => ({ ok: false, error: 'BYO LLM probe is desktop-only in browser mode.' }),
+      restartAgents: async () => ({ success: false, restartedCount: 0, error: 'Agent restart is desktop-only in browser mode.' }),
+      onChanged: () => noopUnsubscribe,
     },
     genesis: {
       getDefaultPath: async () => '',
