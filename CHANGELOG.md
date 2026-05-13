@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.61.0 (2026-05-12)
+
+### A2A
+
+- **Fix stale-session task retries** — Prevents a stale SDK `session.error` from marking an A2A task failed before the stale-session retry path can create a fresh task session and complete the work.
+
 ## v0.60.0 (2026-05-12)
 
 ### A2A
