@@ -114,7 +114,11 @@ export interface MindMemoryService {
    *   - returns `null` again after `releaseMind` (entry is removed from
    *     the internal active map)
    */
-  __debugGet(mindId: string): { readonly daemon: DreamDaemon; readonly dbPath: string } | null;
+  __debugGet(mindId: string): {
+    readonly daemon: DreamDaemon;
+    readonly dbPath: string;
+    readonly writer: DailyLogWriter;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -287,10 +291,14 @@ export function createMindMemoryService(
 
   return { activateMind, releaseMind, close, __debugGet };
 
-  function __debugGet(mindId: string): { readonly daemon: DreamDaemon; readonly dbPath: string } | null {
+  function __debugGet(mindId: string): {
+    readonly daemon: DreamDaemon;
+    readonly dbPath: string;
+    readonly writer: DailyLogWriter;
+  } | null {
     const entry = active.get(mindId);
     if (!entry) return null;
-    return { daemon: entry.daemon, dbPath: entry.dbPath };
+    return { daemon: entry.daemon, dbPath: entry.dbPath, writer: entry.writer };
   }
 }
 

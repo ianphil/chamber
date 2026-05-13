@@ -693,6 +693,8 @@ describe('MindMemoryService — __debugGet (E2E accessor)', () => {
     expect(entry).not.toBeNull();
     expect(entry!.daemon).toBe(daemon);
     expect(entry!.dbPath).toBe(dreamDbPath(MIND_PATH));
+    expect(entry!.writer).toBeDefined();
+    expect(typeof entry!.writer.write).toBe('function');
   });
 
   it('returns null again after releaseMind', async () => {
