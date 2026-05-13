@@ -10,13 +10,14 @@ import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import { buildGenesisPrompt } from './genesisPrompt';
 import { GitHubRegistryClient } from './GitHubRegistryClient';
+import { STRUCTURED_LOG_SENTINEL } from '../mindMemory/StructuredLogFormat';
 
 const log = Logger.create('MindScaffold');
 
 const IDEA_FOLDERS = ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
-const GENESIS_SOURCE = 'ianphil/genesis';
+const GENESIS_SOURCE = 'ianphil/genesis-frontier';
 const GENESIS_CHANNEL = 'main';
 
 export interface GenesisConfig {
@@ -125,6 +126,17 @@ export class MindScaffold {
     const wmDir = path.join(mindPath, '.working-memory');
     fs.mkdirSync(wmDir, { recursive: true });
 
+    // Seed log.md with the chamber-structured-log/v1 sentinel BEFORE the
+    // WORKING_MEMORY_FILES placeholder loop runs. The loop's `existsSync` guard
+    // then skips it, preserving the sentinel. This keeps `validate()` happy
+    // (sentinel-only content trims to non-empty) while honoring the
+    // structured-log contract from creation. Trailing `\n\n` matches the
+    // byte-level format that DailyLogWriter.seedFreshLog emits for a fresh
+    // mind so on-disk content stays consistent regardless of which path
+    // seeded the sentinel. See WorkingMemoryComposer.readLog and
+    // DailyLogWriter.doWrite for the consumer side of this contract.
+    fs.writeFileSync(path.join(wmDir, 'log.md'), STRUCTURED_LOG_SENTINEL + '\n\n');
+
     // Create placeholder files so the agent has targets
     for (const file of WORKING_MEMORY_FILES) {
       const filePath = path.join(wmDir, file);
@@ -141,14 +153,16 @@ export class MindScaffold {
     const agentPath = path.join(mindPath, '.github', 'agents', `${slug}.agent.md`);
     const memoryPath = path.join(mindPath, '.working-memory', 'memory.md');
     const rulesPath = path.join(mindPath, '.working-memory', 'rules.md');
-    const logPath = path.join(mindPath, '.working-memory', 'log.md');
     const indexPath = path.join(mindPath, 'mind-index.md');
 
+    // log.md is intentionally NOT a prompt target. It is pre-seeded with the
+    // chamber-structured-log/v1 sentinel by createStructure() and reserved for
+    // structured CompletedTurn frames written by DailyLogWriter.
     const prompt = buildGenesisPrompt({
       name: config.name,
       role: config.role,
       voiceDescription: config.voiceDescription,
-      paths: { soul: soulPath, agent: agentPath, memory: memoryPath, rules: rulesPath, log: logPath, index: indexPath },
+      paths: { soul: soulPath, agent: agentPath, memory: memoryPath, rules: rulesPath, index: indexPath },
     });
 
     const sessionConfig: Record<string, unknown> = {
@@ -276,7 +290,7 @@ export class MindScaffold {
     }
 
     if (upgradeFiles.length === 0) {
-      throw new Error('Upgrade skill not found in genesis repo');
+      throw new Error(`Upgrade skill not found in ${GENESIS_SOURCE}@${GENESIS_CHANNEL}`);
     }
 
     // Download and write each file

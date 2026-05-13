@@ -105,16 +105,53 @@ describe('WorkingMemoryComposer.compose', () => {
     expect(out).toMatch(/truncated/);
   });
 
-  it('omits log entirely when log.md is unstructured (no sentinel) and warns', () => {
+  it('logs at info-level (not warn) when log.md is unstructured, and contributes nothing', () => {
+    // Migration window: pre-existing minds may still have an unstructured
+    // log.md. DailyLogWriter will rotate it on first turn. Until then, the
+    // composer must skip the section without elevating to a [warn] (which
+    // misleads SREs into thinking something failed). Uncle Bob (plan review)
+    // rejected the Set<string> dedupe — this is the lightweight alternative.
+    // TODO: remove the info-level fallback after the migration window closes.
     fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'just freeform notes\nnot structured\n', 'utf-8');
     fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
     const warn = vi.fn();
-    const composer = createWorkingMemoryComposer({ logger: { warn, info: () => {} } });
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
     const out = composer.compose(mindRoot, DEFAULTS);
     expect(out).toBe('mem');
     expect(out).not.toContain('freeform');
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatch(/unstructured/i);
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).toMatch(/unstructured/i);
+  });
+
+  it('emits neither warn nor info when log.md is sentinel-only with zero turns (the new-mind default)', () => {
+    // After Fix 2, MindScaffold.createStructure seeds log.md with the
+    // chamber-structured-log/v1 sentinel and no turn frames. The composer must
+    // recognise this as a structured-but-empty log, not as unstructured noise.
+    fs.writeFileSync(
+      path.join(workingMemoryDir, 'log.md'),
+      STRUCTURED_LOG_SENTINEL + '\n',
+      'utf-8',
+    );
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toBe('');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('omits log entirely when log.md is unstructured (no sentinel) — historical assertion superseded by warn/info split above', () => {
+    // Kept as a regression check that the section is omitted, regardless of
+    // log level. The level itself is locked by the test above.
+    fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'just freeform notes\nnot structured\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toBe('mem');
+    expect(out).not.toContain('freeform');
   });
 
   it('contributes nothing when log.md is missing', () => {

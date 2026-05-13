@@ -126,7 +126,10 @@ function readLog(
 
   const parsed = parseLog(raw);
   if (!parsed.sentinel) {
-    log.warn(
+    // Migration-window log level: pre-existing minds may still hold an
+    // unstructured log.md until DailyLogWriter rotates it on the first turn.
+    // Use info (not warn) so SRE dashboards don't flag this benign state.
+    log.info(
       `WorkingMemoryComposer: log.md is unstructured (no chamber-structured-log/v1 sentinel); skipping log section`,
     );
     return '';
