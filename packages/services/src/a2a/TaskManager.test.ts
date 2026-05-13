@@ -709,6 +709,30 @@ describe('TaskManager', () => {
       expect(artifactEvents.length).toBeGreaterThan(0);
     });
 
+    it('does not let stale session.error make a task terminal before send retry completes', async () => {
+      const staleSession = createMockSession();
+      staleSession.send.mockImplementationOnce(async () => {
+        staleSession._emit('session.error', { data: { message: 'Session not found: abc' } });
+        throw new Error('Session not found: abc');
+      });
+      mockMindManager.createTaskSession.mockResolvedValueOnce(staleSession);
+
+      const freshSession = createMockSession();
+      mockMindManager.createTaskSession.mockResolvedValueOnce(freshSession);
+
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      freshSession._emit('assistant.message', { data: { content: 'Recovered' } });
+      freshSession._emit('session.idle');
+      await flushPromises();
+
+      const completedTask = tm.getTask(task.id);
+      if (!completedTask) throw new Error('Expected task to exist');
+      expect(completedTask.status.state).toBe('TASK_STATE_COMPLETED');
+      expect(completedTask.artifacts?.[0].parts[0].text).toBe('Recovered');
+    });
+
     it('does not loop — fails task when retry also throws stale error', async () => {
       const events: TaskStatusUpdateEvent[] = [];
       tm.on('task:status-update', (e) => events.push(e));
