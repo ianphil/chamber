@@ -11,11 +11,14 @@
 //   `npm run smoke:desktop` hits "Cannot read properties of undefined"
 //   crashes from the wrong-ABI .node file.
 //
-// This module records the last-built ABI target in a sentinel file under
-// `node_modules/better-sqlite3/build/Release/.abi-target` and exposes a
-// pure `decideAction` so callers can short-circuit when the binary already
-// matches. The CLI wrapper (`scripts/ensure-native-abi.cjs`) drives the
-// actual rebuild via `npm rebuild` or `electron-rebuild`.
+// What the sentinel records:
+//   `${target}:${moduleVersion}` — e.g. `node:137`, `electron:125`. Both
+//   axes must match the current runtime for the guard to short-circuit.
+//   Recording only the framework (`node` vs `electron`) is not enough:
+//   Node 23 and Node 24 share target=='node' but differ in MODULE_VERSION
+//   (145 vs 137), and a developer who upgrades Node would otherwise sail
+//   past the guard with a stale binary. (Caveat C-1 from the v0.60.0
+//   ship review — this is the fix.)
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -39,23 +42,39 @@ function readSentinel(sentinelPath = DEFAULT_SENTINEL_PATH) {
   }
 }
 
-function decideAction({ target, current }) {
+function assertTarget(target) {
   if (!TARGETS.includes(target)) {
     throw new Error(
       `ensure-native-abi: unknown target "${target}". Expected one of: ${TARGETS.join(', ')}`,
     );
   }
-  return current === target ? 'noop' : 'rebuild';
 }
 
-function writeSentinel(target, sentinelPath = DEFAULT_SENTINEL_PATH) {
-  if (!TARGETS.includes(target)) {
+function assertModuleVersion(moduleVersion) {
+  // process.versions.modules is always a numeric string (e.g. "137"). A bad
+  // value here would corrupt the sentinel — fail loudly rather than write garbage.
+  if (typeof moduleVersion !== 'string' || !/^[0-9]+$/.test(moduleVersion)) {
     throw new Error(
-      `ensure-native-abi: refusing to write sentinel with unknown target "${target}"`,
+      `ensure-native-abi: invalid moduleVersion ${JSON.stringify(moduleVersion)} — expected a numeric string from process.versions.modules`,
     );
   }
+}
+
+function sentinelValue(target, moduleVersion) {
+  return `${target}:${moduleVersion}`;
+}
+
+function decideAction({ target, current, moduleVersion }) {
+  assertTarget(target);
+  assertModuleVersion(moduleVersion);
+  return current === sentinelValue(target, moduleVersion) ? 'noop' : 'rebuild';
+}
+
+function writeSentinel({ target, moduleVersion }, sentinelPath = DEFAULT_SENTINEL_PATH) {
+  assertTarget(target);
+  assertModuleVersion(moduleVersion);
   fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
-  fs.writeFileSync(sentinelPath, `${target}\n`);
+  fs.writeFileSync(sentinelPath, `${sentinelValue(target, moduleVersion)}\n`);
 }
 
 function rebuildCommand(target) {

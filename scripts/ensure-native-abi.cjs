@@ -22,22 +22,29 @@ if (!target || !TARGETS.includes(target)) {
   process.exit(2);
 }
 
+// process.versions.modules is the V8 ABI version (NODE_MODULE_VERSION). It's
+// what a native addon must be compiled against to load in the current runtime.
+// Pinning the sentinel to {target, moduleVersion} catches Node-major upgrades
+// that keep target=='node' but flip the ABI.
+const moduleVersion = process.versions.modules;
 const current = readSentinel();
-const action = decideAction({ target, current });
+const action = decideAction({ target, current, moduleVersion });
 
 if (action === 'noop') {
-  console.log(`[ensure-native-abi] better-sqlite3 already built for ${target} — skipping rebuild`);
+  console.log(
+    `[ensure-native-abi] better-sqlite3 already built for ${target}:${moduleVersion} — skipping rebuild`,
+  );
   process.exit(0);
 }
 
 console.log(
-  `[ensure-native-abi] better-sqlite3 ABI target=${target}, current=${current ?? 'unknown'} — rebuilding...`,
+  `[ensure-native-abi] better-sqlite3 ABI target=${target}:${moduleVersion}, current=${current ?? 'unknown'} — rebuilding...`,
 );
 
 try {
   rebuild(target);
-  writeSentinel(target);
-  console.log(`[ensure-native-abi] better-sqlite3 now built for ${target}`);
+  writeSentinel({ target, moduleVersion });
+  console.log(`[ensure-native-abi] better-sqlite3 now built for ${target}:${moduleVersion}`);
 } catch (err) {
   console.error(`[ensure-native-abi] rebuild failed: ${err && err.message ? err.message : err}`);
   process.exit(1);
