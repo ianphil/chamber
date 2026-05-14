@@ -57,7 +57,7 @@ describe('A2A IPC', () => {
 
     const payload = {
       targetMindId: 'agent-b',
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Hello' }] },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'Hello' }] },
       replyMessageId: 'reply-1',
     };
     ipcEmitter.emit('a2a:incoming', payload);
@@ -72,7 +72,7 @@ describe('A2A IPC', () => {
 
     const payload = {
       targetMindId: 'agent-b',
-      message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Test' }], metadata: { fromId: 'agent-a', fromName: 'Agent A' } },
+      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'Test' }], metadata: { fromId: 'agent-a', fromName: 'Agent A' } },
       replyMessageId: 'reply-msg-1',
     };
     ipcEmitter.emit('a2a:incoming', payload);
@@ -93,7 +93,7 @@ describe('A2A IPC', () => {
 
     const payload = {
       targetMindId: 'agent-b',
-      message: { messageId: 'msg-1', role: 'user' as const, parts: [{ text: 'Test' }], metadata: { fromId: 'agent-a', fromName: 'Agent A' } },
+      message: { messageId: 'msg-1', role: 'ROLE_USER' as const, parts: [{ text: 'Test' }], metadata: { fromId: 'agent-a', fromName: 'Agent A' } },
       replyMessageId: 'reply-msg-1',
     };
     const incoming = new Promise((resolve) => {
@@ -134,7 +134,7 @@ describe('A2A IPC', () => {
     const payload: TaskStatusUpdateEvent = {
       taskId: 'task-1',
       contextId: 'ctx-1',
-      status: { state: 'working' },
+      status: { state: 'TASK_STATE_WORKING' },
     };
     ipcEmitter.emit('task:status-update', payload);
 
@@ -163,7 +163,7 @@ describe('A2A IPC', () => {
   });
 
   it('a2a:getTask handle returns task from TaskManager', async () => {
-    const task = { id: 'task-1', contextId: 'ctx-1', status: { state: 'completed' } };
+    const task = { id: 'task-1', contextId: 'ctx-1', status: { state: 'TASK_STATE_COMPLETED' } };
     mockTaskManager.getTask.mockReturnValue(task);
 
     const result = await getHandler('a2a:getTask')(EVT, 'task-1', 5);
@@ -175,7 +175,7 @@ describe('A2A IPC', () => {
     const response = { tasks: [], nextPageToken: '', pageSize: 0, totalSize: 0 };
     mockTaskManager.listTasks.mockReturnValue(response);
 
-    const filter = { contextId: 'ctx-1', status: 'working' };
+    const filter = { contextId: 'ctx-1', status: 'TASK_STATE_WORKING' };
     const result = await getHandler('a2a:listTasks')(EVT, filter);
     expect(mockTaskManager.listTasks).toHaveBeenCalledWith(filter);
     expect(result).toEqual(response);
@@ -190,7 +190,7 @@ describe('A2A IPC', () => {
   });
 
   it('a2a:cancelTask handle returns updated task', async () => {
-    const task = { id: 'task-1', contextId: 'ctx-1', status: { state: 'canceled' } };
+    const task = { id: 'task-1', contextId: 'ctx-1', status: { state: 'TASK_STATE_CANCELED' } };
     mockTaskManager.cancelTask.mockReturnValue(task);
 
     const result = await getHandler('a2a:cancelTask')(EVT, 'task-1');

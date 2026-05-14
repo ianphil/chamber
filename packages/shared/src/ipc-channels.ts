@@ -17,7 +17,6 @@ export const IPC = {
     STOP: 'chat:stop',
     NEW_CONVERSATION: 'chat:newConversation',
     LIST_MODELS: 'chat:listModels',
-    REFRESH_MODELS: 'chat:refreshModels',
     EVENT: 'chat:event',
   },
   CONVERSATION_HISTORY: {
@@ -110,6 +109,10 @@ export const IPC = {
     GET_TASK: 'a2a:getTask',
     LIST_TASKS: 'a2a:listTasks',
     CANCEL_TASK: 'a2a:cancelTask',
+    RELAY_STATUS: 'a2a:relay-status',
+    RELAY_CONNECT: 'a2a:relay-connect',
+    RELAY_DISCONNECT: 'a2a:relay-disconnect',
+    RELAY_STATE_CHANGED: 'a2a:relay-state-changed',
   },
   WINDOW: {
     MINIMIZE: 'window:minimize',

@@ -305,56 +305,6 @@ export class MindManager extends EventEmitter {
     return reloaded;
   }
 
-  /**
-   * Recycle the SDK client and active session for a mind in place. This is
-   * the narrow primitive behind issue #90's "Refresh models" affordance:
-   * the only way to bust the Copilot CLI's 30-min in-memory model cache is
-   * to restart the CLI subprocess (see `docs/model-cache-investigation.md`).
-   *
-   * Unlike `reloadMind`, this does NOT emit `mind:unloaded` / `mind:loaded`,
-   * so chatroom orchestration is not torn down and per-mind toggles like
-   * `disabledMindIds` survive. A separate `mind:client-recycled` event lets
-   * the chatroom drop its cached `SessionGroup` session for this mind only.
-   *
-   * Caller must guarantee no turn is in flight (the chamber wiring serializes
-   * this through `TurnQueue` in `ChatService.refreshModels`).
-   */
-  async recycleClientForMind(mindId: string): Promise<MindContext> {
-    const context = this.minds.get(mindId);
-    if (!context) throw new Error(`Mind ${mindId} not found`);
-
-    const oldSession = context.session;
-    const oldClient = context.client;
-
-    await oldSession?.disconnect().catch(() => { /* session already disconnected */ });
-    await this.clientFactory.destroyClient(oldClient);
-
-    const newClient = await this.clientFactory.createClient(context.mindPath);
-    const sessionTools = this.getSessionTools(mindId, context.mindPath);
-    const newSession = context.activeSessionId
-      ? await this.loadConversationSession(
-        newClient,
-        context.mindPath,
-        context.identity.systemMessage,
-        sessionTools,
-        context.activeSessionId,
-        context.selectedModel,
-      )
-      : await this.createSessionForMind({
-        client: newClient,
-        mindPath: context.mindPath,
-        systemMessage: context.identity.systemMessage,
-        tools: sessionTools,
-        model: context.selectedModel,
-      });
-
-    context.client = newClient;
-    context.session = newSession;
-
-    this.emit('mind:client-recycled', mindId);
-    return this.toExternalContext(context);
-  }
-
   listMinds(): MindContext[] {
     return Array.from(this.minds.values()).map(m => this.toExternalContext(m));
   }

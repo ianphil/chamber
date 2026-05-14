@@ -9,6 +9,8 @@ import { IPC } from '@chamber/shared';
 
 import {
   A2aToolProvider,
+  A2ARelayModeService,
+  ActiveA2AResolver,
   AgentCardRegistry,
   ApprovalGate,
   AuthService,
@@ -195,6 +197,7 @@ const viewDiscovery = new ViewDiscovery();
 
 const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
+const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
 const turnQueue = new TurnQueue();
 const mindManager: MindManager = new MindManager(clientFactory, identityLoader, configService, viewDiscovery);
 const mindProfileService = new MindProfileService({
@@ -213,7 +216,8 @@ const microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
 );
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService: ChatService = new ChatService(mindManager, turnQueue);
-const messageRouter: MessageRouter = new MessageRouter(chatService, agentCardRegistry, a2aEventBus);
+const messageRouter: MessageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
+const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
 const chatroomApprovalGate = new ApprovalGate();
 chatroomApprovalGate.setApprovalHandler(async (request) => ({
   correlationId: request.correlationId,
@@ -253,7 +257,7 @@ const cronService = new CronService({
   },
   notifier,
 });
-const a2aToolProvider = new A2aToolProvider(messageRouter, agentCardRegistry, taskManager);
+const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
 
 const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
 let chamberCopilotService: ChamberCopilotService | null = null;
@@ -341,7 +345,7 @@ mindManager.on('mind:unloaded', (mindId: string) => {
   });
 });
 
-wireLifecycleEvents({ mindManager, agentCardRegistry, taskManager, a2aEventBus });
+wireLifecycleEvents({ mindManager, agentCardRegistry, a2aRelayModeService, taskManager, a2aEventBus });
 
 // Wire Lens refresh to use the mind's session
 viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
@@ -378,7 +382,7 @@ const requestQuit = () => {
     .then(() => mindManager.shutdown())
     .then(() => {
       updaterService.stop();
-      return stopMvpServer();
+      return Promise.allSettled([a2aRelayModeService.disconnect(), stopMvpServer()]);
     })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
@@ -624,7 +628,6 @@ app.on('ready', async () => {
   if (useMvpServer) {
     await startMvpServer();
   }
-
   // Eagerly start the chamber-copilot ACP connection (when the flag is on)
   // so the cli_* tools are available to the very first mind load.
   // MindManager.doLoadMind calls getSessionTools BEFORE activateProviders;
@@ -664,7 +667,9 @@ app.on('ready', async () => {
   setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);
   setupAuthIPC(authService, mindManager);
-  setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager);
+  setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
+    relayModeService: a2aRelayModeService,
+  });
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);
 

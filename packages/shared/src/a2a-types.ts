@@ -1,7 +1,7 @@
 // Shared A2A types — source-of-truth definitions for the A2A v1.0 protocol.
 // Both main/ and renderer/ depend on these; this file must NOT import from either.
 
-export type Role = 'user' | 'agent';
+export type Role = 'ROLE_USER' | 'ROLE_AGENT';
 
 export interface Part {
   text?: string;
@@ -40,6 +40,8 @@ export interface SendMessageConfiguration {
 export interface SendMessageResponse {
   task?: Task;
   message?: Message;
+  queued?: boolean;
+  queueMessageId?: string;
 }
 
 export interface Task {
@@ -52,24 +54,24 @@ export interface Task {
 }
 
 export type TaskState =
-  | 'submitted'
-  | 'working'
-  | 'completed'
-  | 'failed'
-  | 'canceled'
-  | 'input-required'
-  | 'rejected'
-  | 'auth-required';
+  | 'TASK_STATE_SUBMITTED'
+  | 'TASK_STATE_WORKING'
+  | 'TASK_STATE_COMPLETED'
+  | 'TASK_STATE_FAILED'
+  | 'TASK_STATE_CANCELED'
+  | 'TASK_STATE_INPUT_REQUIRED'
+  | 'TASK_STATE_REJECTED'
+  | 'TASK_STATE_AUTH_REQUIRED';
 
 const VALID_TASK_STATES: ReadonlySet<string> = new Set<TaskState>([
-  'submitted',
-  'working',
-  'completed',
-  'failed',
-  'canceled',
-  'input-required',
-  'rejected',
-  'auth-required',
+  'TASK_STATE_SUBMITTED',
+  'TASK_STATE_WORKING',
+  'TASK_STATE_COMPLETED',
+  'TASK_STATE_FAILED',
+  'TASK_STATE_CANCELED',
+  'TASK_STATE_INPUT_REQUIRED',
+  'TASK_STATE_REJECTED',
+  'TASK_STATE_AUTH_REQUIRED',
 ]);
 
 export function isTaskState(value: unknown): value is TaskState {
@@ -109,6 +111,8 @@ export interface AgentCard {
   skills: AgentSkill[];
   /** Chamber-specific: the mindId for in-process routing */
   mindId?: string;
+  /** Optional alternate recipient identifiers accepted by a relay. */
+  aliases?: string[];
 }
 
 export interface AgentSkill {
@@ -192,6 +196,63 @@ export interface A2AIncomingPayload {
   replyMessageId: string;
 }
 
+export interface A2ARelayQueuedMessage {
+  id: string;
+  recipient: string;
+  request: SendMessageRequest;
+  enqueuedAt: string;
+  attempts: number;
+}
+
+export interface A2ARelayPollRequest {
+  recipients: string[];
+  limit?: number;
+}
+
+export interface A2ARelayPollResponse {
+  messages: A2ARelayQueuedMessage[];
+}
+
+export interface A2ARelayAckRequest {
+  messageIds: string[];
+}
+
+export interface A2ARelayAckResponse {
+  acknowledged: number;
+}
+
+export type A2ARelayConnectionState = 'disconnected' | 'connecting' | 'connected' | 'disconnecting' | 'error';
+
+export interface A2ARelayStatus {
+  state: A2ARelayConnectionState;
+  mode: 'local' | 'relay';
+  relayBaseUrl: string | null;
+  publishedBaseUrl: string | null;
+  publishedAgentCount: number;
+  relayAgentCount: number;
+  lastError: string | null;
+  connectedAt: number | null;
+}
+
+export interface A2ARelayConnectRequest {
+  relayBaseUrl: string;
+  relayToken: string;
+  publishedBaseUrl?: string;
+  inboundToken?: string;
+}
+
+export function isA2ARelayConnectRequest(value: unknown): value is A2ARelayConnectRequest {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.relayBaseUrl === 'string' &&
+    value.relayBaseUrl.trim().length > 0 &&
+    typeof value.relayToken === 'string' &&
+    value.relayToken.trim().length > 0 &&
+    (value.publishedBaseUrl === undefined || typeof value.publishedBaseUrl === 'string') &&
+    (value.inboundToken === undefined || typeof value.inboundToken === 'string')
+  );
+}
+
 export function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayload {
   if (!isRecord(value)) return false;
   const message = value.message;
@@ -200,7 +261,7 @@ export function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayloa
     typeof value.targetMindId === 'string' &&
     typeof value.replyMessageId === 'string' &&
     typeof message.messageId === 'string' &&
-    (message.role === 'user' || message.role === 'agent') &&
+    (message.role === 'ROLE_USER' || message.role === 'ROLE_AGENT') &&
     Array.isArray(message.parts)
   );
 }

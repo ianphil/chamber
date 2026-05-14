@@ -20,6 +20,7 @@ export default defineConfig({
       'packages/**/*.{test,spec}.{ts,tsx}',
       'tests/regression/**/*.{test,spec}.{ts,tsx}',
       'tests/integration/**/*.{test,spec}.{ts,tsx}',
+      '.github/extensions/**/*.{test,spec}.mjs',
     ],
     exclude: ['node_modules', 'dist', 'out', '.vite', 'apps/*/dist', 'packages/*/dist'],
     testTimeout: 10_000,

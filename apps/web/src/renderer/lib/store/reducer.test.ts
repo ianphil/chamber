@@ -699,7 +699,7 @@ describe('appReducer', () => {
       targetMindId: mindId,
       message: {
         messageId: 'msg-a2a-1',
-        role: 'user' as const,
+        role: 'ROLE_USER' as const,
         parts: [{ text: 'Hello from Agent A', mediaType: 'text/plain' }],
         metadata: { fromId: 'agent-a', fromName: 'Agent A', hopCount: 1 },
       } satisfies Message,
@@ -723,7 +723,7 @@ describe('appReducer', () => {
         payload: a2aPayload({
           message: {
             messageId: 'msg-a2a-1',
-            role: 'user' as const,
+            role: 'ROLE_USER' as const,
             parts: [{ text: 'Hello from unknown agent', mediaType: 'text/plain' }],
             metadata: { fromId: '', fromName: 42, hopCount: 1 },
           },
@@ -817,7 +817,7 @@ describe('appReducer', () => {
     const makeTask = (overrides?: Partial<Task>): Task => ({
       id: 'task-1',
       contextId: 'ctx-1',
-      status: makeTaskStatus('submitted'),
+      status: makeTaskStatus('TASK_STATE_SUBMITTED'),
       ...overrides,
     });
 
@@ -837,7 +837,7 @@ describe('appReducer', () => {
         payload: {
           taskId: 'task-1',
           contextId: 'ctx-1',
-          status: makeTaskStatus('submitted'),
+          status: makeTaskStatus('TASK_STATE_SUBMITTED'),
           targetMindId: mindId,
         },
       });
@@ -845,26 +845,26 @@ describe('appReducer', () => {
       expect(state.tasksByMind[mindId][0]).toMatchObject({
         id: 'task-1',
         contextId: 'ctx-1',
-        status: { state: 'submitted' },
+        status: { state: 'TASK_STATE_SUBMITTED' },
       });
     });
 
     it('TASK_STATUS_UPDATE updates existing task status', () => {
       const stateWithTask: AppState = {
         ...initialState,
-        tasksByMind: { [mindId]: [makeTask({ id: 'task-1', status: makeTaskStatus('submitted') })] },
+        tasksByMind: { [mindId]: [makeTask({ id: 'task-1', status: makeTaskStatus('TASK_STATE_SUBMITTED') })] },
       };
       const state = appReducer(stateWithTask, {
         type: 'TASK_STATUS_UPDATE',
         payload: {
           taskId: 'task-1',
           contextId: 'ctx-1',
-          status: makeTaskStatus('working'),
+          status: makeTaskStatus('TASK_STATE_WORKING'),
           targetMindId: mindId,
         },
       });
       expect(state.tasksByMind[mindId]).toHaveLength(1);
-      expect(state.tasksByMind[mindId][0].status.state).toBe('working');
+      expect(state.tasksByMind[mindId][0].status.state).toBe('TASK_STATE_WORKING');
     });
 
     it('TASK_ARTIFACT_UPDATE adds artifact to existing task', () => {
@@ -904,11 +904,11 @@ describe('appReducer', () => {
     it('tasks grouped by target mind', () => {
       let state = appReducer(initialState, {
         type: 'TASK_STATUS_UPDATE',
-        payload: { taskId: 'task-a', contextId: 'ctx-a', status: makeTaskStatus('submitted'), targetMindId: 'mind-1' },
+        payload: { taskId: 'task-a', contextId: 'ctx-a', status: makeTaskStatus('TASK_STATE_SUBMITTED'), targetMindId: 'mind-1' },
       });
       state = appReducer(state, {
         type: 'TASK_STATUS_UPDATE',
-        payload: { taskId: 'task-b', contextId: 'ctx-b', status: makeTaskStatus('working'), targetMindId: 'mind-2' },
+        payload: { taskId: 'task-b', contextId: 'ctx-b', status: makeTaskStatus('TASK_STATE_WORKING'), targetMindId: 'mind-2' },
       });
       expect(state.tasksByMind['mind-1']).toHaveLength(1);
       expect(state.tasksByMind['mind-2']).toHaveLength(1);
@@ -919,11 +919,11 @@ describe('appReducer', () => {
     it('multiple tasks per mind tracked correctly', () => {
       let state = appReducer(initialState, {
         type: 'TASK_STATUS_UPDATE',
-        payload: { taskId: 'task-1', contextId: 'ctx-1', status: makeTaskStatus('submitted'), targetMindId: mindId },
+        payload: { taskId: 'task-1', contextId: 'ctx-1', status: makeTaskStatus('TASK_STATE_SUBMITTED'), targetMindId: mindId },
       });
       state = appReducer(state, {
         type: 'TASK_STATUS_UPDATE',
-        payload: { taskId: 'task-2', contextId: 'ctx-2', status: makeTaskStatus('working'), targetMindId: mindId },
+        payload: { taskId: 'task-2', contextId: 'ctx-2', status: makeTaskStatus('TASK_STATE_WORKING'), targetMindId: mindId },
       });
       expect(state.tasksByMind[mindId]).toHaveLength(2);
       expect(state.tasksByMind[mindId][0].id).toBe('task-1');
@@ -933,18 +933,18 @@ describe('appReducer', () => {
     it('terminal task state persists (not overwritten by stale update)', () => {
       const stateWithTerminal: AppState = {
         ...initialState,
-        tasksByMind: { [mindId]: [makeTask({ id: 'task-1', status: makeTaskStatus('completed') })] },
+        tasksByMind: { [mindId]: [makeTask({ id: 'task-1', status: makeTaskStatus('TASK_STATE_COMPLETED') })] },
       };
       const state = appReducer(stateWithTerminal, {
         type: 'TASK_STATUS_UPDATE',
         payload: {
           taskId: 'task-1',
           contextId: 'ctx-1',
-          status: makeTaskStatus('working'),
+          status: makeTaskStatus('TASK_STATE_WORKING'),
           targetMindId: mindId,
         },
       });
-      expect(state.tasksByMind[mindId][0].status.state).toBe('completed');
+      expect(state.tasksByMind[mindId][0].status.state).toBe('TASK_STATE_COMPLETED');
     });
   });
 });

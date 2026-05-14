@@ -22,7 +22,7 @@ class MockTaskManager extends EventEmitter {
     this.currentTask = {
       id: 'task-1',
       contextId: 'ctx-1',
-      status: { state: 'submitted', timestamp: new Date().toISOString() },
+      status: { state: 'TASK_STATE_SUBMITTED', timestamp: new Date().toISOString() },
       artifacts: [],
       history: [],
     };
@@ -31,7 +31,7 @@ class MockTaskManager extends EventEmitter {
       this.currentTask = {
         id: 'task-1',
         contextId: 'ctx-1',
-        status: { state: 'completed', timestamp: new Date().toISOString() },
+        status: { state: 'TASK_STATE_COMPLETED', timestamp: new Date().toISOString() },
         artifacts: [
           {
             artifactId: 'artifact-1',
@@ -45,7 +45,7 @@ class MockTaskManager extends EventEmitter {
       const event: TaskStatusUpdateEvent & { targetMindId: string } = {
         taskId: 'task-1',
         contextId: 'ctx-1',
-        status: this.currentTask.status,
+        status: this.currentTask?.status ?? { state: 'TASK_STATE_COMPLETED', timestamp: new Date().toISOString() },
         targetMindId: 'mind-1',
       };
       this.emit('task:status-update', event);

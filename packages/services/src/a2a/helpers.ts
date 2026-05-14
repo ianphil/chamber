@@ -18,7 +18,7 @@ export function createTextMessage(
   return {
     messageId: generateMessageId(),
     contextId: opts?.contextId,
-    role: 'user',
+    role: 'ROLE_USER',
     parts: [{ text, mediaType: 'text/plain' }],
     metadata: {
       fromId,

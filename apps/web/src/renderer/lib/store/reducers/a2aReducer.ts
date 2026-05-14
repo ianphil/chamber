@@ -8,7 +8,7 @@ type Handler<T extends AppAction['type']> = (
   action: Extract<AppAction, { type: T }>,
 ) => Partial<AppState> | AppState;
 
-const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set(['completed', 'failed', 'canceled', 'rejected']);
+const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set(['TASK_STATE_COMPLETED', 'TASK_STATE_FAILED', 'TASK_STATE_CANCELED', 'TASK_STATE_REJECTED']);
 
 function a2aIncoming(state: AppState, action: Extract<AppAction, { type: 'A2A_INCOMING' }>): Partial<AppState> {
   const { targetMindId, message, replyMessageId } = action.payload;

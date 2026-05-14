@@ -8,17 +8,28 @@ export interface TaskPanelProps {
 }
 
 const STATUS_COLORS: Record<TaskState, string> = {
-  submitted: '#6b7280',
-  working: '#3b82f6',
-  completed: '#22c55e',
-  failed: '#ef4444',
-  canceled: '#6b7280',
-  'input-required': '#eab308',
-  rejected: '#ef4444',
-  'auth-required': '#eab308',
+  TASK_STATE_SUBMITTED: '#6b7280',
+  TASK_STATE_WORKING: '#3b82f6',
+  TASK_STATE_COMPLETED: '#22c55e',
+  TASK_STATE_FAILED: '#ef4444',
+  TASK_STATE_CANCELED: '#6b7280',
+  'TASK_STATE_INPUT_REQUIRED': '#eab308',
+  TASK_STATE_REJECTED: '#ef4444',
+  'TASK_STATE_AUTH_REQUIRED': '#eab308',
 };
 
-const TERMINAL_STATES: TaskState[] = ['completed', 'failed', 'canceled', 'rejected'];
+const TERMINAL_STATES: TaskState[] = ['TASK_STATE_COMPLETED', 'TASK_STATE_FAILED', 'TASK_STATE_CANCELED', 'TASK_STATE_REJECTED'];
+
+const STATUS_LABELS: Record<TaskState, string> = {
+  TASK_STATE_SUBMITTED: 'Submitted',
+  TASK_STATE_WORKING: 'Working',
+  TASK_STATE_COMPLETED: 'Completed',
+  TASK_STATE_FAILED: 'Failed',
+  TASK_STATE_CANCELED: 'Canceled',
+  TASK_STATE_INPUT_REQUIRED: 'Input Required',
+  TASK_STATE_REJECTED: 'Rejected',
+  TASK_STATE_AUTH_REQUIRED: 'Auth Required',
+};
 
 export function TaskPanel({ tasksByMind, mindNames, onCancelTask }: TaskPanelProps) {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
@@ -51,7 +62,7 @@ export function TaskPanel({ tasksByMind, mindNames, onCancelTask }: TaskPanelPro
                       style={{ backgroundColor: STATUS_COLORS[task.status.state] }}
                       data-testid={`status-badge-${task.id}`}
                     >
-                      {task.status.state}
+                      {STATUS_LABELS[task.status.state]}
                     </span>
                     <span className="task-id">{task.id}</span>
                     {!isTerminal && onCancelTask && (

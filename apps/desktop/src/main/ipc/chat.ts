@@ -20,13 +20,6 @@ export function setupChatIPC(chatService: ChatService, mindManager: MindManager)
     return chatService.listModels(id);
   });
 
-  ipcMain.handle(IPC.CHAT.REFRESH_MODELS, async (_event, mindId: string) => {
-    if (!mindId) {
-      throw new Error('refreshModels requires an explicit mindId — cannot reload "any" mind.');
-    }
-    return chatService.refreshModels(mindId);
-  });
-
   ipcMain.handle(IPC.CHAT.STOP, async (event, mindId: string, messageId: string) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     await chatService.cancelMessage(mindId, messageId);

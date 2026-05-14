@@ -152,6 +152,7 @@ describe('server handlers', () => {
     expect(response.body).toEqual({ models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }] });
     expect(listModels).toHaveBeenCalledWith('dude-1234');
   });
+
 });
 
 function notConfigured(name: string): () => never {
