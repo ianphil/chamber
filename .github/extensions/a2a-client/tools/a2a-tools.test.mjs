@@ -26,6 +26,12 @@ describe("A2A client tools", () => {
       "DELETE /api/a2a/agents/cli-one",
       "POST /api/a2a/agents",
     ]);
+    const firstCard = JSON.parse(requests[0].body).card;
+    expect(firstCard.description).toContain("If this agent is available");
+    expect(firstCard.skills[0]).toEqual(expect.objectContaining({
+      name: "Chamber repo coordination",
+      tags: expect.arrayContaining(["chamber", "repo"]),
+    }));
     expect(state.registeredAgentName).toBe("cli-two");
     await disconnectA2AClient(state);
   });

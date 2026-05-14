@@ -3,32 +3,64 @@ import { RelayA2ARegistryClient } from './RelayA2ARegistryClient';
 import type { AgentCard } from './types';
 
 describe('RelayA2ARegistryClient', () => {
-  it('requires an HTTP loopback relay URL', () => {
-    expect(() => new RelayA2ARegistryClient({ baseUrl: 'https://example.com', token: 'secret' }))
-      .toThrow('A2A relay URL must be an HTTP loopback URL');
+  it('allows HTTPS cloud relay URLs and HTTP loopback relay URLs', () => {
+    expect(() => makeClient({ baseUrl: 'https://switchboard.example.com' })).not.toThrow();
+    expect(() => makeClient({ baseUrl: 'http://127.0.0.1:4100' })).not.toThrow();
+    expect(() => makeClient({ baseUrl: 'http://localhost:4100' })).not.toThrow();
   });
 
-  it('sends authenticated registry requests', async () => {
+  it('rejects insecure non-loopback and credential-bearing relay URLs', () => {
+    expect(() => makeClient({ baseUrl: 'http://switchboard.example.com' }))
+      .toThrow('A2A relay URL must be HTTPS or HTTP loopback');
+    expect(() => makeClient({ baseUrl: 'https://user:pass@switchboard.example.com' }))
+      .toThrow('A2A relay URL must not include credentials');
+    expect(() => makeClient({ baseUrl: 'ftp://switchboard.example.com' }))
+      .toThrow('A2A relay URL must be HTTPS or HTTP loopback');
+  });
+
+  it('gets an authorization header from the auth provider for registry requests', async () => {
     const card = makeCard('relay-agent');
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ agents: [card] }), { status: 200 }));
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const authProvider = { getAuthorizationHeader: vi.fn(async () => 'Bearer first-token') };
+    const client = makeClient({ fetchImpl, authProvider });
 
     await expect(client.getCards()).resolves.toEqual([card]);
+    expect(authProvider.getAuthorizationHeader).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledWith(new URL('http://127.0.0.1:4100/api/a2a/agents'), expect.objectContaining({
-      headers: expect.objectContaining({ authorization: 'Bearer secret' }),
+      headers: expect.objectContaining({
+        authorization: 'Bearer first-token',
+        origin: 'http://127.0.0.1',
+      }),
     }));
+  });
+
+  it('requests a fresh authorization header for every relay call', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ agents: [] }), { status: 200 }));
+    const authProvider = {
+      getAuthorizationHeader: vi.fn()
+        .mockResolvedValueOnce('Bearer first-token')
+        .mockResolvedValueOnce('Bearer second-token'),
+    };
+    const client = makeClient({ fetchImpl, authProvider });
+
+    await client.getCards();
+    await client.getCards();
+
+    expect(authProvider.getAuthorizationHeader).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: 'Bearer first-token' }));
+    expect(fetchImpl.mock.calls[1][1]?.headers).toEqual(expect.objectContaining({ authorization: 'Bearer second-token' }));
   });
 
   it('returns null for missing cards', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ error: 'agent not found' }), { status: 404 }));
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const client = makeClient({ fetchImpl });
 
     await expect(client.getCard('missing')).resolves.toBeNull();
   });
 
   it('registers cards with inbound auth', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const client = makeClient({ fetchImpl });
     const card = makeCard('relay-agent');
 
     await client.registerAgent({ card, inboundAuth: { scheme: 'bearer', token: 'inbound-secret' } });
@@ -45,14 +77,14 @@ describe('RelayA2ARegistryClient', () => {
       expect(init?.signal).toBeInstanceOf(AbortSignal);
       return new Response(JSON.stringify({ agents: [] }), { status: 200 });
     });
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const client = makeClient({ fetchImpl });
 
     await client.getCards();
   });
 
   it('rejects oversized relay responses', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response('x'.repeat(1_000_001), { status: 200 }));
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const client = makeClient({ fetchImpl });
 
     await expect(client.getCards()).rejects.toThrow('A2A relay response exceeded 1000000 bytes');
   });
@@ -63,7 +95,7 @@ describe('RelayA2ARegistryClient', () => {
       queueMessageId: 'relay-msg-1',
       message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
     }), { status: 200 }));
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const client = makeClient({ fetchImpl });
 
     await expect(client.sendMessage({
       recipient: 'agent-a',
@@ -94,7 +126,7 @@ describe('RelayA2ARegistryClient', () => {
       }
       return new Response(JSON.stringify({ acknowledged: 1 }), { status: 200 });
     });
-    const client = new RelayA2ARegistryClient({ baseUrl: 'http://127.0.0.1:4100', token: 'secret', fetchImpl });
+    const client = makeClient({ fetchImpl });
 
     await expect(client.pollMessages({ recipients: ['agent-a'], limit: 10 })).resolves.toEqual([
       expect.objectContaining({ id: 'relay-msg-1', recipient: 'agent-a' }),
@@ -105,6 +137,18 @@ describe('RelayA2ARegistryClient', () => {
     expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toEqual({ messageIds: ['relay-msg-1'] });
   });
 });
+
+function makeClient(options: {
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+  authProvider?: { getAuthorizationHeader: () => Promise<string> };
+} = {}): RelayA2ARegistryClient {
+  return new RelayA2ARegistryClient({
+    baseUrl: options.baseUrl ?? 'http://127.0.0.1:4100',
+    authProvider: options.authProvider ?? { getAuthorizationHeader: async () => 'Bearer secret' },
+    fetchImpl: options.fetchImpl,
+  });
+}
 
 function makeCard(name: string): AgentCard {
   return {

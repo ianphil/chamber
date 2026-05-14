@@ -1,9 +1,9 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { EventEmitter } from 'events';
 import { IPC } from '@chamber/shared';
-import type { A2ARelayModeService, AgentCardRegistry, TaskManager } from '@chamber/services';
+import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeService, type AgentCardRegistry, type TaskManager } from '@chamber/services';
 import { isA2AIncomingPayload, isA2ARelayConnectRequest, narrowTaskState } from '@chamber/shared/a2a-types';
-import type { A2AIncomingPayload, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
+import type { A2AIncomingPayload, A2ARelayConnectRequest, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
 interface A2ARelayIPCOptions {
   relayModeService?: A2ARelayModeService;
@@ -99,7 +99,7 @@ export function setupA2AIPC(
     try {
       await relayOptions.relayModeService.connect({
         baseUrl: request.relayBaseUrl,
-        token: request.relayToken,
+        authProvider: createRelayAuthProvider(request),
       });
       const nextStatus = await refreshRelayStatus({
         state: 'connected',
@@ -145,6 +145,22 @@ export function setupA2AIPC(
       ipcEmitter.emit('a2a:incoming', payload);
     });
   }
+}
+
+function createRelayAuthProvider(request: A2ARelayConnectRequest): StaticA2ARelayAuthProvider | EntraA2AAuthProvider {
+  const mode = request.authMode ?? 'static';
+  if ('relayToken' in request && request.relayToken && (mode === 'static' || mode === 'auto')) {
+    return new StaticA2ARelayAuthProvider(request.relayToken);
+  }
+
+  const clientId = 'clientId' in request && request.clientId
+    ? request.clientId
+    : process.env.SWITCHBOARD_AUTH_CLIENT_ID ?? process.env.CHAMBER_A2A_CLIENT_ID ?? '';
+  return new EntraA2AAuthProvider({
+    clientId,
+    tenantId: 'tenantId' in request ? request.tenantId : process.env.CHAMBER_A2A_TENANT_ID,
+    scope: 'scope' in request ? request.scope : process.env.CHAMBER_A2A_SCOPE,
+  });
 }
 
 function createDisconnectedStatus(): A2ARelayStatus {

@@ -40,15 +40,53 @@ describe('A2ARelayView', () => {
     render(<A2ARelayView />);
 
     await screen.findByRole('heading', { name: 'A2A Relay' });
+    fireEvent.change(screen.getByLabelText('Authentication mode'), { target: { value: 'static' } });
     fireEvent.change(screen.getByLabelText('Relay bearer token'), { target: { value: 'relay-token' } });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => {
       expect(api.a2a.relayConnect).toHaveBeenCalledWith({
         relayBaseUrl: 'http://127.0.0.1:4317',
+        authMode: 'static',
         relayToken: 'relay-token',
       });
     });
+  });
+
+  it('connects with interactive Entra auth without requiring a relay token', async () => {
+    render(<A2ARelayView />);
+
+    await screen.findByRole('heading', { name: 'A2A Relay' });
+    fireEvent.change(screen.getByLabelText('Relay base URL'), { target: { value: 'https://switchboard.example.com' } });
+    fireEvent.change(screen.getByLabelText('Authentication mode'), { target: { value: 'interactive' } });
+    fireEvent.change(screen.getByLabelText('Entra client ID'), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText('Tenant ID'), { target: { value: 'common' } });
+    fireEvent.change(screen.getByLabelText('OAuth scope'), { target: { value: 'api://client-id/user_impersonation' } });
+
+    expect(screen.queryByLabelText('Relay bearer token')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => {
+      expect(api.a2a.relayConnect).toHaveBeenCalledWith({
+        relayBaseUrl: 'https://switchboard.example.com',
+        authMode: 'interactive',
+        clientId: 'client-id',
+        tenantId: 'common',
+        scope: 'api://client-id/user_impersonation',
+      });
+    });
+  });
+
+  it('requires a token only for static relay auth', async () => {
+    render(<A2ARelayView />);
+
+    await screen.findByRole('heading', { name: 'A2A Relay' });
+    fireEvent.change(screen.getByLabelText('Authentication mode'), { target: { value: 'static' } });
+    expect((screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Authentication mode'), { target: { value: 'interactive' } });
+    fireEvent.change(screen.getByLabelText('Entra client ID'), { target: { value: 'client-id' } });
+    expect((screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('disconnects when connected', async () => {

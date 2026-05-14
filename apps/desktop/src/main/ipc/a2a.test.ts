@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
 import { ipcMain, BrowserWindow } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { setupA2AIPC } from './a2a';
-import type { AgentCardRegistry, TaskArtifactUpdateEvent, TaskManager, TaskStatusUpdateEvent } from '@chamber/services';
+import type { A2ARelayModeService, AgentCardRegistry, TaskArtifactUpdateEvent, TaskManager, TaskStatusUpdateEvent } from '@chamber/services';
 
 // Helper to keep test ergonomics — the IPC handler signature demands
 // IpcMainInvokeEvent / BrowserWindow instances we don't need in unit tests.
@@ -205,4 +205,81 @@ describe('A2A IPC', () => {
 
     await expect(getHandler('a2a:cancelTask')(EVT, 'task-1')).rejects.toThrow('Task task-1 not found');
   });
+
+  it('a2a:relayConnect forwards interactive auth options without requiring a static token', async () => {
+    const relayModeService = makeRelayModeService();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      { relayModeService: relayModeService as unknown as A2ARelayModeService },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'interactive',
+      clientId: 'client-id',
+      tenantId: 'common',
+      scope: 'api://client-id/user_impersonation',
+    });
+
+    expect(relayModeService.connect).toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: 'https://switchboard.example.com',
+      authProvider: expect.objectContaining({ getAuthorizationHeader: expect.any(Function) }),
+    }));
+    expect(JSON.stringify(relayModeService.connect.mock.calls[0][0])).not.toContain('accessToken');
+    expect(JSON.stringify(relayModeService.connect.mock.calls[0][0])).not.toContain('refreshToken');
+  });
+
+  it('a2a:relayConnect forwards static auth options through a static auth provider', async () => {
+    const relayModeService = makeRelayModeService();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      { relayModeService: relayModeService as unknown as A2ARelayModeService },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+      relayToken: 'relay-token',
+    });
+
+    const options = relayModeService.connect.mock.calls[0][0] as { authProvider: { getAuthorizationHeader: () => Promise<string> } };
+    await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer relay-token');
+  });
+
+  it('a2a:relayConnect rejects static auth without a token at the IPC boundary', async () => {
+    const relayModeService = makeRelayModeService();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      { relayModeService: relayModeService as unknown as A2ARelayModeService },
+    );
+
+    await expect(getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+    })).rejects.toThrow('Invalid A2A relay connect request');
+    expect(relayModeService.connect).not.toHaveBeenCalled();
+  });
 });
+
+function makeRelayModeService() {
+  return {
+    connect: vi.fn(async (options: unknown) => {
+      void options;
+      return undefined;
+    }),
+    disconnect: vi.fn(async () => undefined),
+    isConnected: vi.fn(() => true),
+    getPublishedAgentCount: vi.fn(() => 1),
+    getRelayAgentCount: vi.fn(async () => 2),
+    getLastPollError: vi.fn(() => null),
+  };
+}
