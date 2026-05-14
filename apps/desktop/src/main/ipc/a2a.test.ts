@@ -232,6 +232,27 @@ describe('A2A IPC', () => {
     expect(JSON.stringify(relayModeService.connect.mock.calls[0][0])).not.toContain('refreshToken');
   });
 
+  it('a2a:relayConnect can use built-in Entra defaults for interactive auth', async () => {
+    const relayModeService = makeRelayModeService();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      { relayModeService: relayModeService as unknown as A2ARelayModeService },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'interactive',
+    });
+
+    expect(relayModeService.connect).toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: 'https://switchboard.example.com',
+      authProvider: expect.objectContaining({ getAuthorizationHeader: expect.any(Function) }),
+    }));
+  });
+
   it('a2a:relayConnect forwards static auth options through a static auth provider', async () => {
     const relayModeService = makeRelayModeService();
     vi.clearAllMocks();

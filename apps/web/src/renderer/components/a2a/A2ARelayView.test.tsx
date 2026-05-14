@@ -59,20 +59,17 @@ describe('A2ARelayView', () => {
     await screen.findByRole('heading', { name: 'A2A Relay' });
     fireEvent.change(screen.getByLabelText('Relay base URL'), { target: { value: 'https://switchboard.example.com' } });
     fireEvent.change(screen.getByLabelText('Authentication mode'), { target: { value: 'interactive' } });
-    fireEvent.change(screen.getByLabelText('Entra client ID'), { target: { value: 'client-id' } });
-    fireEvent.change(screen.getByLabelText('Tenant ID'), { target: { value: 'common' } });
-    fireEvent.change(screen.getByLabelText('OAuth scope'), { target: { value: 'api://client-id/user_impersonation' } });
 
     expect(screen.queryByLabelText('Relay bearer token')).toBeNull();
+    expect(screen.queryByLabelText('Entra client ID')).toBeNull();
+    expect(screen.queryByLabelText('Tenant ID')).toBeNull();
+    expect(screen.queryByLabelText('OAuth scope')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => {
       expect(api.a2a.relayConnect).toHaveBeenCalledWith({
         relayBaseUrl: 'https://switchboard.example.com',
         authMode: 'interactive',
-        clientId: 'client-id',
-        tenantId: 'common',
-        scope: 'api://client-id/user_impersonation',
       });
     });
   });
@@ -85,7 +82,6 @@ describe('A2ARelayView', () => {
     expect((screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText('Authentication mode'), { target: { value: 'interactive' } });
-    fireEvent.change(screen.getByLabelText('Entra client ID'), { target: { value: 'client-id' } });
     expect((screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement).disabled).toBe(false);
   });
 

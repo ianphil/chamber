@@ -21,16 +21,13 @@ export function A2ARelayView() {
   const [relayBaseUrl, setRelayBaseUrl] = useState('http://127.0.0.1:4317');
   const [authMode, setAuthMode] = useState<RelayAuthMode>('static');
   const [relayToken, setRelayToken] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [tenantId, setTenantId] = useState('common');
-  const [scope, setScope] = useState('');
   const [status, setStatus] = useState<A2ARelayStatus>(disconnectedStatus);
   const [error, setError] = useState<string | null>(null);
 
   const busy = status.state === 'connecting' || status.state === 'disconnecting';
   const connected = status.state === 'connected';
   const canConnect = relayBaseUrl.trim().length > 0
-    && (authMode === 'static' ? relayToken.trim().length > 0 : clientId.trim().length > 0);
+    && (authMode === 'static' ? relayToken.trim().length > 0 : true);
 
   useEffect(() => {
     let mounted = true;
@@ -66,9 +63,6 @@ export function A2ARelayView() {
         : {
             relayBaseUrl,
             authMode: 'interactive',
-            clientId,
-            tenantId,
-            ...(scope.trim() ? { scope } : {}),
           });
       setStatus(nextStatus);
     } catch (err: unknown) {
@@ -146,26 +140,9 @@ export function A2ARelayView() {
                     hint="Used for local development and private relay instances."
                   />
                 ) : (
-                  <>
-                    <Field
-                      label="Entra client ID"
-                      value={clientId}
-                      onChange={setClientId}
-                      hint="Public client application ID for the Switchboard API."
-                    />
-                    <Field
-                      label="Tenant ID"
-                      value={tenantId}
-                      onChange={setTenantId}
-                      hint="Use common unless the Switchboard deployment requires a specific tenant."
-                    />
-                    <Field
-                      label="OAuth scope"
-                      value={scope}
-                      onChange={setScope}
-                      hint="Defaults in main to api://<client-id>/user_impersonation when left blank."
-                    />
-                  </>
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                    Microsoft Entra opens a browser sign-in and uses Chamber's configured Switchboard app registration.
+                  </div>
                 )}
                 {error && (
                   <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-200">

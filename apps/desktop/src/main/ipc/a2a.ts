@@ -5,6 +5,8 @@ import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeServ
 import { isA2AIncomingPayload, isA2ARelayConnectRequest, narrowTaskState } from '@chamber/shared/a2a-types';
 import type { A2AIncomingPayload, A2ARelayConnectRequest, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
+const DEFAULT_SWITCHBOARD_AUTH_CLIENT_ID = '074530a3-b6c5-41c8-896c-4a6651bf5f16';
+
 interface A2ARelayIPCOptions {
   relayModeService?: A2ARelayModeService;
 }
@@ -155,7 +157,7 @@ function createRelayAuthProvider(request: A2ARelayConnectRequest): StaticA2ARela
 
   const clientId = 'clientId' in request && request.clientId
     ? request.clientId
-    : process.env.SWITCHBOARD_AUTH_CLIENT_ID ?? process.env.CHAMBER_A2A_CLIENT_ID ?? '';
+    : process.env.SWITCHBOARD_AUTH_CLIENT_ID ?? process.env.CHAMBER_A2A_CLIENT_ID ?? DEFAULT_SWITCHBOARD_AUTH_CLIENT_ID;
   return new EntraA2AAuthProvider({
     clientId,
     tenantId: 'tenantId' in request ? request.tenantId : process.env.CHAMBER_A2A_TENANT_ID,
