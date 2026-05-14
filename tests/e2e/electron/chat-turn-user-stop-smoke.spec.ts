@@ -19,6 +19,8 @@ import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from '.
 //      Chamber-side deadline. The user has not chosen to stop.
 //   3. Pressing the Stop button cleanly aborts: the Stop button disappears,
 //      the textarea is enabled again, and no error block is rendered.
+//   4. Conversation history can switch away and resume the stopped session,
+//      proving the streaming guard cleared instead of locking history.
 const cdpPort = Number(process.env.CHAMBER_E2E_USER_STOP_CDP_PORT ?? 9362);
 
 test.describe('electron chat turn user-controlled stop smoke', () => {
@@ -46,7 +48,7 @@ test.describe('electron chat turn user-controlled stop smoke', () => {
     });
     const page = await findRendererPage(app.browser, app.logs);
     await waitForMindApi(page);
-    await loadAndActivateMind(page, mindPath, 'Heinz Doofenshmirtz');
+    const mind = await loadAndActivateMind(page, mindPath, 'Heinz Doofenshmirtz');
 
     // Real interaction: click into the textarea, type a deliberately
     // verbose prompt so the SDK is comfortably busy for the duration of
@@ -86,6 +88,20 @@ test.describe('electron chat turn user-controlled stop smoke', () => {
     await expect(page.getByText(/Agent timed out after/i)).toHaveCount(0);
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
 
+    const stoppedSessionId = await activeConversationSessionId(page, mind.mindId);
+    const newSessionId = await page.evaluate(async (mindId) => {
+      const result = await window.electronAPI.chat.newConversation(mindId);
+      return result.sessionId;
+    }, mind.mindId);
+    expect(newSessionId).not.toBe(stoppedSessionId);
+
+    const resumedSessionId = await page.evaluate(async ({ mindId, sessionId }) => {
+      const result = await window.electronAPI.conversationHistory.resume(mindId, sessionId);
+      return result.sessionId;
+    }, { mindId: mind.mindId, sessionId: stoppedSessionId });
+    expect(resumedSessionId).toBe(stoppedSessionId);
+    await expect(page.getByText(/Cannot switch conversations while a message is still streaming/i)).toHaveCount(0);
+
     // Sanity: a follow-up send should work — the per-mind TurnQueue was
     // released cleanly by the abort.
     await textarea.click();
@@ -121,6 +137,19 @@ async function loadAndActivateMind(page: Page, mindPath: string, name: string) {
   await mindButton.click();
   await expect(mindButton).toHaveClass(/bg-accent/);
   return mind;
+}
+
+async function activeConversationSessionId(page: Page, mindId: string): Promise<string> {
+  const getActiveSessionId = () => page.evaluate(async (activeMindId) => {
+    const conversations = await window.electronAPI.conversationHistory.list(activeMindId);
+    return conversations.find((conversation) => conversation.active)?.sessionId ?? '';
+  }, mindId);
+
+  await expect.poll(
+    getActiveSessionId,
+    { timeout: 10_000 },
+  ).not.toBe('');
+  return getActiveSessionId();
 }
 
 function seedMind(root: string, name: string): void {

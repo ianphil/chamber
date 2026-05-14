@@ -367,6 +367,7 @@ async function startMvpServer(): Promise<string> {
   serverChild = spawn(nodePath, [serverEntry], {
     env: {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
       CHAMBER_SERVER_TOKEN: tokenValue,
       CHAMBER_ALLOWED_ORIGIN: 'http://127.0.0.1',
     },
@@ -375,10 +376,20 @@ async function startMvpServer(): Promise<string> {
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timed out waiting for MVP server readiness')), 10_000);
+    let stdoutBuffer = '';
     serverChild?.stdout.on('data', (chunk) => {
-      for (const line of String(chunk).trim().split(/\r?\n/)) {
+      stdoutBuffer += String(chunk);
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() ?? '';
+      for (const line of lines) {
         if (!line) continue;
-        const payload = JSON.parse(line) as { type?: string; host?: string; port?: number };
+        let payload: { type?: string; host?: string; port?: number };
+        try {
+          payload = JSON.parse(line) as { type?: string; host?: string; port?: number };
+        } catch {
+          log.info(line);
+          continue;
+        }
         if (payload.type === 'ready' && payload.host && payload.port) {
           clearTimeout(timer);
           const url = `http://${payload.host}:${payload.port}`;
