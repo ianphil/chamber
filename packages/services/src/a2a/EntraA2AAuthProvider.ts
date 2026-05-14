@@ -170,7 +170,7 @@ function base64Url(buffer: Buffer): string {
   return buffer.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-async function waitForAuthorizationCode(expectedState: string): Promise<AuthorizationCodeResult> {
+export async function waitForAuthorizationCode(expectedState: string): Promise<AuthorizationCodeResult> {
   const server = createServer();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const code = new Promise<string>((resolve, reject) => {
@@ -188,7 +188,7 @@ async function waitForAuthorizationCode(expectedState: string): Promise<Authoriz
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, 'localhost', () => {
       server.off('error', reject);
       resolve();
     });

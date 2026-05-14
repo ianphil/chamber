@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.62.0 (2026-05-14)
+
+### A2A
+
+- **Support Switchboard relay Entra auth** — Adds Microsoft Entra PKCE login for cloud Switchboard relays, keeps static bearer tokens for local/private relays, allows HTTPS relay URLs, simplifies the Relay UI to require only the relay address for Entra, and publishes a richer Chamber Copilot CLI A2A card for repo collaboration.
+- **Guide Chamber agents toward A2A collaboration** — Adds shared system guidance so Chamber minds deliberately discover A2A agents, inspect cards and skills, and treat remote agents as autonomous collaborators instead of deterministic tools.
+
 ## v0.61.1 (2026-05-13)
 
 ### Chat

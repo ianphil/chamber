@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EntraA2AAuthProvider } from './EntraA2AAuthProvider';
+import { EntraA2AAuthProvider, waitForAuthorizationCode } from './EntraA2AAuthProvider';
 
 describe('EntraA2AAuthProvider', () => {
   it('opens a PKCE authorization URL and exchanges the returned code for an access token', async () => {
@@ -64,6 +64,18 @@ describe('EntraA2AAuthProvider', () => {
     const refreshBody = new URLSearchParams(String(fetchImpl.mock.calls[1][1]?.body));
     expect(refreshBody.get('grant_type')).toBe('refresh_token');
     expect(refreshBody.get('refresh_token')).toBe('refresh-token');
+  });
+
+  it('accepts the browser callback on the advertised localhost redirect URI', async () => {
+    const callback = await waitForAuthorizationCode('state-1');
+    try {
+      const response = await fetch(`${callback.redirectUri}/?code=auth-code&state=state-1`);
+
+      await expect(response.text()).resolves.toContain('Switchboard login complete');
+      await expect(callback.code).resolves.toBe('auth-code');
+    } finally {
+      callback.dispose?.();
+    }
   });
 });
 
