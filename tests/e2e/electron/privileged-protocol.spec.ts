@@ -16,6 +16,7 @@ test.describe('electron privileged loopback channel', () => {
       env: {
         CHAMBER_MVP_SERVER: '1',
         CHAMBER_SERVER_TOKEN: token,
+        CHAMBER_E2E_FAKE_CHAT: '1',
       },
     });
   });
