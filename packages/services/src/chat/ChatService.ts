@@ -113,10 +113,15 @@ export class ChatService {
         if (finalAssistantMessage !== null && !abortController.signal.aborted) {
           const endedAt = new Date().toISOString();
           const refreshed = this.mindManager.getMind(mindId);
+          // Coerce empty model to a sentinel so the structured-log frame is
+          // semantically meaningful. The parser accepts empty values, but
+          // 'unknown' is more useful in rendered rollback markdown than a
+          // bare `(`.
+          const turnModel = model ?? refreshed?.selectedModel ?? '';
           this.notifyTurnCompleted({
             turnId,
             sessionId: refreshed?.activeSessionId ?? '',
-            model: model ?? refreshed?.selectedModel ?? '',
+            model: turnModel.length > 0 ? turnModel : 'unknown',
             status: 'completed',
             startedAt,
             endedAt,

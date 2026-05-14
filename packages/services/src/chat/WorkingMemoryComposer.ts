@@ -34,6 +34,19 @@ const WORKING_MEMORY_DIRNAME = '.working-memory';
 const SECTION_SEPARATOR = '\n\n---\n\n';
 
 export interface WorkingMemoryComposerConfig {
+  /**
+   * Strict opt-in for the dream-daemon log section. When `true` (the user
+   * enabled consolidation in `.chamber.json` or via the agent profile UI),
+   * the composer reads `log.md`, validates the sentinel, and includes the
+   * last-K turns. When `false` (the default for new minds), the log section
+   * is omitted entirely — no read, no info, no warn. Silence is the
+   * contract: a freshly-genesis'd mind that hasn't opted in must not yield
+   * "log.md is unstructured" tray noise.
+   *
+   * Threaded through from `IdentityLoader.resolveComposerConfig`, which
+   * sources it from `loadChamberMindConfig(mindPath).workingMemory.consolidation.enabled`.
+   */
+  readonly enabled: boolean;
   /** Max number of structured turns to include from `log.md`. */
   readonly lastKTurns: number;
   /** Max bytes per rendered turn frame; over-budget turns get a truncation marker. */
@@ -61,6 +74,14 @@ export function createWorkingMemoryComposer(
 ): WorkingMemoryComposer {
   const log: ComposerLogger = deps.logger ?? Logger.create('WorkingMemoryComposer');
 
+  // Per-instance dedupe of the unstructured-log info line, keyed by mindPath.
+  // Lives on the closure so each composer instance gets fresh state — Uncle
+  // Bob's plan-review (finding 6) rejected module-scope state because tests
+  // would leak between cases. Two opted-in minds with unstructured logs will
+  // each get one info line; calling compose() three times for the same mind
+  // produces ONE info line.
+  const unstructuredWarned = new Set<string>();
+
   return {
     compose(mindPath, config) {
       const dir = path.join(mindPath, WORKING_MEMORY_DIRNAME);
@@ -74,8 +95,13 @@ export function createWorkingMemoryComposer(
       const rules = readSimple(dir, 'rules.md');
       if (rules) sections.push(rules);
 
-      const logSection = readLog(dir, config, log);
-      if (logSection) sections.push(logSection);
+      // Strict opt-in gate. The log section is omitted entirely when the mind
+      // has not enabled dream-daemon consolidation. No read, no info, no warn
+      // — see the field doc on WorkingMemoryComposerConfig.enabled.
+      if (config.enabled === true) {
+        const logSection = readLog(mindPath, dir, config, log, unstructuredWarned);
+        if (logSection) sections.push(logSection);
+      }
 
       return sections.join(SECTION_SEPARATOR);
     },
@@ -107,9 +133,11 @@ function readMemory(dir: string, maxBytes: number, log: ComposerLogger): string 
 }
 
 function readLog(
+  mindPath: string,
   dir: string,
   config: WorkingMemoryComposerConfig,
   log: ComposerLogger,
+  unstructuredWarned: Set<string>,
 ): string {
   const filePath = path.join(dir, 'log.md');
   if (!safeExists(filePath)) return '';
@@ -118,7 +146,7 @@ function readLog(
   try {
     raw = fs.readFileSync(filePath, 'utf-8');
   } catch (err) {
-    log.warn(`WorkingMemoryComposer: failed to read log.md; skipping log section`, err);
+    log.warn(`failed to read log.md; skipping log section`, err);
     return '';
   }
 
@@ -129,9 +157,13 @@ function readLog(
     // Migration-window log level: pre-existing minds may still hold an
     // unstructured log.md until DailyLogWriter rotates it on the first turn.
     // Use info (not warn) so SRE dashboards don't flag this benign state.
-    log.info(
-      `WorkingMemoryComposer: log.md is unstructured (no chamber-structured-log/v1 sentinel); skipping log section`,
-    );
+    // Dedupe per-mindPath so we emit at most one line per process per mind.
+    if (!unstructuredWarned.has(mindPath)) {
+      unstructuredWarned.add(mindPath);
+      log.info(
+        `log.md is unstructured (no chamber-structured-log/v1 sentinel); skipping log section`,
+      );
+    }
     return '';
   }
 
@@ -174,7 +206,7 @@ function truncateToBytes(
 
   if (markerBytes >= maxBytes) {
     log.warn(
-      `WorkingMemoryComposer: ${label} exceeds ${maxBytes}B and the truncation marker alone (${markerBytes}B) does not fit; emitting marker only`,
+      `${label} exceeds ${maxBytes}B and the truncation marker alone (${markerBytes}B) does not fit; emitting marker only`,
     );
     return marker.slice(0, maxBytes);
   }
@@ -186,7 +218,7 @@ function truncateToBytes(
   }
 
   log.info(
-    `WorkingMemoryComposer: truncated ${label} from ${originalBytes}B to ${Buffer.byteLength(truncated + marker, 'utf-8')}B`,
+    `truncated ${label} from ${originalBytes}B to ${Buffer.byteLength(truncated + marker, 'utf-8')}B`,
   );
   return truncated + marker;
 }

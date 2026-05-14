@@ -37,6 +37,7 @@ export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }
   const [editingFile, setEditingFile] = useState<AgentProfileFile | null>(null);
   const [avatarSource, setAvatarSource] = useState<AgentProfileAvatarSource | null>(null);
   const [restarting, setRestarting] = useState(false);
+  const [togglingDreamDaemon, setTogglingDreamDaemon] = useState(false);
 
   useEffect(() => {
     if (!open || !mind) {
@@ -102,6 +103,23 @@ export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }
       setError(restartError instanceof Error ? restartError.message : String(restartError));
     } finally {
       setRestarting(false);
+    }
+  };
+
+  const handleToggleDreamDaemon = async () => {
+    if (!profile || togglingDreamDaemon) return;
+    const next = !profile.dreamDaemonEnabled;
+    setTogglingDreamDaemon(true);
+    setError(null);
+    try {
+      await window.electronAPI.mind.setDreamDaemon(profile.mindId, next);
+      const updatedProfile = await window.electronAPI.mindProfile.get(profile.mindId);
+      setProfile(updatedProfile);
+      onProfileChanged?.(updatedProfile);
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : String(toggleError));
+    } finally {
+      setTogglingDreamDaemon(false);
     }
   };
 
@@ -177,6 +195,46 @@ export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }
                         onOpen={() => setEditingFile(agentFile)}
                       />
                     ))}
+                  </div>
+
+                  {/*
+                    Dream-daemon opt-in toggle. Mirrors the genesis-time
+                    switch in RoleScreen so an existing mind can be opted
+                    in/out post-creation. Flipping it triggers a mind reload
+                    (see MindManager.enableDreamDaemon / disableDreamDaemon)
+                    so the new opt-in state takes effect immediately —
+                    composer reads the gate, DailyLogWriter migrates legacy
+                    `log.md` if needed.
+                  */}
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-slate-900/40 px-4 py-3">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">Enable dream daemon</div>
+                      <div className="text-xs text-muted-foreground">
+                        Background memory consolidation. When enabled, this agent's chat history is structured and summarized over time.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={profile.dreamDaemonEnabled}
+                      aria-label="Enable dream daemon"
+                      disabled={togglingDreamDaemon}
+                      onClick={handleToggleDreamDaemon}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                        'disabled:opacity-50 disabled:cursor-not-allowed',
+                        profile.dreamDaemonEnabled ? 'bg-sky-500' : 'bg-slate-700',
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition',
+                          profile.dreamDaemonEnabled ? 'translate-x-5' : 'translate-x-0',
+                        )}
+                      />
+                    </button>
                   </div>
                 </div>
               ) : null}

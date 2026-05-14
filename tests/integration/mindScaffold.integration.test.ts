@@ -127,7 +127,7 @@ function defaultSeedFiles(paths: SoulPaths): void {
 }
 
 describe('MindScaffold.create — bootstrap integration', () => {
-  it('produces a sentinel-prefixed log.md on disk', async () => {
+  it('opt-in (enableDreamDaemon=true): produces a sentinel-prefixed log.md AND writes .chamber.json with consolidation.enabled=true', async () => {
     const callLog: RegistryCallLog = { fetchTree: [], fetchBlob: [], fetchJsonContent: [] };
     const scaffold = new MindScaffold(
       makeFakeRegistryClient(callLog),
@@ -140,6 +140,7 @@ describe('MindScaffold.create — bootstrap integration', () => {
       voice: 'plain',
       voiceDescription: 'plain',
       basePath: tmpRoot,
+      enableDreamDaemon: true,
     });
 
     const logPath = path.join(mindPath, '.working-memory', 'log.md');
@@ -147,6 +148,41 @@ describe('MindScaffold.create — bootstrap integration', () => {
     const content = fs.readFileSync(logPath, 'utf-8');
     const firstNonBlank = content.split('\n').find((l) => l.trim() !== '');
     expect(firstNonBlank).toBe(STRUCTURED_LOG_SENTINEL);
+
+    // Persist the opt-in choice so MindMemoryService.activateMind reads it
+    // back on the next mind load — without this, the user toggled the
+    // Switch but the daemon would never start.
+    const chamberJsonPath = path.join(mindPath, '.chamber.json');
+    expect(fs.existsSync(chamberJsonPath)).toBe(true);
+    const chamberConfig = JSON.parse(fs.readFileSync(chamberJsonPath, 'utf-8')) as {
+      workingMemory?: { consolidation?: { enabled?: unknown } };
+    };
+    expect(chamberConfig.workingMemory?.consolidation?.enabled).toBe(true);
+  });
+
+  it('opt-out (enableDreamDaemon=false): log.md is empty AND .chamber.json is absent', async () => {
+    // Default flow for users who don't opt in. The mind still works (chat,
+    // tools, memory, rules) — it just doesn't run the dream daemon and
+    // doesn't materialize structured-log frames on each turn.
+    const callLog: RegistryCallLog = { fetchTree: [], fetchBlob: [], fetchJsonContent: [] };
+    const scaffold = new MindScaffold(
+      makeFakeRegistryClient(callLog),
+      makeFakeClientFactory(defaultSeedFiles),
+    );
+
+    const mindPath = await scaffold.create({
+      name: 'Quiet Mind',
+      role: 'integration tester',
+      voice: 'plain',
+      voiceDescription: 'plain',
+      basePath: tmpRoot,
+      enableDreamDaemon: false,
+    });
+
+    const logPath = path.join(mindPath, '.working-memory', 'log.md');
+    expect(fs.existsSync(logPath)).toBe(true);
+    expect(fs.readFileSync(logPath, 'utf-8')).toBe('');
+    expect(fs.existsSync(path.join(mindPath, '.chamber.json'))).toBe(false);
   });
 
   it('records source: ianphil/genesis-frontier in registry.json', async () => {
@@ -277,7 +313,7 @@ describe('MindScaffold.create — bootstrap integration', () => {
     const warn = vi.fn();
     const info = vi.fn();
     const composer = createWorkingMemoryComposer({ logger: { warn, info } });
-    composer.compose(mindPath, { lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 });
+    composer.compose(mindPath, { enabled: true, lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 });
 
     expect(warn).not.toHaveBeenCalled();
     // info may be called for benign reasons (e.g. memory.md truncation) but
@@ -325,7 +361,7 @@ describe('MindScaffold.create — bootstrap integration', () => {
     const composer = createWorkingMemoryComposer({ logger: { warn, info } });
 
     // Step 1: opening the mind triggers a system-prompt rebuild → info, never warn.
-    composer.compose(mindPath, { lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 });
+    composer.compose(mindPath, { enabled: true, lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 });
     expect(warn).not.toHaveBeenCalled();
     const unstructuredInfoCalls = info.mock.calls.filter((c) => /unstructured/i.test(c[0]));
     expect(unstructuredInfoCalls.length).toBe(1);
@@ -353,7 +389,7 @@ describe('MindScaffold.create — bootstrap integration', () => {
     // Step 3: subsequent prompt rebuild is silent — migration is complete.
     info.mockClear();
     warn.mockClear();
-    composer.compose(mindPath, { lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 });
+    composer.compose(mindPath, { enabled: true, lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 });
     expect(warn).not.toHaveBeenCalled();
     for (const call of info.mock.calls) {
       expect(call[0]).not.toMatch(/unstructured/i);

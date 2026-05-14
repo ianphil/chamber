@@ -52,7 +52,7 @@ export function GenesisFlow({ onComplete }: Props) {
     return { success: true, message: `Added ${result.registry.label}. It will appear in New Agent templates.` };
   }, [loadTemplates]);
 
-  const handleRole= useCallback(async (r: string) => {
+  const handleRole= useCallback(async (r: string, enableDreamDaemon: boolean) => {
     setRole(r);
     setStage('boot');
     setCreationError(null);
@@ -64,6 +64,7 @@ export function GenesisFlow({ onComplete }: Props) {
       voice: name,
       voiceDescription: voiceDesc,
       basePath: defaultPath,
+      enableDreamDaemon,
     }).catch((error: unknown) => ({
       success: false,
       error: error instanceof Error ? error.message : String(error),

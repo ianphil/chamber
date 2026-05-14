@@ -270,13 +270,15 @@ describe('MindScaffold.bootstrapCapabilities — registry source', () => {
   });
 });
 
-// Fix 2: a new mind's .working-memory/log.md must be sentinel-prefixed from the
-// moment createStructure() runs. Otherwise WorkingMemoryComposer emits the
-// "log.md is unstructured" warning on every system-prompt rebuild for the
-// lifetime of the mind, and DailyLogWriter has to rotate the legacy line on
-// first turn. Seeding from MindScaffold owns the on-disk shape of a mind.
-describe('MindScaffold.createStructure — log.md sentinel seed', () => {
-  it('seeds log.md with the chamber-structured-log/v1 sentinel as its first non-blank line', () => {
+// v0.60.0 Phase 2: sentinel-seed becomes strict opt-in. The dream-daemon Switch
+// in the Genesis wizard threads `enableDreamDaemon` through GenesisConfig →
+// MindScaffold.createStructure. Opt-in seeds the sentinel exactly as before;
+// opt-out leaves log.md as an empty placeholder so the WorkingMemoryComposer
+// short-circuits cleanly (no read, no warn, no info — see Phase 1 enabled
+// gate). The on-disk shape of a mind is owned by createStructure regardless
+// of which Genesis path created the mind.
+describe('MindScaffold.createStructure — log.md sentinel seed (opt-in)', () => {
+  it('opt-in (enableDreamDaemon=true): seeds log.md with the chamber-structured-log/v1 sentinel as its first non-blank line', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-sentinel-'));
     try {
       const mindPath = path.join(tmpDir, 'mind');
@@ -285,8 +287,10 @@ describe('MindScaffold.createStructure — log.md sentinel seed', () => {
         {} as unknown as CopilotClientFactory,
       );
 
-      const internal = scaffold as unknown as { createStructure(mp: string): void };
-      internal.createStructure(mindPath);
+      const internal = scaffold as unknown as {
+        createStructure(mp: string, opts: { enableDreamDaemon: boolean }): void;
+      };
+      internal.createStructure(mindPath, { enableDreamDaemon: true });
 
       const logPath = path.join(mindPath, '.working-memory', 'log.md');
       expect(fs.existsSync(logPath)).toBe(true);
@@ -298,7 +302,7 @@ describe('MindScaffold.createStructure — log.md sentinel seed', () => {
     }
   });
 
-  it('leaves the seeded sentinel intact even though WORKING_MEMORY_FILES still iterates log.md', () => {
+  it('opt-in: leaves the seeded sentinel intact even though WORKING_MEMORY_FILES still iterates log.md', () => {
     // Guard against accidental regression: if the WORKING_MEMORY_FILES loop
     // ran AFTER the seed without the existsSync guard, log.md would be blanked.
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-sentinel-'));
@@ -309,13 +313,125 @@ describe('MindScaffold.createStructure — log.md sentinel seed', () => {
         {} as unknown as CopilotClientFactory,
       );
 
-      const internal = scaffold as unknown as { createStructure(mp: string): void };
-      internal.createStructure(mindPath);
+      const internal = scaffold as unknown as {
+        createStructure(mp: string, opts: { enableDreamDaemon: boolean }): void;
+      };
+      internal.createStructure(mindPath, { enableDreamDaemon: true });
 
       const logPath = path.join(mindPath, '.working-memory', 'log.md');
       const content = fs.readFileSync(logPath, 'utf-8');
       expect(content.length).toBeGreaterThan(0);
       expect(content).toContain(STRUCTURED_LOG_SENTINEL);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('opt-out (enableDreamDaemon=false): log.md exists but is empty (no sentinel)', () => {
+    // When the user does NOT opt in, the structured-log sentinel must NOT be
+    // written. Otherwise a never-opted-in mind would have a sentinel byte
+    // sitting on disk that would activate DailyLogWriter's structured path on
+    // the first turn — defeating the opt-in. The placeholder loop still
+    // creates log.md (so paths are valid) but its content is exactly empty.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-sentinel-'));
+    try {
+      const mindPath = path.join(tmpDir, 'mind');
+      const scaffold = new MindScaffold(
+        {} as unknown as GitHubRegistryClient,
+        {} as unknown as CopilotClientFactory,
+      );
+
+      const internal = scaffold as unknown as {
+        createStructure(mp: string, opts: { enableDreamDaemon: boolean }): void;
+      };
+      internal.createStructure(mindPath, { enableDreamDaemon: false });
+
+      const logPath = path.join(mindPath, '.working-memory', 'log.md');
+      expect(fs.existsSync(logPath)).toBe(true);
+      const content = fs.readFileSync(logPath, 'utf-8');
+      expect(content).toBe('');
+      expect(content).not.toContain(STRUCTURED_LOG_SENTINEL);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('opt-out: omitting `enableDreamDaemon` defaults to OFF (defense-in-depth)', () => {
+    // The Genesis IPC schema forwards the field explicitly, but if a future
+    // refactor or a programmatic call drops the flag we must default to the
+    // safer (off) state. Strict opt-in: anything other than `true` means OFF.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-sentinel-'));
+    try {
+      const mindPath = path.join(tmpDir, 'mind');
+      const scaffold = new MindScaffold(
+        {} as unknown as GitHubRegistryClient,
+        {} as unknown as CopilotClientFactory,
+      );
+
+      const internal = scaffold as unknown as {
+        createStructure(mp: string, opts?: { enableDreamDaemon?: boolean }): void;
+      };
+      internal.createStructure(mindPath);
+
+      const logPath = path.join(mindPath, '.working-memory', 'log.md');
+      const content = fs.readFileSync(logPath, 'utf-8');
+      expect(content).toBe('');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// v0.60.0 Phase 2: opt-in must persist the choice into `.chamber.json` so
+// MindMemoryService.activateMind can read it back on the very next mind
+// load. Opt-out is the default (no consolidation block) so existing minds
+// upgrading into this release stay opted-out without a migration. We deep-
+// merge in case future Genesis features write other fields.
+describe('MindScaffold.create — `.chamber.json` consolidation block (opt-in)', () => {
+  it('opt-in: writes .chamber.json with workingMemory.consolidation.enabled=true', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-chamberjson-'));
+    try {
+      const mindPath = path.join(tmpDir, 'mind');
+      const scaffold = new MindScaffold(
+        {} as unknown as GitHubRegistryClient,
+        {} as unknown as CopilotClientFactory,
+      );
+
+      const internal = scaffold as unknown as {
+        createStructure(mp: string, opts: { enableDreamDaemon: boolean }): void;
+      };
+      internal.createStructure(mindPath, { enableDreamDaemon: true });
+
+      const chamberJsonPath = path.join(mindPath, '.chamber.json');
+      expect(fs.existsSync(chamberJsonPath)).toBe(true);
+      const parsed = JSON.parse(fs.readFileSync(chamberJsonPath, 'utf-8')) as {
+        workingMemory?: { consolidation?: { enabled?: unknown } };
+      };
+      expect(parsed.workingMemory?.consolidation?.enabled).toBe(true);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('opt-out: does NOT write .chamber.json (defaults are off → file is absent)', () => {
+    // No file = chamberMindConfig.loadChamberMindConfig returns the default
+    // shape with `consolidation.enabled: false`. Writing an empty marker file
+    // would be wasted I/O AND signal intent the user never expressed.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-chamberjson-'));
+    try {
+      const mindPath = path.join(tmpDir, 'mind');
+      const scaffold = new MindScaffold(
+        {} as unknown as GitHubRegistryClient,
+        {} as unknown as CopilotClientFactory,
+      );
+
+      const internal = scaffold as unknown as {
+        createStructure(mp: string, opts: { enableDreamDaemon: boolean }): void;
+      };
+      internal.createStructure(mindPath, { enableDreamDaemon: false });
+
+      const chamberJsonPath = path.join(mindPath, '.chamber.json');
+      expect(fs.existsSync(chamberJsonPath)).toBe(false);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

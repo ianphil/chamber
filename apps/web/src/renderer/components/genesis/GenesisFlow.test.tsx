@@ -47,8 +47,17 @@ vi.mock('./VoiceScreen', () => ({
 }));
 
 vi.mock('./RoleScreen', () => ({
-  RoleScreen: ({ onSelect }: { onSelect: (role: string) => void }) => (
-    <button onClick={() => onSelect('Chief of Staff')}>Choose role</button>
+  RoleScreen: ({
+    onSelect,
+  }: {
+    onSelect: (role: string, enableDreamDaemon: boolean) => void;
+  }) => (
+    <>
+      <button onClick={() => onSelect('Chief of Staff', false)}>Choose role</button>
+      <button onClick={() => onSelect('Engineering Partner', true)}>
+        Choose role with daemon
+      </button>
+    </>
   ),
 }));
 
@@ -213,9 +222,36 @@ describe('GenesisFlow', () => {
         voice: 'Test Agent',
         voiceDescription: 'Test voice',
         basePath: 'C:\\Users\\test\\agents',
+        enableDreamDaemon: false,
       });
     });
     expect(api.genesis.createFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it('forwards enableDreamDaemon=true into the genesis.create IPC payload', async () => {
+    // RoleScreen owns the Switch; GenesisFlow.handleRole must thread the
+    // captured opt-in into the IPC call so MindScaffold sees it. Without
+    // this the user toggles the Switch and nothing reaches the main process.
+    render(
+      <AppStateProvider>
+        <GenesisFlow onComplete={vi.fn()} />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByText('Begin'));
+    fireEvent.click(screen.getByText('Choose voice'));
+    fireEvent.click(await screen.findByText('Choose role with daemon'));
+
+    await waitFor(() => {
+      expect(api.genesis.create).toHaveBeenCalledWith({
+        name: 'Test Agent',
+        role: 'Engineering Partner',
+        voice: 'Test Agent',
+        voiceDescription: 'Test voice',
+        basePath: 'C:\\Users\\test\\agents',
+        enableDreamDaemon: true,
+      });
+    });
   });
 
   it('adds a marketplace from the landing page and refreshes templates', async () => {

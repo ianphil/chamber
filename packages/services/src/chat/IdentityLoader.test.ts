@@ -225,6 +225,8 @@ describe('IdentityLoader', () => {
         '/tmp/agents/widget',
         {
           // Defaults from chamberMindConfig (Phase 4) when no .chamber.json exists.
+          // Phase 1 of v0.60.0 added `enabled` (strict opt-in for the dream daemon).
+          enabled: false,
           lastKTurns: 10,
           perTurnMaxBytes: 2048,
           memoryMaxBytes: 8192,

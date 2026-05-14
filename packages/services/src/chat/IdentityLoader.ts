@@ -90,12 +90,14 @@ export class IdentityLoader {
     try {
       const c = loadChamberMindConfig(mindPath).workingMemory.consolidation;
       return {
+        enabled: c.enabled,
         lastKTurns: c.lastKTurns,
         perTurnMaxBytes: c.perTurnMaxBytes,
         memoryMaxBytes: c.memoryMaxBytes,
       };
     } catch {
       return {
+        enabled: DEFAULT_WORKING_MEMORY_CONSOLIDATION.enabled,
         lastKTurns: DEFAULT_WORKING_MEMORY_CONSOLIDATION.lastKTurns,
         perTurnMaxBytes: DEFAULT_WORKING_MEMORY_CONSOLIDATION.perTurnMaxBytes,
         memoryMaxBytes: DEFAULT_WORKING_MEMORY_CONSOLIDATION.memoryMaxBytes,

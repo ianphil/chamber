@@ -32,6 +32,7 @@ export const IPC = {
     LIST: 'mind:list',
     SET_ACTIVE: 'mind:setActive',
     SET_MODEL: 'mind:setModel',
+    SET_DREAM_DAEMON: 'mind:setDreamDaemon',
     SELECT_DIRECTORY: 'mind:selectDirectory',
     OPEN_WINDOW: 'mind:openWindow',
     CHANGED: 'mind:changed',

@@ -142,7 +142,46 @@ export function createMindMemoryService(
   const active = new Map<string, ActiveEntry>();
   let closed = false;
 
-  async function activateMind(mindId: string, mindPath: string): Promise<void> {
+  // Per-mindId serialization (Uncle Bob plan-review finding 2). The
+  // composition root wires `mindManager.on('mind:loaded', ctx =>
+  // mindMemoryService.activateMind(...).catch(...))` — fire-and-forget. A
+  // user who rapid-toggles the dream-daemon switch (ON → OFF → ON) generates
+  // back-to-back activate/release events. With the eager-migration await
+  // added below, activate yields BEFORE calling `active.set`, opening a
+  // race window where release no-ops (mind not yet active) and the next
+  // activate's idempotency check no-ops too — leaving the mind in a stale
+  // state. Serializing here keeps the contract intact at the service
+  // layer, so the composition root can stay simple.
+  const lifecycleQueues = new Map<string, Promise<void>>();
+
+  function enqueueLifecycle<T>(mindId: string, fn: () => Promise<T>): Promise<T> {
+    const prior = lifecycleQueues.get(mindId) ?? Promise.resolve();
+    const next = prior.then(fn, fn);
+    // Tail tracking — we keep the chain as a Promise<void> that swallows
+    // rejections so a failed activate/release does not poison the queue.
+    const tail: Promise<void> = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    lifecycleQueues.set(mindId, tail);
+    // Best-effort cleanup once the queue is fully drained for this mind.
+    void tail.then(() => {
+      if (lifecycleQueues.get(mindId) === tail) {
+        lifecycleQueues.delete(mindId);
+      }
+    });
+    return next;
+  }
+
+  function activateMind(mindId: string, mindPath: string): Promise<void> {
+    return enqueueLifecycle(mindId, () => activateMindInner(mindId, mindPath));
+  }
+
+  function releaseMind(mindId: string): Promise<void> {
+    return enqueueLifecycle(mindId, () => releaseMindInner(mindId));
+  }
+
+  async function activateMindInner(mindId: string, mindPath: string): Promise<void> {
     if (closed) {
       throw new Error('MindMemoryService is closed');
     }
@@ -202,6 +241,14 @@ export function createMindMemoryService(
           },
         },
       });
+
+      // Eager migration (v0.60.0 Phase 1). When a mind that previously
+      // opted out flips ON, the user expects their freeform log.md to be
+      // preserved as log.legacy.md and a fresh sentinel-only log to be
+      // seeded — without waiting for the next chat turn. Idempotent for
+      // already-structured logs; no-op for missing log.md.
+      await writer.migrateIfNeeded();
+
       observer = {
         onTurnCompleted: (turn: CompletedTurn) => writer.write(turn),
       };
@@ -247,7 +294,7 @@ export function createMindMemoryService(
     }
   }
 
-  async function releaseMind(mindId: string): Promise<void> {
+  async function releaseMindInner(mindId: string): Promise<void> {
     const entry = active.get(mindId);
     if (!entry) return;
     // Drop the map entry FIRST so a teardown failure doesn't leave a

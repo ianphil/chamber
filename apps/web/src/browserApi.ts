@@ -164,6 +164,7 @@ export function installBrowserApi(): void {
       list: () => client.listMinds() as Promise<MindContext[]>,
       setActive: async () => unavailable('active mind changes'),
       setModel: async () => null,
+      setDreamDaemon: async () => unavailable('dream daemon toggling'),
       selectDirectory: async () => window.prompt('Enter a local agent folder path on this computer:')?.trim() || null,
       openWindow: async (mindId) => {
         window.open(`/?mindId=${encodeURIComponent(mindId)}`, '_blank', 'noopener,noreferrer');

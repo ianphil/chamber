@@ -47,6 +47,12 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
     return chatService.setMindModel(mindId, model);
   });
 
+  ipcMain.handle(IPC.MIND.SET_DREAM_DAEMON, async (_event, mindId: string, enabled: boolean) => {
+    return enabled
+      ? mindManager.enableDreamDaemon(mindId)
+      : mindManager.disableDreamDaemon(mindId);
+  });
+
   ipcMain.handle(IPC.MIND.SELECT_DIRECTORY, async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return null;

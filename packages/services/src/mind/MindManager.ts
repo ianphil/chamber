@@ -12,7 +12,8 @@ import { Logger } from '../logger';
 import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInputHandler } from './types';
 import { generateMindId } from './generateMindId';
 import { loadMcpServersFromMindPath } from './mcpConfig';
-import { loadChamberMindConfig } from './chamberMindConfig';
+import { loadChamberMindConfig, patchChamberMindConfig } from './chamberMindConfig';
+import { rollbackToUnstructured } from '../mindMemory/rollback';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
@@ -35,6 +36,13 @@ export class MindManager extends EventEmitter {
   private reloading = false;
   private providers: ChamberToolProvider[] = [];
   private modelUpdates = new Map<string, Promise<void>>();
+  // Per-mindId serialization for dream-daemon toggle. Two concurrent
+  // calls (typical: rapid clicks bypassing the UI's `togglingDreamDaemon`
+  // guard, or a programmatic IPC caller) must not race `reloadMind` —
+  // the second `this.minds.get(mindId)` would return undefined while the
+  // first call is mid-reload (delete-then-loadMind). Same shape as the
+  // `loading` Map: in-flight promises are returned to subsequent callers.
+  private daemonToggling = new Map<string, Promise<MindContext>>();
 
   constructor(
     private readonly clientFactory: CopilotClientFactory,
@@ -236,6 +244,64 @@ export class MindManager extends EventEmitter {
     this.emit('mind:unloaded', mindId);
     const reloaded = await this.loadMind(mindPath, mindId);
     if (wasActive) this.setActiveMind(mindId);
+    return reloaded;
+  }
+
+  // Flip the dream-daemon opt-in for an existing mind. Patches `.chamber.json`
+  // to set `workingMemory.consolidation.enabled = true`, then reloads the
+  // mind so providers (notably MindMemoryService) re-read the opt-in gate
+  // and `migrateIfNeeded` runs against any pre-existing unstructured `log.md`.
+  // Per-mindId serialization via `daemonToggling` ensures concurrent calls
+  // for the same mind return the same in-flight promise rather than racing
+  // (the second call would otherwise hit a stale `this.minds.get` mid-reload).
+  enableDreamDaemon(mindId: string): Promise<MindContext> {
+    return this.toggleDreamDaemon(mindId, true);
+  }
+
+  // Counterpart to `enableDreamDaemon`. In Phase 3 this only flips the flag
+  // and reloads — it does NOT roll back structured frames in `log.md` back
+  // to unstructured markdown. That rollback path is the subject of Phase 4.
+  disableDreamDaemon(mindId: string): Promise<MindContext> {
+    return this.toggleDreamDaemon(mindId, false);
+  }
+
+  private toggleDreamDaemon(mindId: string, enabled: boolean): Promise<MindContext> {
+    const inflight = this.daemonToggling.get(mindId);
+    if (inflight) return inflight;
+    const promise = this.doToggleDreamDaemon(mindId, enabled);
+    this.daemonToggling.set(mindId, promise);
+    promise.finally(() => {
+      // Only clear if still the same promise — guards against a race where
+      // the entry was somehow replaced (defensive; not currently possible).
+      if (this.daemonToggling.get(mindId) === promise) this.daemonToggling.delete(mindId);
+    }).catch(() => { /* swallowed — caller still receives the rejection */ });
+    return promise;
+  }
+
+  private async doToggleDreamDaemon(mindId: string, enabled: boolean): Promise<MindContext> {
+    const context = this.minds.get(mindId);
+    if (!context) throw new Error(`Mind ${mindId} not found`);
+    const mindPath = context.mindPath;
+    patchChamberMindConfig(mindPath, {
+      workingMemory: { consolidation: { enabled } },
+    });
+    const reloaded = await this.reloadMind(mindId);
+
+    if (!enabled) {
+      // Phase 4 — at this point the mind has been reloaded with the
+      // opted-out config: MindMemoryService skipped activation, so the
+      // DailyLogWriter is gone and no observer is attached. Safe to
+      // rewrite log.md without racing in-flight structured writes.
+      // Failure is non-fatal to the toggle: the config is already
+      // flipped, the next app launch (or another rollback attempt)
+      // can retry. Surfacing as a warning keeps the user-visible
+      // toggle from breaking on a transient fs error.
+      try {
+        await rollbackToUnstructured(mindPath);
+      } catch (err) {
+        log.warn(`disableDreamDaemon: rollback failed for ${mindId}`, err);
+      }
+    }
     return reloaded;
   }
 

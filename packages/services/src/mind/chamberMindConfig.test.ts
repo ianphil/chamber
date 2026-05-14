@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   loadChamberMindConfig,
+  patchChamberMindConfig,
   CHAMBER_MIND_CONFIG_FILENAME,
   DEFAULT_WORKING_MEMORY_CONSOLIDATION,
 } from './chamberMindConfig';
@@ -295,5 +296,100 @@ describe('chamberMindConfig — workingMemory.consolidation', () => {
       expect(second.workingMemory.consolidation.enabled).toBe(false);
       expect(second.workingMemory.consolidation.lastKTurns).toBe(10);
     });
+  });
+});
+
+describe('patchChamberMindConfig', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mind-config-patch-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates the .chamber.json file when it does not yet exist and applies the patch', () => {
+    patchChamberMindConfig(tmpDir, {
+      workingMemory: { consolidation: { enabled: true } },
+    });
+    const onDisk = JSON.parse(fs.readFileSync(path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME), 'utf-8'));
+    expect(onDisk).toEqual({
+      workingMemory: { consolidation: { enabled: true } },
+    });
+  });
+
+  it('deep-merges into an existing workingMemory.consolidation block', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME),
+      JSON.stringify({
+        workingMemory: {
+          consolidation: { enabled: false, cron: '*/5 * * * *', lastKTurns: 5 },
+        },
+      }, null, 2) + '\n',
+    );
+
+    patchChamberMindConfig(tmpDir, {
+      workingMemory: { consolidation: { enabled: true } },
+    });
+
+    const onDisk = JSON.parse(fs.readFileSync(path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME), 'utf-8'));
+    expect(onDisk.workingMemory.consolidation).toEqual({
+      enabled: true,
+      cron: '*/5 * * * *',
+      lastKTurns: 5,
+    });
+  });
+
+  it('preserves existing top-level passthrough fields like excludedTools', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME),
+      JSON.stringify({
+        excludedTools: ['shell', 'str_replace'],
+        somethingFromAFutureVersion: { keepMe: true },
+      }, null, 2) + '\n',
+    );
+
+    patchChamberMindConfig(tmpDir, {
+      workingMemory: { consolidation: { enabled: true } },
+    });
+
+    const onDisk = JSON.parse(fs.readFileSync(path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME), 'utf-8'));
+    expect(onDisk.excludedTools).toEqual(['shell', 'str_replace']);
+    expect(onDisk.somethingFromAFutureVersion).toEqual({ keepMe: true });
+    expect(onDisk.workingMemory.consolidation.enabled).toBe(true);
+  });
+
+  it('writes pretty-printed JSON ending with a newline', () => {
+    patchChamberMindConfig(tmpDir, {
+      workingMemory: { consolidation: { enabled: true } },
+    });
+    const raw = fs.readFileSync(path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME), 'utf-8');
+    expect(raw.endsWith('\n')).toBe(true);
+    expect(raw).toContain('\n  ');
+  });
+
+  it('leaves the original .chamber.json byte-identical when the rename step fails', () => {
+    // Trigger a real OS-level rename failure without monkey-patching fs
+    // (which is impossible for ESM-imported `node:fs.renameSync`). We make
+    // `.chamber.json` a non-empty directory so:
+    //   * readRawChamberConfig() sees existsSync=true but readFileSync throws
+    //     (EISDIR) → caught → returns {}
+    //   * writeFileSync(tmpPath) succeeds (tmp lives next to the dir)
+    //   * renameSync(tmp, dir) fails → caught → tmp removed → rethrow
+    const filePath = path.join(tmpDir, CHAMBER_MIND_CONFIG_FILENAME);
+    fs.mkdirSync(filePath);
+    const sentinelPath = path.join(filePath, 'marker.txt');
+    fs.writeFileSync(sentinelPath, 'untouched');
+
+    expect(() => patchChamberMindConfig(tmpDir, {
+      workingMemory: { consolidation: { enabled: true } },
+    })).toThrow();
+
+    expect(fs.statSync(filePath).isDirectory()).toBe(true);
+    expect(fs.readFileSync(sentinelPath, 'utf-8')).toBe('untouched');
+    const lingering = fs.readdirSync(tmpDir).filter((entry) => entry.endsWith('.tmp'));
+    expect(lingering).toEqual([]);
   });
 });

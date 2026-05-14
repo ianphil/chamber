@@ -28,6 +28,7 @@ const electronAPI: ElectronAPI = {
     list: () => ipcRenderer.invoke(IPC.MIND.LIST),
     setActive: (mindId) => ipcRenderer.invoke(IPC.MIND.SET_ACTIVE, mindId),
     setModel: (mindId, model) => ipcRenderer.invoke(IPC.MIND.SET_MODEL, mindId, model),
+    setDreamDaemon: (mindId, enabled) => ipcRenderer.invoke(IPC.MIND.SET_DREAM_DAEMON, mindId, enabled),
     selectDirectory: () => ipcRenderer.invoke(IPC.MIND.SELECT_DIRECTORY),
     openWindow: (mindId) => ipcRenderer.invoke(IPC.MIND.OPEN_WINDOW, mindId),
     onMindChanged: (callback) => createIpcListener(ipcRenderer, IPC.MIND.CHANGED, callback),

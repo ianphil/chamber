@@ -84,6 +84,56 @@ describe('AgentProfileModal', () => {
       crop: expect.objectContaining({ width: 600, height: 600 }),
     }));
   });
+
+  describe('dream-daemon switch', () => {
+    it('renders the switch in the OFF position when dreamDaemonEnabled is false', async () => {
+      (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: false }));
+      renderProfileModal();
+
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('renders the switch in the ON position when dreamDaemonEnabled is true', async () => {
+      (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: true }));
+      renderProfileModal();
+
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('flipping the switch from OFF to ON calls mind.setDreamDaemon(mindId, true) then refreshes the profile', async () => {
+      const offProfile = makeProfile({ dreamDaemonEnabled: false });
+      const onProfile = makeProfile({ dreamDaemonEnabled: true });
+      const getMock = api.mindProfile.get as ReturnType<typeof vi.fn>;
+      getMock.mockResolvedValueOnce(offProfile);
+      getMock.mockResolvedValueOnce(onProfile);
+      (api.mind.setDreamDaemon as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mind });
+
+      renderProfileModal();
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(api.mind.setDreamDaemon).toHaveBeenCalledWith('mind-1', true));
+      await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    });
+
+    it('flipping the switch from ON to OFF calls mind.setDreamDaemon(mindId, false)', async () => {
+      const onProfile = makeProfile({ dreamDaemonEnabled: true });
+      const offProfile = makeProfile({ dreamDaemonEnabled: false });
+      const getMock = api.mindProfile.get as ReturnType<typeof vi.fn>;
+      getMock.mockResolvedValueOnce(onProfile);
+      getMock.mockResolvedValueOnce(offProfile);
+      (api.mind.setDreamDaemon as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mind });
+
+      renderProfileModal();
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(api.mind.setDreamDaemon).toHaveBeenCalledWith('mind-1', false));
+    });
+  });
 });
 
 function renderProfileModal() {
@@ -111,6 +161,7 @@ function makeProfile(overrides?: Partial<AgentProfile>): AgentProfile {
     },
     agentFiles: [makeAgentFile('moneypenny.agent.md')],
     needsRestart: false,
+    dreamDaemonEnabled: false,
     ...overrides,
   };
 }

@@ -26,6 +26,16 @@ export interface GenesisConfig {
   voice: string;
   voiceDescription: string;
   basePath: string;
+  /**
+   * Strict opt-in for the dream daemon (v0.60.0). When `true`, MindScaffold
+   * seeds the chamber-structured-log/v1 sentinel into log.md AND writes
+   * `.chamber.json` with `workingMemory.consolidation.enabled: true` so
+   * MindMemoryService.activateMind starts the daemon on the first mind load.
+   * When `false` or omitted, log.md is left empty and `.chamber.json` is
+   * not written — the mind operates without consolidation, matching the
+   * default for every existing user upgrading into this release.
+   */
+  enableDreamDaemon?: boolean;
 }
 
 export interface GenesisProgress {
@@ -82,7 +92,7 @@ export class MindScaffold {
 
     // 1. Create deterministic structure
     this.emit('structure', 'Creating mind structure...');
-    this.createStructure(mindPath);
+    this.createStructure(mindPath, { enableDreamDaemon: config.enableDreamDaemon === true });
 
     // 2. Generate soul via agent
     this.emit('soul', `Writing SOUL.md...`);
@@ -112,7 +122,10 @@ export class MindScaffold {
     return mindPath;
   }
 
-  private createStructure(mindPath: string): void {
+  private createStructure(
+    mindPath: string,
+    opts: { enableDreamDaemon?: boolean } = {},
+  ): void {
     // IDEA folders
     for (const folder of IDEA_FOLDERS) {
       fs.mkdirSync(path.join(mindPath, folder), { recursive: true });
@@ -126,16 +139,18 @@ export class MindScaffold {
     const wmDir = path.join(mindPath, '.working-memory');
     fs.mkdirSync(wmDir, { recursive: true });
 
-    // Seed log.md with the chamber-structured-log/v1 sentinel BEFORE the
-    // WORKING_MEMORY_FILES placeholder loop runs. The loop's `existsSync` guard
-    // then skips it, preserving the sentinel. This keeps `validate()` happy
-    // (sentinel-only content trims to non-empty) while honoring the
-    // structured-log contract from creation. Trailing `\n\n` matches the
-    // byte-level format that DailyLogWriter.seedFreshLog emits for a fresh
-    // mind so on-disk content stays consistent regardless of which path
-    // seeded the sentinel. See WorkingMemoryComposer.readLog and
-    // DailyLogWriter.doWrite for the consumer side of this contract.
-    fs.writeFileSync(path.join(wmDir, 'log.md'), STRUCTURED_LOG_SENTINEL + '\n\n');
+    const enableDreamDaemon = opts.enableDreamDaemon === true;
+
+    // v0.60.0 Phase 2: log.md sentinel seed is now strict opt-in. When the
+    // user toggles the dream-daemon Switch in Genesis we seed the sentinel
+    // exactly as before (byte-for-byte parity with DailyLogWriter.seedFreshLog
+    // — `SENTINEL + '\n\n'`). When the user opts out (default), log.md is
+    // left empty by the WORKING_MEMORY_FILES placeholder loop below — no
+    // sentinel byte means DailyLogWriter never engages even if a future bug
+    // somehow registers a writer for this mind.
+    if (enableDreamDaemon) {
+      fs.writeFileSync(path.join(wmDir, 'log.md'), STRUCTURED_LOG_SENTINEL + '\n\n');
+    }
 
     // Create placeholder files so the agent has targets
     for (const file of WORKING_MEMORY_FILES) {
@@ -143,6 +158,22 @@ export class MindScaffold {
       if (!fs.existsSync(filePath)) {
         fs.writeFileSync(filePath, '');
       }
+    }
+
+    // v0.60.0 Phase 2: persist the opt-in choice into `.chamber.json` so
+    // MindMemoryService.activateMind reads it back on the very next mind
+    // load. We only WRITE this file on opt-in — opt-out is the default
+    // shape returned by chamberMindConfig when the file is absent, so an
+    // empty marker file would be wasted I/O AND signal intent the user
+    // never expressed.
+    if (enableDreamDaemon) {
+      const chamberJsonPath = path.join(mindPath, '.chamber.json');
+      const chamberConfig = {
+        workingMemory: {
+          consolidation: { enabled: true },
+        },
+      };
+      fs.writeFileSync(chamberJsonPath, JSON.stringify(chamberConfig, null, 2) + '\n');
     }
   }
 

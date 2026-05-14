@@ -130,7 +130,11 @@ function parseBlock(blockLines: readonly string[]): ParsedTurn | null {
 
   if (blockLines.length < 3) return null;
   const sessionMatch = blockLines[1].match(/^session: (.+)$/);
-  const modelMatch = blockLines[2].match(/^model: (.+)$/);
+  // `model:` accepts an empty value because the writer may not have a model
+  // selected at turn time (ChatService falls back to '' when both the
+  // turn-time model and the mind's selectedModel are unset). A frame with
+  // an empty model is still valid; we just record an empty string.
+  const modelMatch = blockLines[2].match(/^model: (.*)$/);
   if (!sessionMatch || !modelMatch) return null;
   const sessionId = sessionMatch[1];
   const model = modelMatch[1];

@@ -10,6 +10,7 @@ import type {
   AgentProfileSaveResult,
 } from '@chamber/shared/types';
 import type { IdentityLoader } from '../chat/IdentityLoader';
+import { loadChamberMindConfig } from '../mind/chamberMindConfig';
 import type { AvatarNormalizer, MindProfileMindProvider } from './types';
 
 const AVATAR_RELATIVE_PATH = path.join('.chamber', 'avatar.png');
@@ -27,6 +28,7 @@ export class MindProfileService {
     const identity = this.identityLoader.load(mindPath);
     const displayName = identity?.name ?? path.basename(mindPath);
     const avatarPath = path.join(mindPath, AVATAR_RELATIVE_PATH);
+    const chamberConfig = loadChamberMindConfig(mindPath);
 
     return {
       mindId,
@@ -37,6 +39,7 @@ export class MindProfileService {
       soul: this.readProfileFile(mindPath, 'soul', 'SOUL.md'),
       agentFiles: this.listAgentFiles(mindPath),
       needsRestart,
+      dreamDaemonEnabled: chamberConfig.workingMemory.consolidation.enabled,
     };
   }
 

@@ -6,7 +6,7 @@ import type { IdentityLoader } from '../chat/IdentityLoader';
 import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
-import type { AppConfig, LensViewManifest } from '@chamber/shared/types';
+import type { AppConfig, LensViewManifest, MindContext } from '@chamber/shared/types';
 
 // --- Mocks ---
 
@@ -14,6 +14,10 @@ vi.mock('fs', () => ({
   existsSync: vi.fn(),
   readdirSync: vi.fn(() => []),
   readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  renameSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  rmSync: vi.fn(),
   realpathSync: Object.assign(vi.fn((candidate: string) => candidate), {
     native: vi.fn((candidate: string) => candidate),
   }),
@@ -23,8 +27,26 @@ vi.mock('../lens/MindBootstrap', () => ({
   bootstrapMindCapabilities: vi.fn(),
 }));
 
+vi.mock('./chamberMindConfig', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./chamberMindConfig')>();
+  return {
+    ...actual,
+    patchChamberMindConfig: vi.fn(),
+  };
+});
+
+vi.mock('../mindMemory/rollback', () => ({
+  rollbackToUnstructured: vi.fn().mockResolvedValue({
+    framesConverted: 0,
+    legacyExisted: false,
+    outcome: 'no-op-missing',
+  }),
+}));
+
 import * as fs from 'fs';
 import { bootstrapMindCapabilities } from '../lens/MindBootstrap';
+import { patchChamberMindConfig } from './chamberMindConfig';
+import { rollbackToUnstructured } from '../mindMemory/rollback';
 
 const mockStart = vi.fn();
 const mockStop = vi.fn();
@@ -1504,6 +1526,127 @@ describe('MindManager', () => {
         expect(savedMindIds(config)).toEqual(['bad-c3d4', 'good-a1b2']);
       }
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('enableDreamDaemon / disableDreamDaemon', () => {
+    beforeEach(() => {
+      vi.mocked(patchChamberMindConfig).mockReset();
+      vi.mocked(rollbackToUnstructured).mockReset();
+      vi.mocked(rollbackToUnstructured).mockResolvedValue({
+        framesConverted: 0,
+        legacyExisted: false,
+        outcome: 'no-op-missing',
+      });
+    });
+
+    it('enableDreamDaemon patches .chamber.json with consolidation.enabled=true and reloads the mind', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const reloadSpy = vi.spyOn(manager, 'reloadMind');
+
+      await manager.enableDreamDaemon(mind.mindId);
+
+      expect(patchChamberMindConfig).toHaveBeenCalledWith('/tmp/agents/q', {
+        workingMemory: { consolidation: { enabled: true } },
+      });
+      expect(reloadSpy).toHaveBeenCalledWith(mind.mindId);
+    });
+
+    it('disableDreamDaemon patches .chamber.json with consolidation.enabled=false and reloads the mind', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const reloadSpy = vi.spyOn(manager, 'reloadMind');
+
+      await manager.disableDreamDaemon(mind.mindId);
+
+      expect(patchChamberMindConfig).toHaveBeenCalledWith('/tmp/agents/q', {
+        workingMemory: { consolidation: { enabled: false } },
+      });
+      expect(reloadSpy).toHaveBeenCalledWith(mind.mindId);
+    });
+
+    it('enableDreamDaemon throws when the mind is not loaded', async () => {
+      await expect(manager.enableDreamDaemon('does-not-exist')).rejects.toThrow(/not found/);
+      expect(patchChamberMindConfig).not.toHaveBeenCalled();
+    });
+
+    it('disableDreamDaemon throws when the mind is not loaded', async () => {
+      await expect(manager.disableDreamDaemon('does-not-exist')).rejects.toThrow(/not found/);
+      expect(patchChamberMindConfig).not.toHaveBeenCalled();
+    });
+
+    it('enableDreamDaemon resolves to the reloaded MindContext', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const result = await manager.enableDreamDaemon(mind.mindId);
+      expect(result.mindId).toBe(mind.mindId);
+      expect(result.mindPath).toBe('/tmp/agents/q');
+    });
+
+    it('serializes concurrent toggle calls for the same mindId', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+
+      // Hold reloadMind open so the second call observes an in-flight toggle.
+      let releaseReload: (() => void) | undefined;
+      const reloadGate = new Promise<void>((resolve) => { releaseReload = resolve; });
+      const reloadSpy = vi.spyOn(manager, 'reloadMind').mockImplementation(async () => {
+        await reloadGate;
+        // Return a synthetic context that mirrors the mind we created so
+        // assertions on the resolved value remain meaningful.
+        return { ...mind } as MindContext;
+      });
+
+      const first = manager.enableDreamDaemon(mind.mindId);
+      const second = manager.enableDreamDaemon(mind.mindId);
+
+      // Same in-flight promise must be returned to the second caller, so
+      // patchChamberMindConfig fires exactly once for the pair.
+      expect(second).toBe(first);
+
+      releaseReload!();
+      const [a, b] = await Promise.all([first, second]);
+      expect(a).toBe(b);
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+      expect(patchChamberMindConfig).toHaveBeenCalledTimes(1);
+    });
+
+    it('disableDreamDaemon calls rollbackToUnstructured AFTER patch + reload', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const callOrder: string[] = [];
+      vi.mocked(patchChamberMindConfig).mockImplementation(() => { callOrder.push('patch'); });
+      const reloadSpy = vi.spyOn(manager, 'reloadMind').mockImplementation(async () => {
+        callOrder.push('reload');
+        return { ...mind } as MindContext;
+      });
+      vi.mocked(rollbackToUnstructured).mockImplementation(async () => {
+        callOrder.push('rollback');
+        return { framesConverted: 2, legacyExisted: false, outcome: 'rolled-back' };
+      });
+
+      await manager.disableDreamDaemon(mind.mindId);
+
+      expect(callOrder).toEqual(['patch', 'reload', 'rollback']);
+      expect(rollbackToUnstructured).toHaveBeenCalledWith('/tmp/agents/q');
+      expect(reloadSpy).toHaveBeenCalledWith(mind.mindId);
+    });
+
+    it('enableDreamDaemon does NOT call rollbackToUnstructured', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      await manager.enableDreamDaemon(mind.mindId);
+      expect(rollbackToUnstructured).not.toHaveBeenCalled();
+    });
+
+    it('disableDreamDaemon resolves to the reloaded MindContext even when rollback fails', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      vi.mocked(rollbackToUnstructured).mockRejectedValueOnce(new Error('rollback boom'));
+
+      const result = await manager.disableDreamDaemon(mind.mindId);
+
+      // Toggle is non-fatal: config has been flipped + reload completed.
+      // A failed rollback only logs a warning; the user-visible toggle
+      // succeeds so the UI state matches the on-disk config.
+      expect(result.mindId).toBe(mind.mindId);
+      expect(patchChamberMindConfig).toHaveBeenCalledWith('/tmp/agents/q', {
+        workingMemory: { consolidation: { enabled: false } },
+      });
     });
   });
 });

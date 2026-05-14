@@ -66,6 +66,33 @@ export interface DailyLogWriterOptions {
 
 export interface DailyLogWriter {
   write(turn: CompletedTurn): Promise<void>;
+  /**
+   * Eager-migration entry point. Performs the rotation-and-seed half of
+   * `write()` WITHOUT requiring a turn payload. Behaviour:
+   *
+   *   - log.md absent → no-op (no rotation, no seed).
+   *   - log.md empty (0 bytes) → seed sentinel-only.
+   *   - log.md sentinel-prefixed → no-op (already structured).
+   *   - log.md unstructured → rotate to log.legacy.md (or timestamped on
+   *     collision) and seed `SENTINEL + '\n\n'` byte-for-byte matching
+   *     `MindScaffold.createStructure`.
+   *
+   * Serializes through the same per-instance chain as `write()` so a
+   * concurrent `migrateIfNeeded` + `write` pair never produces a doubled
+   * sentinel or half-rotated state.
+   */
+  migrateIfNeeded(): Promise<void>;
+  /**
+   * Drain the per-instance write chain. Resolves only after every queued
+   * `write()` / `migrateIfNeeded()` settles (success OR failure). Phase 4
+   * `rollbackToUnstructured` calls this after detaching the observer so it
+   * can read back log.md without missing in-flight frames.
+   *
+   * Errors from queued operations are surfaced through their original
+   * promises (write returns a rejecting Promise). `flush()` itself never
+   * rejects — its job is purely to wait for quiescence.
+   */
+  flush(): Promise<void>;
 }
 
 export function createDailyLogWriter(opts: DailyLogWriterOptions): DailyLogWriter {
@@ -123,8 +150,16 @@ export function createDailyLogWriter(opts: DailyLogWriterOptions): DailyLogWrite
     void currentContent;
   }
 
-  async function seedFreshLog(turn: CompletedTurn): Promise<void> {
-    const content = `${STRUCTURED_LOG_SENTINEL}\n\n${serializeTurn(turn)}`;
+  async function seedFreshLog(turn: CompletedTurn | null): Promise<void> {
+    // INVARIANT: when turn is null (eager migration via migrateIfNeeded),
+    // the seed bytes MUST exactly match MindScaffold.createStructure
+    // (`SENTINEL + '\n\n'`) so on-disk content is uniform regardless of
+    // which path created it. Composer + parseLog tolerate trailing blank
+    // lines, but the byte-for-byte parity is what makes the migration
+    // path reversible.
+    const content = turn === null
+      ? `${STRUCTURED_LOG_SENTINEL}\n\n`
+      : `${STRUCTURED_LOG_SENTINEL}\n\n${serializeTurn(turn)}`;
     // Atomic write so a partial seed never lands on disk.
     const tmp = `${logPath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
     const handle = await fsp.open(tmp, 'wx');
@@ -186,6 +221,34 @@ export function createDailyLogWriter(opts: DailyLogWriterOptions): DailyLogWrite
     await seedFreshLog(turn);
   }
 
+  async function doMigrateIfNeeded(): Promise<void> {
+    // Eager-migration variant of doWrite. Same rotation rules, but the seed
+    // is sentinel-only (no turn frame). Idempotent: missing or already-
+    // structured logs are no-ops. Reused by MindMemoryService.activateMind
+    // so a user who flips the dream-daemon switch sees their pre-existing
+    // unstructured log preserved as log.legacy.md immediately, without
+    // waiting for the next chat turn.
+    await fsp.mkdir(workingMemoryDir, { recursive: true });
+
+    const existing = await readOrNull(logPath);
+
+    // No log.md → no-op. The first write() will seed.
+    if (existing === null) return;
+
+    // Empty file → seed sentinel-only so subsequent reads see a valid log.
+    if (existing.length === 0) {
+      await seedFreshLog(null);
+      return;
+    }
+
+    // Already structured → idempotent no-op.
+    if (detectSentinel(existing)) return;
+
+    // Unstructured → rotate, then seed sentinel-only.
+    await rotate(existing);
+    await seedFreshLog(null);
+  }
+
   function write(turn: CompletedTurn): Promise<void> {
     const next = chain.then(async () => {
       await doWrite(turn);
@@ -200,7 +263,21 @@ export function createDailyLogWriter(opts: DailyLogWriterOptions): DailyLogWrite
     return next;
   }
 
-  return { write };
+  function migrateIfNeeded(): Promise<void> {
+    const next = chain.then(() => doMigrateIfNeeded());
+    chain = next.catch(() => undefined);
+    return next;
+  }
+
+  function flush(): Promise<void> {
+    // Wait for the current chain tail to settle. The chain itself swallows
+    // rejections, so awaiting it never throws — flush is purely a quiescence
+    // barrier. Callers who care about per-write errors observe them via the
+    // promises returned by `write()` / `migrateIfNeeded()`.
+    return chain.then(() => undefined);
+  }
+
+  return { write, migrateIfNeeded, flush };
 }
 
 function isoStamp(): string {

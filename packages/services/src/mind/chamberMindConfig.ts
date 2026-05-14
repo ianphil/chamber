@@ -156,3 +156,76 @@ export function loadChamberMindConfig(mindPath: string): ChamberMindConfig {
   }
   return out;
 }
+
+// Atomically merge a partial patch into the mind's `.chamber.json`. Reads
+// the current raw JSON (preserving unknown top-level passthrough fields per
+// `chamberMindConfigSchema.passthrough()`), deep-merges the patch into
+// `workingMemory.consolidation`, then writes the result via tmp-file +
+// rename. If any step fails, the original file is left untouched and the
+// tmp file is removed. Used by `MindManager.enableDreamDaemon` /
+// `disableDreamDaemon` so flipping the toggle never half-writes the file.
+export interface ChamberMindConfigPatch {
+  workingMemory?: {
+    consolidation?: Partial<WorkingMemoryConsolidationConfig>;
+  };
+}
+
+function readRawChamberConfig(filePath: string): Record<string, unknown> {
+  if (!fs.existsSync(filePath)) return {};
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    log.warn(`Failed to read ${filePath} during patch; treating as empty:`, err);
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      log.warn(`Existing ${filePath} is not a JSON object during patch; treating as empty.`);
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    log.warn(`Invalid JSON in ${filePath} during patch; treating as empty:`, err);
+    return {};
+  }
+}
+
+export function patchChamberMindConfig(mindPath: string, patch: ChamberMindConfigPatch): void {
+  const filePath = path.join(mindPath, CHAMBER_MIND_CONFIG_FILENAME);
+  const current = readRawChamberConfig(filePath);
+
+  const currentWorkingMemory = (current.workingMemory && typeof current.workingMemory === 'object' && !Array.isArray(current.workingMemory))
+    ? current.workingMemory as Record<string, unknown>
+    : {};
+  const currentConsolidation = (currentWorkingMemory.consolidation && typeof currentWorkingMemory.consolidation === 'object' && !Array.isArray(currentWorkingMemory.consolidation))
+    ? currentWorkingMemory.consolidation as Record<string, unknown>
+    : {};
+
+  const merged: Record<string, unknown> = { ...current };
+  if (patch.workingMemory) {
+    // Only `workingMemory.consolidation` is deep-merged; sibling subkeys
+    // (e.g. future `workingMemory.archival`) survive via the spread of
+    // `currentWorkingMemory`. Extend this branch when introducing new
+    // subkeys that themselves need a deep-merge rather than a clobber.
+    merged.workingMemory = {
+      ...currentWorkingMemory,
+      ...(patch.workingMemory.consolidation
+        ? { consolidation: { ...currentConsolidation, ...patch.workingMemory.consolidation } }
+        : {}),
+    };
+  }
+
+  const serialized = `${JSON.stringify(merged, null, 2)}\n`;
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, serialized, 'utf-8');
+  try {
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    if (fs.existsSync(tmpPath)) {
+      try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
+    }
+    throw err;
+  }
+}

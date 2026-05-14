@@ -708,3 +708,203 @@ describe('MindMemoryService — __debugGet (E2E accessor)', () => {
     expect(svc.__debugGet(MIND_ID)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// v0.60.0 — Eager migration on activate (Phase 1)
+//
+// When a mind that was previously opted-out flips to opted-in, the user
+// experience is "I clicked the switch and now my old freeform log is
+// preserved as log.legacy.md and a fresh structured log was seeded". This
+// must happen WITHOUT requiring a turn to land — otherwise the user sees no
+// effect until they next chat with the mind, and the "what happens to my
+// log" question stays scary.
+//
+// Implementation contract: `activateMind` for an opted-in mind invokes
+// `writer.migrateIfNeeded()` BEFORE returning. Opted-out mind: never called
+// (no writer is constructed at all per the strict-opt-in contract).
+//
+// Tests use a real filesystem because the writer is built inline inside
+// `activateMind` (no writerFactory injection). The observable contract is
+// log.md state after activate resolves.
+// ---------------------------------------------------------------------------
+
+describe('MindMemoryService — activateMind: eager migration (Phase 1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('opted-in mind with pre-existing unstructured log.md → after activate, log.md is sentinel-only and log.legacy.md preserves the original', async () => {
+    const { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { STRUCTURED_LOG_SENTINEL } = await import('./StructuredLogFormat');
+
+    const root = mkdtempSync(path.join(tmpdir(), 'chamber-mindmem-migrate-'));
+    const mindPath = path.join(root, 'mind-real');
+    const wmDir = path.join(mindPath, '.working-memory');
+    mkdirSync(wmDir, { recursive: true });
+
+    const original = '# legacy freeform notes\nrandom content\n';
+    writeFileSync(path.join(wmDir, 'log.md'), original);
+
+    const { factories } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+    try {
+      await svc.activateMind(MIND_ID, mindPath);
+
+      // Original content rotated out of the way.
+      expect(existsSync(path.join(wmDir, 'log.legacy.md'))).toBe(true);
+      expect(readFileSync(path.join(wmDir, 'log.legacy.md'), 'utf-8')).toBe(original);
+
+      // log.md is sentinel-only (NO turn frame — migration ran before any turns).
+      expect(readFileSync(path.join(wmDir, 'log.md'), 'utf-8')).toBe(
+        STRUCTURED_LOG_SENTINEL + '\n\n',
+      );
+
+      await svc.releaseMind(MIND_ID);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('opted-in mind with sentinel log.md → activate is a no-op for migration (idempotent)', async () => {
+    const { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { STRUCTURED_LOG_SENTINEL } = await import('./StructuredLogFormat');
+
+    const root = mkdtempSync(path.join(tmpdir(), 'chamber-mindmem-migrate-noop-'));
+    const mindPath = path.join(root, 'mind-real');
+    const wmDir = path.join(mindPath, '.working-memory');
+    mkdirSync(wmDir, { recursive: true });
+
+    const sentinelOnly = STRUCTURED_LOG_SENTINEL + '\n\n';
+    writeFileSync(path.join(wmDir, 'log.md'), sentinelOnly);
+
+    const { factories } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+    try {
+      await svc.activateMind(MIND_ID, mindPath);
+
+      expect(existsSync(path.join(wmDir, 'log.legacy.md'))).toBe(false);
+      expect(readFileSync(path.join(wmDir, 'log.md'), 'utf-8')).toBe(sentinelOnly);
+
+      await svc.releaseMind(MIND_ID);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('opted-out mind with pre-existing unstructured log.md → activate does NOT touch log.md (no migration, no rotation)', async () => {
+    const { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+
+    const root = mkdtempSync(path.join(tmpdir(), 'chamber-mindmem-migrate-disabled-'));
+    const mindPath = path.join(root, 'mind-real');
+    const wmDir = path.join(mindPath, '.working-memory');
+    mkdirSync(wmDir, { recursive: true });
+
+    const original = '# legacy freeform notes\nrandom content\n';
+    writeFileSync(path.join(wmDir, 'log.md'), original);
+
+    const { factories } = makeFactories({ chamberConfig: DISABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+    try {
+      await svc.activateMind(MIND_ID, mindPath);
+
+      // Untouched.
+      expect(existsSync(path.join(wmDir, 'log.legacy.md'))).toBe(false);
+      expect(readFileSync(path.join(wmDir, 'log.md'), 'utf-8')).toBe(original);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('opted-in mind with no log.md → activate creates the directory but does NOT seed log.md (migrateIfNeeded is a no-op for missing files)', async () => {
+    const { mkdtempSync, rmSync, mkdirSync, existsSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+
+    const root = mkdtempSync(path.join(tmpdir(), 'chamber-mindmem-migrate-empty-'));
+    const mindPath = path.join(root, 'mind-real');
+    mkdirSync(mindPath, { recursive: true });
+
+    const { factories } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+    try {
+      await svc.activateMind(MIND_ID, mindPath);
+
+      // migrateIfNeeded is a no-op when log.md does not exist. The first
+      // write() will seed the sentinel — until then, log.md stays absent.
+      expect(existsSync(path.join(mindPath, '.working-memory', 'log.md'))).toBe(false);
+
+      await svc.releaseMind(MIND_ID);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.60.0 — Per-mindId activate/release serialization (Uncle Bob finding 2)
+//
+// `main.ts` wires MindManager events to MindMemoryService via fire-and-forget
+// `.catch()` chains. A user who rapid-toggles the daemon switch (ON → OFF →
+// ON within a few hundred ms) generates back-to-back activate/release calls
+// that may interleave: activate#1 → release while activate#1 still running →
+// activate#2 sees `active.has(mindId)` and no-ops.
+//
+// The fix: serialize per-mindId inside MindMemoryService so the second
+// activate genuinely runs after the release completes. The composition root
+// stays simple (still fire-and-forget); the service owns the invariant.
+// ---------------------------------------------------------------------------
+
+describe('MindMemoryService — per-mindId activate/release serialization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rapid activate → release → activate for the same mindId all complete and end with the mind activated', async () => {
+    const { factories, chat, scheduler } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    // Fire all three without awaiting between them — exactly the pattern
+    // main.ts's fire-and-forget event handlers produce on rapid toggle.
+    const p1 = svc.activateMind(MIND_ID, MIND_PATH);
+    const p2 = svc.releaseMind(MIND_ID);
+    const p3 = svc.activateMind(MIND_ID, MIND_PATH);
+
+    await Promise.all([p1, p2, p3]);
+
+    // End state: mind is activated exactly once.
+    expect(scheduler.registered.size).toBe(1);
+    expect(chat.observers).toHaveLength(1);
+    // dbFactory called twice (once per activate); daemonFactory called twice.
+    expect((factories.dbFactory as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+    expect((factories.daemonFactory as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+  });
+
+  it('rapid release → activate (when not active) for the same mindId end with the mind activated', async () => {
+    const { factories, chat, scheduler } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    const p1 = svc.releaseMind(MIND_ID); // no-op (not active yet)
+    const p2 = svc.activateMind(MIND_ID, MIND_PATH);
+
+    await Promise.all([p1, p2]);
+
+    expect(scheduler.registered.size).toBe(1);
+    expect(chat.observers).toHaveLength(1);
+  });
+
+  it('serialization is per-mindId — independent minds run in parallel', async () => {
+    const { factories, chat, scheduler } = makeFactories({ chamberConfig: ENABLED_CONFIG });
+    const svc = createMindMemoryService(factories);
+
+    await Promise.all([
+      svc.activateMind('mind-a', '/tmp/mind-a'),
+      svc.activateMind('mind-b', '/tmp/mind-b'),
+      svc.activateMind('mind-c', '/tmp/mind-c'),
+    ]);
+
+    expect(scheduler.registered.size).toBe(3);
+    expect(chat.observers).toHaveLength(3);
+  });
+});

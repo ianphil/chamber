@@ -223,6 +223,18 @@ describe('parseLog — turn parsing', () => {
     expect(out.turns).toHaveLength(0);
   });
 
+  it('accepts a frame with an empty model: line (model selection may not be set at turn time)', () => {
+    const frame =
+      '## 2026-05-12T15:00:00Z  turn:11111111-1111-4111-8111-111111111111  status:completed\n' +
+      'session: sess-abc\n' +
+      'model: \n' +
+      '\n### user\nq\n\n### assistant\na\n';
+    const out = parseLog(SENTINEL + '\n' + frame);
+    expect(out.malformed).toBe(0);
+    expect(out.turns).toHaveLength(1);
+    expect(out.turns[0].model).toBe('');
+  });
+
   it('drops a block with malformed timestamp', () => {
     const bad =
       '## not-a-date  turn:11111111-1111-4111-8111-111111111111  status:completed\n' +

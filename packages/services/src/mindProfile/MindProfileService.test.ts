@@ -105,6 +105,30 @@ describe('MindProfileService', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('exposes dreamDaemonEnabled=false when no .chamber.json is present', () => {
+    const { root, service } = createProfileFixture();
+    try {
+      const profile = service.getProfile('mind-1');
+      expect(profile.dreamDaemonEnabled).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('exposes dreamDaemonEnabled=true when .chamber.json opts in to consolidation', () => {
+    const { root, service } = createProfileFixture();
+    try {
+      fs.writeFileSync(
+        path.join(root, '.chamber.json'),
+        JSON.stringify({ workingMemory: { consolidation: { enabled: true } } }),
+      );
+      const profile = service.getProfile('mind-1');
+      expect(profile.dreamDaemonEnabled).toBe(true);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 function createProfileFixture() {
