@@ -9,7 +9,7 @@ const macNotarizeEnabled =
   macSigningEnabled
   && Boolean(process.env.APPLE_TEAM_ID)
   && Boolean(process.env.APPLE_ID)
-  && Boolean(process.env.APPLE_ID_PASSWORD);
+  && Boolean(process.env.APPLE_APP_SPECIFIC_PASSWORD);
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -90,9 +90,7 @@ const config = {
     ...(macSigningEnabled
       ? {
           identity: process.env.CHAMBER_MACOS_IDENTITY?.trim() || undefined,
-          ...(macNotarizeEnabled
-            ? { notarize: { teamId: process.env.APPLE_TEAM_ID } }
-            : {}),
+          notarize: macNotarizeEnabled,
         }
       : { identity: null }),
   },
