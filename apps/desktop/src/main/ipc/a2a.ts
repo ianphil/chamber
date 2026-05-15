@@ -2,12 +2,13 @@ import { ipcMain, BrowserWindow } from 'electron';
 import type { EventEmitter } from 'events';
 import { IPC } from '@chamber/shared';
 import type { AppConfig } from '@chamber/shared/types';
-import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeService, type AgentCardRegistry, type CredentialStore, type TaskManager } from '@chamber/services';
+import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeService, type AgentCardRegistry, type CredentialStore, type EntraA2ATokenCache, type EntraA2ATokenCacheEntry, type TaskManager } from '@chamber/services';
 import { isA2AIncomingPayload, isA2ARelayConnectRequest, narrowTaskState } from '@chamber/shared/a2a-types';
 import type { A2AIncomingPayload, A2ARelayConnectRequest, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
 const DEFAULT_SWITCHBOARD_AUTH_CLIENT_ID = '074530a3-b6c5-41c8-896c-4a6651bf5f16';
 const A2A_RELAY_CREDENTIAL_SERVICE = 'chamber-a2a-relay';
+const A2A_RELAY_ENTRA_CREDENTIAL_SERVICE = 'chamber-a2a-relay-entra';
 
 interface A2ARelayIPCOptions {
   relayModeService?: A2ARelayModeService;
@@ -179,23 +180,34 @@ async function createRelayAuthProvider(
       ? request.relayToken.trim()
       : await getStoredRelayToken(credentialStore, request.relayBaseUrl);
     if (mode === 'auto' && !token) {
-      return createInteractiveRelayAuthProvider(request);
+      return createInteractiveRelayAuthProvider(request, credentialStore);
     }
     if (!token) throw new Error('A2A relay token is not configured');
     return new StaticA2ARelayAuthProvider(token);
   }
 
-  return createInteractiveRelayAuthProvider(request);
+  return createInteractiveRelayAuthProvider(request, credentialStore);
 }
 
-function createInteractiveRelayAuthProvider(request: A2ARelayConnectRequest): EntraA2AAuthProvider {
+function createInteractiveRelayAuthProvider(
+  request: A2ARelayConnectRequest,
+  credentialStore?: CredentialStore,
+): EntraA2AAuthProvider {
   const clientId = 'clientId' in request && request.clientId
     ? request.clientId
     : process.env.SWITCHBOARD_AUTH_CLIENT_ID ?? process.env.CHAMBER_A2A_CLIENT_ID ?? DEFAULT_SWITCHBOARD_AUTH_CLIENT_ID;
+  const tenantId = 'tenantId' in request ? request.tenantId : process.env.CHAMBER_A2A_TENANT_ID;
+  const scope = 'scope' in request ? request.scope : process.env.CHAMBER_A2A_SCOPE;
   return new EntraA2AAuthProvider({
     clientId,
-    tenantId: 'tenantId' in request ? request.tenantId : process.env.CHAMBER_A2A_TENANT_ID,
-    scope: 'scope' in request ? request.scope : process.env.CHAMBER_A2A_SCOPE,
+    tenantId,
+    scope,
+    tokenCache: createEntraRelayTokenCache(credentialStore, {
+      relayBaseUrl: request.relayBaseUrl,
+      clientId,
+      tenantId,
+      scope,
+    }),
   });
 }
 
@@ -275,6 +287,65 @@ async function getStoredRelayToken(credentialStore: CredentialStore | undefined,
 
 function getRelayCredentialAccount(relayBaseUrl: string): string {
   return URL.canParse(relayBaseUrl) ? new URL(relayBaseUrl).origin : relayBaseUrl.trim();
+}
+
+function createEntraRelayTokenCache(
+  credentialStore: CredentialStore | undefined,
+  options: { relayBaseUrl: string; clientId: string; tenantId?: string; scope?: string },
+): EntraA2ATokenCache | undefined {
+  if (!credentialStore) return undefined;
+  const account = getEntraRelayCredentialAccount(options);
+  return {
+    async load() {
+      const credential = (await credentialStore.findCredentials(A2A_RELAY_ENTRA_CREDENTIAL_SERVICE))
+        .find((entry) => entry.account === account);
+      if (!credential?.password) return null;
+      const entry = parseEntraRelayTokenCacheEntry(credential.password);
+      if (!entry) await credentialStore.deletePassword(A2A_RELAY_ENTRA_CREDENTIAL_SERVICE, account);
+      return entry;
+    },
+    async save(entry) {
+      await credentialStore.setPassword(
+        A2A_RELAY_ENTRA_CREDENTIAL_SERVICE,
+        account,
+        JSON.stringify(entry),
+      );
+    },
+    async clear() {
+      await credentialStore.deletePassword(A2A_RELAY_ENTRA_CREDENTIAL_SERVICE, account);
+    },
+  };
+}
+
+function parseEntraRelayTokenCacheEntry(value: string): EntraA2ATokenCacheEntry | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  return {
+    ...(typeof record.accessToken === 'string' && record.accessToken.trim().length > 0
+      ? { accessToken: record.accessToken }
+      : {}),
+    ...(typeof record.refreshToken === 'string' && record.refreshToken.trim().length > 0
+      ? { refreshToken: record.refreshToken }
+      : {}),
+    ...(typeof record.accessTokenExpiresAt === 'number'
+      ? { accessTokenExpiresAt: record.accessTokenExpiresAt }
+      : {}),
+  };
+}
+
+function getEntraRelayCredentialAccount(options: { relayBaseUrl: string; clientId: string; tenantId?: string; scope?: string }): string {
+  return [
+    getRelayCredentialAccount(options.relayBaseUrl),
+    options.clientId.trim(),
+    options.tenantId?.trim() || 'common',
+    options.scope?.trim() || `api://${options.clientId}/user_impersonation`,
+  ].join('|');
 }
 
 async function refreshRelayStatus(

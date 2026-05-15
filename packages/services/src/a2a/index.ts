@@ -10,7 +10,7 @@ export { AgentCardRegistry } from './AgentCardRegistry';
 export { RelayA2ARegistryClient, StaticA2ARelayAuthProvider } from './RelayA2ARegistryClient';
 export type { A2ARelayAuthProvider, RelayA2ARegistryClientOptions, RelayAgentRegistration } from './RelayA2ARegistryClient';
 export { EntraA2AAuthProvider } from './EntraA2AAuthProvider';
-export type { EntraA2AAuthProviderOptions } from './EntraA2AAuthProvider';
+export type { EntraA2AAuthProviderOptions, EntraA2ATokenCache, EntraA2ATokenCacheEntry } from './EntraA2AAuthProvider';
 export { MessageRouter } from './MessageRouter';
 export { TaskManager } from './TaskManager';
 export { A2aToolProvider } from './A2aToolProvider';

@@ -16,6 +16,19 @@ export interface EntraA2AAuthProviderOptions {
   waitForAuthorizationCode?: (state: string) => Promise<AuthorizationCodeResult>;
   randomBytes?: (size: number) => Buffer;
   now?: () => number;
+  tokenCache?: EntraA2ATokenCache;
+}
+
+export interface EntraA2ATokenCacheEntry {
+  accessToken?: string;
+  refreshToken?: string;
+  accessTokenExpiresAt?: number;
+}
+
+export interface EntraA2ATokenCache {
+  load(): Promise<EntraA2ATokenCacheEntry | null>;
+  save(entry: EntraA2ATokenCacheEntry): Promise<void>;
+  clear(): Promise<void>;
 }
 
 interface AuthorizationCodeResult {
@@ -44,6 +57,8 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
   private readonly waitForAuthorizationCode: (state: string) => Promise<AuthorizationCodeResult>;
   private readonly randomBytes: (size: number) => Buffer;
   private readonly now: () => number;
+  private readonly tokenCache?: EntraA2ATokenCache;
+  #cacheLoaded = false;
 
   constructor(options: EntraA2AAuthProviderOptions) {
     if (!options.clientId.trim()) throw new Error('Interactive A2A auth requires a client ID');
@@ -54,6 +69,7 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
     this.waitForAuthorizationCode = options.waitForAuthorizationCode ?? waitForAuthorizationCode;
     this.randomBytes = options.randomBytes ?? nodeRandomBytes;
     this.now = options.now ?? Date.now;
+    this.tokenCache = options.tokenCache;
     this.clientId = options.clientId;
   }
 
@@ -69,6 +85,7 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
   }
 
   private async ensureAccessToken(): Promise<string> {
+    await this.loadCachedToken();
     if (this.#accessToken && this.#accessTokenExpiresAt - this.now() > TOKEN_REFRESH_SKEW_MS) {
       return this.#accessToken;
     }
@@ -84,9 +101,20 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
         return await this.refreshAccessToken();
       } catch {
         this.#refreshToken = null;
+        await this.tokenCache?.clear();
       }
     }
     return this.interactiveLogin();
+  }
+
+  private async loadCachedToken(): Promise<void> {
+    if (this.#cacheLoaded) return;
+    this.#cacheLoaded = true;
+    const cached = await this.tokenCache?.load();
+    if (!cached) return;
+    this.#accessToken = cached.accessToken?.trim() || null;
+    this.#refreshToken = cached.refreshToken?.trim() || null;
+    this.#accessTokenExpiresAt = Number(cached.accessTokenExpiresAt ?? 0);
   }
 
   private async interactiveLogin(): Promise<string> {
@@ -151,13 +179,18 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
     return body;
   }
 
-  private applyTokenResponse(token: TokenResponse): string {
+  private async applyTokenResponse(token: TokenResponse): Promise<string> {
     if (!token.access_token) {
       throw new Error('Switchboard token response did not include an access token.');
     }
     this.#accessToken = token.access_token;
     this.#refreshToken = token.refresh_token ?? this.#refreshToken;
     this.#accessTokenExpiresAt = this.now() + Number(token.expires_in ?? 3600) * 1_000;
+    await this.tokenCache?.save({
+      accessToken: this.#accessToken,
+      ...(this.#refreshToken ? { refreshToken: this.#refreshToken } : {}),
+      accessTokenExpiresAt: this.#accessTokenExpiresAt,
+    });
     return token.access_token;
   }
 

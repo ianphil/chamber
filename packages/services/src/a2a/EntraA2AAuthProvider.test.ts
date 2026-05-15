@@ -66,6 +66,92 @@ describe('EntraA2AAuthProvider', () => {
     expect(refreshBody.get('refresh_token')).toBe('refresh-token');
   });
 
+  it('uses a cached access token without opening interactive auth', async () => {
+    const tokenCache = {
+      load: vi.fn(async () => ({
+        accessToken: 'cached-access-token',
+        refreshToken: 'cached-refresh-token',
+        accessTokenExpiresAt: 3_600_000,
+      })),
+      save: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi.fn<typeof fetch>();
+    const openExternal = vi.fn(async () => undefined);
+    const provider = new EntraA2AAuthProvider({
+      clientId: 'client-id',
+      fetchImpl,
+      openExternal,
+      tokenCache,
+      now: () => 1_000,
+    });
+
+    await expect(provider.getAuthorizationHeader()).resolves.toBe('Bearer cached-access-token');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('refreshes and saves a cached refresh token before opening interactive auth', async () => {
+    const tokenCache = {
+      load: vi.fn(async () => ({
+        refreshToken: 'cached-refresh-token',
+      })),
+      save: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = new URLSearchParams(String(init?.body));
+      expect(body.get('grant_type')).toBe('refresh_token');
+      expect(body.get('refresh_token')).toBe('cached-refresh-token');
+      return jsonResponse({ access_token: 'refreshed-access-token', refresh_token: 'next-refresh-token', expires_in: 3600 });
+    });
+    const openExternal = vi.fn(async () => undefined);
+    const provider = new EntraA2AAuthProvider({
+      clientId: 'client-id',
+      fetchImpl,
+      openExternal,
+      tokenCache,
+      now: () => 1_000,
+    });
+
+    await expect(provider.getAuthorizationHeader()).resolves.toBe('Bearer refreshed-access-token');
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(tokenCache.save).toHaveBeenCalledWith({
+      accessToken: 'refreshed-access-token',
+      refreshToken: 'next-refresh-token',
+      accessTokenExpiresAt: 3_601_000,
+    });
+  });
+
+  it('saves tokens after interactive auth completes', async () => {
+    const tokenCache = {
+      load: vi.fn(async () => null),
+      save: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3600,
+    }));
+    const provider = new EntraA2AAuthProvider({
+      clientId: 'client-id',
+      fetchImpl,
+      openExternal: async () => undefined,
+      waitForAuthorizationCode: async () => ({ code: 'auth-code', redirectUri: 'http://localhost:48123' }),
+      randomBytes: () => Buffer.alloc(32, 1),
+      tokenCache,
+      now: () => 1_000,
+    });
+
+    await expect(provider.getAuthorizationHeader()).resolves.toBe('Bearer access-token');
+    expect(tokenCache.save).toHaveBeenCalledWith({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      accessTokenExpiresAt: 3_601_000,
+    });
+  });
+
   it('accepts the browser callback on the advertised localhost redirect URI', async () => {
     const callback = await waitForAuthorizationCode('state-1');
     try {

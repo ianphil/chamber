@@ -265,6 +265,41 @@ describe('A2A IPC', () => {
     expect(JSON.stringify(relayModeService.connect.mock.calls[0][0])).not.toContain('refreshToken');
   });
 
+  it('a2a:relayConnect wires interactive auth to the stored Switchboard token cache', async () => {
+    const relayModeService = makeRelayModeService();
+    const credentialStore = makeCredentialStore([
+      {
+        account: 'https://switchboard.example.com|client-id|common|api://client-id/user_impersonation',
+        password: JSON.stringify({
+          accessToken: 'cached-access-token',
+          refreshToken: 'cached-refresh-token',
+          accessTokenExpiresAt: Date.now() + 3_600_000,
+        }),
+      },
+    ]);
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        relayModeService: relayModeService as unknown as A2ARelayModeService,
+        credentialStore: credentialStore as unknown as CredentialStore,
+      },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'interactive',
+      clientId: 'client-id',
+      tenantId: 'common',
+      scope: 'api://client-id/user_impersonation',
+    });
+
+    const options = relayModeService.connect.mock.calls[0][0] as { authProvider: { getAuthorizationHeader: () => Promise<string> } };
+    await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer cached-access-token');
+  });
+
   it('a2a:relayConnect can use built-in Entra defaults for interactive auth', async () => {
     const relayModeService = makeRelayModeService();
     vi.clearAllMocks();
