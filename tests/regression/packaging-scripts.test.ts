@@ -73,9 +73,10 @@ describe('packaging scripts', () => {
     expect(releaseWorkflow).toContain('security add-certificates -k "$keychain" "$intermediate" || true');
     expect(releaseWorkflow).toContain('security import "$certificate"');
     expect(releaseWorkflow).toContain('security set-key-partition-list');
-    expect(releaseWorkflow).toContain('release-macos-${{ matrix.arch }}');
-    expect(releaseWorkflow).toContain('runner: macos-13');
+    expect(releaseWorkflow).toContain('name: release-macos');
+    expect(releaseWorkflow).toContain('runs-on: macos-latest');
     expect(releaseWorkflow).not.toContain('AZURE_CLIENT_SECRET');
+    expect(releaseWorkflow).not.toContain('macos-13');
   });
 
   it('shares the packaged renderer path across Forge, Vite, and sandbox preflight', () => {
