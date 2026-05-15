@@ -28,6 +28,7 @@ describe('packaging scripts', () => {
       '--prepackaged out/Chamber-darwin-$(node -p "process.arch")/Chamber.app'
     );
     expect(packageJson.scripts['make:builder:mac']).toContain('scripts/sign-macos-prepackaged.js');
+    expect(packageJson.scripts['make:builder:mac']).toContain('scripts/notarize-macos-prepackaged.js');
   });
 
   it('runs PR packaging only for major or minor version bumps', () => {
@@ -45,6 +46,7 @@ describe('packaging scripts', () => {
     const prepareBuilder = readFileSync('scripts/prepare-builder-prepackaged.js', 'utf-8');
     const prepareNodeRuntime = readFileSync('scripts/prepare-node-runtime.js', 'utf-8');
     const signMacPrepackaged = readFileSync('scripts/sign-macos-prepackaged.js', 'utf-8');
+    const notarizeMacPrepackaged = readFileSync('scripts/notarize-macos-prepackaged.js', 'utf-8');
     const validateBuilder = readFileSync('scripts/validate-builder-release.js', 'utf-8');
     const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf-8');
     const windowsPublisher = readFileSync('config/windows-publisher.cjs', 'utf-8');
@@ -63,6 +65,9 @@ describe('packaging scripts', () => {
     expect(prepareNodeRuntime).toContain('materializeRuntimeCommandSymlinks');
     expect(signMacPrepackaged).toContain('electron-osx-sign');
     expect(signMacPrepackaged).toContain('CHAMBER_MACOS_SIGNING');
+    expect(notarizeMacPrepackaged).toContain('notarytool');
+    expect(notarizeMacPrepackaged).toContain('stapler');
+    expect(notarizeMacPrepackaged).toContain('APPLE_APP_SPECIFIC_PASSWORD');
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');
     expect(validateBuilder).toContain('matchesPublisherName');
     expect(validateBuilder).toContain('SignerCertificate.Subject');
