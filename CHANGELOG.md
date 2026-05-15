@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.62.3 (2026-05-15)
+
+### Release
+
+- **Staple notarization tickets into macOS apps** — Notarizes and staples the signed prepackaged `Chamber.app` before DMG/ZIP creation so downloaded Developer ID builds pass Gatekeeper instead of showing the unverified malware warning.
+
 ## v0.62.2 (2026-05-15)
 
 ### Release
