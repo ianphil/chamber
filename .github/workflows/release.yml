@@ -160,7 +160,7 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
           security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
-          security add-certificates -k "$keychain" "$intermediate"
+          security add-certificates -k "$keychain" "$intermediate" || true
           security list-keychains -d user -s "$keychain" login.keychain-db
           security default-keychain -d user -s "$keychain"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
