@@ -20,9 +20,7 @@ export interface EntraA2AAuthProviderOptions {
 }
 
 export interface EntraA2ATokenCacheEntry {
-  accessToken?: string;
   refreshToken?: string;
-  accessTokenExpiresAt?: number;
 }
 
 export interface EntraA2ATokenCache {
@@ -112,9 +110,7 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
     this.#cacheLoaded = true;
     const cached = await this.tokenCache?.load();
     if (!cached) return;
-    this.#accessToken = cached.accessToken?.trim() || null;
     this.#refreshToken = cached.refreshToken?.trim() || null;
-    this.#accessTokenExpiresAt = Number(cached.accessTokenExpiresAt ?? 0);
   }
 
   private async interactiveLogin(): Promise<string> {
@@ -186,11 +182,9 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
     this.#accessToken = token.access_token;
     this.#refreshToken = token.refresh_token ?? this.#refreshToken;
     this.#accessTokenExpiresAt = this.now() + Number(token.expires_in ?? 3600) * 1_000;
-    await this.tokenCache?.save({
-      accessToken: this.#accessToken,
-      ...(this.#refreshToken ? { refreshToken: this.#refreshToken } : {}),
-      accessTokenExpiresAt: this.#accessTokenExpiresAt,
-    });
+    if (this.#refreshToken) {
+      await this.tokenCache?.save({ refreshToken: this.#refreshToken });
+    }
     return token.access_token;
   }
 

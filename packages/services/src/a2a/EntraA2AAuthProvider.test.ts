@@ -66,31 +66,6 @@ describe('EntraA2AAuthProvider', () => {
     expect(refreshBody.get('refresh_token')).toBe('refresh-token');
   });
 
-  it('uses a cached access token without opening interactive auth', async () => {
-    const tokenCache = {
-      load: vi.fn(async () => ({
-        accessToken: 'cached-access-token',
-        refreshToken: 'cached-refresh-token',
-        accessTokenExpiresAt: 3_600_000,
-      })),
-      save: vi.fn(async () => undefined),
-      clear: vi.fn(async () => undefined),
-    };
-    const fetchImpl = vi.fn<typeof fetch>();
-    const openExternal = vi.fn(async () => undefined);
-    const provider = new EntraA2AAuthProvider({
-      clientId: 'client-id',
-      fetchImpl,
-      openExternal,
-      tokenCache,
-      now: () => 1_000,
-    });
-
-    await expect(provider.getAuthorizationHeader()).resolves.toBe('Bearer cached-access-token');
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(openExternal).not.toHaveBeenCalled();
-  });
-
   it('refreshes and saves a cached refresh token before opening interactive auth', async () => {
     const tokenCache = {
       load: vi.fn(async () => ({
@@ -116,11 +91,7 @@ describe('EntraA2AAuthProvider', () => {
 
     await expect(provider.getAuthorizationHeader()).resolves.toBe('Bearer refreshed-access-token');
     expect(openExternal).not.toHaveBeenCalled();
-    expect(tokenCache.save).toHaveBeenCalledWith({
-      accessToken: 'refreshed-access-token',
-      refreshToken: 'next-refresh-token',
-      accessTokenExpiresAt: 3_601_000,
-    });
+    expect(tokenCache.save).toHaveBeenCalledWith({ refreshToken: 'next-refresh-token' });
   });
 
   it('saves tokens after interactive auth completes', async () => {
@@ -145,11 +116,7 @@ describe('EntraA2AAuthProvider', () => {
     });
 
     await expect(provider.getAuthorizationHeader()).resolves.toBe('Bearer access-token');
-    expect(tokenCache.save).toHaveBeenCalledWith({
-      accessToken: 'access-token',
-      refreshToken: 'refresh-token',
-      accessTokenExpiresAt: 3_601_000,
-    });
+    expect(tokenCache.save).toHaveBeenCalledWith({ refreshToken: 'refresh-token' });
   });
 
   it('accepts the browser callback on the advertised localhost redirect URI', async () => {

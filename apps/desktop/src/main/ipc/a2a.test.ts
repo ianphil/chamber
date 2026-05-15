@@ -267,37 +267,57 @@ describe('A2A IPC', () => {
 
   it('a2a:relayConnect wires interactive auth to the stored Switchboard token cache', async () => {
     const relayModeService = makeRelayModeService();
+    const previousFetch = globalThis.fetch;
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = new URLSearchParams(String(init?.body));
+      expect(body.get('grant_type')).toBe('refresh_token');
+      expect(body.get('refresh_token')).toBe('cached-refresh-token');
+      return new Response(JSON.stringify({
+        access_token: 'refreshed-access-token',
+        refresh_token: 'next-refresh-token',
+        expires_in: 3600,
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    globalThis.fetch = fetchMock;
     const credentialStore = makeCredentialStore([
       {
         account: 'https://switchboard.example.com|client-id|common|api://client-id/user_impersonation',
-        password: JSON.stringify({
-          accessToken: 'cached-access-token',
-          refreshToken: 'cached-refresh-token',
-          accessTokenExpiresAt: Date.now() + 3_600_000,
-        }),
+        password: JSON.stringify({ refreshToken: 'cached-refresh-token' }),
       },
     ]);
-    vi.clearAllMocks();
-    setupA2AIPC(
-      ipcEmitter,
-      mockRegistry as unknown as AgentCardRegistry,
-      mockTaskManager as unknown as TaskManager,
-      {
-        relayModeService: relayModeService as unknown as A2ARelayModeService,
-        credentialStore: credentialStore as unknown as CredentialStore,
-      },
-    );
+    try {
+      vi.clearAllMocks();
+      setupA2AIPC(
+        ipcEmitter,
+        mockRegistry as unknown as AgentCardRegistry,
+        mockTaskManager as unknown as TaskManager,
+        {
+          relayModeService: relayModeService as unknown as A2ARelayModeService,
+          credentialStore: credentialStore as unknown as CredentialStore,
+        },
+      );
 
-    await getHandler('a2a:relay-connect')(EVT, {
-      relayBaseUrl: 'https://switchboard.example.com',
-      authMode: 'interactive',
-      clientId: 'client-id',
-      tenantId: 'common',
-      scope: 'api://client-id/user_impersonation',
-    });
+      await getHandler('a2a:relay-connect')(EVT, {
+        relayBaseUrl: 'https://switchboard.example.com',
+        authMode: 'interactive',
+        clientId: 'client-id',
+        tenantId: 'common',
+        scope: 'api://client-id/user_impersonation',
+      });
 
-    const options = relayModeService.connect.mock.calls[0][0] as { authProvider: { getAuthorizationHeader: () => Promise<string> } };
-    await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer cached-access-token');
+      const options = relayModeService.connect.mock.calls[0][0] as { authProvider: { getAuthorizationHeader: () => Promise<string> } };
+      await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer refreshed-access-token');
+      expect(credentialStore.setPassword).toHaveBeenCalledWith(
+        'chamber-a2a-relay-entra',
+        'https://switchboard.example.com|client-id|common|api://client-id/user_impersonation',
+        JSON.stringify({ refreshToken: 'next-refresh-token' }),
+      );
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 
   it('a2a:relayConnect can use built-in Entra defaults for interactive auth', async () => {

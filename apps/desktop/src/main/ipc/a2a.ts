@@ -318,6 +318,9 @@ function createEntraRelayTokenCache(
 }
 
 function parseEntraRelayTokenCacheEntry(value: string): EntraA2ATokenCacheEntry | null {
+  if (value.trim().length > 0 && !value.trim().startsWith('{')) {
+    return { refreshToken: value.trim() };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -326,17 +329,9 @@ function parseEntraRelayTokenCacheEntry(value: string): EntraA2ATokenCacheEntry 
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const record = parsed as Record<string, unknown>;
-  return {
-    ...(typeof record.accessToken === 'string' && record.accessToken.trim().length > 0
-      ? { accessToken: record.accessToken }
-      : {}),
-    ...(typeof record.refreshToken === 'string' && record.refreshToken.trim().length > 0
-      ? { refreshToken: record.refreshToken }
-      : {}),
-    ...(typeof record.accessTokenExpiresAt === 'number'
-      ? { accessTokenExpiresAt: record.accessTokenExpiresAt }
-      : {}),
-  };
+  return typeof record.refreshToken === 'string' && record.refreshToken.trim().length > 0
+    ? { refreshToken: record.refreshToken.trim() }
+    : null;
 }
 
 function getEntraRelayCredentialAccount(options: { relayBaseUrl: string; clientId: string; tenantId?: string; scope?: string }): string {
