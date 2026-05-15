@@ -773,31 +773,6 @@ describe('appReducer', () => {
       expect(state.messagesByMind[mindId]).toHaveLength(3);
     });
 
-    it('records outbound relay sends in the source mind transcript', () => {
-      const state = appReducer(withActiveMind, {
-        type: 'A2A_OUTGOING',
-        payload: {
-          sourceMindId: mindId,
-          recipient: 'other-mind',
-          message: {
-            messageId: 'msg-outgoing-1',
-            role: 'ROLE_USER',
-            parts: [{ text: 'Message sent through the relay', mediaType: 'text/plain' }],
-            metadata: { fromId: mindId, fromName: 'Test' },
-          },
-        },
-      });
-
-      const msgs = state.messagesByMind[mindId];
-      if (!msgs) throw new Error('expected messages for mind');
-      expect(msgs).toHaveLength(1);
-      expect(msgs[0]).toMatchObject({
-        id: 'msg-outgoing-1',
-        role: 'user',
-        sender: { mindId, name: 'Test' },
-        blocks: [{ type: 'text', content: 'Message sent through the relay' }],
-      });
-    });
   });
 
   // -------------------------------------------------------------------------

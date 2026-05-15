@@ -102,7 +102,6 @@ export const IPC = {
   },
   A2A: {
     INCOMING: 'a2a:incoming',
-    OUTGOING: 'a2a:outgoing',
     LIST_AGENTS: 'a2a:listAgents',
     TASK_STATUS_UPDATE: 'a2a:task-status-update',
     TASK_ARTIFACT_UPDATE: 'a2a:task-artifact-update',

@@ -196,12 +196,6 @@ export interface A2AIncomingPayload {
   replyMessageId: string;
 }
 
-export interface A2AOutgoingPayload {
-  sourceMindId: string;
-  recipient: string;
-  message: Message;
-}
-
 export interface A2ARelayQueuedMessage {
   id: string;
   recipient: string;

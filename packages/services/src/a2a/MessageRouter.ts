@@ -42,19 +42,10 @@ export class MessageRouter {
     };
 
     if (this.resolver.canSendMessage?.() === true && this.resolver.sendMessage) {
-      const response = await this.resolver.sendMessage({
+      return this.resolver.sendMessage({
         ...request,
         message: deliveryMessage,
       });
-      const sourceMindId = typeof deliveryMessage.metadata?.fromId === 'string' ? deliveryMessage.metadata.fromId : null;
-      if (sourceMindId) {
-        this.ipcEmitter.emit('a2a:outgoing', {
-          sourceMindId,
-          recipient: request.recipient,
-          message: deliveryMessage,
-        });
-      }
-      return response;
     }
 
     if (!card.mindId) {

@@ -140,7 +140,6 @@ describe('installBrowserApi', () => {
       window.electronAPI.lens.onViewsChanged(() => undefined),
       window.electronAPI.genesis.onProgress(() => undefined),
       window.electronAPI.a2a.onIncoming(() => undefined),
-      window.electronAPI.a2a.onOutgoing(() => undefined),
       window.electronAPI.a2a.onTaskStatusUpdate(() => undefined),
       window.electronAPI.a2a.onTaskArtifactUpdate(() => undefined),
       window.electronAPI.chatroom.onEvent(() => undefined),

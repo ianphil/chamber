@@ -3,7 +3,7 @@ import type { EventEmitter } from 'events';
 import { IPC } from '@chamber/shared';
 import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeService, type AgentCardRegistry, type TaskManager } from '@chamber/services';
 import { isA2AIncomingPayload, isA2ARelayConnectRequest, narrowTaskState } from '@chamber/shared/a2a-types';
-import type { A2AIncomingPayload, A2AOutgoingPayload, A2ARelayConnectRequest, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
+import type { A2AIncomingPayload, A2ARelayConnectRequest, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
 const DEFAULT_SWITCHBOARD_AUTH_CLIENT_ID = '074530a3-b6c5-41c8-896c-4a6651bf5f16';
 
@@ -37,12 +37,6 @@ export function setupA2AIPC(
   ipcEmitter.on('a2a:incoming', (payload: A2AIncomingPayload) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IPC.A2A.INCOMING, payload);
-    }
-  });
-
-  ipcEmitter.on('a2a:outgoing', (payload: A2AOutgoingPayload) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send(IPC.A2A.OUTGOING, payload);
     }
   });
 

@@ -46,30 +46,6 @@ function a2aIncoming(state: AppState, action: Extract<AppAction, { type: 'A2A_IN
   };
 }
 
-function a2aOutgoing(state: AppState, action: Extract<AppAction, { type: 'A2A_OUTGOING' }>): Partial<AppState> {
-  const { sourceMindId, message } = action.payload;
-  const sourceMsgs = state.messagesByMind[sourceMindId] ?? [];
-  const outgoingMessage: ChatMessage = {
-    id: message.messageId,
-    role: 'user',
-    blocks: (message.parts ?? []).map((p) => ({
-      type: 'text' as const,
-      content: p.text ?? '',
-    })),
-    timestamp: Date.now(),
-    sender: {
-      mindId: sourceMindId,
-      name: nonEmptyString(message.metadata?.fromName, sourceMindId),
-    },
-  };
-  return {
-    messagesByMind: {
-      ...state.messagesByMind,
-      [sourceMindId]: [...sourceMsgs, outgoingMessage],
-    },
-  };
-}
-
 function taskStatusUpdate(
   state: AppState,
   action: Extract<AppAction, { type: 'TASK_STATUS_UPDATE' }>,
@@ -112,12 +88,10 @@ function taskArtifactUpdate(
 
 export const a2aHandlers: {
   A2A_INCOMING: Handler<'A2A_INCOMING'>;
-  A2A_OUTGOING: Handler<'A2A_OUTGOING'>;
   TASK_STATUS_UPDATE: Handler<'TASK_STATUS_UPDATE'>;
   TASK_ARTIFACT_UPDATE: Handler<'TASK_ARTIFACT_UPDATE'>;
 } = {
   A2A_INCOMING: a2aIncoming,
-  A2A_OUTGOING: a2aOutgoing,
   TASK_STATUS_UPDATE: taskStatusUpdate,
   TASK_ARTIFACT_UPDATE: taskArtifactUpdate,
 };

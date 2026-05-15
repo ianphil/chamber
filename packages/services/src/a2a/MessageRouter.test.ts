@@ -89,8 +89,6 @@ describe('MessageRouter', () => {
 
   it('sendMessage() routes non-local cards through the active relay transport', async () => {
     const sendMessage = vi.fn(async (request: SendMessageRequest) => ({ message: request.message }));
-    const outgoingEvents: unknown[] = [];
-    emitter.on('a2a:outgoing', (payload) => outgoingEvents.push(payload));
     router = new MessageRouter(mockChatService as unknown as ChatService, {
       getCard: vi.fn(() => makeCard({
         mindId: undefined as never,
@@ -111,14 +109,6 @@ describe('MessageRouter', () => {
     }));
     expect(mockChatService.sendMessage).not.toHaveBeenCalled();
     expect(response.message?.parts[0].text).toBe('hello');
-    expect(outgoingEvents).toEqual([expect.objectContaining({
-      sourceMindId: 'sender-1',
-      recipient: 'Copilot CLI',
-      message: expect.objectContaining({
-        messageId: 'msg-test-1',
-        contextId: expect.stringMatching(/^ctx-/),
-      }),
-    })]);
   });
 
   it('sendMessage() routes relay-discovered Chamber mind cards through the relay transport', async () => {

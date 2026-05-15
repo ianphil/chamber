@@ -92,13 +92,6 @@ export function useAppSubscriptions() {
     return () => { unsub(); };
   }, [dispatch]);
 
-  useEffect(() => {
-    const unsub = window.electronAPI.a2a.onOutgoing((payload) => {
-      dispatch({ type: 'A2A_OUTGOING', payload });
-    });
-    return () => { unsub(); };
-  }, [dispatch]);
-
   // A2A task status update listener
   useEffect(() => {
     const unsub = window.electronAPI.a2a.onTaskStatusUpdate((payload) => {

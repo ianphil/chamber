@@ -77,7 +77,6 @@ describe('IPC channel constants', () => {
     expect(IPC.UPDATER.STATE_CHANGED).toBe('updater:state-changed');
 
     expect(IPC.A2A.INCOMING).toBe('a2a:incoming');
-    expect(IPC.A2A.OUTGOING).toBe('a2a:outgoing');
     expect(IPC.A2A.LIST_AGENTS).toBe('a2a:listAgents');
     expect(IPC.A2A.TASK_STATUS_UPDATE).toBe('a2a:task-status-update');
     expect(IPC.A2A.TASK_ARTIFACT_UPDATE).toBe('a2a:task-artifact-update');

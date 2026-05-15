@@ -66,20 +66,6 @@ describe('A2A IPC', () => {
     expect(mockWebContents2.send).toHaveBeenCalledWith('a2a:incoming', payload);
   });
 
-  it('a2a:outgoing forwards to all windows', () => {
-    const mockWebContents = { send: vi.fn() };
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(asWindows([{ webContents: mockWebContents }]));
-
-    const payload = {
-      sourceMindId: 'agent-a',
-      recipient: 'agent-b',
-      message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'Hello' }] },
-    };
-    ipcEmitter.emit('a2a:outgoing', payload);
-
-    expect(mockWebContents.send).toHaveBeenCalledWith('a2a:outgoing', payload);
-  });
-
   it('a2a:incoming payload includes message and replyMessageId', () => {
     const mockWebContents = { send: vi.fn() };
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(asWindows([{ webContents: mockWebContents }]));
