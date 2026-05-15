@@ -649,6 +649,7 @@ app.on('ready', async () => {
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,
     configStore: configService,
+    credentialStore,
   });
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);

@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
 import { ipcMain, BrowserWindow } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { setupA2AIPC } from './a2a';
-import type { A2ARelayModeService, AgentCardRegistry, TaskArtifactUpdateEvent, TaskManager, TaskStatusUpdateEvent } from '@chamber/services';
+import type { A2ARelayModeService, AgentCardRegistry, CredentialStore, TaskArtifactUpdateEvent, TaskManager, TaskStatusUpdateEvent } from '@chamber/services';
 
 // Helper to keep test ergonomics — the IPC handler signature demands
 // IpcMainInvokeEvent / BrowserWindow instances we don't need in unit tests.
@@ -55,6 +55,20 @@ const makeConfigStore = (relayBaseUrl?: string) => {
     }),
   };
 };
+
+const makeCredentialStore = (entries: { account: string; password: string }[] = []) => ({
+  findCredentials: vi.fn(async () => entries),
+  setPassword: vi.fn(async (service: string, account: string, password: string) => {
+    const existing = entries.find((entry) => entry.account === account);
+    if (existing) {
+      existing.password = password;
+    } else {
+      entries.push({ account, password });
+    }
+    void service;
+  }),
+  deletePassword: vi.fn(async () => true),
+});
 
 describe('A2A IPC', () => {
   let ipcEmitter: EventEmitter;
@@ -271,19 +285,23 @@ describe('A2A IPC', () => {
     }));
   });
 
-  it('a2a:relayStatus returns the saved relay URL when disconnected', async () => {
+  it('a2a:relayStatus returns the saved relay URL and stored-token availability when disconnected', async () => {
     const configStore = makeConfigStore('https://switchboard.example.com');
+    const credentialStore = makeCredentialStore([
+      { account: 'https://switchboard.example.com', password: 'stored-token' },
+    ]);
     vi.clearAllMocks();
     setupA2AIPC(
       ipcEmitter,
       mockRegistry as unknown as AgentCardRegistry,
       mockTaskManager as unknown as TaskManager,
-      { configStore },
+      { configStore, credentialStore: credentialStore as unknown as CredentialStore },
     );
 
     await expect(getHandler('a2a:relay-status')(EVT)).resolves.toEqual(expect.objectContaining({
       state: 'disconnected',
       relayBaseUrl: 'https://switchboard.example.com',
+      hasStoredRelayToken: true,
     }));
   });
 
@@ -328,7 +346,84 @@ describe('A2A IPC', () => {
     await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer relay-token');
   });
 
-  it('a2a:relayConnect rejects static auth without a token at the IPC boundary', async () => {
+  it('a2a:relayConnect saves static relay tokens in the credential store after connecting', async () => {
+    const relayModeService = makeRelayModeService();
+    const credentialStore = makeCredentialStore();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        relayModeService: relayModeService as unknown as A2ARelayModeService,
+        credentialStore: credentialStore as unknown as CredentialStore,
+      },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+      relayToken: 'relay-token',
+    });
+
+    expect(credentialStore.setPassword).toHaveBeenCalledWith(
+      'chamber-a2a-relay',
+      'http://127.0.0.1:4317',
+      'relay-token',
+    );
+  });
+
+  it('a2a:relayConnect reuses a stored static relay token when the request omits it', async () => {
+    const relayModeService = makeRelayModeService();
+    const credentialStore = makeCredentialStore([
+      { account: 'http://127.0.0.1:4317', password: 'stored-token' },
+    ]);
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        relayModeService: relayModeService as unknown as A2ARelayModeService,
+        credentialStore: credentialStore as unknown as CredentialStore,
+      },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+    });
+
+    const options = relayModeService.connect.mock.calls[0][0] as { authProvider: { getAuthorizationHeader: () => Promise<string> } };
+    await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer stored-token');
+    expect(credentialStore.setPassword).not.toHaveBeenCalled();
+  });
+
+  it('a2a:relayConnect does not save static relay tokens when connect fails', async () => {
+    const relayModeService = makeRelayModeService();
+    relayModeService.connect.mockRejectedValueOnce(new Error('connect failed'));
+    const credentialStore = makeCredentialStore();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        relayModeService: relayModeService as unknown as A2ARelayModeService,
+        credentialStore: credentialStore as unknown as CredentialStore,
+      },
+    );
+
+    await expect(getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+      relayToken: 'relay-token',
+    })).rejects.toThrow('connect failed');
+
+    expect(credentialStore.setPassword).not.toHaveBeenCalled();
+  });
+
+  it('a2a:relayConnect rejects static auth without a request token or stored token', async () => {
     const relayModeService = makeRelayModeService();
     vi.clearAllMocks();
     setupA2AIPC(
@@ -341,7 +436,7 @@ describe('A2A IPC', () => {
     await expect(getHandler('a2a:relay-connect')(EVT, {
       relayBaseUrl: 'http://127.0.0.1:4317',
       authMode: 'static',
-    })).rejects.toThrow('Invalid A2A relay connect request');
+    })).rejects.toThrow('A2A relay token is not configured');
     expect(relayModeService.connect).not.toHaveBeenCalled();
   });
 });

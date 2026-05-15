@@ -20,6 +20,10 @@ describe('A2A contract predicates', () => {
       publishedBaseUrl: 'http://127.0.0.1:4488',
       inboundToken: 'inbound',
     })).toBe(true);
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+    })).toBe(true);
   });
 
   it('narrows valid interactive and auto relay connect requests without static tokens', () => {
@@ -47,7 +51,6 @@ describe('A2A contract predicates', () => {
   it('rejects invalid relay connect auth shapes', () => {
     expect(isA2ARelayConnectRequest({ relayBaseUrl: '', authMode: 'static', relayToken: 'secret' })).toBe(false);
     expect(isA2ARelayConnectRequest({ relayBaseUrl: 'http://127.0.0.1:4317', authMode: 'static', relayToken: '' })).toBe(false);
-    expect(isA2ARelayConnectRequest({ relayBaseUrl: 'http://127.0.0.1:4317', authMode: 'static' })).toBe(false);
     expect(isA2ARelayConnectRequest({ relayBaseUrl: 'https://switchboard.example.com', authMode: 'interactive', relayToken: 'secret' })).toBe(false);
     expect(isA2ARelayConnectRequest({ relayBaseUrl: 'https://switchboard.example.com', authMode: 'bogus' })).toBe(false);
   });
