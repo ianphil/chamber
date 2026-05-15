@@ -35,6 +35,7 @@ import {
   MindManager,
   MindProfileService,
   MindScaffold,
+  SullivanToolsService,
   TaskManager,
   ChildProcessRunner,
   ToolInstaller,
@@ -255,9 +256,10 @@ const cronService = new CronService({
   },
   notifier,
 });
+const sullivanService = new SullivanToolsService();
 const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
 
-const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
+const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, sullivanService, a2aToolProvider];
 let chamberCopilotService: ChamberCopilotService | null = null;
 
 if (configService.load().chamberCopilotEnabled === true) {

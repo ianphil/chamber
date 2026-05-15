@@ -16,6 +16,7 @@ import {
   IdentityLoader,
   MessageRouter,
   MindManager,
+  SullivanToolsService,
   TaskManager,
   TurnQueue,
   ViewDiscovery,
@@ -66,7 +67,10 @@ const mindManager = new MindManager(
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService = new ChatService(mindManager, new TurnQueue());
 const messageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
-mindManager.setProviders([new A2aToolProvider(messageRouter, activeA2AResolver, taskManager)]);
+mindManager.setProviders([
+  new A2aToolProvider(messageRouter, activeA2AResolver, taskManager),
+  new SullivanToolsService(),
+]);
 mindManager.on('mind:loaded', (mind) => {
   agentCardRegistry.register(mind);
   a2aRelayModeService.publishLocalCard(mind.mindId).catch((error: unknown) => {
