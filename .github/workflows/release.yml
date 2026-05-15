@@ -11,6 +11,11 @@ on:
         required: false
         default: 'true'
         type: boolean
+      build_macos_x64:
+        description: 'Also build Intel macOS artifacts on macos-13'
+        required: false
+        default: 'false'
+        type: boolean
 
 concurrency:
   group: release
@@ -189,9 +194,76 @@ jobs:
           path: staged/*
           if-no-files-found: error
 
+  build-macos-x64:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true' && github.event_name == 'workflow_dispatch' && inputs.build_macos_x64
+    runs-on: macos-13
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Import macOS signing certificate
+        run: |
+          keychain="$RUNNER_TEMP/chamber-signing.keychain-db"
+          certificate="$RUNNER_TEMP/chamber-signing.p12"
+          intermediate="$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$intermediate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security add-certificates -k "$keychain" "$intermediate" || true
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-macos-x64
+
+      - name: Build signed Intel macOS package
+        run: npm run make:builder:mac
+        env:
+          CHAMBER_MACOS_SIGNING: 'true'
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Stage artifacts
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          mkdir -p staged
+          cp out/builder/Chamber-"$version"-*.dmg staged/
+          cp out/builder/Chamber-"$version"-*.dmg.blockmap staged/
+          cp out/builder/Chamber-"$version"-*.zip staged/
+          cp out/builder/Chamber-"$version"-*.zip.blockmap staged/
+          cp out/builder/latest-mac.yml staged/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-x64
+          path: staged/*
+          if-no-files-found: error
+
   release:
-    needs: [check-version, build, build-macos]
-    if: needs.check-version.outputs.should_release == 'true'
+    needs: [check-version, build, build-macos, build-macos-x64]
+    if: always() && needs.check-version.outputs.should_release == 'true' && needs.build.result == 'success' && needs['build-macos'].result == 'success' && (needs['build-macos-x64'].result == 'success' || needs['build-macos-x64'].result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

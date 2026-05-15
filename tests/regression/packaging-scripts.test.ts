@@ -75,8 +75,12 @@ describe('packaging scripts', () => {
     expect(releaseWorkflow).toContain('security set-key-partition-list');
     expect(releaseWorkflow).toContain('name: release-macos');
     expect(releaseWorkflow).toContain('runs-on: macos-latest');
+    expect(releaseWorkflow).toContain('build_macos_x64');
+    expect(releaseWorkflow).toContain('runs-on: macos-13');
+    expect(releaseWorkflow).toContain("github.event_name == 'workflow_dispatch' && inputs.build_macos_x64");
+    expect(releaseWorkflow).toContain('release-macos-x64');
+    expect(releaseWorkflow).toContain("needs['build-macos-x64'].result == 'skipped'");
     expect(releaseWorkflow).not.toContain('AZURE_CLIENT_SECRET');
-    expect(releaseWorkflow).not.toContain('macos-13');
   });
 
   it('shares the packaged renderer path across Forge, Vite, and sandbox preflight', () => {
