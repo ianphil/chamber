@@ -89,6 +89,8 @@ describe('MessageRouter', () => {
 
   it('sendMessage() routes non-local cards through the active relay transport', async () => {
     const sendMessage = vi.fn(async (request: SendMessageRequest) => ({ message: request.message }));
+    const outgoingEvents: unknown[] = [];
+    emitter.on('a2a:outgoing', (payload) => outgoingEvents.push(payload));
     router = new MessageRouter(mockChatService as unknown as ChatService, {
       getCard: vi.fn(() => makeCard({
         mindId: undefined as never,
@@ -109,6 +111,38 @@ describe('MessageRouter', () => {
     }));
     expect(mockChatService.sendMessage).not.toHaveBeenCalled();
     expect(response.message?.parts[0].text).toBe('hello');
+    expect(outgoingEvents).toEqual([expect.objectContaining({
+      sourceMindId: 'sender-1',
+      recipient: 'Copilot CLI',
+      message: expect.objectContaining({
+        messageId: 'msg-test-1',
+        contextId: expect.stringMatching(/^ctx-/),
+      }),
+    })]);
+  });
+
+  it('sendMessage() routes relay-discovered Chamber mind cards through the relay transport', async () => {
+    const sendMessage = vi.fn(async (request: SendMessageRequest) => ({ queued: true, queueMessageId: 'relay-msg-1', message: request.message }));
+    router = new MessageRouter(mockChatService as unknown as ChatService, {
+      getCard: vi.fn(() => makeCard({
+        mindId: 'remote-mind-1',
+        name: 'Remote Mind',
+        supportedInterfaces: [{ url: 'https://switchboard.example.com/message:send', protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/relay-mailbox/v1', protocolVersion: '1.0' }],
+      })),
+      getCardByName: vi.fn(),
+      getCards: vi.fn(),
+      canSendMessage: () => true,
+      sendMessage,
+    }, emitter);
+
+    const response = await router.sendMessage(makeRequest('remote-mind-1', 'hello relay'));
+
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      recipient: 'remote-mind-1',
+      message: expect.objectContaining({ contextId: expect.stringMatching(/^ctx-/) }),
+    }));
+    expect(mockChatService.sendMessage).not.toHaveBeenCalled();
+    expect(response).toEqual(expect.objectContaining({ queued: true, queueMessageId: 'relay-msg-1' }));
   });
 
   it('sendMessage() assigns contextId on first message', async () => {

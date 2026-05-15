@@ -94,6 +94,7 @@ export type AppAction =
   | { type: 'NEW_CONVERSATION'; payload?: { mindId: string } }
   | { type: 'SET_COMPOSE_DRAFT'; payload: { mindId: string; draft: string } }
   | { type: 'A2A_INCOMING'; payload: { targetMindId: string; message: Message; replyMessageId: string } }
+  | { type: 'A2A_OUTGOING'; payload: { sourceMindId: string; recipient: string; message: Message } }
   | { type: 'TASK_STATUS_UPDATE'; payload: TaskStatusUpdateEvent & { targetMindId: string } }
   | { type: 'TASK_ARTIFACT_UPDATE'; payload: TaskArtifactUpdateEvent & { targetMindId: string } }
   | { type: 'SET_CHATROOM_HISTORY'; payload: ChatroomMessage[] }

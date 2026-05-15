@@ -753,12 +753,14 @@ describe('appReducer', () => {
       expect(state.isStreaming).toBe(true);
     });
 
-    it('does not set global isStreaming when target is not active mind', () => {
+    it('switches to the target mind when the relay delivers to an inactive mind', () => {
       const state = appReducer(withActiveMind, {
         type: 'A2A_INCOMING',
         payload: a2aPayload({ targetMindId: 'other-mind' }),
       });
-      expect(state.isStreaming).toBe(false);
+      expect(state.activeMindId).toBe('other-mind');
+      expect(state.activeView).toBe('chat');
+      expect(state.isStreaming).toBe(true);
       expect(state.streamingByMind['other-mind']).toBe(true);
     });
 
@@ -769,6 +771,32 @@ describe('appReducer', () => {
       };
       const state = appReducer(stateWithMsgs, { type: 'A2A_INCOMING', payload: a2aPayload() });
       expect(state.messagesByMind[mindId]).toHaveLength(3);
+    });
+
+    it('records outbound relay sends in the source mind transcript', () => {
+      const state = appReducer(withActiveMind, {
+        type: 'A2A_OUTGOING',
+        payload: {
+          sourceMindId: mindId,
+          recipient: 'other-mind',
+          message: {
+            messageId: 'msg-outgoing-1',
+            role: 'ROLE_USER',
+            parts: [{ text: 'Message sent through the relay', mediaType: 'text/plain' }],
+            metadata: { fromId: mindId, fromName: 'Test' },
+          },
+        },
+      });
+
+      const msgs = state.messagesByMind[mindId];
+      if (!msgs) throw new Error('expected messages for mind');
+      expect(msgs).toHaveLength(1);
+      expect(msgs[0]).toMatchObject({
+        id: 'msg-outgoing-1',
+        role: 'user',
+        sender: { mindId, name: 'Test' },
+        blocks: [{ type: 'text', content: 'Message sent through the relay' }],
+      });
     });
   });
 

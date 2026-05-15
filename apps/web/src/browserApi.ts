@@ -298,6 +298,7 @@ export function installBrowserApi(): void {
     },
     a2a: {
       onIncoming: () => noopUnsubscribe,
+      onOutgoing: () => noopUnsubscribe,
       listAgents: async (): Promise<AgentCard[]> => [],
       onTaskStatusUpdate: () => noopUnsubscribe,
       onTaskArtifactUpdate: () => noopUnsubscribe,

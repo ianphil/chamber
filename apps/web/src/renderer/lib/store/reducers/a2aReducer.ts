@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@chamber/shared/types';
 import type { Task, TaskState } from '@chamber/shared/a2a-types';
 import type { AppState, AppAction } from '../state';
-import { nonEmptyString } from './helpers';
+import { nonEmptyString, selectedModelForActiveMind } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -33,14 +33,40 @@ function a2aIncoming(state: AppState, action: Extract<AppAction, { type: 'A2A_IN
     timestamp: Date.now(),
     isStreaming: true,
   };
-  const isActiveMind = targetMindId === state.activeMindId;
   return {
+    activeMindId: targetMindId,
+    activeView: 'chat',
+    selectedModel: selectedModelForActiveMind(state, targetMindId),
     messagesByMind: {
       ...state.messagesByMind,
       [targetMindId]: [...targetMsgs, senderMessage, replyPlaceholder],
     },
     streamingByMind: { ...state.streamingByMind, [targetMindId]: true },
-    isStreaming: isActiveMind ? true : state.isStreaming,
+    isStreaming: true,
+  };
+}
+
+function a2aOutgoing(state: AppState, action: Extract<AppAction, { type: 'A2A_OUTGOING' }>): Partial<AppState> {
+  const { sourceMindId, message } = action.payload;
+  const sourceMsgs = state.messagesByMind[sourceMindId] ?? [];
+  const outgoingMessage: ChatMessage = {
+    id: message.messageId,
+    role: 'user',
+    blocks: (message.parts ?? []).map((p) => ({
+      type: 'text' as const,
+      content: p.text ?? '',
+    })),
+    timestamp: Date.now(),
+    sender: {
+      mindId: sourceMindId,
+      name: nonEmptyString(message.metadata?.fromName, sourceMindId),
+    },
+  };
+  return {
+    messagesByMind: {
+      ...state.messagesByMind,
+      [sourceMindId]: [...sourceMsgs, outgoingMessage],
+    },
   };
 }
 
@@ -86,10 +112,12 @@ function taskArtifactUpdate(
 
 export const a2aHandlers: {
   A2A_INCOMING: Handler<'A2A_INCOMING'>;
+  A2A_OUTGOING: Handler<'A2A_OUTGOING'>;
   TASK_STATUS_UPDATE: Handler<'TASK_STATUS_UPDATE'>;
   TASK_ARTIFACT_UPDATE: Handler<'TASK_ARTIFACT_UPDATE'>;
 } = {
   A2A_INCOMING: a2aIncoming,
+  A2A_OUTGOING: a2aOutgoing,
   TASK_STATUS_UPDATE: taskStatusUpdate,
   TASK_ARTIFACT_UPDATE: taskArtifactUpdate,
 };

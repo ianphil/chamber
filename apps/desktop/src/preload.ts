@@ -106,6 +106,7 @@ const electronAPI: ElectronAPI = {
   },
   a2a: {
     onIncoming: (callback: (payload: { targetMindId: string; message: Message; replyMessageId: string }) => void) => createIpcListener(ipcRenderer, IPC.A2A.INCOMING, callback),
+    onOutgoing: (callback) => createIpcListener(ipcRenderer, IPC.A2A.OUTGOING, callback),
     listAgents: () => ipcRenderer.invoke(IPC.A2A.LIST_AGENTS),
     onTaskStatusUpdate: (callback: (payload: TaskStatusUpdateEvent & { targetMindId: string }) => void) => createIpcListener(ipcRenderer, IPC.A2A.TASK_STATUS_UPDATE, callback),
     onTaskArtifactUpdate: (callback: (payload: TaskArtifactUpdateEvent & { targetMindId: string }) => void) => createIpcListener(ipcRenderer, IPC.A2A.TASK_ARTIFACT_UPDATE, callback),

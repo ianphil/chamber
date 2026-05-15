@@ -9,6 +9,11 @@
 
 ### Fixes
 
+- **Fix relay message routing and visibility** — Routes relay-discovered Chamber mind cards through Switchboard even when they include `mindId`, renders outbound relay sends in the sender transcript, switches to the target mind chat when inbound relay messages arrive without stealing focus, and keeps inactive relay replies scoped to the target mind.
+- **Remember static relay tokens securely** — Stores static A2A relay tokens in the OS credential store and lets the Relay view reconnect without re-entering the token.
+- **Remember relay auth mode** — Restores the last successful relay authentication mode after restart and checks saved static tokens before falling back to interactive auto-auth.
+- **Cache Switchboard Entra tokens** — Persists interactive relay refresh tokens in the OS credential store so reconnects can refresh silently before opening browser auth.
+- **Retry wrong-account relay auth cleanly** — Clears cached Switchboard Entra refresh tokens when the relay rejects authorization so the next Connect can run a fresh browser auth flow.
 - **Anchor post-release bump PR to build SHA** — The release skill now branches the post-release bump PR from the build SHA (insider tag or dispatch commit), not from current `origin/master`. Without this, ship PRs that merge during the 30–60 min build window get silently misattributed to the just-shipped version. Anchoring surfaces interim bullets as a visible 3-way merge conflict at PR-merge time, mechanical to resolve. Documented in the Decision Log with reference to release-please #2754 as the canonical postmortem of what goes wrong without it.
 
 ### CI

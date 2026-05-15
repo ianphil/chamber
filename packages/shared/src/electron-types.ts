@@ -10,6 +10,7 @@
  */
 import type {
   A2AIncomingPayload,
+  A2AOutgoingPayload,
   A2ARelayConnectRequest,
   A2ARelayStatus,
   AgentCard,
@@ -132,6 +133,7 @@ export interface ElectronAPI {
   };
   a2a: {
     onIncoming:(callback: (payload: A2AIncomingPayload) => void) => () => void;
+    onOutgoing:(callback: (payload: A2AOutgoingPayload) => void) => () => void;
     listAgents: () => Promise<AgentCard[]>;
     onTaskStatusUpdate: (callback: (payload: TaskStatusUpdateEvent & { targetMindId: string }) => void) => () => void;
     onTaskArtifactUpdate: (callback: (payload: TaskArtifactUpdateEvent & { targetMindId: string }) => void) => () => void;

@@ -287,6 +287,7 @@ export function mockElectronAPI(): ElectronAPI {
     },
     a2a: {
       onIncoming: vi.fn().mockReturnValue(vi.fn()),
+      onOutgoing: vi.fn().mockReturnValue(vi.fn()),
       listAgents: vi.fn().mockResolvedValue([]),
       onTaskStatusUpdate: vi.fn().mockReturnValue(vi.fn()),
       onTaskArtifactUpdate: vi.fn().mockReturnValue(vi.fn()),
