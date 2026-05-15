@@ -38,6 +38,24 @@ const mockTaskManager = {
   cancelTask: vi.fn(),
 };
 
+const makeConfigStore = (relayBaseUrl?: string) => {
+  const config = {
+    version: 2 as const,
+    minds: [],
+    activeMindId: null,
+    activeLogin: null,
+    theme: 'dark' as const,
+    ...(relayBaseUrl ? { a2aRelayBaseUrl: relayBaseUrl } : {}),
+  };
+  return {
+    config,
+    load: vi.fn(() => config),
+    save: vi.fn((next) => {
+      Object.assign(config, next);
+    }),
+  };
+};
+
 describe('A2A IPC', () => {
   let ipcEmitter: EventEmitter;
 
@@ -250,6 +268,43 @@ describe('A2A IPC', () => {
     expect(relayModeService.connect).toHaveBeenCalledWith(expect.objectContaining({
       baseUrl: 'https://switchboard.example.com',
       authProvider: expect.objectContaining({ getAuthorizationHeader: expect.any(Function) }),
+    }));
+  });
+
+  it('a2a:relayStatus returns the saved relay URL when disconnected', async () => {
+    const configStore = makeConfigStore('https://switchboard.example.com');
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      { configStore },
+    );
+
+    await expect(getHandler('a2a:relay-status')(EVT)).resolves.toEqual(expect.objectContaining({
+      state: 'disconnected',
+      relayBaseUrl: 'https://switchboard.example.com',
+    }));
+  });
+
+  it('a2a:relayConnect saves the relay URL after connecting', async () => {
+    const relayModeService = makeRelayModeService();
+    const configStore = makeConfigStore();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      { relayModeService: relayModeService as unknown as A2ARelayModeService, configStore },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'interactive',
+    });
+
+    expect(configStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      a2aRelayBaseUrl: 'https://switchboard.example.com',
     }));
   });
 
