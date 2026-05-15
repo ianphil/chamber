@@ -1,7 +1,7 @@
 {
   "name": "chamber",
   "productName": "Chamber",
-  "version": "0.62.1",
+  "version": "0.62.2",
   "description": "Genesis Mind Interface — desktop chat UI for Genesis agents",
   "main": ".vite/build/main.js",
   "private": true,
@@ -15,7 +15,7 @@
     "make": "npm run make:builder",
     "make:forge": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && electron-forge make",
     "make:builder": "npm run package && node scripts/prepare-builder-prepackaged.js && electron-builder --win nsis --x64 --prepackaged out/Chamber-win32-x64 --config config/electron-builder.config.cjs --publish never",
-    "make:builder:mac": "npm run package && node scripts/prepare-builder-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && electron-builder --mac --$(node -p \"process.arch\") --prepackaged out/Chamber-darwin-$(node -p \"process.arch\") --config config/electron-builder.config.cjs --publish never",
+    "make:builder:mac": "npm run package && node scripts/prepare-builder-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && node scripts/sign-macos-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && electron-builder --mac --$(node -p \"process.arch\") --prepackaged out/Chamber-darwin-$(node -p \"process.arch\")/Chamber.app --config config/electron-builder.config.cjs --publish never",
     "make:mac": "npm run make:builder:mac",
     "make:sandbox": "npm run make && node scripts/sandbox-test.js",
     "sandbox": "node scripts/sandbox-test.js",

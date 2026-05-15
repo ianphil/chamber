@@ -33,6 +33,11 @@ function resolveMacEntitlements() {
   return fs.existsSync(entitlementsPath) ? entitlementsPath : undefined;
 }
 
+function resolveMacIdentity() {
+  const identity = process.env.CHAMBER_MACOS_IDENTITY?.trim();
+  return identity?.replace(/^Developer ID Application:\s*/, '') || undefined;
+}
+
 const config = {
   appId: 'dev.chmbr.chamber',
   productName: 'Chamber',
@@ -79,17 +84,14 @@ const config = {
   mac: {
     category: 'public.app-category.productivity',
     icon: resolveMacIcon(),
-    target: [
-      { target: 'dmg', arch: ['arm64', 'x64'] },
-      { target: 'zip', arch: ['arm64', 'x64'] },
-    ],
+    target: ['dmg', 'zip'],
     hardenedRuntime: macSigningEnabled,
     gatekeeperAssess: false,
     entitlements: resolveMacEntitlements(),
     entitlementsInherit: resolveMacEntitlements(),
     ...(macSigningEnabled
       ? {
-          identity: process.env.CHAMBER_MACOS_IDENTITY?.trim() || undefined,
+          identity: resolveMacIdentity(),
           notarize: macNotarizeEnabled,
         }
       : { identity: null }),

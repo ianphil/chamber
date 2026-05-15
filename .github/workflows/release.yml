@@ -125,7 +125,15 @@ jobs:
   build-macos:
     needs: check-version
     if: needs.check-version.outputs.should_release == 'true'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            runner: macos-13
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     steps:
@@ -140,6 +148,24 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Import macOS signing certificate
+        run: |
+          keychain="$RUNNER_TEMP/chamber-signing.keychain-db"
+          certificate="$RUNNER_TEMP/chamber-signing.p12"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ matrix.arch }}
 
       - name: Build signed macOS package
         run: npm run make:builder:mac
@@ -164,7 +190,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-macos
+          name: release-macos-${{ matrix.arch }}
           path: staged/*
           if-no-files-found: error
 

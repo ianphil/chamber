@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.62.2 (2026-05-15)
+
+### Release
+
+- **Fix macOS release bundle shape and icon** — Adds the macOS `.icns` app icon and passes the actual `Chamber.app` bundle to electron-builder so signed DMG and ZIP artifacts contain a valid app instead of a nested app directory.
+
 ## v0.62.1 (2026-05-15)
 
 ### Release

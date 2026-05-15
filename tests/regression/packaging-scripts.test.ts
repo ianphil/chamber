@@ -24,6 +24,10 @@ describe('packaging scripts', () => {
     expect(packageJson.scripts['make:builder'].indexOf('npm run package')).toBeLessThan(
       packageJson.scripts['make:builder'].indexOf('electron-builder')
     );
+    expect(packageJson.scripts['make:builder:mac']).toContain(
+      '--prepackaged out/Chamber-darwin-$(node -p "process.arch")/Chamber.app'
+    );
+    expect(packageJson.scripts['make:builder:mac']).toContain('scripts/sign-macos-prepackaged.js');
   });
 
   it('runs PR packaging only for major or minor version bumps', () => {
@@ -39,21 +43,35 @@ describe('packaging scripts', () => {
   it('keeps signed updater verification wired into builder releases', () => {
     const builderConfig = readFileSync('config/electron-builder.config.cjs', 'utf-8');
     const prepareBuilder = readFileSync('scripts/prepare-builder-prepackaged.js', 'utf-8');
+    const prepareNodeRuntime = readFileSync('scripts/prepare-node-runtime.js', 'utf-8');
+    const signMacPrepackaged = readFileSync('scripts/sign-macos-prepackaged.js', 'utf-8');
     const validateBuilder = readFileSync('scripts/validate-builder-release.js', 'utf-8');
     const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf-8');
     const windowsPublisher = readFileSync('config/windows-publisher.cjs', 'utf-8');
 
     expect(builderConfig).toContain('signtoolOptions');
     expect(builderConfig).toContain('sign-windows-trusted-signing.js');
+    expect(builderConfig).toContain('resolveMacIdentity');
+    expect(builderConfig).toContain('Developer ID Application:');
+    expect(builderConfig).toContain("target: ['dmg', 'zip']");
     expect(builderConfig).not.toContain('azureSignOptions');
     expect(windowsPublisher).toContain('CN=Ian Philpot');
     expect(prepareBuilder).toContain('publisherName:');
     expect(prepareBuilder).toContain('CHAMBER_WINDOWS_SIGNING');
+    expect(prepareBuilder).toContain("path.join(outputDir, 'Chamber.app')");
+    expect(prepareNodeRuntime).toContain('dereference: true');
+    expect(signMacPrepackaged).toContain('electron-osx-sign');
+    expect(signMacPrepackaged).toContain('CHAMBER_MACOS_SIGNING');
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');
     expect(validateBuilder).toContain('matchesPublisherName');
     expect(validateBuilder).toContain('SignerCertificate.Subject');
     expect(releaseWorkflow).toContain('azure/login@v2');
     expect(releaseWorkflow).toContain('CHAMBER_REQUIRE_WINDOWS_SIGNATURE');
+    expect(releaseWorkflow).toContain('Import macOS signing certificate');
+    expect(releaseWorkflow).toContain('security import "$certificate"');
+    expect(releaseWorkflow).toContain('security set-key-partition-list');
+    expect(releaseWorkflow).toContain('release-macos-${{ matrix.arch }}');
+    expect(releaseWorkflow).toContain('runner: macos-13');
     expect(releaseWorkflow).not.toContain('AZURE_CLIENT_SECRET');
   });
 

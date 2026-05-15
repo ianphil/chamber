@@ -20,12 +20,13 @@ const targetPlatform = cliArgs.get('platform') ?? process.platform;
 const targetArch = cliArgs.get('arch') ?? process.arch;
 
 function resolvePrepackagedLayout(platform, arch) {
-  const baseDir = path.join(repoRoot, 'out', `Chamber-${platform}-${arch}`);
+  const outputDir = path.join(repoRoot, 'out', `Chamber-${platform}-${arch}`);
   if (platform === 'darwin') {
-    const resourcesDir = path.join(baseDir, 'Chamber.app', 'Contents', 'Resources');
+    const baseDir = path.join(outputDir, 'Chamber.app');
+    const resourcesDir = path.join(baseDir, 'Contents', 'Resources');
     return { baseDir, resourcesDir };
   }
-  return { baseDir, resourcesDir: path.join(baseDir, 'resources') };
+  return { baseDir: outputDir, resourcesDir: path.join(outputDir, 'resources') };
 }
 
 const { baseDir: prepackagedDir, resourcesDir } = resolvePrepackagedLayout(targetPlatform, targetArch);
