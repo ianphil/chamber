@@ -114,16 +114,17 @@ export function setupA2AIPC(
     });
 
     try {
+      const auth = await createRelayAuthProvider(request, relayOptions.credentialStore);
       await relayOptions.relayModeService.connect({
         baseUrl: request.relayBaseUrl,
-        authProvider: await createRelayAuthProvider(request, relayOptions.credentialStore),
+        authProvider: auth.provider,
       });
       await saveRelayToken(relayOptions.credentialStore, request);
       const nextStatus = await refreshRelayStatus({
         state: 'connected',
         mode: 'relay',
         relayBaseUrl: request.relayBaseUrl,
-        authMode: getPersistedRelayAuthMode(request),
+        authMode: auth.persistedAuthMode,
         hasStoredRelayToken: await hasStoredRelayToken(relayOptions.credentialStore, request.relayBaseUrl),
         publishedBaseUrl: null,
         publishedAgentCount: 0,
@@ -132,7 +133,7 @@ export function setupA2AIPC(
         connectedAt: Date.now(),
       }, relayOptions.relayModeService);
       emitRelayStatus(nextStatus);
-      saveRelaySettings(relayOptions.configStore, request.relayBaseUrl, nextStatus.authMode ?? getPersistedRelayAuthMode(request));
+      saveRelaySettings(relayOptions.configStore, request.relayBaseUrl, nextStatus.authMode ?? auth.persistedAuthMode);
       return nextStatus;
     } catch (error) {
       await relayOptions.relayModeService.disconnect().catch(() => undefined);
@@ -173,20 +174,26 @@ export function setupA2AIPC(
 async function createRelayAuthProvider(
   request: A2ARelayConnectRequest,
   credentialStore?: CredentialStore,
-): Promise<StaticA2ARelayAuthProvider | EntraA2AAuthProvider> {
+): Promise<{ provider: StaticA2ARelayAuthProvider | EntraA2AAuthProvider; persistedAuthMode: 'static' | 'interactive' }> {
   const mode = request.authMode ?? 'static';
   if (mode === 'static' || mode === 'auto') {
     const token = 'relayToken' in request && request.relayToken?.trim()
       ? request.relayToken.trim()
       : await getStoredRelayToken(credentialStore, request.relayBaseUrl);
     if (mode === 'auto' && !token) {
-      return createInteractiveRelayAuthProvider(request, credentialStore);
+      return {
+        provider: createInteractiveRelayAuthProvider(request, credentialStore),
+        persistedAuthMode: 'interactive',
+      };
     }
     if (!token) throw new Error('A2A relay token is not configured');
-    return new StaticA2ARelayAuthProvider(token);
+    return { provider: new StaticA2ARelayAuthProvider(token), persistedAuthMode: 'static' };
   }
 
-  return createInteractiveRelayAuthProvider(request, credentialStore);
+  return {
+    provider: createInteractiveRelayAuthProvider(request, credentialStore),
+    persistedAuthMode: 'interactive',
+  };
 }
 
 function createInteractiveRelayAuthProvider(

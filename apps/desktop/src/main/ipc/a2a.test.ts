@@ -409,6 +409,31 @@ describe('A2A IPC', () => {
     await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer stored-token');
   });
 
+  it('a2a:relayConnect in auto mode saves interactive auth when no static token exists', async () => {
+    const relayModeService = makeRelayModeService();
+    const configStore = makeConfigStore();
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        relayModeService: relayModeService as unknown as A2ARelayModeService,
+        configStore,
+      },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'auto',
+    });
+
+    expect(configStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      a2aRelayBaseUrl: 'https://switchboard.example.com',
+      a2aRelayAuthMode: 'interactive',
+    }));
+  });
+
   it('a2a:relayConnect forwards static auth options through a static auth provider', async () => {
     const relayModeService = makeRelayModeService();
     vi.clearAllMocks();

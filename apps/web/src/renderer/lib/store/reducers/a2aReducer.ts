@@ -39,7 +39,7 @@ function a2aIncoming(state: AppState, action: Extract<AppAction, { type: 'A2A_IN
       [targetMindId]: [...targetMsgs, senderMessage, replyPlaceholder],
     },
     streamingByMind: { ...state.streamingByMind, [targetMindId]: true },
-    isStreaming: true,
+    isStreaming: targetMindId === state.activeMindId ? true : state.isStreaming,
   };
 }
 
