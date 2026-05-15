@@ -77,9 +77,11 @@ export class EntraA2AAuthProvider implements A2ARelayAuthProvider {
     return `Bearer ${await this.ensureAccessToken()}`;
   }
 
-  invalidate(): void {
+  async invalidate(): Promise<void> {
     this.#accessToken = null;
+    this.#refreshToken = null;
     this.#accessTokenExpiresAt = 0;
+    await this.tokenCache?.clear();
   }
 
   private async ensureAccessToken(): Promise<string> {

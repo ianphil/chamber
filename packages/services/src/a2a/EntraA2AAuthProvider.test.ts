@@ -119,6 +119,22 @@ describe('EntraA2AAuthProvider', () => {
     expect(tokenCache.save).toHaveBeenCalledWith({ refreshToken: 'refresh-token' });
   });
 
+  it('clears cached tokens when authorization is invalidated', async () => {
+    const tokenCache = {
+      load: vi.fn(async () => ({ refreshToken: 'cached-refresh-token' })),
+      save: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    const provider = new EntraA2AAuthProvider({
+      clientId: 'client-id',
+      tokenCache,
+    });
+
+    await provider.invalidate();
+
+    expect(tokenCache.clear).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts the browser callback on the advertised localhost redirect URI', async () => {
     const callback = await waitForAuthorizationCode('state-1');
     try {

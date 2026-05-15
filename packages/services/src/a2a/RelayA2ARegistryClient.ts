@@ -19,7 +19,7 @@ export interface RelayA2ARegistryClientOptions {
 
 export interface A2ARelayAuthProvider {
   getAuthorizationHeader(): Promise<string>;
-  invalidate?(): void;
+  invalidate?(): void | Promise<void>;
 }
 
 export class StaticA2ARelayAuthProvider implements A2ARelayAuthProvider {
@@ -115,7 +115,7 @@ export class RelayA2ARegistryClient {
     const authorization = await this.authProvider.getAuthorizationHeader();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), RELAY_REQUEST_TIMEOUT_MS);
-    return this.fetchImpl(new URL(path, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path, this.baseUrl), {
       ...init,
       headers: {
         authorization,
@@ -127,6 +127,10 @@ export class RelayA2ARegistryClient {
       },
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
+    if (response.status === 401 || response.status === 403) {
+      await this.authProvider.invalidate?.();
+    }
+    return response;
   }
 }
 

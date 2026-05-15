@@ -82,6 +82,18 @@ describe('RelayA2ARegistryClient', () => {
     await client.getCards();
   });
 
+  it('invalidates cached auth when the relay rejects authorization', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }));
+    const authProvider = {
+      getAuthorizationHeader: vi.fn(async () => 'Bearer wrong-token'),
+      invalidate: vi.fn(async () => undefined),
+    };
+    const client = makeClient({ fetchImpl, authProvider });
+
+    await expect(client.getCards()).rejects.toThrow('unauthorized');
+    expect(authProvider.invalidate).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects oversized relay responses', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response('x'.repeat(1_000_001), { status: 200 }));
     const client = makeClient({ fetchImpl });
@@ -141,7 +153,7 @@ describe('RelayA2ARegistryClient', () => {
 function makeClient(options: {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
-  authProvider?: { getAuthorizationHeader: () => Promise<string> };
+  authProvider?: { getAuthorizationHeader: () => Promise<string>; invalidate?: () => void | Promise<void> };
 } = {}): RelayA2ARegistryClient {
   return new RelayA2ARegistryClient({
     baseUrl: options.baseUrl ?? 'http://127.0.0.1:4100',
