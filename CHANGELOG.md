@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.62.1 (2026-05-15)
+
+### Release
+
+- **Test signed macOS release artifacts** — Adds a macOS release workflow leg that builds signed DMG and ZIP artifacts from the Developer ID Application certificate stored in GitHub Actions secrets, then includes those artifacts in the GitHub Release alongside Windows.
+
 ## v0.62.0 (2026-05-14)
 
 ### A2A

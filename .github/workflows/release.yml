@@ -122,8 +122,54 @@ jobs:
           path: staged/*
           if-no-files-found: error
 
+  build-macos:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build signed macOS package
+        run: npm run make:builder:mac
+        env:
+          CHAMBER_MACOS_SIGNING: 'true'
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Stage artifacts
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          mkdir -p staged
+          cp out/builder/Chamber-"$version"-*.dmg staged/
+          cp out/builder/Chamber-"$version"-*.dmg.blockmap staged/
+          cp out/builder/Chamber-"$version"-*.zip staged/
+          cp out/builder/Chamber-"$version"-*.zip.blockmap staged/
+          cp out/builder/latest-mac.yml staged/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: staged/*
+          if-no-files-found: error
+
   release:
-    needs: [check-version, build]
+    needs: [check-version, build, build-macos]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -135,8 +181,9 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-windows
+          pattern: release-*
           path: artifacts
+          merge-multiple: true
 
       - name: Display downloaded files
         run: find artifacts -type f
