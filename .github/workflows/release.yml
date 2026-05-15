@@ -153,11 +153,14 @@ jobs:
         run: |
           keychain="$RUNNER_TEMP/chamber-signing.keychain-db"
           certificate="$RUNNER_TEMP/chamber-signing.p12"
+          intermediate="$RUNNER_TEMP/DeveloperIDG2CA.cer"
           echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$intermediate"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
           security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security add-certificates -k "$keychain" "$intermediate"
           security list-keychains -d user -s "$keychain" login.keychain-db
           security default-keychain -d user -s "$keychain"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"

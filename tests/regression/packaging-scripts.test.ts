@@ -60,6 +60,7 @@ describe('packaging scripts', () => {
     expect(prepareBuilder).toContain('CHAMBER_WINDOWS_SIGNING');
     expect(prepareBuilder).toContain("path.join(outputDir, 'Chamber.app')");
     expect(prepareNodeRuntime).toContain('dereference: true');
+    expect(prepareNodeRuntime).toContain('materializeRuntimeCommandSymlinks');
     expect(signMacPrepackaged).toContain('electron-osx-sign');
     expect(signMacPrepackaged).toContain('CHAMBER_MACOS_SIGNING');
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');
@@ -68,6 +69,7 @@ describe('packaging scripts', () => {
     expect(releaseWorkflow).toContain('azure/login@v2');
     expect(releaseWorkflow).toContain('CHAMBER_REQUIRE_WINDOWS_SIGNATURE');
     expect(releaseWorkflow).toContain('Import macOS signing certificate');
+    expect(releaseWorkflow).toContain('DeveloperIDG2CA.cer');
     expect(releaseWorkflow).toContain('security import "$certificate"');
     expect(releaseWorkflow).toContain('security set-key-partition-list');
     expect(releaseWorkflow).toContain('release-macos-${{ matrix.arch }}');

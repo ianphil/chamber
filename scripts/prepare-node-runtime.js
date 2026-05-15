@@ -57,6 +57,24 @@ function validateRuntimeDir(rootDir) {
   return { nodeBinary, npmCli };
 }
 
+function materializeRuntimeCommandSymlinks(rootDir) {
+  if (process.platform === 'win32') return;
+
+  const binDir = path.join(rootDir, 'bin');
+  for (const command of ['corepack', 'npm', 'npx']) {
+    const binPath = path.join(binDir, command);
+    if (!fs.existsSync(binPath) || !fs.lstatSync(binPath).isSymbolicLink()) {
+      continue;
+    }
+
+    const linkTarget = fs.readlinkSync(binPath);
+    const targetPath = path.resolve(binDir, linkTarget);
+    fs.rmSync(binPath);
+    fs.cpSync(targetPath, binPath);
+    fs.chmodSync(binPath, 0o755);
+  }
+}
+
 function quotePowerShell(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -131,6 +149,7 @@ function promoteRuntime(extractedDir, version) {
   fs.rmSync(backupDir, { recursive: true, force: true });
 
   fs.cpSync(extractedDir, stagingDir, { recursive: true, dereference: true });
+  materializeRuntimeCommandSymlinks(stagingDir);
   fs.writeFileSync(path.join(stagingDir, 'version.txt'), version, 'utf-8');
   validateRuntimeDir(stagingDir);
 
