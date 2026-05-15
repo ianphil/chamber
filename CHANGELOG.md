@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.62.0 (2026-05-14)
+
+### Sullivan
+
+- **Add the Sullivan presentation-pedagogy tool provider** — Introduces a new in-process `ChamberToolProvider` (`SullivanToolsService` in `@chamber/services`) that exposes five pure presentation tools to any mind: `presentation_template`, `presentation_outline_validate`, `presentation_critique`, `presentation_contrast_check`, and `presentation_motion_budget`. Built on two deterministic primitives (WCAG contrast ratio plus per-transition and aggregate motion budgets) and a cross-step rubric, with full unit coverage and a barrel → service → handler → primitive integration smoke. Wired into both composition roots (`apps/desktop/src/main.ts` and `apps/server/src/bin.ts`) via the `@chamber/services` package barrel. Stateless v1: `activateMind` / `releaseMind` are intentional no-ops. (#6)
+
 ## v0.61.0 (2026-05-12)
 
 ### A2A
