@@ -38,7 +38,7 @@ const mockTaskManager = {
   cancelTask: vi.fn(),
 };
 
-const makeConfigStore = (relayBaseUrl?: string) => {
+const makeConfigStore = (relayBaseUrl?: string, authMode?: 'static' | 'interactive') => {
   const config = {
     version: 2 as const,
     minds: [],
@@ -46,6 +46,7 @@ const makeConfigStore = (relayBaseUrl?: string) => {
     activeLogin: null,
     theme: 'dark' as const,
     ...(relayBaseUrl ? { a2aRelayBaseUrl: relayBaseUrl } : {}),
+    ...(authMode ? { a2aRelayAuthMode: authMode } : {}),
   };
   return {
     config,
@@ -286,7 +287,7 @@ describe('A2A IPC', () => {
   });
 
   it('a2a:relayStatus returns the saved relay URL and stored-token availability when disconnected', async () => {
-    const configStore = makeConfigStore('https://switchboard.example.com');
+    const configStore = makeConfigStore('https://switchboard.example.com', 'static');
     const credentialStore = makeCredentialStore([
       { account: 'https://switchboard.example.com', password: 'stored-token' },
     ]);
@@ -301,11 +302,12 @@ describe('A2A IPC', () => {
     await expect(getHandler('a2a:relay-status')(EVT)).resolves.toEqual(expect.objectContaining({
       state: 'disconnected',
       relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'static',
       hasStoredRelayToken: true,
     }));
   });
 
-  it('a2a:relayConnect saves the relay URL after connecting', async () => {
+  it('a2a:relayConnect saves the relay URL and auth mode after connecting', async () => {
     const relayModeService = makeRelayModeService();
     const configStore = makeConfigStore();
     vi.clearAllMocks();
@@ -323,7 +325,33 @@ describe('A2A IPC', () => {
 
     expect(configStore.save).toHaveBeenCalledWith(expect.objectContaining({
       a2aRelayBaseUrl: 'https://switchboard.example.com',
+      a2aRelayAuthMode: 'interactive',
     }));
+  });
+
+  it('a2a:relayConnect in auto mode checks the stored static token before interactive auth', async () => {
+    const relayModeService = makeRelayModeService();
+    const credentialStore = makeCredentialStore([
+      { account: 'https://switchboard.example.com', password: 'stored-token' },
+    ]);
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        relayModeService: relayModeService as unknown as A2ARelayModeService,
+        credentialStore: credentialStore as unknown as CredentialStore,
+      },
+    );
+
+    await getHandler('a2a:relay-connect')(EVT, {
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'auto',
+    });
+
+    const options = relayModeService.connect.mock.calls[0][0] as { authProvider: { getAuthorizationHeader: () => Promise<string> } };
+    await expect(options.authProvider.getAuthorizationHeader()).resolves.toBe('Bearer stored-token');
   });
 
   it('a2a:relayConnect forwards static auth options through a static auth provider', async () => {

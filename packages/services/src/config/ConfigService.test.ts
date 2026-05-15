@@ -86,7 +86,7 @@ describe('ConfigService', () => {
       });
     });
 
-    it('preserves a saved A2A relay URL', () => {
+    it('preserves saved A2A relay settings', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,
         minds: [],
@@ -94,10 +94,12 @@ describe('ConfigService', () => {
         activeLogin: null,
         theme: 'dark',
         a2aRelayBaseUrl: ' https://switchboard.example.com ',
+        a2aRelayAuthMode: 'static',
       }));
 
       expect(svc.load()).toEqual(expect.objectContaining({
         a2aRelayBaseUrl: 'https://switchboard.example.com',
+        a2aRelayAuthMode: 'static',
       }));
     });
 

@@ -37,6 +37,7 @@ export function A2ARelayView() {
         if (!mounted) return;
         setStatus(nextStatus);
         if (nextStatus.relayBaseUrl) setRelayBaseUrl(nextStatus.relayBaseUrl);
+        if (nextStatus.authMode) setAuthMode(nextStatus.authMode);
       })
       .catch((err: unknown) => {
         if (mounted) setError(err instanceof Error ? err.message : String(err));
@@ -45,6 +46,7 @@ export function A2ARelayView() {
       setStatus(nextStatus);
       setError(nextStatus.lastError);
       if (nextStatus.relayBaseUrl) setRelayBaseUrl(nextStatus.relayBaseUrl);
+      if (nextStatus.authMode) setAuthMode(nextStatus.authMode);
     });
     return () => {
       mounted = false;

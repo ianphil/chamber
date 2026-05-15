@@ -74,6 +74,33 @@ describe('A2ARelayView', () => {
     });
   });
 
+  it('loads the saved relay auth mode from the main process', async () => {
+    vi.mocked(api.a2a.relayStatus).mockResolvedValue({
+      state: 'disconnected',
+      mode: 'local',
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'interactive',
+      publishedBaseUrl: null,
+      publishedAgentCount: 0,
+      relayAgentCount: 0,
+      lastError: null,
+      connectedAt: null,
+    });
+
+    render(<A2ARelayView />);
+
+    await screen.findByDisplayValue('https://switchboard.example.com');
+    expect((screen.getByLabelText('Authentication mode') as HTMLSelectElement).value).toBe('interactive');
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => {
+      expect(api.a2a.relayConnect).toHaveBeenCalledWith({
+        relayBaseUrl: 'https://switchboard.example.com',
+        authMode: 'interactive',
+      });
+    });
+  });
+
   it('requires a token only for static relay auth', async () => {
     render(<A2ARelayView />);
 

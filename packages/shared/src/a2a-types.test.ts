@@ -39,6 +39,10 @@ describe('A2A contract predicates', () => {
       authMode: 'auto',
       clientId: 'client-id',
     })).toBe(true);
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'auto',
+    })).toBe(true);
   });
 
   it('defaults legacy relay connect requests with a token to static auth', () => {

@@ -81,6 +81,9 @@ export class ConfigService {
       ...(typeof raw.a2aRelayBaseUrl === 'string' && raw.a2aRelayBaseUrl.trim().length > 0
         ? { a2aRelayBaseUrl: raw.a2aRelayBaseUrl.trim() }
         : {}),
+      ...(raw.a2aRelayAuthMode === 'static' || raw.a2aRelayAuthMode === 'interactive'
+        ? { a2aRelayAuthMode: raw.a2aRelayAuthMode }
+        : {}),
     });
   }
 

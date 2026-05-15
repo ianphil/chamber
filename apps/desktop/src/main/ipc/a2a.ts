@@ -24,7 +24,10 @@ export function setupA2AIPC(
   taskManager: TaskManager,
   relayOptions: A2ARelayIPCOptions = {},
 ): void {
-  let relayStatus: A2ARelayStatus = createDisconnectedStatus(loadSavedRelayBaseUrl(relayOptions.configStore));
+  let relayStatus: A2ARelayStatus = createDisconnectedStatus(
+    loadSavedRelayBaseUrl(relayOptions.configStore),
+    loadSavedRelayAuthMode(relayOptions.configStore),
+  );
 
   const emitRelayStatus = (status: A2ARelayStatus) => {
     relayStatus = status;
@@ -104,6 +107,7 @@ export function setupA2AIPC(
       state: 'connecting',
       mode: 'local',
       relayBaseUrl: request.relayBaseUrl,
+      authMode: getPersistedRelayAuthMode(request),
       publishedBaseUrl: null,
       lastError: null,
     });
@@ -113,12 +117,12 @@ export function setupA2AIPC(
         baseUrl: request.relayBaseUrl,
         authProvider: await createRelayAuthProvider(request, relayOptions.credentialStore),
       });
-      saveRelayBaseUrl(relayOptions.configStore, request.relayBaseUrl);
       await saveRelayToken(relayOptions.credentialStore, request);
       const nextStatus = await refreshRelayStatus({
         state: 'connected',
         mode: 'relay',
         relayBaseUrl: request.relayBaseUrl,
+        authMode: getPersistedRelayAuthMode(request),
         hasStoredRelayToken: await hasStoredRelayToken(relayOptions.credentialStore, request.relayBaseUrl),
         publishedBaseUrl: null,
         publishedAgentCount: 0,
@@ -127,6 +131,7 @@ export function setupA2AIPC(
         connectedAt: Date.now(),
       }, relayOptions.relayModeService);
       emitRelayStatus(nextStatus);
+      saveRelaySettings(relayOptions.configStore, request.relayBaseUrl, nextStatus.authMode ?? getPersistedRelayAuthMode(request));
       return nextStatus;
     } catch (error) {
       await relayOptions.relayModeService.disconnect().catch(() => undefined);
@@ -134,6 +139,7 @@ export function setupA2AIPC(
       const nextStatus: A2ARelayStatus = {
         ...createDisconnectedStatus(request.relayBaseUrl),
         state: 'error',
+        authMode: getPersistedRelayAuthMode(request),
         hasStoredRelayToken: await hasStoredRelayToken(relayOptions.credentialStore, request.relayBaseUrl),
         lastError: message,
       };
@@ -148,7 +154,7 @@ export function setupA2AIPC(
     }
     emitRelayStatus({ ...relayStatus, state: 'disconnecting' });
     await relayOptions.relayModeService.disconnect();
-    const nextStatus = createDisconnectedStatus(relayStatus.relayBaseUrl);
+    const nextStatus = createDisconnectedStatus(relayStatus.relayBaseUrl, relayStatus.authMode);
     emitRelayStatus(nextStatus);
     return nextStatus;
   });
@@ -168,14 +174,21 @@ async function createRelayAuthProvider(
   credentialStore?: CredentialStore,
 ): Promise<StaticA2ARelayAuthProvider | EntraA2AAuthProvider> {
   const mode = request.authMode ?? 'static';
-  if (mode === 'static' || ('relayToken' in request && request.relayToken && mode === 'auto')) {
+  if (mode === 'static' || mode === 'auto') {
     const token = 'relayToken' in request && request.relayToken?.trim()
       ? request.relayToken.trim()
       : await getStoredRelayToken(credentialStore, request.relayBaseUrl);
+    if (mode === 'auto' && !token) {
+      return createInteractiveRelayAuthProvider(request);
+    }
     if (!token) throw new Error('A2A relay token is not configured');
     return new StaticA2ARelayAuthProvider(token);
   }
 
+  return createInteractiveRelayAuthProvider(request);
+}
+
+function createInteractiveRelayAuthProvider(request: A2ARelayConnectRequest): EntraA2AAuthProvider {
   const clientId = 'clientId' in request && request.clientId
     ? request.clientId
     : process.env.SWITCHBOARD_AUTH_CLIENT_ID ?? process.env.CHAMBER_A2A_CLIENT_ID ?? DEFAULT_SWITCHBOARD_AUTH_CLIENT_ID;
@@ -186,11 +199,12 @@ async function createRelayAuthProvider(
   });
 }
 
-function createDisconnectedStatus(relayBaseUrl: string | null = null): A2ARelayStatus {
+function createDisconnectedStatus(relayBaseUrl: string | null = null, authMode?: 'static' | 'interactive'): A2ARelayStatus {
   return {
     state: 'disconnected',
     mode: 'local',
     relayBaseUrl,
+    ...(authMode ? { authMode } : {}),
     hasStoredRelayToken: false,
     publishedBaseUrl: null,
     publishedAgentCount: 0,
@@ -205,10 +219,23 @@ function loadSavedRelayBaseUrl(configStore: A2ARelayIPCOptions['configStore']): 
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function saveRelayBaseUrl(configStore: A2ARelayIPCOptions['configStore'], relayBaseUrl: string): void {
+function loadSavedRelayAuthMode(configStore: A2ARelayIPCOptions['configStore']): 'static' | 'interactive' | undefined {
+  const value = configStore?.load().a2aRelayAuthMode;
+  return value === 'static' || value === 'interactive' ? value : undefined;
+}
+
+function saveRelaySettings(
+  configStore: A2ARelayIPCOptions['configStore'],
+  relayBaseUrl: string,
+  authMode: 'static' | 'interactive',
+): void {
   if (!configStore) return;
   const config = configStore.load();
-  configStore.save({ ...config, a2aRelayBaseUrl: relayBaseUrl });
+  configStore.save({ ...config, a2aRelayBaseUrl: relayBaseUrl, a2aRelayAuthMode: authMode });
+}
+
+function getPersistedRelayAuthMode(request: A2ARelayConnectRequest): 'static' | 'interactive' {
+  return request.authMode === 'interactive' ? 'interactive' : 'static';
 }
 
 async function withStoredRelayTokenStatus(
@@ -257,7 +284,10 @@ async function refreshRelayStatus(
   if (!relayModeService?.isConnected()) {
     return status.state === 'error'
       ? status
-      : { ...createDisconnectedStatus(status.relayBaseUrl), hasStoredRelayToken: status.hasStoredRelayToken };
+      : {
+          ...createDisconnectedStatus(status.relayBaseUrl, status.authMode),
+          hasStoredRelayToken: status.hasStoredRelayToken,
+        };
   }
   return {
     ...status,

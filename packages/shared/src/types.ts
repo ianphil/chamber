@@ -296,6 +296,7 @@ export interface AppConfig {
    */
   chamberCopilotEnabled?: boolean;
   a2aRelayBaseUrl?: string;
+  a2aRelayAuthMode?: 'static' | 'interactive';
 }
 
 interface InstalledToolBase {
