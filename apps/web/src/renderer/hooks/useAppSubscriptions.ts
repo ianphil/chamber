@@ -84,9 +84,6 @@ export function useAppSubscriptions() {
   // A2A incoming message listener
   useEffect(() => {
     const unsub = window.electronAPI.a2a.onIncoming((payload) => {
-      void window.electronAPI.mind.setActive(payload.targetMindId).catch((err: unknown) => {
-        log.error('Failed to activate A2A target mind:', err);
-      });
       dispatch({ type: 'A2A_INCOMING', payload });
     });
     return () => { unsub(); };

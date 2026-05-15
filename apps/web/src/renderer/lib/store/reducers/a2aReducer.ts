@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@chamber/shared/types';
 import type { Task, TaskState } from '@chamber/shared/a2a-types';
 import type { AppState, AppAction } from '../state';
-import { nonEmptyString, selectedModelForActiveMind } from './helpers';
+import { nonEmptyString } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -34,9 +34,6 @@ function a2aIncoming(state: AppState, action: Extract<AppAction, { type: 'A2A_IN
     isStreaming: true,
   };
   return {
-    activeMindId: targetMindId,
-    activeView: 'chat',
-    selectedModel: selectedModelForActiveMind(state, targetMindId),
     messagesByMind: {
       ...state.messagesByMind,
       [targetMindId]: [...targetMsgs, senderMessage, replyPlaceholder],
