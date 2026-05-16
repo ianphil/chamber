@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
     inputs:
       force_release:
@@ -16,6 +13,11 @@ on:
         required: false
         default: 'false'
         type: boolean
+      source_ref:
+        description: 'Optional commit, tag, or branch to promote (e.g. an insider tag like v0.62.4-insiders.7). Empty means use the triggering ref.'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: release
@@ -27,28 +29,55 @@ jobs:
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       version: ${{ steps.check.outputs.version }}
+      source_ref: ${{ steps.check.outputs.source_ref }}
+      promoted_from: ${{ steps.check.outputs.promoted_from }}
     steps:
+      - name: Resolve source ref
+        id: source
+        run: |
+          source_ref="${{ inputs.source_ref }}"
+          if [ -z "$source_ref" ]; then
+            source_ref="${{ github.sha }}"
+          fi
+          echo "source_ref=$source_ref" >> $GITHUB_OUTPUT
+          echo "Using source ref: $source_ref"
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ steps.source.outputs.source_ref }}
 
       - name: Check for major/minor version change
         id: check
         run: |
-          CURRENT_VERSION=$(jq -r '.version' package.json)
-          echo "Current version: $CURRENT_VERSION"
+          SOURCE_VERSION=$(jq -r '.version' package.json)
+          echo "Source version: $SOURCE_VERSION"
+
+          # If the source ref points at an insider prerelease, strip -insiders.N to
+          # determine the stable version that will actually be released.
+          STABLE_VERSION="${SOURCE_VERSION%-insiders.*}"
+          PROMOTED_FROM=""
+          if [ "$STABLE_VERSION" != "$SOURCE_VERSION" ]; then
+            PROMOTED_FROM="${{ steps.source.outputs.source_ref }}"
+            echo "Detected insiders source. Promoting $SOURCE_VERSION -> $STABLE_VERSION."
+          fi
+          CURRENT_VERSION="$STABLE_VERSION"
+          echo "Stable version: $CURRENT_VERSION"
 
           CURRENT_MAJOR_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1,2)
           echo "Current major.minor: $CURRENT_MAJOR_MINOR"
 
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "Latest tag: $LATEST_TAG"
+          LATEST_TAG=$(git describe --tags --abbrev=0 --exclude='*-insiders.*' 2>/dev/null || echo "")
+          echo "Latest stable tag: $LATEST_TAG"
+
+          echo "source_ref=${{ steps.source.outputs.source_ref }}" >> $GITHUB_OUTPUT
+          echo "promoted_from=$PROMOTED_FROM" >> $GITHUB_OUTPUT
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
           if [ -z "$LATEST_TAG" ]; then
             echo "No previous tags found - this will be the first release"
             echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           else
             PREVIOUS_VERSION=${LATEST_TAG#v}
             echo "Previous version: $PREVIOUS_VERSION"
@@ -56,18 +85,18 @@ jobs:
             PREVIOUS_MAJOR_MINOR=$(echo "$PREVIOUS_VERSION" | cut -d. -f1,2)
             echo "Previous major.minor: $PREVIOUS_MAJOR_MINOR"
 
-            if [ "$CURRENT_MAJOR_MINOR" != "$PREVIOUS_MAJOR_MINOR" ]; then
+            if [ -n "$PROMOTED_FROM" ]; then
+              echo "Promoting from insiders - triggering release"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+            elif [ "$CURRENT_MAJOR_MINOR" != "$PREVIOUS_MAJOR_MINOR" ]; then
               echo "Major or minor version changed - triggering release"
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             elif [ "${{ github.event.inputs.force_release }}" == "true" ]; then
               echo "Manual trigger with force_release - triggering release"
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             else
               echo "Only patch version changed - skipping release"
               echo "should_release=false" >> $GITHUB_OUTPUT
-              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             fi
           fi
 
@@ -81,6 +110,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -90,6 +121,17 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Apply promoted version
+        shell: bash
+        run: |
+          target="${{ needs.check-version.outputs.version }}"
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "$target" ]; then
+            echo "Promoting $current -> $target for stable build"
+            npm version "$target" --no-git-tag-version --allow-same-version
+            npm install
+          fi
 
       - name: Azure login
         uses: azure/login@v2
@@ -136,6 +178,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -145,6 +189,17 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Apply promoted version
+        shell: bash
+        run: |
+          target="${{ needs.check-version.outputs.version }}"
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "$target" ]; then
+            echo "Promoting $current -> $target for stable build"
+            npm version "$target" --no-git-tag-version --allow-same-version
+            npm install
+          fi
 
       - name: Import macOS signing certificate
         run: |
@@ -213,6 +268,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -222,6 +279,17 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Apply promoted version
+        shell: bash
+        run: |
+          target="${{ needs.check-version.outputs.version }}"
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "$target" ]; then
+            echo "Promoting $current -> $target for stable build"
+            npm version "$target" --no-git-tag-version --allow-same-version
+            npm install
+          fi
 
       - name: Import macOS signing certificate
         run: |
@@ -290,6 +358,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -301,12 +371,29 @@ jobs:
       - name: Display downloaded files
         run: find artifacts -type f
 
+      - name: Compose release notes header
+        id: notes
+        shell: bash
+        run: |
+          promoted_from="${{ needs.check-version.outputs.promoted_from }}"
+          if [ -n "$promoted_from" ]; then
+            {
+              echo "body<<EOF"
+              echo "Promoted from insiders build \`$promoted_from\`."
+              echo ""
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "body=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: Release v${{ needs.check-version.outputs.version }}
           generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

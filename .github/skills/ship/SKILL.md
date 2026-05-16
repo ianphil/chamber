@@ -71,6 +71,12 @@ If the rebase has conflicts, stop and surface them. Do not attempt automatic res
 
 ### 2. ASK/AUTOPILOT - Version bump recommendation
 
+> Master pushes do **not** trigger a release. Stable and insiders are
+> both manual `workflow_dispatch`. Bumping the version here keeps
+> master's "development version" coherent and pairs the change with a
+> changelog entry — it does **not** publish anything. See
+> [`ai-docs/release-channels.md`](../../../ai-docs/release-channels.md).
+
 Inspect the diff against the intended base:
 
 ```powershell
@@ -218,6 +224,7 @@ Print the resulting PR URL.
 ## Notes
 
 - Chamber's CI lives in `.github/workflows/ci.yml` and `governance-check.yml`. Local smoke tests are not a substitute, but they catch most regressions before push.
+- **Releases are not triggered by merging.** Stable releases dispatch `.github/workflows/release.yml` (with optional `source_ref` for promoting an insider tag); insider builds dispatch `.github/workflows/release-insiders.yml`. Full details in [`ai-docs/release-channels.md`](../../../ai-docs/release-channels.md). The ship skill never dispatches a release.
 - The Co-authored-by Copilot trailer is mandatory.
 - Never modify `.working-memory/` files in a PR. They are agent-managed.
 - This skill opens PRs; it does not merge them unless the user explicitly asks for a merge.

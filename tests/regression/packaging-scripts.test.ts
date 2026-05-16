@@ -56,10 +56,54 @@ describe('packaging scripts', () => {
     expect(builderConfig).toContain('resolveMacIdentity');
     expect(builderConfig).toContain('Developer ID Application:');
     expect(builderConfig).toContain("target: ['dmg', 'zip']");
+    expect(builderConfig).toContain('resolvePublishTargets');
+    expect(builderConfig).toContain('CHAMBER_RELEASE_CHANNEL');
+    expect(builderConfig).toContain('CHAMBER_BUILDER_UPDATE_URL');
     expect(builderConfig).not.toContain('azureSignOptions');
+
+    const bumpInsiders = readFileSync('scripts/bump-insiders-version.js', 'utf-8');
+    expect(bumpInsiders).toContain("INSIDERS_TAG = 'insiders'");
+    expect(bumpInsiders).toContain("'npm', ['version', nextVersion, '--no-git-tag-version']");
+    expect(bumpInsiders).toContain("'npm', ['install']");
+    expect(bumpInsiders).toContain('readLatestInsidersTag');
+    expect(bumpInsiders).not.toContain('--package-lock-only');
+
+    const validateBuilderChannel = readFileSync('scripts/validate-builder-release.js', 'utf-8');
+    expect(validateBuilderChannel).toContain("args.get('channel') ?? 'latest'");
+    expect(validateBuilderChannel).toContain('`${channel}.yml`');
+
+    const insidersWorkflow = readFileSync('.github/workflows/release-insiders.yml', 'utf-8');
+    expect(insidersWorkflow).toContain('name: Release Insiders');
+    expect(insidersWorkflow).toContain('workflow_dispatch:');
+    expect(insidersWorkflow).toContain('CHAMBER_RELEASE_CHANNEL: insiders');
+    expect(insidersWorkflow).toContain('CHAMBER_BUILDER_UPDATE_URL');
+    expect(insidersWorkflow).toContain('https://chamberinsiders.blob.core.windows.net/releases/');
+    expect(insidersWorkflow).toContain('bump-insiders-version.js');
+    expect(insidersWorkflow).toContain('client-id: ${{ vars.AZURE_CLIENT_ID }}');
+    expect(insidersWorkflow).toContain('az storage blob upload-batch');
+    expect(insidersWorkflow).toContain('--auth-mode login');
+    expect(insidersWorkflow).toContain('Chamber-Setup-latest-insiders.exe');
+    expect(insidersWorkflow).toContain('--channel=insiders');
+    expect(insidersWorkflow).toContain('insiders.yml');
+    expect(insidersWorkflow).toContain('git push origin "${{ steps.bump.outputs.tag }}"');
+    expect(insidersWorkflow).not.toContain('git push origin HEAD');
+    expect(insidersWorkflow).not.toContain('softprops/action-gh-release');
+
+    const stableWorkflow = readFileSync('.github/workflows/release.yml', 'utf-8');
+    expect(stableWorkflow).toContain('source_ref:');
+    expect(stableWorkflow).not.toMatch(/on:\s*\n\s*push:/);
+    expect(stableWorkflow).toContain('STABLE_VERSION="${SOURCE_VERSION%-insiders.*}"');
+    expect(stableWorkflow).toContain('ref: ${{ needs.check-version.outputs.source_ref }}');
+    expect(stableWorkflow).toContain('Apply promoted version');
+    expect(stableWorkflow).toContain('--allow-same-version');
+    expect(stableWorkflow).toContain('promoted_from');
+    expect(stableWorkflow).toContain("--exclude='*-insiders.*'");
     expect(windowsPublisher).toContain('CN=Ian Philpot');
     expect(prepareBuilder).toContain('publisherName:');
     expect(prepareBuilder).toContain('CHAMBER_WINDOWS_SIGNING');
+    expect(prepareBuilder).toContain('CHAMBER_RELEASE_CHANNEL');
+    expect(prepareBuilder).toContain('CHAMBER_BUILDER_UPDATE_URL');
+    expect(prepareBuilder).toContain('provider: generic');
     expect(prepareBuilder).toContain("path.join(outputDir, 'Chamber.app')");
     expect(prepareNodeRuntime).toContain('dereference: true');
     expect(prepareNodeRuntime).toContain('materializeRuntimeCommandSymlinks');

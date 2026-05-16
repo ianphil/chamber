@@ -38,6 +38,29 @@ function resolveMacIdentity() {
   return identity?.replace(/^Developer ID Application:\s*/, '') || undefined;
 }
 
+function resolvePublishTargets() {
+  const channel = process.env.CHAMBER_RELEASE_CHANNEL?.trim() || undefined;
+  const genericUrl = process.env.CHAMBER_BUILDER_UPDATE_URL?.trim();
+
+  if (genericUrl) {
+    const entry = {
+      provider: 'generic',
+      url: genericUrl,
+    };
+    if (channel) entry.channel = channel;
+    return [entry];
+  }
+
+  const githubEntry = {
+    provider: 'github',
+    owner: 'ianphil',
+    repo: 'chamber',
+    releaseType: 'release',
+  };
+  if (channel) githubEntry.channel = channel;
+  return [githubEntry];
+}
+
 const config = {
   appId: 'dev.chmbr.chamber',
   productName: 'Chamber',
@@ -99,14 +122,7 @@ const config = {
   dmg: {
     sign: macSigningEnabled,
   },
-  publish: [
-    {
-      provider: 'github',
-      owner: 'ianphil',
-      repo: 'chamber',
-      releaseType: 'release',
-    },
-  ],
+  publish: resolvePublishTargets(),
 };
 
 module.exports = config;
