@@ -13,6 +13,9 @@ on:
           - patch
           - minor
           - major
+  push:
+    branches:
+      - feat/insiders-release-channel
 
 concurrency:
   group: release-insiders
