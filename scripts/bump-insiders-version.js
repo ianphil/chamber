@@ -20,6 +20,30 @@ function parseArgs(argv) {
   return args;
 }
 
+function readLatestInsidersTag() {
+  const result = spawnSync('git', ['tag', '--list', `v*-${INSIDERS_TAG}.*`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) return null;
+  const tags = result.stdout
+    .split('\n')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => t.replace(/^v/, ''))
+    .filter((v) => semver.valid(v));
+  if (tags.length === 0) return null;
+  return tags.sort(semver.rcompare)[0];
+}
+
+function resolveBaseVersion() {
+  const pkgVersion = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')).version;
+  const tagVersion = readLatestInsidersTag();
+  if (!tagVersion) return pkgVersion;
+  // Use whichever is "newer" in semver terms so a manual stable bump can leapfrog older insider tags.
+  return semver.gt(tagVersion, pkgVersion) ? tagVersion : pkgVersion;
+}
+
 function computeNextVersion(current, bumpType) {
   const parsed = semver.parse(current);
   if (!parsed) throw new Error(`Invalid current version: ${current}`);
@@ -54,11 +78,11 @@ if (bumpType && !['major', 'minor', 'patch'].includes(bumpType)) {
   throw new Error(`--bump must be one of major|minor|patch, got: ${bumpType}`);
 }
 
-const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-const currentVersion = pkg.version;
-const nextVersion = computeNextVersion(currentVersion, bumpType);
+const baseVersion = resolveBaseVersion();
+const nextVersion = computeNextVersion(baseVersion, bumpType);
 
-console.log(`Bumping ${currentVersion} -> ${nextVersion}`);
+console.log(`Resolved base version: ${baseVersion}`);
+console.log(`Bumping ${baseVersion} -> ${nextVersion}`);
 
 runOrThrow('npm', ['version', nextVersion, '--no-git-tag-version']);
 
@@ -70,3 +94,4 @@ runOrThrow('npm', ['install']);
 if (cliArgs.get('print-version') === 'true') {
   console.log(nextVersion);
 }
+

@@ -1,0 +1,128 @@
+name: Release Insiders
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Base version bump applied before -insiders.N counter (leave empty to keep current base and just increment the counter)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: release-insiders
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  INSIDERS_FEED_URL: https://chamberinsiders.blob.core.windows.net/releases/
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Bump insiders version
+        id: bump
+        shell: bash
+        run: |
+          bump_arg=""
+          if [ -n "${{ inputs.bump }}" ]; then
+            bump_arg="--bump=${{ inputs.bump }}"
+          fi
+          node scripts/bump-insiders-version.js $bump_arg
+          new_version=$(jq -r '.version' package.json)
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $new_version"
+
+      - name: Azure login (Trusted Signing)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build signed NSIS package (insiders channel)
+        run: npm run make:builder
+        env:
+          CHAMBER_WINDOWS_SIGNING: 'true'
+          CHAMBER_RELEASE_CHANNEL: insiders
+          CHAMBER_BUILDER_UPDATE_URL: ${{ env.INSIDERS_FEED_URL }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: chamber-signing
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: chamber-public
+
+      - name: Validate updater artifacts
+        run: node scripts/validate-builder-release.js --artifacts-dir=out/builder --version=${{ steps.bump.outputs.version }} --channel=insiders
+        env:
+          CHAMBER_REQUIRE_WINDOWS_SIGNATURE: 'true'
+
+      - name: Stage artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.bump.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path staged
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe.blockmap" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/insiders.yml" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination "staged/Chamber-Setup-latest-insiders.exe"
+
+      - name: Azure login (Insiders blob)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload artifacts to Azure Blob
+        shell: pwsh
+        run: |
+          az storage blob upload-batch `
+            --account-name "${{ vars.INSIDERS_STORAGE_ACCOUNT }}" `
+            --destination "${{ vars.INSIDERS_STORAGE_CONTAINER }}" `
+            --source staged `
+            --auth-mode login `
+            --overwrite `
+            --output none
+          Write-Host "Uploaded:"
+          Get-ChildItem staged | ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Tag insiders release
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "Release ${{ steps.bump.outputs.tag }}
+
+          Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          git tag -a "${{ steps.bump.outputs.tag }}" -m "Insiders release ${{ steps.bump.outputs.tag }}"
+          # Push the tag only. The version-bump commit is reachable via the tag
+          # but is NOT merged back to master, so master stays free of release ceremony commits.
+          git push origin "${{ steps.bump.outputs.tag }}"
