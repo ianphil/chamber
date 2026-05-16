@@ -277,6 +277,18 @@ auto-skip guard — keep it `true` for manual dispatches.
 
 ## Decision log
 
+- **Why enforce Model B with CI gates?** The release skill is the
+  intended path, but skill drift, hand-edits, or alternate tooling
+  could silently violate Model B/Pattern E. The `model-b-gates` job in
+  `.github/workflows/governance-check.yml` makes the invariants
+  mechanical: (1) `package.json` version bumps and `## vX.Y.Z` CHANGELOG
+  promotions are only allowed on `release/bump-vX.Y.Z` branches; (2)
+  release branches must declare `Build-SHA: <sha>` and
+  `Source-Ref: <tag>` in the PR body, the source ref must resolve to
+  the build SHA, and the branch's merge-base with master must equal
+  the build SHA (proving Pattern E anchoring). Lockfile version
+  coherence (`package.json` vs. `package-lock.json` top + root) is
+  checked on every PR.
 - **Why anchor the post-release bump PR to the build SHA?** Stable
   builds take 30–60 minutes (macOS notarization). Ship PRs can merge
   during that window and add bullets to `## Unreleased`. If the bump PR

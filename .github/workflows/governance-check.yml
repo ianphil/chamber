@@ -82,8 +82,158 @@ jobs:
           echo "=== Running npm audit ==="
           npm audit --omit=dev 2>&1 || echo "::warning::npm audit found vulnerabilities"
 
+  model-b-gates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch master and tags
+        run: |
+          git fetch origin +refs/heads/master:refs/remotes/origin/master --tags --force
+
+      - name: Lockfile version coherence (always)
+        run: |
+          echo "=== Checking package.json / package-lock.json version coherence ==="
+          pkg=$(jq -r .version package.json)
+          lock_top=$(jq -r .version package-lock.json)
+          lock_root=$(jq -r '.packages[""].version' package-lock.json)
+          echo "package.json: $pkg"
+          echo "package-lock.json (top): $lock_top"
+          echo "package-lock.json (root pkg): $lock_root"
+          if [ "$pkg" != "$lock_top" ] || [ "$pkg" != "$lock_root" ]; then
+            echo "::error::Version mismatch between package.json ($pkg), package-lock.json top ($lock_top), and root pkg ($lock_root). Run 'npm install' to reconcile."
+            exit 1
+          fi
+
+      - name: Check A — version bumps & changelog promotions confined to release branches
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          echo "=== Check A: Model B version-bump confinement ==="
+          echo "PR branch: $BRANCH"
+
+          base_version=$(git show origin/master:package.json | jq -r .version)
+          head_version=$(jq -r .version package.json)
+          echo "base version: $base_version"
+          echo "head version: $head_version"
+
+          version_changed=0
+          if [ "$base_version" != "$head_version" ]; then
+            version_changed=1
+          fi
+
+          # Detect newly added '## vX.Y.Z' headings in CHANGELOG.md (promoted from Unreleased).
+          added_release_headings=$(git diff "origin/master...HEAD" -- CHANGELOG.md \
+            | grep -E '^\+## v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)? \([0-9]{4}-[0-9]{2}-[0-9]{2}\)' \
+            | sed 's/^+//' || true)
+
+          is_release_branch=0
+          if [[ "$BRANCH" =~ ^release/bump-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            is_release_branch=1
+          fi
+
+          if [ "$version_changed" -eq 1 ] && [ "$is_release_branch" -eq 0 ]; then
+            echo "::error::package.json version bumped from $base_version to $head_version on non-release branch '$BRANCH'. Model B forbids ship-time version bumps. Bumps belong on a 'release/bump-vX.Y.Z' branch opened by the release skill after a build succeeds."
+            exit 1
+          fi
+
+          if [ -n "$added_release_headings" ] && [ "$is_release_branch" -eq 0 ]; then
+            echo "::error::CHANGELOG.md added a release heading on non-release branch '$BRANCH':"
+            echo "$added_release_headings"
+            echo "::error::Promote '## Unreleased' to '## vX.Y.Z' only via a 'release/bump-vX.Y.Z' branch."
+            exit 1
+          fi
+
+          if [ "$is_release_branch" -eq 1 ]; then
+            expected_version="${BRANCH#release/bump-v}"
+            echo "release branch — expected version: $expected_version"
+
+            if [ "$version_changed" -eq 0 ]; then
+              echo "::error::Release branch '$BRANCH' must bump package.json (still at $head_version)."
+              exit 1
+            fi
+            if [ "$expected_version" != "$head_version" ]; then
+              echo "::error::Branch name claims v$expected_version but package.json has v$head_version."
+              exit 1
+            fi
+            # Rollback guard: head_version must be strictly greater than base_version (SemVer-aware via sort -V).
+            highest=$(printf '%s\n%s\n' "$base_version" "$head_version" | sort -V | tail -1)
+            if [ "$highest" != "$head_version" ] || [ "$head_version" = "$base_version" ]; then
+              echo "::error::Release version $head_version is not greater than base $base_version. Rollbacks must use an explicit override path."
+              exit 1
+            fi
+            if ! grep -qE "^## v${head_version} \([0-9]{4}-[0-9]{2}-[0-9]{2}\)" CHANGELOG.md; then
+              echo "::error::CHANGELOG.md missing '## v${head_version} (YYYY-MM-DD)' heading."
+              exit 1
+            fi
+            echo "Check A passed: release branch with matching version, changelog, and forward bump."
+          else
+            echo "Check A passed: non-release branch, no version bump, no release heading."
+          fi
+
+      - name: Check B — Pattern E build-SHA anchoring (release branches only)
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BRANCH" =~ ^release/bump-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Check B skipped: not a release branch."
+            exit 0
+          fi
+          echo "=== Check B: Pattern E build-SHA anchoring ==="
+
+          build_sha=$(printf '%s\n' "$PR_BODY" | grep -oE 'Build-SHA: [0-9a-f]{40}' | head -1 | awk '{print $2}' || true)
+          source_ref=$(printf '%s\n' "$PR_BODY" | grep -oE 'Source-Ref: [A-Za-z0-9._/+-]+' | head -1 | awk '{print $2}' || true)
+
+          if [ -z "$build_sha" ]; then
+            echo "::error::Pattern E requires a 'Build-SHA: <40-char-sha>' line in the PR body. The release skill emits this."
+            exit 1
+          fi
+          if [ -z "$source_ref" ]; then
+            echo "::error::Pattern E requires a 'Source-Ref: <tag-or-ref>' line in the PR body (e.g. 'Source-Ref: v0.63.0-insiders.0' for Flow B, or the dispatch ref for Flow A)."
+            exit 1
+          fi
+
+          echo "Declared Build-SHA: $build_sha"
+          echo "Declared Source-Ref: $source_ref"
+
+          # Cross-check: the source ref must resolve to the build SHA.
+          git fetch origin "$build_sha" 2>/dev/null || true
+          if ! git cat-file -e "${build_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Declared Build-SHA $build_sha is not reachable from this repository."
+            exit 1
+          fi
+          if ! resolved=$(git rev-list -n1 "$source_ref" 2>/dev/null); then
+            echo "::error::Declared Source-Ref '$source_ref' does not resolve to a commit. For insider promotions, ensure the tag exists and was fetched."
+            exit 1
+          fi
+          if [ "$resolved" != "$build_sha" ]; then
+            echo "::error::Source-Ref '$source_ref' resolves to $resolved, which does not match declared Build-SHA $build_sha."
+            exit 1
+          fi
+
+          # The bump branch's merge-base with master must equal the build SHA.
+          mb=$(git merge-base HEAD refs/remotes/origin/master)
+          echo "merge-base(HEAD, origin/master) = $mb"
+          if [ "$mb" != "$build_sha" ]; then
+            echo "::error::Branch was not anchored to the build SHA per Pattern E."
+            echo "::error::Expected merge-base with master to equal $build_sha; got $mb."
+            echo "::error::Do not rebase or merge master into 'release/bump-v*' branches — interim conflicts must be resolved at PR merge time."
+            exit 1
+          fi
+          echo "Check B passed: branch anchored to declared build SHA."
+
   governance-status:
-    needs: [governance]
+    needs: [governance, model-b-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -91,6 +241,10 @@ jobs:
         run: |
           if [ "${{ needs.governance.result }}" != "success" ]; then
             echo "::error::Governance checks failed. Please fix issues above."
+            exit 1
+          fi
+          if [ "${{ needs.model-b-gates.result }}" != "success" ]; then
+            echo "::error::Model B PR gates failed. See model-b-gates job for details."
             exit 1
           fi
           echo "All governance checks passed."

@@ -356,7 +356,10 @@ gh pr create --base master --head release/bump-vX.Y.Z \
   --title "chore(release): bump master to vX.Y.Z post-release" \
   --body "Post-release bump anchored to build SHA \`$BUILD_SHA\` (tag \`vX.Y.Z-insiders.N\`). Master now reflects the freshly shipped stable version. \`## Unreleased\` content at build time has been promoted to \`## vX.Y.Z\` in CHANGELOG.md.
 
-If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## vX.Y.Z\` section AS-IS, and keep any \`## Unreleased\` bullets that landed during the build window under a fresh \`## Unreleased\` block above it.
+Build-SHA: $BUILD_SHA
+Source-Ref: vX.Y.Z-insiders.N
+
+If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## vX.Y.Z\` section AS-IS, and keep any \`## Unreleased\` bullets that landed during the build window under a fresh \`## Unreleased\` block above it. **Do not rebase or merge master into this branch** — that would defeat Pattern E anchoring and the \`model-b-gates\` PR check will fail. Resolve at PR-merge time only.
 
 This PR is mechanical and CI-validated; merge after green checks."
 ```

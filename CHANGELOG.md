@@ -5,6 +5,7 @@
 ### Features
 
 - **Move to Model B release versioning** — Master's `package.json#version` now stays at the last shipped stable version between releases. Ship appends bullets to `## Unreleased` under conventional `### Headings` (Breaking / Features / Fixes / …). The release skill reads those headings at insider-cut time to compute the next stable version, and the `-insiders.N` counter grows across iterations against the same future stable. Eliminates stable-version gaps. See [`ai-docs/release-channels.md`](ai-docs/release-channels.md).
+- **Enforce Model B / Pattern E with PR gates** — New `model-b-gates` job in `.github/workflows/governance-check.yml` enforces (a) `package.json` version bumps and `## vX.Y.Z` CHANGELOG promotions only on `release/bump-v*` branches, with branch-name/package/CHANGELOG version coherence and a strict forward-bump guard; (b) Pattern E build-SHA anchoring on release branches via `Build-SHA:` + `Source-Ref:` lines in the PR body and `merge-base` verification. Lockfile version coherence checked on every PR. The release skill PR body template now emits both headers.
 
 ### Fixes
 
