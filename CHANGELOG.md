@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.62.4 (2026-05-16)
+
+### Release
+
+- **Add insiders release channel** — Introduces a private, Windows-only insiders track published to an Azure Blob feed (`chamberinsiders.blob.core.windows.net/releases`) via the new `release-insiders.yml` workflow. Insider cuts carry `-insiders.N` suffixes, ship signed by Azure Trusted Signing, and update through electron-updater's `insiders.yml` channel without affecting stable users' `latest.yml` feed.
+- **Promote insider tags to stable from SHA** — Extends `release.yml` with an optional `source_ref` input that strips the `-insiders.N` suffix on the runner before building, so an insider release can be promoted to stable from the exact commit it was cut from without code changes between the two cuts.
+- **Remove auto-deploy from master** — Stable releases are now `workflow_dispatch`-only; merging to `master` no longer publishes. Insider releases are also dispatch-only.
+- **Document the two-channel flow** — Adds `ai-docs/release-channels.md` covering audiences, OIDC auth, build wiring, git shape, and the decision log. Adds `ai-docs/apple-notary-queue.md` runbook for checking Apple notarization throughput before stable dispatches.
+- **Add release skill** — Adds `.github/skills/release/` to drive insider vs stable dispatch decisions, with worked examples and guardrails. Updates the ship skill to clarify that merging does not release.
+- **Add MIT LICENSE** — Adds the project license file.
+
 ## v0.62.3 (2026-05-15)
 
 ### Release
