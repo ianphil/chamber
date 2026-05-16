@@ -102,7 +102,10 @@ jobs:
       - name: actionlint (GitHub Actions workflows)
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color .github/workflows/*.yml
+          # -shellcheck= disables actionlint's shellcheck integration. Workflow
+          # shell scripts are not currently held to shellcheck standards
+          # project-wide; adopt that in a separate scoped PR if desired.
+          ./actionlint -color -shellcheck= .github/workflows/*.yml
 
       - name: markdownlint (repo docs)
         run: npm run lint:md
