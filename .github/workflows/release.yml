@@ -51,18 +51,32 @@ jobs:
       - name: Check for major/minor version change
         id: check
         run: |
-          SOURCE_VERSION=$(jq -r '.version' package.json)
-          echo "Source version: $SOURCE_VERSION"
+          source_ref="${{ steps.source.outputs.source_ref }}"
 
-          # If the source ref points at an insider prerelease, strip -insiders.N to
-          # determine the stable version that will actually be released.
-          STABLE_VERSION="${SOURCE_VERSION%-insiders.*}"
-          PROMOTED_FROM=""
-          if [ "$STABLE_VERSION" != "$SOURCE_VERSION" ]; then
-            PROMOTED_FROM="${{ steps.source.outputs.source_ref }}"
-            echo "Detected insiders source. Promoting $SOURCE_VERSION -> $STABLE_VERSION."
+          # Model B: derive the stable target from the insider tag name when
+          # promoting (master's package.json points at the last shipped stable,
+          # so stripping its suffix would yield the wrong value). For direct
+          # dispatches without an insider tag, compute from ## Unreleased.
+          INSIDER_TAG_REGEX='^v?([0-9]+\.[0-9]+\.[0-9]+)-insiders\.[0-9]+$'
+          if [[ "$source_ref" =~ $INSIDER_TAG_REGEX ]]; then
+            CURRENT_VERSION="${BASH_REMATCH[1]}"
+            PROMOTED_FROM="$source_ref"
+            echo "Promoting from insider tag $source_ref -> stable v$CURRENT_VERSION"
+          else
+            CURRENT_VERSION=$(node -e "
+              const ch = require('./scripts/changelog');
+              const pkg = require('./package.json');
+              const semver = require('semver');
+              const { bump } = ch.recommendBumpFromChangelog('./CHANGELOG.md');
+              if (!bump) {
+                console.error('No actionable ## Unreleased section. Either add entries via ship or promote an insider tag.');
+                process.exit(1);
+              }
+              process.stdout.write(semver.inc(pkg.version, bump));
+            ")
+            PROMOTED_FROM=""
+            echo "Computed stable version from ## Unreleased: v$CURRENT_VERSION"
           fi
-          CURRENT_VERSION="$STABLE_VERSION"
           echo "Stable version: $CURRENT_VERSION"
 
           CURRENT_MAJOR_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1,2)
@@ -71,7 +85,7 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 --exclude='*-insiders.*' 2>/dev/null || echo "")
           echo "Latest stable tag: $LATEST_TAG"
 
-          echo "source_ref=${{ steps.source.outputs.source_ref }}" >> $GITHUB_OUTPUT
+          echo "source_ref=$source_ref" >> $GITHUB_OUTPUT
           echo "promoted_from=$PROMOTED_FROM" >> $GITHUB_OUTPUT
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 

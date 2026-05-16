@@ -3,8 +3,8 @@ name: Release Insiders
 on:
   workflow_dispatch:
     inputs:
-      bump:
-        description: 'Base version bump applied before -insiders.N counter (leave empty to keep current base and just increment the counter)'
+      override_bump:
+        description: 'Emergency override: force patch/minor/major instead of reading ## Unreleased from CHANGELOG.md. Leave empty for normal Model B behavior.'
         required: false
         default: ''
         type: choice
@@ -52,14 +52,14 @@ jobs:
         shell: bash
         run: |
           bump_arg=""
-          if [ -n "${{ inputs.bump }}" ]; then
-            bump_arg="--bump=${{ inputs.bump }}"
+          if [ -n "${{ inputs.override_bump }}" ]; then
+            bump_arg="--override-bump=${{ inputs.override_bump }}"
           fi
           node scripts/bump-insiders-version.js $bump_arg
           new_version=$(jq -r '.version' package.json)
           echo "version=$new_version" >> "$GITHUB_OUTPUT"
           echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
-          echo "Bumped to $new_version"
+          echo "Computed insider version: $new_version (target stable: ${target_stable:-from script output})"
 
       - name: Azure login (Trusted Signing)
         uses: azure/login@v2
@@ -118,11 +118,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "Release ${{ steps.bump.outputs.tag }}
-
-          Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          # Model B: do NOT commit the package.json/package-lock.json mutation.
+          # Master holds the last shipped stable version on disk. The runner
+          # mutates package.json only to build with the right embedded version;
+          # the tag points at the original master commit so promotion-from-SHA
+          # and master's own history stay aligned.
           git tag -a "${{ steps.bump.outputs.tag }}" -m "Insiders release ${{ steps.bump.outputs.tag }}"
-          # Push the tag only. The version-bump commit is reachable via the tag
-          # but is NOT merged back to master, so master stays free of release ceremony commits.
           git push origin "${{ steps.bump.outputs.tag }}"
