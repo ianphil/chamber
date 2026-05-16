@@ -56,10 +56,22 @@ describe('packaging scripts', () => {
     expect(builderConfig).toContain('resolveMacIdentity');
     expect(builderConfig).toContain('Developer ID Application:');
     expect(builderConfig).toContain("target: ['dmg', 'zip']");
+    expect(builderConfig).toContain('resolvePublishTargets');
+    expect(builderConfig).toContain('CHAMBER_RELEASE_CHANNEL');
+    expect(builderConfig).toContain('CHAMBER_BUILDER_UPDATE_URL');
     expect(builderConfig).not.toContain('azureSignOptions');
+
+    const bumpInsiders = readFileSync('scripts/bump-insiders-version.js', 'utf-8');
+    expect(bumpInsiders).toContain("INSIDERS_TAG = 'insiders'");
+    expect(bumpInsiders).toContain("'npm', ['version', nextVersion, '--no-git-tag-version']");
+    expect(bumpInsiders).toContain("'npm', ['install']");
+    expect(bumpInsiders).not.toContain('--package-lock-only');
     expect(windowsPublisher).toContain('CN=Ian Philpot');
     expect(prepareBuilder).toContain('publisherName:');
     expect(prepareBuilder).toContain('CHAMBER_WINDOWS_SIGNING');
+    expect(prepareBuilder).toContain('CHAMBER_RELEASE_CHANNEL');
+    expect(prepareBuilder).toContain('CHAMBER_BUILDER_UPDATE_URL');
+    expect(prepareBuilder).toContain('provider: generic');
     expect(prepareBuilder).toContain("path.join(outputDir, 'Chamber.app')");
     expect(prepareNodeRuntime).toContain('dereference: true');
     expect(prepareNodeRuntime).toContain('materializeRuntimeCommandSymlinks');
