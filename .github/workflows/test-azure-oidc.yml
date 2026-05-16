@@ -2,6 +2,9 @@ name: Test Azure OIDC (temp)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/insiders-release-channel]
+    paths: ['.github/workflows/test-azure-oidc.yml']
 
 permissions:
   id-token: write
