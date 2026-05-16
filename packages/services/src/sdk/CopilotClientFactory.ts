@@ -46,8 +46,22 @@ export interface CreateClientOptions {
 
 export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
+  private sdkLoadPromise: Promise<typeof import('@github/copilot-sdk')> | null = null;
 
   constructor(private readonly options: CopilotClientFactoryOptions = {}) {}
+
+  /**
+   * Pre-load the SDK JavaScript module without spawning any CopilotClient
+   * subprocess. Issue #59 — call this once at app launch (e.g. while the
+   * user is still on the landing screen) so the first user-initiated
+   * `createClient` does not pay the module-import cost on the critical path.
+   *
+   * Safe to call repeatedly and concurrently: the first call kicks off the
+   * load; subsequent calls await the same Promise.
+   */
+  async preloadSdk(): Promise<void> {
+    await this.getSdk();
+  }
 
   async createClient(mindPath: string, createOptions: CreateClientOptions = {}): Promise<CopilotClient> {
     const sdk = await this.getSdk();
@@ -135,10 +149,20 @@ export class CopilotClientFactory {
   }
 
   private async getSdk(): Promise<typeof import('@github/copilot-sdk')> {
-    if (!this.sdkModule) {
-      this.sdkModule = await loadSdkModule();
+    if (this.sdkModule) return this.sdkModule;
+    // Reuse an in-flight load so concurrent callers (e.g. preloadSdk + an
+    // eager createClient) only trigger one module import.
+    if (!this.sdkLoadPromise) {
+      this.sdkLoadPromise = loadSdkModule()
+        .then((mod) => {
+          this.sdkModule = mod;
+          return mod;
+        })
+        .finally(() => {
+          this.sdkLoadPromise = null;
+        });
     }
-    return this.sdkModule;
+    return this.sdkLoadPromise;
   }
 }
 

@@ -241,4 +241,36 @@ describe('CopilotClientFactory', () => {
       expect(mockForceStop).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('preloadSdk (#59)', () => {
+    it('loads the SDK module exactly once when called repeatedly (idempotent)', async () => {
+      const { loadSdkModule } = await import('./sdkImport');
+      await factory.preloadSdk();
+      await factory.preloadSdk();
+      await factory.preloadSdk();
+      expect(loadSdkModule).toHaveBeenCalledTimes(1);
+    });
+
+    it('warms the cache so a subsequent createClient does not re-load the SDK module', async () => {
+      const { loadSdkModule } = await import('./sdkImport');
+      await factory.preloadSdk();
+      await factory.createClient('C:\\agents\\q');
+      // Pre-warm + first createClient share the same cached SDK module — no
+      // second import. Without preloadSdk this would still pass because
+      // getSdk caches; the value-add is that the import happens during the
+      // landing-screen wait instead of blocking the user-initiated load.
+      expect(loadSdkModule).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start a CopilotClient subprocess (only loads the JS module)', async () => {
+      await factory.preloadSdk();
+      expect(mockStart).not.toHaveBeenCalled();
+    });
+
+    it('returns the same Promise to concurrent preload calls so the SDK loads once', async () => {
+      const { loadSdkModule } = await import('./sdkImport');
+      await Promise.all([factory.preloadSdk(), factory.preloadSdk(), factory.preloadSdk()]);
+      expect(loadSdkModule).toHaveBeenCalledTimes(1);
+    });
+  });
 });

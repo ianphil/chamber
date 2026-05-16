@@ -173,6 +173,16 @@ const notifier: Notifier = {
 
 const chamberToolsBinDir = getChamberToolsBinDir();
 const clientFactory = new CopilotClientFactory({ toolsBinDir: chamberToolsBinDir });
+
+// Issue #59 — pre-load the Copilot SDK JS module while the renderer is still
+// drawing the landing/loading screen so the first user-initiated `createClient`
+// (genesis create, mind:add, mind restore) does not pay the import cost on
+// the critical path. Fire-and-forget; the promise is internally deduped by
+// `CopilotClientFactory`, so any concurrent `createClient` awaits the same
+// load instead of triggering a second import.
+void clientFactory.preloadSdk().catch((err: unknown) => {
+  log.warn('SDK preload failed (non-fatal — first createClient will retry):', err);
+});
 const configService = new ConfigService();
 const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
 const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>

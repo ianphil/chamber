@@ -24,6 +24,10 @@
 
 - **Gate loopback MVP server resource on `CHAMBER_MVP_SERVER=1` at package time** — `forge.config.ts` now only includes `./apps/server/dist` in `extraResource` when `process.env.CHAMBER_MVP_SERVER === '1'` is set at module-load, mirroring the existing runtime spawn gate in `apps/desktop/src/main.ts`. Default installs no longer ship installer bytes for a code path they never reach; opt-in users who set the same env get the same behavior they had before. Unconditional resources (`./resources/node`, `./resources/copilot-runtime`, `./node_modules/keytar`) are unaffected. New regression tests cover off/on toggles and the unconditional resources. Closes #145.
 
+### Performance
+
+- **Pre-load the Copilot SDK module at app launch** — `CopilotClientFactory.preloadSdk()` kicks off the SDK JavaScript module load once at `app.on('ready', ...)` so the first user-initiated `createClient` call no longer pays the import cost on the critical path. Safe to call repeatedly and concurrently (first call kicks off the load; subsequent calls await the same Promise). No subprocess is spawned — only the JS module is warmed. Closes #59.
+
 ### A2A client extension
 
 - **Default agent name now `copilot-chamber`** — `.github/extensions/a2a-client` registers as `copilot-chamber` instead of `Copilot CLI`, matching a `copilot-<repo>` convention so multiple Copilot CLI sessions across repos don't collide on the relay. Still overridable via `CHAMBER_A2A_AGENT_NAME` or the `agent_name` connect arg.
