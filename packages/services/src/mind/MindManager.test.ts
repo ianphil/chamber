@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MindManager } from './MindManager';
 import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
@@ -483,6 +483,126 @@ describe('MindManager', () => {
       manager.on('mind:loaded', listener);
       await manager.loadMind('/tmp/agents/q');
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({ mindPath: '/tmp/agents/q' }));
+    });
+
+    describe('display-name uniqueness (#44)', () => {
+      // mockImplementation overrides on shared mocks persist across vi.clearAllMocks().
+      // Re-install the basename-derived default each time so tests below us in the
+      // file (and the rest of this describe) see consistent identity loader behavior.
+      const defaultIdentityImpl = (mindPath: string) => ({
+        name: mindPath.split('/').pop() ?? 'unknown',
+        systemMessage: `Identity for ${mindPath}`,
+      });
+      beforeEach(() => {
+        mockIdentityLoader.load.mockImplementation(defaultIdentityImpl);
+      });
+      afterEach(() => {
+        mockIdentityLoader.load.mockImplementation(defaultIdentityImpl);
+      });
+      it('findByName returns the mind whose identity.name matches (case-insensitive)', async () => {
+        await manager.loadMind('/tmp/agents/q');
+        await manager.loadMind('/tmp/agents/fox');
+
+        expect(manager.findByName('q')?.mindPath).toBe('/tmp/agents/q');
+        expect(manager.findByName('Q')?.mindPath).toBe('/tmp/agents/q');
+        expect(manager.findByName('  q  ')?.mindPath).toBe('/tmp/agents/q');
+        expect(manager.findByName('fox')?.mindPath).toBe('/tmp/agents/fox');
+        expect(manager.findByName('nonexistent')).toBeUndefined();
+      });
+
+      it('default loadMind (no options) does NOT enforce name uniqueness — preserves startup-replay behavior', async () => {
+        // IdentityLoader mock returns identity.name = basename. Two distinct paths
+        // with the same basename produce two minds with the same display name.
+        // Pre-existing persisted configs may legitimately contain such pairs;
+        // startup must not refuse to restore them.
+        const a = await manager.loadMind('/tmp/agents/q');
+        const b = await manager.loadMind('/tmp/other/q');
+
+        expect(a.identity.name).toBe('q');
+        expect(b.identity.name).toBe('q');
+        expect(a.mindId).not.toBe(b.mindId);
+      });
+
+      it('loadMind with enforceUnique: true throws when name collides with an already-loaded mind at a different path', async () => {
+        await manager.loadMind('/tmp/agents/q');
+
+        await expect(
+          manager.loadMind('/tmp/other/q', undefined, { enforceUnique: true }),
+        ).rejects.toThrow(/already exists/i);
+        // And the colliding mind must not have been registered or created any SDK state.
+        expect(manager.listMinds()).toHaveLength(1);
+      });
+
+      it('loadMind with enforceUnique: true still deduplicates the same mind path (no collision against itself)', async () => {
+        const first = await manager.loadMind('/tmp/agents/q');
+        const second = await manager.loadMind('/tmp/agents/q', undefined, { enforceUnique: true });
+
+        expect(second.mindId).toBe(first.mindId);
+        expect(mockClientFactory.createClient).toHaveBeenCalledTimes(1);
+      });
+
+      it('loadMind with enforceUnique: true compares names case-insensitively', async () => {
+        await manager.loadMind('/tmp/agents/Alfred');
+
+        await expect(
+          manager.loadMind('/tmp/other/alfred', undefined, { enforceUnique: true }),
+        ).rejects.toThrow(/already exists/i);
+      });
+
+      it('loadMind with enforceUnique: true rolls back identity load without creating an SDK client', async () => {
+        await manager.loadMind('/tmp/agents/q');
+        const clientsBefore = mockClientFactory.createClient.mock.calls.length;
+
+        await expect(
+          manager.loadMind('/tmp/other/q', undefined, { enforceUnique: true }),
+        ).rejects.toThrow(/already exists/i);
+
+        // The collision is detected before clientFactory.createClient runs,
+        // so no extra SDK client is spawned for the rejected load.
+        expect(mockClientFactory.createClient.mock.calls.length).toBe(clientsBefore);
+      });
+
+      it('serializes concurrent enforce-unique loads with colliding names so only one succeeds', async () => {
+        // Two concurrent loads of different paths whose IdentityLoader returns
+        // the same name. Without a reservation, both would pass the
+        // this.minds-only check (this.minds.set happens much later in the
+        // pipeline, after client/session setup) and both would load.
+        mockIdentityLoader.load.mockImplementation(() => ({
+          name: 'alfred',
+          systemMessage: 'identity',
+        }));
+
+        const results = await Promise.allSettled([
+          manager.loadMind('/tmp/agents/butler-a', undefined, { enforceUnique: true }),
+          manager.loadMind('/tmp/agents/butler-b', undefined, { enforceUnique: true }),
+        ]);
+
+        const fulfilled = results.filter((r) => r.status === 'fulfilled');
+        const rejected = results.filter((r) => r.status === 'rejected');
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+          message: expect.stringMatching(/already exists/i),
+        });
+        expect(manager.listMinds()).toHaveLength(1);
+      });
+
+      it('findByName matches across Unicode normalization forms (NFC vs NFD)', async () => {
+        // macOS clipboard often produces NFD ("Cafe\u0301"); Windows produces NFC ("Café").
+        // Without normalization the duplicate check would let two visually-identical
+        // names through. Loaded mind uses NFD; lookup uses NFC.
+        const nfd = 'Cafe\u0301';
+        const nfc = 'Café';
+        expect(nfd).not.toBe(nfc);
+        mockIdentityLoader.load.mockImplementation(() => ({
+          name: nfd,
+          systemMessage: 'identity',
+        }));
+        await manager.loadMind('/tmp/agents/cafe-nfd');
+
+        expect(manager.findByName(nfc)?.mindPath).toBe('/tmp/agents/cafe-nfd');
+        expect(manager.findByName(nfd)?.mindPath).toBe('/tmp/agents/cafe-nfd');
+      });
     });
 
     it('wires approveForSessionCompat and does not short-circuit via setApproveAll (issue #131)', async () => {

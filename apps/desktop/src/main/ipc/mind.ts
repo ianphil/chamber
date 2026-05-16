@@ -24,7 +24,9 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
     }));
 
   ipcMain.handle(IPC.MIND.ADD, async (event, mindPath: string) => {
-    return mindManager.loadMind(mindPath);
+    // Issue #44 — surface duplicate display-name collisions at add-time
+    // instead of leaving two minds with the same UI label.
+    return mindManager.loadMind(mindPath, undefined, { enforceUnique: true });
   });
 
   ipcMain.handle(IPC.MIND.REMOVE, async (_event, mindId: string) => {

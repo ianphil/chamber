@@ -30,6 +30,12 @@ export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
   private pathToId = new Map<string, string>();
   private loading = new Map<string, Promise<MindContext>>();
+  // Lowercased+NFC display names held by in-flight `loadMind({enforceUnique:true})`
+  // calls. Two concurrent uniqueness-enforcing loads with colliding identity
+  // names would otherwise both pass the `this.minds`-only check because neither
+  // is in `this.minds` until much later in `doLoadMind`. The reservation closes
+  // that race so exactly one of the concurrent loads succeeds.
+  private pendingNames = new Set<string>();
   private knownMindRecords = new Map<string, MindRecord>();
   private activeMindId: string | null = null;
   private persistedActiveMindId: string | null = null;
@@ -72,7 +78,11 @@ export class MindManager extends EventEmitter {
     this.providers = [...providers];
   }
 
-  async loadMind(mindPath: string, mindId?: string): Promise<MindContext> {
+  async loadMind(
+    mindPath: string,
+    mindId?: string,
+    options?: { enforceUnique?: boolean },
+  ): Promise<MindContext> {
     const resolvedMindPath = this.resolveMindPath(mindPath);
     const mindPathKey = this.mindPathKey(resolvedMindPath);
 
@@ -88,7 +98,7 @@ export class MindManager extends EventEmitter {
     const inflight = this.loading.get(mindPathKey);
     if (inflight) return inflight;
 
-    const promise = this.doLoadMind(resolvedMindPath, mindId);
+    const promise = this.doLoadMind(resolvedMindPath, mindId, options);
     this.loading.set(mindPathKey, promise);
     try {
       return await promise;
@@ -97,7 +107,11 @@ export class MindManager extends EventEmitter {
     }
   }
 
-  private async doLoadMind(mindPath: string, mindId?: string): Promise<MindContext> {
+  private async doLoadMind(
+    mindPath: string,
+    mindId?: string,
+    options?: { enforceUnique?: boolean },
+  ): Promise<MindContext> {
     const resolvedMindPath = this.resolveMindPath(mindPath);
     const mindPathKey = this.mindPathKey(resolvedMindPath);
 
@@ -109,6 +123,50 @@ export class MindManager extends EventEmitter {
     if (!identity) {
       throw new Error(`Failed to load identity from ${resolvedMindPath}`);
     }
+
+    // Issue #44 — display-name uniqueness check. Done after identity load
+    // and BEFORE clientFactory.createClient so a rejected load does not
+    // spawn an SDK subprocess that has to be torn down. Opt-in via
+    // `options.enforceUnique` so app-startup replay of persisted records
+    // (which may contain legitimate pre-existing duplicates) is unaffected.
+    //
+    // The `pendingNames` reservation closes the race where two concurrent
+    // enforce-unique loads each see an empty `this.minds` for the colliding
+    // name (the actual set+get into `this.minds` happens much later, after
+    // client/session setup). Without the reservation both would succeed.
+    let reservedName: string | undefined;
+    if (options?.enforceUnique) {
+      const collision = this.findByName(identity.name);
+      if (collision && this.mindPathKey(collision.mindPath) !== mindPathKey) {
+        throw new Error(
+          `An agent named "${identity.name}" already exists. Choose a different name.`,
+        );
+      }
+      const needle = MindManager.nameKey(identity.name);
+      if (needle && this.pendingNames.has(needle)) {
+        throw new Error(
+          `An agent named "${identity.name}" already exists. Choose a different name.`,
+        );
+      }
+      if (needle) {
+        this.pendingNames.add(needle);
+        reservedName = needle;
+      }
+    }
+
+    try {
+      return await this.doLoadMindInner(resolvedMindPath, mindPathKey, id, identity);
+    } finally {
+      if (reservedName) this.pendingNames.delete(reservedName);
+    }
+  }
+
+  private async doLoadMindInner(
+    resolvedMindPath: string,
+    mindPathKey: string,
+    id: string,
+    identity: NonNullable<ReturnType<IdentityLoader['load']>>,
+  ): Promise<MindContext> {
 
     try {
       bootstrapMindCapabilities(resolvedMindPath);
@@ -269,6 +327,31 @@ export class MindManager extends EventEmitter {
 
   listMinds(): MindContext[] {
     return Array.from(this.minds.values()).map(m => this.toExternalContext(m));
+  }
+
+  /**
+   * Case-insensitive lookup of a loaded mind by its display name. Used by
+   * IPC adapters to detect duplicate-name collisions during agent creation
+   * (issue #44) before the user commits to a new mind directory. Returns
+   * `undefined` if no loaded mind has a name matching `name`.
+   *
+   * Names are compared after NFC normalization, trim, and lowercase so that
+   * cross-platform paste differences (macOS NFD vs Windows NFC for accented
+   * names like "Café") don't slip a duplicate past the check.
+   */
+  findByName(name: string): MindContext | undefined {
+    const needle = MindManager.nameKey(name);
+    if (!needle) return undefined;
+    for (const internal of this.minds.values()) {
+      if (MindManager.nameKey(internal.identity.name) === needle) {
+        return this.toExternalContext(internal);
+      }
+    }
+    return undefined;
+  }
+
+  private static nameKey(name: string): string {
+    return name.normalize('NFC').trim().toLowerCase();
   }
 
   getMind(mindId: string): Readonly<InternalMindContext> | undefined {
