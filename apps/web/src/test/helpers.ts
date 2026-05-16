@@ -338,6 +338,9 @@ export function mockElectronAPI(): ElectronAPI {
       maximize: vi.fn(),
       close: vi.fn(),
     },
+    app: {
+      onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
+    },
   };
 }
 

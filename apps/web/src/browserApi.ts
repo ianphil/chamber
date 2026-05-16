@@ -350,6 +350,12 @@ export function installBrowserApi(): void {
       maximize: () => unavailable('window maximize'),
       close: () => window.close(),
     },
+    app: {
+      // Web browser host has no app-startup phase to report; the renderer
+      // only sees a loaded page. Return a noop unsubscribe so the subscriber
+      // can install/uninstall freely.
+      onStartupProgress: () => noopUnsubscribe,
+    },
   };
   window.electronAPI = api;
   if (!window.desktop) {
