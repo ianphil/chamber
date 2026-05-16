@@ -24,6 +24,7 @@ import { clearCopilotModelsCache } from '../sdk/modelCacheCompat';
 import { mapSdkModelList } from '../sdk/sdkModelMapper';
 import { TurnQueue } from './TurnQueue';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext, type DateTimeContextProvider } from './currentDateTimeContext';
+import { TurnLifecycleTrace } from './turnLifecycleTrace';
 
 const log = Logger.create('ChatService');
 
@@ -124,7 +125,55 @@ export class ChatService {
         failSdkContract(error);
       }
     };
+
+    // Per-turn lifecycle trace (issue #299). The single-arg `session.on(handler)`
+    // overload receives every SDK event for this turn; the trace records
+    // metadata-only entries (no payload contents) so we can distinguish missing
+    // `session.idle` from a Chamber typed-listener miss after the fact.
+    //
+    // TODO(#299 follow-up): once live evidence from this trace confirms the
+    // SDK terminal semantics, add a defensive completion path. Per rubber-duck
+    // review, that path must require ALL of:
+    //   (a) `assistant.turn_end` from the root agent (`!event.agentId`) —
+    //       sub-agent turn_end fires routinely in multi-agent / delegated
+    //       work and is NOT terminal for the root chat turn; completing on
+    //       any turn_end would prematurely clear the UI while sub-agents or
+    //       their tools are still active.
+    //   (b) `outstandingToolCount === 0` — root turn_end can still arrive
+    //       while tools are pending; completing then would orphan tool
+    //       output and confuse the next user turn.
+    //   (c) A corroborating signal (e.g. `session.task_complete`, or a short
+    //       quiescence window with no further events) — the SDK does not
+    //       document `assistant.turn_end` alone as terminal.
+    const trace = new TurnLifecycleTrace();
+    // Default to 'threw' so that any pathway which escapes via an exception
+    // before the idle / error / abort handlers fire (e.g. `session.send`
+    // rejecting with a non-stale network error, attachment marshalling
+    // throwing, etc.) is logged honestly. Only the success path flips this
+    // to 'completed'. Without this default, the summary would lie about
+    // turns that failed before reaching `await turnDone` — defeating the
+    // forensic purpose of the trace.
+    let terminalReason: 'completed' | 'aborted' | 'sdk_error' | 'sdk_contract' | 'threw' = 'threw';
+    const logTraceSummary = () => {
+      const summary = trace.summary(terminalReason);
+      // Fingerprint of the #299 stuck-streaming bug: the SDK signalled the
+      // root agent's turn ended but never emitted `session.idle`, so the turn
+      // hung until the user pressed Stop. Use `sawRootTurnEnd` (not
+      // `sawTurnEnd`) so sub-agent turn_end events — common in chatroom /
+      // delegated work and NOT terminal for the root turn — do not trip the
+      // info-level log on every aborted multi-agent turn.
+      if (terminalReason === 'aborted' && summary.sawRootTurnEnd && !summary.sawIdle) {
+        log.info('chat.turn.lifecycle', summary);
+      } else {
+        log.debug('chat.turn.lifecycle', summary);
+      }
+    };
     try {
+      const unsubTrace = session.on((event) => {
+        trace.record(event as Parameters<TurnLifecycleTrace['record']>[0]);
+      });
+      unsubs.push(unsubTrace);
+
       // Text streaming
       unsubs.push(session.on('assistant.message_delta', (event) => {
         emitMapped(() => mapSdkAssistantMessageDelta(event));
@@ -186,6 +235,7 @@ export class ChatService {
       const turnDone = new Promise<void>((resolve, reject) => {
         const unsubIdle = session.on('session.idle', () => {
           unsubIdle();
+          terminalReason = 'completed';
           resolve();
         });
         unsubs.push(unsubIdle);
@@ -193,8 +243,14 @@ export class ChatService {
         const unsubError = session.on('session.error', (event) => {
           unsubError();
           try {
+            terminalReason = 'sdk_error';
             reject(new Error(getSdkSessionErrorMessage(event)));
           } catch (error) {
+            // failSdkContract aborts; the abort listener below will then
+            // observe `sdkContractFailed` and reclassify terminalReason to
+            // 'sdk_contract'. Keep that reclassification logic in mind if
+            // you change the abort dispatch model (today AbortSignal fires
+            // synchronously, which preserves last-write-wins ordering).
             failSdkContract(error);
             resolve();
           }
@@ -202,6 +258,9 @@ export class ChatService {
         unsubs.push(unsubError);
 
         abortController.signal.addEventListener('abort', () => {
+          // failSdkContract aborts after setting sdkContractFailed; preserve
+          // that classification rather than overwriting with 'aborted'.
+          terminalReason = sdkContractFailed ? 'sdk_contract' : 'aborted';
           resolve();
         }, { once: true });
       });
@@ -238,6 +297,7 @@ export class ChatService {
       emit({ type: 'done' });
     } finally {
       for (const unsub of unsubs) unsub();
+      logTraceSummary();
     }
   }
 
