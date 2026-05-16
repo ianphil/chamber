@@ -248,6 +248,8 @@ auto-skip guard — keep it `true` for manual dispatches.
 ## Related docs
 - [`../INSIDERS.md`](../INSIDERS.md) — user-facing install instructions
   for testers (intentionally unlinked from the README).
+- [`apple-notary-queue.md`](./apple-notary-queue.md) — runbook for
+  checking Apple's notarization queue, warmup status, and rejection logs.
 - [`local-auto-update-test.md`](./local-auto-update-test.md) — local
   loopback test for the auto-update flow.
 - [`edge-marketplace-install-link-smoke.md`](./edge-marketplace-install-link-smoke.md)
