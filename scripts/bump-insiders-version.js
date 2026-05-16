@@ -66,7 +66,12 @@ function computeNextVersion(current, bumpType) {
 }
 
 function runOrThrow(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: 'inherit', cwd: repoRoot, ...options });
+  const result = spawnSync(command, args, {
+    stdio: 'inherit',
+    cwd: repoRoot,
+    shell: process.platform === 'win32',
+    ...options,
+  });
   if (result.status !== 0) {
     throw new Error(`Command failed: ${command} ${args.join(' ')}`);
   }
