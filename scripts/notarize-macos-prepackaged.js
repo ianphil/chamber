@@ -5,10 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
-const NOTARIZATION_TIMEOUT_MS = Number(process.env.CHAMBER_NOTARIZATION_TIMEOUT_MS ?? 30 * 60 * 1000);
-const NOTARIZATION_POLL_INTERVAL_MS = Number(
-  process.env.CHAMBER_NOTARIZATION_POLL_INTERVAL_MS ?? 30 * 1000
-);
+const NOTARIZATION_TIMEOUT = process.env.CHAMBER_NOTARIZATION_TIMEOUT ?? '30m';
 
 function parseArgs(argv) {
   const args = new Map();
@@ -24,7 +21,10 @@ function env(name) {
 }
 
 function notarizationEnabled() {
-  return Boolean(env('APPLE_TEAM_ID') && env('APPLE_ID') && env('APPLE_APP_SPECIFIC_PASSWORD'));
+  return Boolean(
+    (env('CHAMBER_NOTARY_KEYCHAIN_PROFILE') && env('CHAMBER_NOTARY_KEYCHAIN'))
+      || (env('APPLE_TEAM_ID') && env('APPLE_ID') && env('APPLE_APP_SPECIFIC_PASSWORD'))
+  );
 }
 
 function runCommand(command, args, options = {}) {
@@ -34,76 +34,34 @@ function runCommand(command, args, options = {}) {
   }
 }
 
-function runJsonCommand(command, args) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-
-  if (result.status !== 0) {
-    throw new Error(`Command failed: ${command}`);
+function notarytoolAuthArgs() {
+  const profile = env('CHAMBER_NOTARY_KEYCHAIN_PROFILE');
+  const keychain = env('CHAMBER_NOTARY_KEYCHAIN');
+  if (profile && keychain) {
+    return ['--keychain-profile', profile, '--keychain', keychain];
   }
 
-  try {
-    return JSON.parse(result.stdout);
-  } catch (error) {
-    throw new Error(`Expected JSON output from ${command}: ${error.message}`);
-  }
-}
-
-function sleep(milliseconds) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
-
-function notarytoolArgs(command, extraArgs) {
   return [
-    'notarytool',
-    command,
-    ...extraArgs,
     '--apple-id',
     env('APPLE_ID'),
     '--password',
     env('APPLE_APP_SPECIFIC_PASSWORD'),
     '--team-id',
     env('APPLE_TEAM_ID'),
-    '--output-format',
-    'json',
   ];
 }
 
-function submitForNotarization(zipPath) {
+function notarize(zipPath) {
   console.log(`Submitting ${path.basename(zipPath)} for Apple notarization...`);
-  const result = runJsonCommand('xcrun', notarytoolArgs('submit', [zipPath]));
-  if (!result.id) {
-    throw new Error('Apple notarytool did not return a submission id.');
-  }
-  console.log(`Apple notarization submission id: ${result.id}`);
-  return result.id;
-}
-
-function waitForNotarization(submissionId) {
-  const deadline = Date.now() + NOTARIZATION_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const result = runJsonCommand('xcrun', notarytoolArgs('info', [submissionId]));
-    console.log(`Apple notarization status: ${result.status}`);
-
-    if (result.status === 'Accepted') {
-      return;
-    }
-
-    if (result.status && result.status !== 'In Progress') {
-      throw new Error(`Apple notarization failed with status: ${result.status}`);
-    }
-
-    sleep(NOTARIZATION_POLL_INTERVAL_MS);
-  }
-
-  throw new Error(
-    `Apple notarization did not finish within ${Math.round(NOTARIZATION_TIMEOUT_MS / 60_000)} minutes.`
-  );
+  runCommand('xcrun', [
+    'notarytool',
+    'submit',
+    zipPath,
+    ...notarytoolAuthArgs(),
+    '--wait',
+    '--timeout',
+    NOTARIZATION_TIMEOUT,
+  ]);
 }
 
 const cliArgs = parseArgs(process.argv.slice(2));
@@ -128,8 +86,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-notarize-'));
 try {
   const zipPath = path.join(tempDir, 'Chamber.app.zip');
   runCommand('ditto', ['-c', '-k', '--keepParent', appPath, zipPath]);
-  const submissionId = submitForNotarization(zipPath);
-  waitForNotarization(submissionId);
+  notarize(zipPath);
   runCommand('xcrun', ['stapler', 'staple', appPath]);
   runCommand('xcrun', ['stapler', 'validate', appPath]);
   console.log(`Notarized and stapled ${path.relative(repoRoot, appPath)}`);

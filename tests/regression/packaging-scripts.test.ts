@@ -66,9 +66,10 @@ describe('packaging scripts', () => {
     expect(signMacPrepackaged).toContain('electron-osx-sign');
     expect(signMacPrepackaged).toContain('CHAMBER_MACOS_SIGNING');
     expect(notarizeMacPrepackaged).toContain('notarytool');
-    expect(notarizeMacPrepackaged).toContain('Apple notarization submission id:');
-    expect(notarizeMacPrepackaged).toContain('Apple notarization status:');
-    expect(notarizeMacPrepackaged).toContain('CHAMBER_NOTARIZATION_TIMEOUT_MS');
+    expect(notarizeMacPrepackaged).toContain('CHAMBER_NOTARY_KEYCHAIN_PROFILE');
+    expect(notarizeMacPrepackaged).toContain('CHAMBER_NOTARIZATION_TIMEOUT');
+    expect(notarizeMacPrepackaged).toContain('--keychain-profile');
+    expect(notarizeMacPrepackaged).toContain('--timeout');
     expect(notarizeMacPrepackaged).toContain('stapler');
     expect(notarizeMacPrepackaged).toContain('APPLE_APP_SPECIFIC_PASSWORD');
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');
@@ -81,6 +82,8 @@ describe('packaging scripts', () => {
     expect(releaseWorkflow).toContain('security add-certificates -k "$keychain" "$intermediate" || true');
     expect(releaseWorkflow).toContain('security import "$certificate"');
     expect(releaseWorkflow).toContain('security set-key-partition-list');
+    expect(releaseWorkflow).toContain('notarytool store-credentials chamber-notary');
+    expect(releaseWorkflow).toContain('CHAMBER_NOTARY_KEYCHAIN_PROFILE: chamber-notary');
     expect(releaseWorkflow).toContain('name: release-macos');
     expect(releaseWorkflow).toContain('runs-on: macos-latest');
     expect(releaseWorkflow).toContain('build_macos_x64');
