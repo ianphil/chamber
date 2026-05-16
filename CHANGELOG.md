@@ -11,6 +11,11 @@
 
 - **Anchor post-release bump PR to build SHA** — The release skill now branches the post-release bump PR from the build SHA (insider tag or dispatch commit), not from current `origin/master`. Without this, ship PRs that merge during the 30–60 min build window get silently misattributed to the just-shipped version. Anchoring surfaces interim bullets as a visible 3-way merge conflict at PR-merge time, mechanical to resolve. Documented in the Decision Log with reference to release-please #2754 as the canonical postmortem of what goes wrong without it.
 
+### CI
+
+- **Add actionlint and markdownlint to CI** — New 'lint-yaml-markdown' job in .github/workflows/governance-check.yml runs actionlint over all workflow files and markdownlint (via 'npm run lint:md') over all repo docs. Configs: .github/actionlint.yaml (allows macos-13 runner label for x86_64 macOS builds; ignores intentional empty-string sentinel in release-insiders bump_type input) and .markdownlint.json (default ruleset minus MD013/MD025/MD033/MD040/MD041/MD060 plus siblings_only for MD024 — calibrated to Chamber's house style). The aggregator 'governance-status' now requires the new lint job. As part of this change: pinned all 'azure/login@v2' references to commit SHA a457da9 (security best practice + bypasses VS Code GitHub Actions extension resolver flakiness); fixed boolean inputs in release.yml that were quoted as strings; ran 'markdownlint --fix' across docs (cosmetic blank-line normalization only). Local commands: 'npm run lint:md' and 'npm run lint:md:fix'.
+
+
 ## v0.62.4 (2026-05-16)
 
 ### Release
