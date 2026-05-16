@@ -91,6 +91,7 @@ describe('packaging scripts', () => {
 
     const stableWorkflow = readFileSync('.github/workflows/release.yml', 'utf-8');
     expect(stableWorkflow).toContain('source_ref:');
+    expect(stableWorkflow).not.toMatch(/on:\s*\n\s*push:/);
     expect(stableWorkflow).toContain('STABLE_VERSION="${SOURCE_VERSION%-insiders.*}"');
     expect(stableWorkflow).toContain('ref: ${{ needs.check-version.outputs.source_ref }}');
     expect(stableWorkflow).toContain('Apply promoted version');
