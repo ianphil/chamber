@@ -21,6 +21,69 @@ nothing is published on push to `master`.
 - `package.json` on master does not need to track every release. The
   source of truth for "what version exists" is the git tags.
 
+## Git shape
+
+### After an insider cut
+The CI runner mutates `package.json` to add `-insiders.N`, commits, tags,
+and pushes the **tag only**:
+
+```
+master:   A──B──C──D
+                  │
+                  └─E    ← tag: v0.62.4-insiders.3
+```
+
+Commit `E` is **off-branch**. It exists in the object database, reachable
+only because the tag points at it. No `insiders/*` branch exists or is
+needed.
+
+`git tag -l 'v*-insiders.*'` lists every insider build. `git branch -a |
+grep insider` returns nothing.
+
+### After promoting an insider to stable
+`release.yml` with `source_ref: v0.62.4-insiders.3` checks out `E`,
+strips `-insiders.3` from `package.json` **in the runner workspace only
+— no commit is made**, builds + signs + notarizes, and softprops creates
+the stable tag at the same commit:
+
+```
+master:   A──B──C──D
+                  │
+                  └─E    ← tag: v0.62.4-insiders.3
+                          ← tag: v0.62.4   (added by promotion)
+```
+
+Two tags, same commit. The insider tag is the audit record ("this is
+what testers ran"); the stable tag is what GitHub Releases publishes
+against. The two installers are different binaries (different embedded
+version string, different `app-update.yml` channel + feed URL, fresh
+signatures) but they came from the same source tree.
+
+> **Surprise to expect:** `git checkout v0.62.4` shows
+> `0.62.4-insiders.3` in `package.json`. That's by design. The tag is a
+> pointer at commit `E`; the shipped installer is the truthful artifact
+> for the released version string.
+
+### After releasing master directly (no insider step)
+`release.yml` with `source_ref` empty just creates `vX.Y.Z` at the
+master commit. No off-branch commit, no version mutation, no surprises.
+
+### Tag hygiene
+- **Do not delete insider tags casually.** Deleting the tag makes commit
+  `E` unreachable; Git's GC will eventually prune the commit (~30 days
+  for unreachable objects). After that you cannot promote or reproduce
+  that build.
+- Tags are cheap (a ref + one commit). A few hundred is fine. Prune only
+  if/when the list actually becomes a nuisance, and only prune insider
+  tags whose stable counterpart has already shipped.
+- No release branches exist or need to.
+
+### Version conflicts
+If `vX.Y.Z` already exists when you try to promote, softprops will fail
+with "tag already exists." Correct behavior — you can't double-publish.
+Bump master to the next version via the ship skill, cut a new insider
+off that bump, then promote.
+
 ## Insiders channel
 
 ### What it is
