@@ -171,16 +171,34 @@ function ensureUnreleasedSection(changelogPath) {
   return true;
 }
 
+const CANONICAL_HEADINGS = {
+  breaking: 'Breaking',
+  feature: 'Features',
+  features: 'Features',
+  fix: 'Fixes',
+  fixes: 'Fixes',
+  perf: 'Performance',
+  performance: 'Performance',
+  refactor: 'Refactor',
+  docs: 'Docs',
+  tests: 'Tests',
+  build: 'Build',
+  ci: 'CI',
+  chore: 'Chore',
+  release: 'Release',
+};
+
+function canonicalHeading(kind) {
+  const key = String(kind || '').trim().toLowerCase();
+  return CANONICAL_HEADINGS[key] ?? (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'Chore');
+}
+
 /**
- * Append a bullet under the right `### Heading` of `## Unreleased`,
+ * Append a bullet under the appropriate `### Heading` of `## Unreleased`,
  * creating the section and the heading if either is missing.
  *
  * @param {string} changelogPath
  * @param {{ kind: string, summary: string, detail?: string, issue?: string }} entry
- *   kind: one of the conventional heading words (features, fixes, breaking, ...)
- *   summary: bold one-liner without the surrounding `**`
- *   detail: optional explanatory text
- *   issue: optional issue number (no `#`)
  * @returns {void}
  */
 function appendEntry(changelogPath, { kind, summary, detail, issue }) {
@@ -191,7 +209,7 @@ function appendEntry(changelogPath, { kind, summary, detail, issue }) {
   const lines = text.split(/\r?\n/);
   const section = readUnreleasedSection(changelogPath);
 
-  const headingWord = kind.charAt(0).toUpperCase() + kind.slice(1).toLowerCase();
+  const headingWord = canonicalHeading(kind);
   const headingRegex = new RegExp(`^###\\s+${headingWord}\\s*$`, 'i');
 
   let headingLine = -1;
@@ -208,8 +226,13 @@ function appendEntry(changelogPath, { kind, summary, detail, issue }) {
   if (issue) bullet += ` (#${issue})`;
 
   if (headingLine === -1) {
-    const insertAt = section.endLine;
-    const block = ['', `### ${headingWord}`, '', bullet];
+    // Insert a new ### Heading block at the end of ## Unreleased, ensuring a
+    // blank line separates it from the next ## heading.
+    let insertAt = section.endLine;
+    while (insertAt > section.startLine + 1 && lines[insertAt - 1].trim() === '') {
+      insertAt -= 1;
+    }
+    const block = ['', `### ${headingWord}`, '', bullet, ''];
     const updated = [...lines.slice(0, insertAt), ...block, ...lines.slice(insertAt)];
     fs.writeFileSync(changelogPath, updated.join('\n'));
     return;

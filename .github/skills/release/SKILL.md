@@ -301,18 +301,42 @@ Surface:
   artifact, not committed. The post-release bump PR (next phase) fixes
   this.
 
-#### 3b.6 AGENT - Post-release bump PR
+#### 3b.6 AGENT - Post-release bump PR (anchored to build SHA)
 
 Master's `package.json` and `CHANGELOG.md` must now be advanced. This is
 the **only** automation that mutates `package.json` on master under
-Model B. Run locally:
+Model B.
+
+**Critical:** branch the bump PR from the **build SHA** (the insider tag
+for Flow B, or `origin/master`'s SHA at dispatch time for Flow A) —
+**not** from current `origin/master`. If anyone merged a `## Unreleased`
+bullet during the build window (often 30–60 min for macOS
+notarization), branching from current master would falsely attribute
+those bullets to the just-released version and silently corrupt the
+CHANGELOG. Anchoring to the build SHA captures `## Unreleased` exactly
+as it was at build time; interim bullets land as a visible 3-way merge
+conflict instead of silent corruption.
+
+First, surface whether the conflict is coming. For Flow B
+(`source_ref=vX.Y.Z-insiders.N`):
 
 ```bash
-git checkout master
-git pull --ff-only origin master
-git checkout -b release/bump-vX.Y.Z
+BUILD_SHA=$(git rev-list -n1 vX.Y.Z-insiders.N)
+git fetch origin master --quiet
+git --no-pager log --oneline "$BUILD_SHA..origin/master"
+```
 
-# Bump master to the freshly shipped stable version
+If the log is empty: clean fast-forward expected. If non-empty: a
+CHANGELOG conflict is likely; surface the commit list to the user so
+they know what to expect when reviewing.
+
+Then open the bump PR:
+
+```bash
+git fetch origin --tags --quiet
+git checkout -b release/bump-vX.Y.Z "$BUILD_SHA"
+
+# Bump to the freshly shipped stable version
 npm version <X.Y.Z> --no-git-tag-version --allow-same-version
 
 # Promote ## Unreleased into ## vX.Y.Z (YYYY-MM-DD)
@@ -330,10 +354,35 @@ git push -u origin HEAD
 
 gh pr create --base master --head release/bump-vX.Y.Z \
   --title "chore(release): bump master to vX.Y.Z post-release" \
-  --body "Post-release bump. Master now reflects the freshly shipped stable version. \`## Unreleased\` has been promoted to \`## vX.Y.Z\` in CHANGELOG.md.
+  --body "Post-release bump anchored to build SHA \`$BUILD_SHA\` (tag \`vX.Y.Z-insiders.N\`). Master now reflects the freshly shipped stable version. \`## Unreleased\` content at build time has been promoted to \`## vX.Y.Z\` in CHANGELOG.md.
+
+If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## vX.Y.Z\` section AS-IS, and keep any \`## Unreleased\` bullets that landed during the build window under a fresh \`## Unreleased\` block above it.
 
 This PR is mechanical and CI-validated; merge after green checks."
 ```
+
+**Conflict resolution on merge.** Common ancestor is the build SHA.
+Master may have added bullets to `## Unreleased`; the bump branch
+removed all `## Unreleased` content and inserted a new `## vX.Y.Z`
+section. Git usually auto-merges (non-overlapping edits). When it
+doesn't, resolve by keeping **both** sections:
+
+```
+## Unreleased
+
+### Fixes
+
+- **Bullet that landed during the build window** - ...
+
+## vX.Y.Z (YYYY-MM-DD)
+
+### Features
+
+- **Bullet that was in Unreleased at build SHA** - ...
+```
+
+No bullet is ever lost. The interim bullets stay in `## Unreleased` for
+the next release to pick up.
 
 The user reviews and merges the PR. Do not auto-merge — the user owns
 the master-mutation moment.
@@ -371,10 +420,12 @@ dispatched — benefits from a written trail.
 - **Stable version tag already exists** (Flow A or B) — stop. Direct
   the user to ship more changes (so the next target stable advances)
   and re-cut the insider, then promote.
-- **Post-release bump PR conflicts with concurrent ship** — rebase the
-  bump branch on master; resolve `CHANGELOG.md` by keeping
-  `promoteUnreleasedToVersion`'s output and re-inserting any newer
-  `## Unreleased` bullets at the top.
+- **Post-release bump PR has CHANGELOG conflict at merge** — expected
+  when commits landed on master during the build window. Resolve by
+  keeping both sections: the new `## vX.Y.Z (date)` AS-IS, and any
+  interim `## Unreleased` bullets under a fresh `## Unreleased` block
+  above it. Never `--theirs` or `--ours` blindly — both sides carry
+  real content. See Phase 3b.6 for the resolution template.
 - **Workflow dispatch returns non-zero** — capture and surface the
   error. Don't retry blindly.
 - **macOS warmup uncertain** — default to *not* dispatching stable.

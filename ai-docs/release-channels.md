@@ -73,8 +73,15 @@ signatures) but they came from the same source tree.
 After the workflow succeeds, the `release` skill opens a **post-release
 bump PR** that:
 
-- runs `npm version 0.63.0 --no-git-tag-version --allow-same-version`
-  on master,
+- branches from the **build SHA** (the insider tag in Flow B, the
+  dispatch SHA in Flow A) — **not** from current `origin/master`. This
+  ensures the CHANGELOG content promoted into `## vX.Y.Z` reflects
+  exactly what was in `## Unreleased` at the moment we built. Any
+  bullets added to `## Unreleased` during the build window land as a
+  visible 3-way merge conflict at PR-merge time (mechanical to resolve:
+  keep both sections), rather than silently being misattributed to the
+  released version,
+- runs `npm version 0.63.0 --no-git-tag-version --allow-same-version`,
 - calls `promoteUnreleasedToVersion` on `CHANGELOG.md` to turn the
   `## Unreleased` block into `## v0.63.0 (YYYY-MM-DD)`,
 - opens the PR for review.
@@ -270,6 +277,19 @@ auto-skip guard — keep it `true` for manual dispatches.
 
 ## Decision log
 
+- **Why anchor the post-release bump PR to the build SHA?** Stable
+  builds take 30–60 minutes (macOS notarization). Ship PRs can merge
+  during that window and add bullets to `## Unreleased`. If the bump PR
+  were branched from current `origin/master` at Part B time, those
+  interim bullets would get silently promoted into the just-released
+  `## vX.Y.Z` section — falsely attributing changes that aren't in the
+  shipped binary. Branching the bump PR from the build SHA captures
+  `## Unreleased` exactly as it was at build time. Interim bullets
+  surface as a visible 3-way merge conflict when the bump PR is merged
+  to master — mechanical to resolve (keep both sections), loud instead
+  of silent. This is the "anchor bump branch to build SHA" pattern; the
+  release-please #2754 postmortem (April 2026) is the canonical example
+  of what goes wrong without it.
 - **Why Model B (release-time version bumps)?** Surveyed VS Code,
   Electron, Node.js, Chrome, Firefox, GitHub CLI, `semantic-release`,
   and `release-please`. The dominant pattern is: derive the version

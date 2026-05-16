@@ -6,6 +6,10 @@
 
 - **Move to Model B release versioning** — Master's `package.json#version` now stays at the last shipped stable version between releases. Ship appends bullets to `## Unreleased` under conventional `### Headings` (Breaking / Features / Fixes / …). The release skill reads those headings at insider-cut time to compute the next stable version, and the `-insiders.N` counter grows across iterations against the same future stable. Eliminates stable-version gaps. See [`ai-docs/release-channels.md`](ai-docs/release-channels.md).
 
+### Fixes
+
+- **Anchor post-release bump PR to build SHA** — The release skill now branches the post-release bump PR from the build SHA (insider tag or dispatch commit), not from current `origin/master`. Without this, ship PRs that merge during the 30–60 min build window get silently misattributed to the just-shipped version. Anchoring surfaces interim bullets as a visible 3-way merge conflict at PR-merge time, mechanical to resolve. Documented in the Decision Log with reference to release-please #2754 as the canonical postmortem of what goes wrong without it.
+
 ## v0.62.4 (2026-05-16)
 
 ### Release

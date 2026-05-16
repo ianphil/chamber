@@ -220,4 +220,32 @@ describe('changelog parser', () => {
     expect(text).toContain('### Features');
     expect(text).toContain('- **New feature**');
   });
+
+  it('appendEntry maps singular kind aliases to canonical plural headings', () => {
+    const path = writeChangelog(
+      workDir,
+      ['# Changelog', '', '## Unreleased', '', '## v1.0.0'].join('\n'),
+    );
+    appendEntry(path, { kind: 'fix', summary: 'Singular fix' });
+    appendEntry(path, { kind: 'feature', summary: 'Singular feature' });
+    appendEntry(path, { kind: 'perf', summary: 'Perf bump' });
+    const text = readFileSync(path, 'utf8');
+    expect(text).toContain('### Fixes');
+    expect(text).toContain('### Features');
+    expect(text).toContain('### Performance');
+    expect(text).not.toMatch(/^### Fix\s*$/m);
+    expect(text).not.toMatch(/^### Feature\s*$/m);
+    expect(text).not.toMatch(/^### Perf\s*$/m);
+  });
+
+  it('appendEntry preserves a blank line between new section block and the next ## heading', () => {
+    const path = writeChangelog(
+      workDir,
+      ['# Changelog', '', '## Unreleased', '', '## v1.0.0', '', '### Release', ''].join('\n'),
+    );
+    appendEntry(path, { kind: 'fix', summary: 'Patch' });
+    const text = readFileSync(path, 'utf8');
+    // The new ### Fixes block must not abut the next ## heading.
+    expect(text).toMatch(/- \*\*Patch\*\*\n\n+## v1\.0\.0/);
+  });
 });
