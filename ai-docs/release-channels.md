@@ -10,47 +10,58 @@ nothing is published on push to `master`.
 
 ## Mental model
 
-- `master` carries the development version. Releases come from off-master
-  tag snapshots, not from master itself.
+- `master`'s `package.json#version` always equals the **last shipped
+  stable version**. It is stale between releases. The only automation
+  that mutates it is the post-release bump PR opened by the `release`
+  skill after a stable cut succeeds.
+- The next stable version is **computed at release time** from the
+  conventional `### Headings` accumulated in `## Unreleased` in
+  `CHANGELOG.md`. `### Breaking` → major; `### Features` → minor;
+  everything else → patch. Highest precedence wins.
+- Insiders preview the **next stable**. `v0.63.0-insiders.0` is the
+  first preview of the upcoming `v0.63.0`. The counter (`N`) advances
+  with each preview against that target. If a new ship adds a
+  higher-precedence heading to `## Unreleased`, the target stable
+  advances (e.g. `0.62.5` → `0.63.0`) and the counter resets to `0`.
 - Stable releases create `vX.Y.Z` tags; insiders create
-  `vX.Y.Z-insiders.N` tags. The commit each tag points to is **not pushed
-  to master** — the tag is the only handle.
+  `vX.Y.Z-insiders.N` tags. **Under Model B the insider tag points at
+  master's SHA directly** — no off-branch version-bump commit exists.
 - The same source SHA can be cut as an insider build, hardened, and then
   promoted to stable. Promotion rebuilds — it does not re-publish the
   insider binary.
-- `package.json` on master does not need to track every release. The
-  source of truth for "what version exists" is the git tags.
 
 ## Git shape
 
 ### After an insider cut
-The CI runner mutates `package.json` to add `-insiders.N`, commits, tags,
-and pushes the **tag only**:
+The CI runner computes the next insider version from `## Unreleased`,
+mutates `package.json` in the runner's working tree (used only by the
+build), and tags master's commit. No commit is created; the tag points
+at master:
 
 ```
-master:   A──B──C──D
-                  │
-                  └─E    ← tag: v0.62.4-insiders.3
+master:   A──B──C──D    ← tag: v0.63.0-insiders.3
 ```
 
-Commit `E` is **off-branch**. It exists in the object database, reachable
-only because the tag points at it. No `insiders/*` branch exists or is
-needed.
+`git tag -l 'v*-insiders.*'` lists every insider build. They all point
+at master commits. No `insiders/*` branch exists or is needed.
 
-`git tag -l 'v*-insiders.*'` lists every insider build. `git branch -a |
-grep insider` returns nothing.
+> **Surprise to expect:** `git checkout v0.63.0-insiders.3` shows the
+> stale master `package.json` (e.g. `"version": "0.62.4"`). That's by
+> design. The insider version was computed at dispatch time and only
+> embedded in the **built installer**, never committed. The installer
+> is the truthful artifact for the released version string.
 
 ### After promoting an insider to stable
-`release.yml` with `source_ref: v0.62.4-insiders.3` checks out `E`,
-strips `-insiders.3` from `package.json` **in the runner workspace only
-— no commit is made**, builds + signs + notarizes, and softprops creates
-the stable tag at the same commit:
+`release.yml` with `source_ref: v0.63.0-insiders.3` checks out master
+at that SHA, derives the stable version from the **tag name**
+(`v0.63.0-insiders.3` → `0.63.0`), applies it via `npm version
+--allow-same-version` in the runner workspace **only — no commit is
+made**, builds + signs + notarizes, and creates the stable tag at the
+same commit:
 
 ```
-master:   A──B──C──D
-                  │
-                  └─E    ← tag: v0.62.4-insiders.3
-                          ← tag: v0.62.4   (added by promotion)
+master:   A──B──C──D    ← tag: v0.63.0-insiders.3
+                        ← tag: v0.63.0   (added by promotion)
 ```
 
 Two tags, same commit. The insider tag is the audit record ("this is
@@ -59,30 +70,47 @@ against. The two installers are different binaries (different embedded
 version string, different `app-update.yml` channel + feed URL, fresh
 signatures) but they came from the same source tree.
 
-> **Surprise to expect:** `git checkout v0.62.4` shows
-> `0.62.4-insiders.3` in `package.json`. That's by design. The tag is a
-> pointer at commit `E`; the shipped installer is the truthful artifact
-> for the released version string.
+After the workflow succeeds, the `release` skill opens a **post-release
+bump PR** that:
 
-### After releasing master directly (no insider step)
-`release.yml` with `source_ref` empty just creates `vX.Y.Z` at the
-master commit. No off-branch commit, no version mutation, no surprises.
+- branches from the **build SHA** (the insider tag in Flow B, the
+  dispatch SHA in Flow A) — **not** from current `origin/master`. This
+  ensures the CHANGELOG content promoted into `## vX.Y.Z` reflects
+  exactly what was in `## Unreleased` at the moment we built. Any
+  bullets added to `## Unreleased` during the build window land as a
+  visible 3-way merge conflict at PR-merge time (mechanical to resolve:
+  keep both sections), rather than silently being misattributed to the
+  released version,
+- runs `npm version 0.63.0 --no-git-tag-version --allow-same-version`,
+- calls `promoteUnreleasedToVersion` on `CHANGELOG.md` to turn the
+  `## Unreleased` block into `## v0.63.0 (YYYY-MM-DD)`,
+- opens the PR for review.
+
+Once merged, master satisfies the invariant again: `package.json#version
+= 0.63.0 = last shipped stable`.
+
+### Emergency release from master (no insider step)
+`release.yml` with `source_ref` empty computes the next stable from
+`## Unreleased` the same way the insiders compute does, applies it on
+the runner, and tags master. The post-release bump PR is still required
+afterward.
 
 ### Tag hygiene
-- **Do not delete insider tags casually.** Deleting the tag makes commit
-  `E` unreachable; Git's GC will eventually prune the commit (~30 days
-  for unreachable objects). After that you cannot promote or reproduce
-  that build.
-- Tags are cheap (a ref + one commit). A few hundred is fine. Prune only
-  if/when the list actually becomes a nuisance, and only prune insider
-  tags whose stable counterpart has already shipped.
+- **Do not delete insider tags casually.** Under Model B insider tags
+  point at master commits, so deleting an insider tag does not orphan a
+  commit — but you do lose the audit record of "this is what testers
+  ran" and the reproducibility handle. Keep insider tags until at least
+  the stable they previewed has shipped.
+- Tags are cheap (a ref). A few hundred is fine. Prune only if/when the
+  list actually becomes a nuisance, and only prune insider tags whose
+  stable counterpart has already shipped.
 - No release branches exist or need to.
 
 ### Version conflicts
-If `vX.Y.Z` already exists when you try to promote, softprops will fail
-with "tag already exists." Correct behavior — you can't double-publish.
-Bump master to the next version via the ship skill, cut a new insider
-off that bump, then promote.
+If `vX.Y.Z` already exists when you try to promote, the workflow will
+fail. Correct behavior — you can't double-publish. Add more changelog
+entries via `ship` so the next target stable advances, cut a new
+insider, then promote.
 
 ## Insiders channel
 
@@ -117,16 +145,19 @@ off that bump, then promote.
   secrets.
 
 ### How to cut an insider build
-1. Go to **Actions → Release Insiders → Run workflow** on the default
+1. Make sure `## Unreleased` in `CHANGELOG.md` has the bullets you want
+   the next stable to contain. Each `ship` invocation appends one.
+2. Go to **Actions → Release Insiders → Run workflow** on the default
    branch.
-2. Optional `bump` input — `patch` (default behavior), `minor`, or
-   `major`. Otherwise the patch counter increments.
-3. The workflow will:
-   - Run `scripts/bump-insiders-version.js`, which reads the latest
-     `v*-insiders.*` tag and `package.json` (whichever is newer) and
-     computes the next version.
-   - Run `npm install` to refresh the lockfile (full install, not
-     `--package-lock-only`).
+3. Optional `override_bump` input — `patch`, `minor`, `major`, or `none`
+   (default = derive from `## Unreleased`). Only use for emergencies
+   where the changelog doesn't reflect the intended bump.
+4. The workflow will:
+   - Run `scripts/bump-insiders-version.js`, which reads master's
+     `package.json#version` and the highest-precedence `### Heading`
+     in `## Unreleased`, computes the target stable via SemVer, and
+     advances/resets the `-insiders.N` counter against existing tags.
+   - Run `npm install` to refresh the lockfile in the runner workspace.
    - Sign via the existing Trusted Signing identity.
    - Build with `CHAMBER_RELEASE_CHANNEL=insiders` and
      `CHAMBER_BUILDER_UPDATE_URL` pointing at the blob. The embedded
@@ -136,8 +167,9 @@ off that bump, then promote.
      `node scripts/validate-builder-release.js --channel=insiders`.
    - Upload artifacts to the blob via `az storage blob upload-batch
      --auth-mode login`.
-   - Tag the bump commit `vX.Y.Z-insiders.N` and push the **tag only**.
-     The commit is not pushed to master.
+   - Tag master's commit `vX.Y.Z-insiders.N` and push the **tag only**.
+     No commit is created — the `package.json` mutation lives only in
+     the runner's working tree and the built installer.
 
 ### What testers do
 - First install: download
@@ -162,27 +194,34 @@ this.
 - macOS builds are signed with the Developer ID identity and notarized.
 
 ### How to cut a stable release
-Two flows, same workflow.
+Two flows, same workflow. **Flow B (promote insider) is the default.**
 
-**Flow A — release current `master`:**
-1. Bump the version in `package.json` on master and merge it.
-2. Go to **Actions → Release → Run workflow** on `master`.
-3. Leave `source_ref` empty. The workflow runs against the triggering
-   commit.
-
-**Flow B — promote an insider build:**
+**Flow B — promote an insider build (recommended):**
 1. Go to **Actions → Release → Run workflow** on `master`.
-2. Set `source_ref` to the insider tag, e.g. `v0.62.4-insiders.7` (or a
-   raw commit SHA).
+2. Set `source_ref` to the insider tag, e.g. `v0.63.0-insiders.7`.
 3. The workflow will:
-   - Check out that ref.
-   - Detect the `-insiders.N` suffix on `package.json#version` and strip
-     it for the stable version (`0.62.4-insiders.7` → `0.62.4`).
+   - Check out master at that SHA.
+   - Detect the `vX.Y.Z-insiders.N` tag-name pattern in `source_ref`
+     and derive the stable version from the **tag name** (not from
+     `package.json`, which under Model B holds the last shipped stable).
    - Apply that version via `npm version --no-git-tag-version
      --allow-same-version`, then `npm install`.
    - Build Windows + macOS, sign, notarize macOS.
    - Publish to GitHub Releases tagged `vX.Y.Z`. Release notes include
      `Promoted from insiders build vX.Y.Z-insiders.N`.
+4. After the workflow succeeds, the `release` skill opens a
+   **post-release bump PR** that advances master's `package.json` to
+   `X.Y.Z` and promotes `## Unreleased` into `## vX.Y.Z (date)` in
+   `CHANGELOG.md`.
+
+**Flow A — emergency release from master:**
+1. Make sure `## Unreleased` in `CHANGELOG.md` is non-empty.
+2. Go to **Actions → Release → Run workflow** on `master`.
+3. Leave `source_ref` empty. The workflow computes the next stable
+   version from `## Unreleased` using the same precedence rules as
+   insiders (`### Breaking` → major; `### Features` → minor; else
+   patch), applies it on the runner, builds, and tags master.
+4. The post-release bump PR is still required afterward.
 
 The `force_release` input (defaults to `true`) skips the patch-only
 auto-skip guard — keep it `true` for manual dispatches.
@@ -215,16 +254,56 @@ auto-skip guard — keep it `true` for manual dispatches.
 - `--channel=<name>` (defaults to `latest`) selects which manifest file
   to validate against. The insiders workflow passes `--channel=insiders`.
 
+`scripts/changelog.js`:
+- Single source of truth for parsing/writing `CHANGELOG.md`.
+  `readUnreleasedSection` returns the headings + raw text under
+  `## Unreleased`. `recommendBumpFromChangelog` maps the highest-
+  precedence heading to `patch`/`minor`/`major`/null. `appendEntry`
+  writes a new bullet under the correct `### Heading` (used by ship).
+  `promoteUnreleasedToVersion` turns `## Unreleased` into a real
+  `## vX.Y.Z (date)` section (used by the post-release bump PR).
+
 `scripts/bump-insiders-version.js`:
-- `readLatestInsidersTag()` — reads latest `v*-insiders.*` tag via
-  `git describe`.
-- `resolveBaseVersion()` — uses `semver.gt` to pick the newer of the
-  latest insider tag's base and `package.json#version`. This lets
-  master sit on a stable version while insider counters increment via
-  tags.
+- `readMasterVersion()` reads `package.json` and refuses to run if it
+  contains a prerelease suffix (would mean master's Model B invariant
+  was already violated).
+- Computes target stable via `semver.inc(masterVersion,
+  recommendBumpFromChangelog())`.
+- `listInsiderCountersForBase(target)` queries
+  `git tag --list v<target>-insiders.*` and returns the next counter
+  (max + 1, or 0 if none exist).
+- `stableTagExists(target)` blocks dispatch if the target stable
+  already shipped — forces sequencing through the post-release bump PR.
 
 ## Decision log
 
+- **Why anchor the post-release bump PR to the build SHA?** Stable
+  builds take 30–60 minutes (macOS notarization). Ship PRs can merge
+  during that window and add bullets to `## Unreleased`. If the bump PR
+  were branched from current `origin/master` at Part B time, those
+  interim bullets would get silently promoted into the just-released
+  `## vX.Y.Z` section — falsely attributing changes that aren't in the
+  shipped binary. Branching the bump PR from the build SHA captures
+  `## Unreleased` exactly as it was at build time. Interim bullets
+  surface as a visible 3-way merge conflict when the bump PR is merged
+  to master — mechanical to resolve (keep both sections), loud instead
+  of silent. This is the "anchor bump branch to build SHA" pattern; the
+  release-please #2754 postmortem (April 2026) is the canonical example
+  of what goes wrong without it.
+- **Why Model B (release-time version bumps)?** Surveyed VS Code,
+  Electron, Node.js, Chrome, Firefox, GitHub CLI, `semantic-release`,
+  and `release-please`. The dominant pattern is: derive the version
+  from accumulated commit/changelog signal at release time, not at PR
+  time. Benefits: consecutive stable history without gaps; `-insiders.N`
+  counter has real meaning (iterations against a single target); CHANGELOG
+  authorship happens close to the change while version computation
+  happens close to the cut. Trade-off: master's `package.json` is stale
+  between releases — accepted because the released artifacts (installer,
+  GitHub Release tag) carry the truthful version.
+- **Why conventional headings to drive the bump?** Mechanical and
+  auditable. The release skill never has to infer intent; it reads the
+  headings and applies the precedence table. Typos default to `patch`
+  so a misspelled heading never blocks a release.
 - **Why not GitHub Releases prereleases for insiders?** They're still
   indexed and discoverable. "Unlisted" needed an out-of-band URL — Azure
   blob with anonymous reads but no listing fits.
@@ -237,10 +316,11 @@ auto-skip guard — keep it `true` for manual dispatches.
   The cost of "every PR merge ships to testers" is update fatigue and
   the risk of a bad auto-update with no human in the loop. Manual
   dispatch keeps the human in the loop without slowing things down.
-- **Why tag-only pushes?** Master should not be polluted with release
-  ceremony commits (version bumps, lockfile churn). Tags are sufficient
-  to retrieve the source. Promotion off an insider tag uses the same
-  pattern.
+- **Why tag-only pushes (no synthetic bump commit)?** Under Model B the
+  insider's version is derived data; embedding it in a committed
+  `package.json` mutation would add noise to history with no benefit.
+  The tag points at master's commit; the version lives in the built
+  artifact.
 - **Why federated identity instead of a managed identity?** GH-hosted
   runners are outside Azure and cannot host an MI. OIDC federation is
   the equivalent — no long-lived secret to rotate.

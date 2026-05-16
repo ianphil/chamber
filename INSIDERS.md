@@ -10,7 +10,11 @@ Insiders installers come from a private Azure Blob container, are code-signed wi
 
 - Faster cadence (often multiple builds per week vs. weekly stable).
 - Less manual QA. Bugs are more likely.
-- Prerelease version numbers (`vX.Y.Z-insiders.N`).
+- Prerelease version numbers (`vX.Y.Z-insiders.N`). The base `X.Y.Z`
+  previews the **next stable** — so `v0.63.0-insiders.3` is the third
+  preview of the upcoming `v0.63.0`. When stable ships, the
+  corresponding insider tag and the stable tag point at the same source
+  commit.
 - Not advertised, not listed on GitHub Releases.
 
 If you would like to be removed from the invite list, tell whoever invited you. The download URL itself is unlisted.

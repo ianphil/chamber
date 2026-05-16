@@ -38,35 +38,41 @@ Both are `workflow_dispatch` only — neither fires on push.
 
 The core shape to keep in mind:
 
-- **Insiders cut** = bump counter (`-insiders.N`) → build → upload to
-  blob → push the tag only. Master is never modified.
-- **Stable cut** = either release current master (`source_ref` empty)
-  or promote an insider tag (`source_ref: vX.Y.Z-insiders.N`).
-  Promotion rebuilds from the insider commit; it does not reuse the
-  insider binary. macOS requires notarization warmup to be complete.
+- **Insiders cut** = compute target stable from `## Unreleased` in
+  `CHANGELOG.md` → bump counter (`vX.Y.Z-insiders.N`) → build → upload
+  to blob → push the tag only. Master is never modified.
+- **Stable cut** is almost always **promote an insider tag**
+  (`source_ref: vX.Y.Z-insiders.N`). Direct-from-master dispatch is an
+  emergency fallback that derives the version from `## Unreleased` the
+  same way insiders does.
+- **Post-stable** (this skill's responsibility, run locally): open a PR
+  that bumps `package.json` to the freshly shipped stable version and
+  promotes `## Unreleased` into `## vX.Y.Z (date)` in `CHANGELOG.md`.
+  This keeps master's invariant (version = last shipped stable).
 
 ## Worked examples
 
 **"Cut an insider build for testers"** →
-Confirm channel is `insiders`. Predict next tag from
-`git tag -l 'v*-insiders.*' --sort=-v:refname | head -1` and
-`package.json` version. Dispatch
+Confirm channel is `insiders`. Predict the next tag with
+`node scripts/bump-insiders-version.js --dry-run` — this reads
+`## Unreleased` in `CHANGELOG.md`, classifies the highest-precedence
+heading, and prints the target stable + insider counter. Dispatch
 `gh workflow run release-insiders.yml --ref master`. After success,
 hand back the install URL and the new tag.
 
-**"Promote v0.62.4-insiders.3 to stable"** →
-Confirm channel is `stable`, flow B. Verify `v0.62.4` doesn't already
-exist (`git tag -l v0.62.4`). Verify macOS notary warmup is done.
-Dispatch
-`gh workflow run release.yml --ref master -f source_ref=v0.62.4-insiders.3`.
-After success, surface the GitHub Release URL and call out that both
-tags now point at the same commit.
+**"Promote v0.63.0-insiders.3 to stable"** →
+Confirm channel is `stable`. Verify `v0.63.0` doesn't already exist
+(`git tag -l v0.63.0`). Verify macOS notary warmup is done. Dispatch
+`gh workflow run release.yml --ref master -f source_ref=v0.63.0-insiders.3`.
+After success, open the post-release bump PR (Phase 3b.6) and surface
+the GitHub Release URL.
 
-**"Release master to stable"** →
-Confirm channel is `stable`, flow A. Verify the version on
-`origin/master` is what should ship and no tag conflict.
-Dispatch `gh workflow run release.yml --ref master`. After success,
-surface the GitHub Release URL.
+**"Release straight from master (emergency)"** →
+Confirm channel is `stable`, flow A. The workflow will compute the
+target stable from `## Unreleased`. Confirm the computed version
+doesn't already exist as a tag. Dispatch
+`gh workflow run release.yml --ref master`. After success, open the
+post-release bump PR.
 
 ## Workflow
 
@@ -108,39 +114,41 @@ Reflect the choice back before continuing.
 #### 3a.1 AGENT - Compute the next version
 
 ```bash
-git tag -l 'v*-insiders.*' --sort=-v:refname | head -5
-node -p "require('./package.json').version"
+node scripts/bump-insiders-version.js --dry-run
 ```
 
-Predict the next version:
+The script reads `package.json` (last shipped stable), parses
+`## Unreleased` in `CHANGELOG.md` for the highest-precedence conventional
+heading, derives the target stable via SemVer, queries `git tag -l` for
+existing `v<target>-insiders.*` tags, and prints the next insider version
+plus the bump source heading.
 
-- Latest insider tag base ≥ `package.json` version → increment the
-  insider counter (`v0.62.4-insiders.3` → `v0.62.4-insiders.4`).
-- Otherwise → reset counter on the new base (master is at `0.63.0`,
-  latest insider is `v0.62.4-insiders.7` → next is `v0.63.0-insiders.0`).
+Surface the predicted target stable, counter, and bump source to the
+user so they can confirm intent (e.g. "next insider is
+`v0.63.0-insiders.0`, derived from a `### Features` bullet in
+Unreleased"). If `## Unreleased` is empty the script fails — direct the
+user to ship a change first, or to use the override below for a
+genuinely test-only build.
 
-Surface the prediction so the user confirms. The runner-side script
-(`scripts/bump-insiders-version.js`) is the source of truth for the
-actual computation; this prediction is for human confidence.
+#### 3a.2 ASK - Optional bump override
 
-#### 3a.2 ASK - Optional base bump
-
-By default the workflow increments the insider counter within the
-current base. If the user wants to bake a base-version bump into this
-insider build, ask:
+By default the workflow honors the bump derived from `## Unreleased`.
+Override is only for emergency cases (e.g., re-cut for infrastructure
+reasons without any user-facing changelog entries). Ask only if the user
+mentioned it:
 
 ```
-Bump base version? patch | minor | major | none (default)
+Override bump? patch | minor | major | none (default)
 ```
 
-Pass `-f bump=<value>` to the dispatch if non-default.
+Pass `-f override_bump=<value>` to the dispatch if non-default.
 
 #### 3a.3 AGENT - Dispatch
 
 ```bash
 gh workflow run release-insiders.yml --ref master
-# or with bump:
-gh workflow run release-insiders.yml --ref master -f bump=minor
+# or with override:
+gh workflow run release-insiders.yml --ref master -f override_bump=minor
 ```
 
 Confirm the dispatch landed:
@@ -176,28 +184,17 @@ out-of-band.
 
 ```
 Which stable flow?
-  A – release current master            (source_ref empty)
-  B – promote an existing insider tag   (source_ref = vX.Y.Z-insiders.N)
+  B – promote an existing insider tag   (source_ref = vX.Y.Z-insiders.N)   [default]
+  A – emergency release from master     (source_ref empty; computes from ## Unreleased)
 ```
+
+Default is **B**. Flow A skips insider piloting and should be an
+explicit choice (hotfix where insider piloting isn't possible, or first
+release after the migration).
 
 #### 3b.2 AGENT - Pre-flight for the chosen flow
 
-**Flow A (release master):**
-
-```bash
-git fetch origin master --quiet
-git --no-pager log origin/master --oneline -n 5
-node -p "require('./package.json').version"
-gh api repos/ianphil/chamber/contents/package.json --jq '.content' \
-  | base64 -d | jq -r .version
-git tag -l 'v*' --sort=-v:refname | grep -v -- '-insiders\.' | head -5
-```
-
-Confirm the version on `origin/master`'s `package.json` is what should
-ship and no `v<that-version>` tag already exists. If it does, the user
-must bump master via `ship` first and come back.
-
-**Flow B (promote insider):**
+**Flow B (promote insider) — default:**
 
 ```bash
 git fetch origin --tags --quiet
@@ -208,13 +205,35 @@ Ask which tag to promote, then confirm the derived stable version
 doesn't already exist:
 
 ```bash
-insider='v0.62.4-insiders.3'
+insider='v0.63.0-insiders.3'
 stable=$(echo "$insider" | sed -E 's/-insiders\.[0-9]+$//')
 git tag -l "$stable"
 ```
 
-If the stable tag exists, stop. The user must bump master via `ship`,
-cut a new insider off that bump, then promote that. Explain why.
+If the stable tag exists, stop. The user must ship more changes to bump
+the target, cut a new insider, then promote that. Explain why.
+
+**Flow A (emergency release from master):**
+
+```bash
+git fetch origin master --quiet
+git --no-pager log origin/master --oneline -n 5
+node -e "
+  const ch = require('./scripts/changelog');
+  const pkg = require('./package.json');
+  const semver = require('semver');
+  const { bump, section } = ch.recommendBumpFromChangelog('./CHANGELOG.md');
+  if (!bump) { console.error('Empty ## Unreleased — nothing to release.'); process.exit(1); }
+  console.log('Master version (last shipped stable):', pkg.version);
+  console.log('Bump source headings:', section.headings.join(', '));
+  console.log('Target stable:', semver.inc(pkg.version, bump));
+"
+git tag -l 'v*' --sort=-v:refname | grep -v -- '-insiders\.' | head -5
+```
+
+Confirm `## Unreleased` has actionable entries and no `v<target>` tag
+already exists. If the tag exists, stop and direct the user to cut an
+insider first (so master gets updated via Flow B's post-release PR).
 
 #### 3b.3 ASK - macOS notary warmup
 
@@ -241,18 +260,18 @@ Recent submissions completing in <5 minutes means warmup is done.
 
 #### 3b.4 AGENT - Dispatch
 
-**Flow A:**
+**Flow B (default):**
+
+```bash
+gh workflow run release.yml --ref master -f source_ref=v0.63.0-insiders.3
+```
+
+**Flow A (emergency):**
 
 ```bash
 gh workflow run release.yml --ref master
 # patch-only bumps that need to release anyway:
 gh workflow run release.yml --ref master -f force_release=true
-```
-
-**Flow B:**
-
-```bash
-gh workflow run release.yml --ref master -f source_ref=v0.62.4-insiders.3
 ```
 
 Confirm the run started:
@@ -276,9 +295,97 @@ Surface:
 - The GitHub Releases URL.
 - The two tags (insider + stable) if Flow B — both point at the same
   commit, by design.
-- A reminder that `git checkout v<version>` will show the
-  pre-promotion `package.json` content if Flow B (the version-strip
-  mutation was not committed; the installer is the truthful artifact).
+- A reminder that `git checkout v<version>` will show master's stale
+  `package.json` (one stable behind). Under Model B, the released
+  version was computed at dispatch time and only embedded in the built
+  artifact, not committed. The post-release bump PR (next phase) fixes
+  this.
+
+#### 3b.6 AGENT - Post-release bump PR (anchored to build SHA)
+
+Master's `package.json` and `CHANGELOG.md` must now be advanced. This is
+the **only** automation that mutates `package.json` on master under
+Model B.
+
+**Critical:** branch the bump PR from the **build SHA** (the insider tag
+for Flow B, or `origin/master`'s SHA at dispatch time for Flow A) —
+**not** from current `origin/master`. If anyone merged a `## Unreleased`
+bullet during the build window (often 30–60 min for macOS
+notarization), branching from current master would falsely attribute
+those bullets to the just-released version and silently corrupt the
+CHANGELOG. Anchoring to the build SHA captures `## Unreleased` exactly
+as it was at build time; interim bullets land as a visible 3-way merge
+conflict instead of silent corruption.
+
+First, surface whether the conflict is coming. For Flow B
+(`source_ref=vX.Y.Z-insiders.N`):
+
+```bash
+BUILD_SHA=$(git rev-list -n1 vX.Y.Z-insiders.N)
+git fetch origin master --quiet
+git --no-pager log --oneline "$BUILD_SHA..origin/master"
+```
+
+If the log is empty: clean fast-forward expected. If non-empty: a
+CHANGELOG conflict is likely; surface the commit list to the user so
+they know what to expect when reviewing.
+
+Then open the bump PR:
+
+```bash
+git fetch origin --tags --quiet
+git checkout -b release/bump-vX.Y.Z "$BUILD_SHA"
+
+# Bump to the freshly shipped stable version
+npm version <X.Y.Z> --no-git-tag-version --allow-same-version
+
+# Promote ## Unreleased into ## vX.Y.Z (YYYY-MM-DD)
+node -e "
+  const ch = require('./scripts/changelog');
+  const today = new Date().toISOString().slice(0, 10);
+  ch.promoteUnreleasedToVersion('./CHANGELOG.md', '<X.Y.Z>', today);
+"
+
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "chore(release): bump master to vX.Y.Z post-release
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git push -u origin HEAD
+
+gh pr create --base master --head release/bump-vX.Y.Z \
+  --title "chore(release): bump master to vX.Y.Z post-release" \
+  --body "Post-release bump anchored to build SHA \`$BUILD_SHA\` (tag \`vX.Y.Z-insiders.N\`). Master now reflects the freshly shipped stable version. \`## Unreleased\` content at build time has been promoted to \`## vX.Y.Z\` in CHANGELOG.md.
+
+If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## vX.Y.Z\` section AS-IS, and keep any \`## Unreleased\` bullets that landed during the build window under a fresh \`## Unreleased\` block above it.
+
+This PR is mechanical and CI-validated; merge after green checks."
+```
+
+**Conflict resolution on merge.** Common ancestor is the build SHA.
+Master may have added bullets to `## Unreleased`; the bump branch
+removed all `## Unreleased` content and inserted a new `## vX.Y.Z`
+section. Git usually auto-merges (non-overlapping edits). When it
+doesn't, resolve by keeping **both** sections:
+
+```
+## Unreleased
+
+### Fixes
+
+- **Bullet that landed during the build window** - ...
+
+## vX.Y.Z (YYYY-MM-DD)
+
+### Features
+
+- **Bullet that was in Unreleased at build SHA** - ...
+```
+
+No bullet is ever lost. The interim bullets stay in `## Unreleased` for
+the next release to pick up.
+
+The user reviews and merges the PR. Do not auto-merge — the user owns
+the master-mutation moment.
 
 ### 4. AGENT - Summarize what was decided
 
@@ -307,9 +414,18 @@ dispatched — benefits from a written trail.
   should land via `ship` first.
 - **`gh auth status` fails** — stop, surface the message, ask to
   re-auth.
+- **Empty `## Unreleased`** (insiders compute or Flow A) — stop. Direct
+  the user to ship at least one change so the bump source exists.
 - **Insider tag doesn't exist** (Flow B) — stop, list recent tags.
 - **Stable version tag already exists** (Flow A or B) — stop. Direct
-  the user to bump master via `ship`, cut a new insider, then promote.
+  the user to ship more changes (so the next target stable advances)
+  and re-cut the insider, then promote.
+- **Post-release bump PR has CHANGELOG conflict at merge** — expected
+  when commits landed on master during the build window. Resolve by
+  keeping both sections: the new `## vX.Y.Z (date)` AS-IS, and any
+  interim `## Unreleased` bullets under a fresh `## Unreleased` block
+  above it. Never `--theirs` or `--ours` blindly — both sides carry
+  real content. See Phase 3b.6 for the resolution template.
 - **Workflow dispatch returns non-zero** — capture and surface the
   error. Don't retry blindly.
 - **macOS warmup uncertain** — default to *not* dispatching stable.
@@ -324,9 +440,12 @@ These are easy to do by accident and hard to undo:
 - **Don't delete insider tags casually.** The commit they point at is
   off-branch; deleting the tag makes it unreachable and Git GC will
   prune it (~30 days). Reproducibility and promotion are lost.
-- **Don't push the version-bump commit to master.** That's why the
-  insiders workflow pushes the tag only. Never run `git push origin
-  HEAD` from a release workflow that just bumped the version.
+- **Don't push the version-bump commit to master from the workflow.**
+  The insiders workflow tags master's SHA directly under Model B — no
+  bump commit is generated. The release workflow mutates `package.json`
+  only on the runner. The only legitimate path that mutates master's
+  version field is the post-release bump PR opened by this skill
+  (Phase 3b.6).
 - **Don't reuse the insider binary as the stable artifact.** Promotion
   must rebuild — different channel string, different feed URL,
   different embedded `app-update.yml`, fresh signatures.

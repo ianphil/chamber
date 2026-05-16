@@ -63,10 +63,17 @@ describe('packaging scripts', () => {
 
     const bumpInsiders = readFileSync('scripts/bump-insiders-version.js', 'utf-8');
     expect(bumpInsiders).toContain("INSIDERS_TAG = 'insiders'");
-    expect(bumpInsiders).toContain("'npm', ['version', nextVersion, '--no-git-tag-version']");
+    // Model B: bump computes target stable from CHANGELOG ## Unreleased,
+    // then appends -insiders.<N> using existing tag history.
+    expect(bumpInsiders).toContain("require('./changelog')");
+    expect(bumpInsiders).toContain('recommendBumpFromChangelog');
+    expect(bumpInsiders).toContain('listInsiderCountersForBase');
+    expect(bumpInsiders).toContain('stableTagExists');
+    expect(bumpInsiders).toContain('--allow-same-version');
     expect(bumpInsiders).toContain("'npm', ['install']");
-    expect(bumpInsiders).toContain('readLatestInsidersTag');
     expect(bumpInsiders).not.toContain('--package-lock-only');
+    // Model B invariant: master must hold a clean (non-prerelease) version.
+    expect(bumpInsiders).toContain('Master must hold the last shipped stable version');
 
     const validateBuilderChannel = readFileSync('scripts/validate-builder-release.js', 'utf-8');
     expect(validateBuilderChannel).toContain("args.get('channel') ?? 'latest'");
@@ -79,6 +86,8 @@ describe('packaging scripts', () => {
     expect(insidersWorkflow).toContain('CHAMBER_BUILDER_UPDATE_URL');
     expect(insidersWorkflow).toContain('https://chamberinsiders.blob.core.windows.net/releases/');
     expect(insidersWorkflow).toContain('bump-insiders-version.js');
+    expect(insidersWorkflow).toContain('--override-bump=');
+    expect(insidersWorkflow).toContain('override_bump:');
     expect(insidersWorkflow).toContain('client-id: ${{ vars.AZURE_CLIENT_ID }}');
     expect(insidersWorkflow).toContain('az storage blob upload-batch');
     expect(insidersWorkflow).toContain('--auth-mode login');
@@ -88,11 +97,18 @@ describe('packaging scripts', () => {
     expect(insidersWorkflow).toContain('git push origin "${{ steps.bump.outputs.tag }}"');
     expect(insidersWorkflow).not.toContain('git push origin HEAD');
     expect(insidersWorkflow).not.toContain('softprops/action-gh-release');
+    // Model B: the tag points at master's SHA, not a synthetic
+    // version-bump commit. The Tag step must not commit package.json.
+    expect(insidersWorkflow).not.toMatch(/git\s+add\s+package\.json/);
+    expect(insidersWorkflow).not.toMatch(/git\s+commit\s+-m\s+["']chore\(release\):/);
 
     const stableWorkflow = readFileSync('.github/workflows/release.yml', 'utf-8');
     expect(stableWorkflow).toContain('source_ref:');
     expect(stableWorkflow).not.toMatch(/on:\s*\n\s*push:/);
-    expect(stableWorkflow).toContain('STABLE_VERSION="${SOURCE_VERSION%-insiders.*}"');
+    // Model B: stable version derived from insider tag name (master pkg.json
+    // is stale between releases) or computed from ## Unreleased.
+    expect(stableWorkflow).toContain('INSIDER_TAG_REGEX');
+    expect(stableWorkflow).toContain('recommendBumpFromChangelog');
     expect(stableWorkflow).toContain('ref: ${{ needs.check-version.outputs.source_ref }}');
     expect(stableWorkflow).toContain('Apply promoted version');
     expect(stableWorkflow).toContain('--allow-same-version');
