@@ -1,57 +1,81 @@
 ---
 name: release
-description: End-to-end release workflow for the Chamber repo. Use this when the user asks to release, cut, publish, or ship a build (as distinct from shipping a PR). It picks the channel (insiders or stable), runs the right pre-flight checks, dispatches the matching workflow via `gh`, and surfaces the run for monitoring. Does not modify code or merge anything.
+description: Dispatch a Chamber release build to either the insiders channel (Azure blob, Windows-only, invite-only testers) or the stable channel (public GitHub Releases, Windows + macOS). Use this skill whenever the user asks to release, cut, publish, promote, ship a build, push to insiders, send to testers, go public, or make a new version available — even if they don't explicitly name a channel. This skill picks the channel, runs pre-flight checks, dispatches the matching workflow via `gh`, and reports back. It does not modify source code, does not open PRs, and does not merge anything (use the `ship` skill for those).
 ---
 
 # Release Skill
 
-Dispatch a Chamber release. Two channels exist; pick the right one.
+Dispatch a Chamber release. Two channels, picked deliberately, dispatched
+manually. Authoritative mechanics live in
+[`ai-docs/release-channels.md`](../../../ai-docs/release-channels.md);
+this skill is the operational runbook on top of them.
 
-This skill is **not** the same as `ship`. Ship lands PRs. Release publishes
-builds. Both are deliberate, manual actions.
-
-Authoritative reference: [`ai-docs/release-channels.md`](../../../ai-docs/release-channels.md).
-When in doubt, read it.
+This skill is **not** the same as `ship`. Ship lands PRs. Release
+publishes builds. Neither calls the other.
 
 ## When to invoke
 
-User says any of:
+Trigger on any of these (or close variants):
 
 - "release", "release insiders", "release stable", "cut a release"
-- "ship a build" (not "ship a PR" — that's the `ship` skill)
+- "ship a build" (when distinct from "ship a PR" — ask if unclear)
 - "publish", "publish stable", "publish to GitHub Releases"
 - "promote", "promote insiders", "promote to stable"
-- "make a build available to testers"
+- "make a build available to testers", "send to testers", "push to insiders"
+- "go public with this", "make this the public version"
 
-If ambiguous, ask once: insiders or stable?
+If the user's intent is ambiguous between PR shipping and build shipping,
+ask once. If the channel is ambiguous, ask once.
 
-## Channels at a glance
+## Channels
 
-| Channel  | Audience    | Workflow                                  | Distribution                     | Platforms                  |
-| -------- | ----------- | ----------------------------------------- | -------------------------------- | -------------------------- |
-| Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows only               |
+| Channel  | Audience    | Workflow                                  | Distribution                     | Platforms                           |
+| -------- | ----------- | ----------------------------------------- | -------------------------------- | ----------------------------------- |
+| Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows only                        |
 | Stable   | Public      | `.github/workflows/release.yml`           | GitHub Releases                  | Windows + macOS arm64 (+x64 opt-in) |
 
-Neither auto-fires on master push. Both are `workflow_dispatch` only.
+Both are `workflow_dispatch` only — neither fires on push.
 
-## Mental anchor
+The core shape to keep in mind:
 
-- Insiders cut: bump counter (`-insiders.N`), build, upload to blob,
-  tag-only push. Master is **never** modified.
-- Stable cut: either release current master (`source_ref` empty) or
-  promote an insider tag (`source_ref: v0.62.4-insiders.3`).
-- Promotion **rebuilds** from the insider commit; it does not reuse the
+- **Insiders cut** = bump counter (`-insiders.N`) → build → upload to
+  blob → push the tag only. Master is never modified.
+- **Stable cut** = either release current master (`source_ref` empty)
+  or promote an insider tag (`source_ref: vX.Y.Z-insiders.N`).
+  Promotion rebuilds from the insider commit; it does not reuse the
   insider binary. macOS requires notarization warmup to be complete.
+
+## Worked examples
+
+**"Cut an insider build for testers"** →
+Confirm channel is `insiders`. Predict next tag from
+`git tag -l 'v*-insiders.*' --sort=-v:refname | head -1` and
+`package.json` version. Dispatch
+`gh workflow run release-insiders.yml --ref master`. After success,
+hand back the install URL and the new tag.
+
+**"Promote v0.62.4-insiders.3 to stable"** →
+Confirm channel is `stable`, flow B. Verify `v0.62.4` doesn't already
+exist (`git tag -l v0.62.4`). Verify macOS notary warmup is done.
+Dispatch
+`gh workflow run release.yml --ref master -f source_ref=v0.62.4-insiders.3`.
+After success, surface the GitHub Release URL and call out that both
+tags now point at the same commit.
+
+**"Release master to stable"** →
+Confirm channel is `stable`, flow A. Verify the version on
+`origin/master` is what should ship and no tag conflict.
+Dispatch `gh workflow run release.yml --ref master`. After success,
+surface the GitHub Release URL.
 
 ## Workflow
 
-Phases marked **ASK** must confirm in interactive mode; autopilot only
-applies when the caller has explicitly handed over the channel choice
-and any required inputs.
+Phases marked **ASK** must confirm in interactive mode; skip in
+autopilot mode only when the caller already supplied the answers.
 
 ### 1. AGENT - Pre-flight
 
-```powershell
+```bash
 gh auth status
 git fetch origin --quiet
 git --no-pager status
@@ -61,17 +85,15 @@ git rev-parse --abbrev-ref HEAD
 Required state:
 
 - `gh auth status` succeeds.
-- Working tree clean. Release dispatches operate on `origin/master`,
-  not on your local working copy — but a dirty tree usually means
-  something is half-done. If dirty, ask whether to abort, commit via
-  `ship`, or stash.
+- Working tree clean. Release dispatches run against `origin/master`,
+  so local dirt doesn't directly affect the build — but it usually
+  signals something half-done. If dirty, ask whether to abort, commit
+  via `ship`, or stash.
 - `origin/master` exists. The federated credential for the insiders
-  blob is `refs/heads/master`-scoped; **insider releases must be
-  dispatched against `master`**.
+  blob is `refs/heads/master`-scoped; **insider releases must dispatch
+  against `master`**.
 
 ### 2. ASK - Pick the channel
-
-If the user did not state it, ask:
 
 ```
 Which channel?
@@ -85,39 +107,37 @@ Reflect the choice back before continuing.
 
 #### 3a.1 AGENT - Compute the next version
 
-```powershell
-git tag -l 'v*-insiders.*' --sort=-v:refname | Select-Object -First 5
+```bash
+git tag -l 'v*-insiders.*' --sort=-v:refname | head -5
 node -p "require('./package.json').version"
 ```
 
 Predict the next version:
 
 - Latest insider tag base ≥ `package.json` version → increment the
-  insider counter, e.g. `v0.62.4-insiders.3` → `v0.62.4-insiders.4`.
-- Otherwise → reset counter on the new base, e.g. master is at
-  `0.63.0`, latest insider is `v0.62.4-insiders.7` → next is
-  `v0.63.0-insiders.0`.
+  insider counter (`v0.62.4-insiders.3` → `v0.62.4-insiders.4`).
+- Otherwise → reset counter on the new base (master is at `0.63.0`,
+  latest insider is `v0.62.4-insiders.7` → next is `v0.63.0-insiders.0`).
 
-Surface the prediction so the user confirms it matches their mental
-model. The actual computation lives in
-`scripts/bump-insiders-version.js`; the runner is the source of truth.
+Surface the prediction so the user confirms. The runner-side script
+(`scripts/bump-insiders-version.js`) is the source of truth for the
+actual computation; this prediction is for human confidence.
 
-#### 3a.2 ASK - Optional bump
+#### 3a.2 ASK - Optional base bump
 
-By default `bump-insiders-version.js` increments the insider counter
-within the current base. If the user wants a stable-version bump
-baked into the insider build (e.g. minor bump for a feature flag
-flip), ask:
+By default the workflow increments the insider counter within the
+current base. If the user wants to bake a base-version bump into this
+insider build, ask:
 
 ```
 Bump base version? patch | minor | major | none (default)
 ```
 
-Pass `bump=<value>` to the dispatch if non-default.
+Pass `-f bump=<value>` to the dispatch if non-default.
 
 #### 3a.3 AGENT - Dispatch
 
-```powershell
+```bash
 gh workflow run release-insiders.yml --ref master
 # or with bump:
 gh workflow run release-insiders.yml --ref master -f bump=minor
@@ -125,46 +145,34 @@ gh workflow run release-insiders.yml --ref master -f bump=minor
 
 Confirm the dispatch landed:
 
-```powershell
-Start-Sleep -Seconds 3
+```bash
+sleep 3
 gh run list --workflow=release-insiders.yml --limit 1
 ```
 
 Print the run URL and tell the user how to monitor:
 
-```powershell
+```bash
 gh run watch <run-id>
 ```
 
 #### 3a.4 AGENT - After success
 
-When the run completes:
-
-```powershell
+```bash
 git fetch origin --tags --quiet
-git tag -l 'v*-insiders.*' --sort=-v:refname | Select-Object -First 3
+git tag -l 'v*-insiders.*' --sort=-v:refname | head -3
 ```
 
-Surface the new tag and the install URL:
-
-```
-https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe
-```
-
-Note that the latest auto-update feed is at:
-
-```
-https://chamberinsiders.blob.core.windows.net/releases/insiders.yml
-```
-
-Existing testers update automatically; new testers need the install URL
+Surface the new tag, the install URL
+(`https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe`),
+and the auto-update feed
+(`https://chamberinsiders.blob.core.windows.net/releases/insiders.yml`).
+Existing testers auto-update; new testers need the install URL
 out-of-band.
 
 ### 3b. Stable dispatch
 
 #### 3b.1 ASK - Pick the source
-
-Two flows. Ask explicitly:
 
 ```
 Which stable flow?
@@ -176,43 +184,41 @@ Which stable flow?
 
 **Flow A (release master):**
 
-```powershell
+```bash
 git fetch origin master --quiet
 git --no-pager log origin/master --oneline -n 5
-node -p "require('./package.json').version"   # local
-gh api repos/ianphil/chamber/contents/package.json --jq '.content' | base64 -d | jq -r .version
-git tag -l 'v*' --sort=-v:refname | Where-Object { $_ -notlike '*-insiders.*' } | Select-Object -First 5
+node -p "require('./package.json').version"
+gh api repos/ianphil/chamber/contents/package.json --jq '.content' \
+  | base64 -d | jq -r .version
+git tag -l 'v*' --sort=-v:refname | grep -v -- '-insiders\.' | head -5
 ```
 
-Confirm:
-
-- The version on `origin/master`'s `package.json` is what should ship.
-- No existing tag `v<that-version>` already points elsewhere. If yes,
-  bump master via `ship` first, then come back.
+Confirm the version on `origin/master`'s `package.json` is what should
+ship and no `v<that-version>` tag already exists. If it does, the user
+must bump master via `ship` first and come back.
 
 **Flow B (promote insider):**
 
-```powershell
+```bash
 git fetch origin --tags --quiet
-git tag -l 'v*-insiders.*' --sort=-v:refname | Select-Object -First 10
+git tag -l 'v*-insiders.*' --sort=-v:refname | head -10
 ```
 
-Ask the user which tag to promote. Then confirm the derived stable
-version:
+Ask which tag to promote, then confirm the derived stable version
+doesn't already exist:
 
-```powershell
-$insider = 'v0.62.4-insiders.3'
-$stable  = $insider -replace '-insiders\.\d+$', ''
-git tag -l $stable
+```bash
+insider='v0.62.4-insiders.3'
+stable=$(echo "$insider" | sed -E 's/-insiders\.[0-9]+$//')
+git tag -l "$stable"
 ```
 
-If `$stable` already exists as a tag, stop. The user must bump master
-to the next version (via `ship`), cut a new insider off that bump, then
-promote. Explain that.
+If the stable tag exists, stop. The user must bump master via `ship`,
+cut a new insider off that bump, then promote that. Explain why.
 
 #### 3b.3 ASK - macOS notary warmup
 
-Apple's first-team notarization warmup takes 1-2 days per submission.
+Apple's first-team notarization warmup takes 1–2 days per submission.
 Until warmup is verified complete, stable dispatches may stall on the
 macOS legs. Ask:
 
@@ -222,10 +228,13 @@ macOS notarization warmup complete?
   no  — skip stable for now and cut/keep insiders only
 ```
 
-If unsure, check recent stable releases or `notarytool history` locally:
+If unsure, check recent submissions locally:
 
-```powershell
-xcrun notarytool history --apple-id $env:APPLE_ID --team-id 9LH8H98USP --password $env:APPLE_APP_SPECIFIC_PASSWORD | Select-Object -First 20
+```bash
+xcrun notarytool history \
+  --apple-id "$APPLE_ID" \
+  --team-id 9LH8H98USP \
+  --password "$APPLE_APP_SPECIFIC_PASSWORD" | head -20
 ```
 
 Recent submissions completing in <5 minutes means warmup is done.
@@ -234,22 +243,22 @@ Recent submissions completing in <5 minutes means warmup is done.
 
 **Flow A:**
 
-```powershell
+```bash
 gh workflow run release.yml --ref master
-# or, for patch-only bumps that need to release anyway:
+# patch-only bumps that need to release anyway:
 gh workflow run release.yml --ref master -f force_release=true
 ```
 
 **Flow B:**
 
-```powershell
+```bash
 gh workflow run release.yml --ref master -f source_ref=v0.62.4-insiders.3
 ```
 
 Confirm the run started:
 
-```powershell
-Start-Sleep -Seconds 3
+```bash
+sleep 3
 gh run list --workflow=release.yml --limit 1
 ```
 
@@ -257,7 +266,7 @@ Print the run URL and the watch command.
 
 #### 3b.5 AGENT - After success
 
-```powershell
+```bash
 git fetch origin --tags --quiet
 gh release view v<version>
 ```
@@ -271,10 +280,10 @@ Surface:
   pre-promotion `package.json` content if Flow B (the version-strip
   mutation was not committed; the installer is the truthful artifact).
 
-### 4. AGENT - Update the user's mental model
+### 4. AGENT - Summarize what was decided
 
-After dispatching, summarize what was just decided and what the artifact
-audience is. Example:
+After dispatching, summarize so both the human and any future agent can
+see exactly what happened. Example:
 
 ```
 ✅ Dispatched insiders release
@@ -286,53 +295,54 @@ audience is. Example:
    - Run:          <gh URL>
 ```
 
-This is the most valuable thing the skill does. Releases are infrequent
-enough that even the person dispatching benefits from a written summary.
+This summary is the most valuable thing the skill produces. Releases
+are infrequent enough that everyone — including the person who
+dispatched — benefits from a written trail.
 
 ## Failure modes
 
-- **Not on `master`** (locally or `--ref` mismatch) — abort for insiders;
-  warn for stable. The federated credential won't authenticate from any
-  other ref.
-- **Dirty working tree** — ask. Usually means there's uncommitted work
-  that should be shipped via `ship` first.
-- **`gh auth status` fails** — stop, surface the message, ask user to
+- **Not on `master`** (local or `--ref`) — abort for insiders; warn
+  for stable. Federated credential won't authenticate from any other ref.
+- **Dirty working tree** — ask. Usually means uncommitted work that
+  should land via `ship` first.
+- **`gh auth status` fails** — stop, surface the message, ask to
   re-auth.
-- **Insider tag doesn't exist** (Flow B) — stop. List recent tags.
+- **Insider tag doesn't exist** (Flow B) — stop, list recent tags.
 - **Stable version tag already exists** (Flow A or B) — stop. Direct
-  user to bump master via `ship`, then cut a new insider, then promote
-  that.
-- **Workflow dispatch returns non-zero** — capture the error, do not
-  retry blindly. Surface so the user can decide.
+  the user to bump master via `ship`, cut a new insider, then promote.
+- **Workflow dispatch returns non-zero** — capture and surface the
+  error. Don't retry blindly.
 - **macOS warmup uncertain** — default to *not* dispatching stable.
   Insiders are safer until verified.
 
-## Never
+## Guardrails
 
-- **Never dispatch from a feature branch.** Federated credential is
-  master-scoped. The workflow will fail authenticating to Azure.
-- **Never delete insider tags casually.** The commit they point at is
+These are easy to do by accident and hard to undo:
+
+- **Don't dispatch from a feature branch.** Federated credential is
+  master-scoped; the workflow will fail authenticating to Azure.
+- **Don't delete insider tags casually.** The commit they point at is
   off-branch; deleting the tag makes it unreachable and Git GC will
-  eventually prune it (~30 days). Reproducibility and promotion are lost.
-- **Never push the version-bump commit to master.** That's why insiders
-  pushes the tag only. Do not run `git push origin HEAD` from a
-  workflow that just bumped the version.
-- **Never reuse the insider binary as the stable artifact.** Promotion
-  rebuilds. Different channel, different feed URL, different embedded
-  `app-update.yml`, fresh signatures.
-- **Never modify `.working-memory/`.** It is agent-managed.
+  prune it (~30 days). Reproducibility and promotion are lost.
+- **Don't push the version-bump commit to master.** That's why the
+  insiders workflow pushes the tag only. Never run `git push origin
+  HEAD` from a release workflow that just bumped the version.
+- **Don't reuse the insider binary as the stable artifact.** Promotion
+  must rebuild — different channel string, different feed URL,
+  different embedded `app-update.yml`, fresh signatures.
+- **Don't modify `.working-memory/`.** It is agent-managed.
 
 ## Notes
 
-- The ship skill is for PRs and never dispatches a release. The release
-  skill is for builds and never modifies code.
+- The ship skill is for PRs and never dispatches a release. This skill
+  is for builds and never modifies code.
 - Insider auto-update reads `insiders.yml`. Stable reads `latest.yml` /
-  `latest-mac.yml`. The embedded `app-update.yml` (set by
-  `scripts/prepare-builder-prepackaged.js`) determines which one a given
-  install polls.
+  `latest-mac.yml`. The embedded `app-update.yml` (written by
+  `scripts/prepare-builder-prepackaged.js`) determines which one a
+  given install polls.
 - Repo variables (not secrets) for the insiders OIDC flow:
   `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
-  `INSIDERS_STORAGE_ACCOUNT`, `INSIDERS_STORAGE_CONTAINER`. These are
+  `INSIDERS_STORAGE_ACCOUNT`, `INSIDERS_STORAGE_CONTAINER`. They're
   non-secret because OIDC has no shared secret to leak.
 - Trusted Signing (Windows code-signing) uses `secrets.AZURE_*` for a
   different identity. The insiders workflow logs in twice: once with
