@@ -66,6 +66,9 @@ describe('packaging scripts', () => {
     expect(signMacPrepackaged).toContain('electron-osx-sign');
     expect(signMacPrepackaged).toContain('CHAMBER_MACOS_SIGNING');
     expect(notarizeMacPrepackaged).toContain('notarytool');
+    expect(notarizeMacPrepackaged).toContain('Apple notarization submission id:');
+    expect(notarizeMacPrepackaged).toContain('Apple notarization status:');
+    expect(notarizeMacPrepackaged).toContain('CHAMBER_NOTARIZATION_TIMEOUT_MS');
     expect(notarizeMacPrepackaged).toContain('stapler');
     expect(notarizeMacPrepackaged).toContain('APPLE_APP_SPECIFIC_PASSWORD');
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');
