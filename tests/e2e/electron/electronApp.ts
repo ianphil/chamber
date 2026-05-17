@@ -3,6 +3,8 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { canAccessRepoWithChamberCredentials } from './chamberRepoAccess';
+
 export const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
 export interface LaunchedElectronApp {
@@ -144,37 +146,38 @@ function logsPreview(logs: string[]): string {
 }
 
 /**
- * Returns true when Chamber's public GitHub API access or stored credentials can access the given repo.
- * Use with `test.skip()` to skip marketplace tests that need a private repo.
+ * Returns true when Chamber's runtime would be able to access the given repo
+ * via either the anonymous GitHub API or one of the GitHub credentials the
+ * runtime itself would consider eligible. Use with `test.skip()` to skip
+ * marketplace and release-tools tests that need a private repo.
+ *
+ * The credential filter mirrors `listStoredGitHubCredentials` from
+ * `@chamber/services`, which is the same filter
+ * `GitHubRegistryClient.withCredentialStore` and
+ * `GitHubReleaseAssetClient.withCredentialStore` apply. Iterating any
+ * superset (e.g., raw `keytar.findCredentials('copilot-cli')`) would let the
+ * guard return true on entries the runtime never tries — causing specs to
+ * run when the runtime can't actually fetch the repo.
  *
  * Loads keytar lazily so the Playwright runner process doesn't hold the
  * keytar.node native addon open. On Windows, an open keytar.node prevents
  * `electron-forge start` from rebuilding it for Electron's ABI (EPERM on
- * unlink), which breaks every Electron spec.
+ * unlink), which breaks every Electron spec. See CHANGELOG #250 for the
+ * original incident. The keytar dynamic import here is the only deferral
+ * that protects against that — do not collapse it into a top-level static
+ * import.
+ *
+ * `canAccessRepoWithChamberCredentials` is imported statically (top of
+ * file) because Playwright's TypeScript loader handles static imports of
+ * sibling `.ts` files but routes `await import('./helper')` through Node's
+ * native loader, which rejects the helper's top-level ESM `import`
+ * statements. Keeping it static is safe only as long as `@chamber/services`
+ * has no `keytar` transitive imports (verified at commit time); a future
+ * change that introduces one would re-open the EPERM window via this file.
  */
 export async function canAccessRepo(nwo: string): Promise<boolean> {
-  if (await canFetchRepo(nwo, null)) return true;
-
   const keytarModule = await import('keytar');
   const keytar = ((keytarModule as { default?: typeof import('keytar') }).default
     ?? (keytarModule as unknown as typeof import('keytar')));
-  const credentials = await keytar.findCredentials('copilot-cli');
-  for (const credential of credentials) {
-    if (credential.password && await canFetchRepo(nwo, credential.password)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-async function canFetchRepo(nwo: string, token: string | null): Promise<boolean> {
-  const response = await fetch(`https://api.github.com/repos/${nwo}`, {
-    headers: {
-      'Accept': 'application/vnd.github+json',
-      'User-Agent': 'Chamber/e2e',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    },
-  });
-  return response.ok;
+  return canAccessRepoWithChamberCredentials(nwo, keytar);
 }
