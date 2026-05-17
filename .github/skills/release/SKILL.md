@@ -32,7 +32,7 @@ ask once. If the channel is ambiguous, ask once.
 | Channel  | Audience    | Workflow                                  | Distribution                     | Platforms                           |
 | -------- | ----------- | ----------------------------------------- | -------------------------------- | ----------------------------------- |
 | Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows only                        |
-| Stable   | Public      | `.github/workflows/release.yml`           | GitHub Releases                  | Windows + macOS arm64 (+x64 opt-in) |
+| Stable   | Public      | `.github/workflows/release.yml`           | GitHub Releases                  | Windows + macOS arm64 (+x64 opt-in; macOS can be disabled by repo variable) |
 
 Both are `workflow_dispatch` only — neither fires on push.
 
@@ -318,12 +318,16 @@ policy still keeps the graduating feature disabled for stable users.
 
 Apple's first-team notarization warmup takes 1–2 days per submission.
 Until warmup is verified complete, stable dispatches may stall on the
-macOS legs. Ask:
+macOS legs. Stable dispatches normally include macOS unless the GitHub
+repository variable `STABLE_RELEASE_BUILD_MACOS` is set to exactly
+`false`; that value skips both macOS legs and publishes Windows-only
+stable artifacts. Ask:
 
 ```
 macOS notarization warmup complete?
   yes — proceed
   no  — skip stable for now and cut/keep insiders only
+  no, but release Windows-only stable — set STABLE_RELEASE_BUILD_MACOS=false first
 ```
 
 If unsure, check recent submissions locally:
@@ -335,7 +339,25 @@ xcrun notarytool history \
   --password "$APPLE_APP_SPECIFIC_PASSWORD" | head -20
 ```
 
-Recent submissions completing in <5 minutes means warmup is done.
+Recent submissions completing in <5 minutes means warmup is done. If
+the user chooses Windows-only stable, set or verify the repo variable
+before dispatch:
+
+```bash
+gh variable get STABLE_RELEASE_BUILD_MACOS || true
+gh variable set STABLE_RELEASE_BUILD_MACOS --body false
+gh variable get STABLE_RELEASE_BUILD_MACOS
+```
+
+Warn the user that this publish will not include `latest-mac.yml`, so
+existing macOS installs stay on the previous stable until a later stable
+release includes macOS artifacts again.
+
+After macOS releases are ready again, restore the normal default:
+
+```bash
+gh variable delete STABLE_RELEASE_BUILD_MACOS
+```
 
 #### 3b.5 AGENT - Dispatch
 

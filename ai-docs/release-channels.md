@@ -199,9 +199,13 @@ this.
 ### What it is
 
 - Public release. Windows NSIS installer + macOS DMG/ZIP (arm64;
-  optionally Intel).
+  optionally Intel) by default. Set the GitHub repository variable
+  `STABLE_RELEASE_BUILD_MACOS=false` to publish a Windows-only stable
+  release while macOS notarization is unavailable.
 - Auto-update reads `latest.yml` / `latest-mac.yml` from the GitHub
-  Release.
+  Release. A Windows-only stable release does not publish
+  `latest-mac.yml`, so existing macOS installs remain on the previous
+  stable until a later stable release includes macOS artifacts again.
 - macOS builds are signed with the Developer ID identity and notarized.
 
 ### How to cut a stable release
@@ -219,7 +223,8 @@ Two flows, same workflow. **Flow B (promote insider) is the default.**
      `package.json`, which under Model B holds the last shipped stable).
    - Apply that version via `npm version --no-git-tag-version
      --allow-same-version`, then `npm install`.
-   - Build Windows + macOS, sign, notarize macOS.
+   - Build Windows + macOS, sign, notarize macOS unless
+     `STABLE_RELEASE_BUILD_MACOS=false` disables the macOS legs.
    - Publish to GitHub Releases tagged `vX.Y.Z`. Release notes include
      `Promoted from insiders build vX.Y.Z-insiders.N`.
 4. After the workflow succeeds, the `release` skill opens a
@@ -240,6 +245,15 @@ Two flows, same workflow. **Flow B (promote insider) is the default.**
 The `force_release` input (defaults to `true`) skips the patch-only
 auto-skip guard — keep it `true` for manual dispatches.
 
+The GitHub repository variable `STABLE_RELEASE_BUILD_MACOS` controls
+whether stable dispatches include macOS artifacts. Leave it unset (or
+set it to any value other than `false`) for the normal Windows + macOS
+release. Set it to exactly `false` to skip both macOS jobs and publish
+only the Windows NSIS artifacts to GitHub Releases; release notes will
+call out that macOS artifacts were skipped. This repository variable is
+sticky across dispatches, so delete it after the Windows-only release if
+the next stable should return to the normal Windows + macOS shape.
+
 ### macOS notarization warmup
 
 - The first ~5–10 submissions from a new Apple Developer ID team go
@@ -249,6 +263,9 @@ auto-skip guard — keep it `true` for manual dispatches.
   out at the client-side `--wait --timeout 30m`. Apple has no published
   ceiling and `notarytool` has no cancel API. Stuck submissions still
   count toward warmup.
+- If warmup is not complete and a public Windows release is still
+  required, set `STABLE_RELEASE_BUILD_MACOS=false` before dispatching
+  stable, then restore it once macOS releases are ready again.
 
 ## How channels are wired through the build
 

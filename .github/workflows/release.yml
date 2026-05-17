@@ -114,6 +114,14 @@ jobs:
             fi
           fi
 
+      - name: Report macOS release scope
+        run: |
+          if [ "${{ vars.STABLE_RELEASE_BUILD_MACOS }}" = "false" ]; then
+            echo "::warning::STABLE_RELEASE_BUILD_MACOS=false; this stable release will publish Windows artifacts only."
+          else
+            echo "macOS artifacts are enabled for this stable release."
+          fi
+
   build:
     needs: check-version
     if: needs.check-version.outputs.should_release == 'true'
@@ -185,7 +193,7 @@ jobs:
 
   build-macos:
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && vars.STABLE_RELEASE_BUILD_MACOS != 'false'
     runs-on: macos-latest
     permissions:
       contents: read
@@ -275,7 +283,7 @@ jobs:
 
   build-macos-x64:
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true' && github.event_name == 'workflow_dispatch' && inputs.build_macos_x64
+    if: needs.check-version.outputs.should_release == 'true' && vars.STABLE_RELEASE_BUILD_MACOS != 'false' && github.event_name == 'workflow_dispatch' && inputs.build_macos_x64
     runs-on: macos-13
     permissions:
       contents: read
@@ -365,7 +373,7 @@ jobs:
 
   release:
     needs: [check-version, build, build-macos, build-macos-x64]
-    if: always() && needs.check-version.outputs.should_release == 'true' && needs.build.result == 'success' && needs['build-macos'].result == 'success' && (needs['build-macos-x64'].result == 'success' || needs['build-macos-x64'].result == 'skipped')
+    if: always() && needs.check-version.outputs.should_release == 'true' && needs.build.result == 'success' && (needs['build-macos'].result == 'success' || needs['build-macos'].result == 'skipped') && (needs['build-macos-x64'].result == 'success' || needs['build-macos-x64'].result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -390,16 +398,19 @@ jobs:
         shell: bash
         run: |
           promoted_from="${{ needs.check-version.outputs.promoted_from }}"
-          if [ -n "$promoted_from" ]; then
-            {
-              echo "body<<EOF"
+          build_macos="${{ vars.STABLE_RELEASE_BUILD_MACOS }}"
+          {
+            echo "body<<EOF"
+            if [ -n "$promoted_from" ]; then
               echo "Promoted from insiders build \`$promoted_from\`."
               echo ""
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-          else
-            echo "body=" >> "$GITHUB_OUTPUT"
-          fi
+            fi
+            if [ "$build_macos" = "false" ]; then
+              echo "macOS artifacts were skipped because repository variable \`STABLE_RELEASE_BUILD_MACOS\` is set to \`false\`."
+              echo ""
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
