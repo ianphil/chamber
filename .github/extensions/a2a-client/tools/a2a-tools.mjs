@@ -42,7 +42,15 @@ export function createA2ATools(state, hooks) {
           },
           agent_name: {
             type: "string",
-            description: "Optional display name to register for this CLI session.",
+            description: "Optional display name to register for this CLI session. Defaults to copilot-chamber.",
+          },
+          login_hint: {
+            type: "string",
+            description: "Optional Entra login_hint (UPN). Prefer domain_hint for shared repos. Defaults to CHAMBER_A2A_LOGIN_HINT or SWITCHBOARD_LOGIN_HINT.",
+          },
+          domain_hint: {
+            type: "string",
+            description: "Optional Entra domain_hint (tenant domain) so any contributor in that domain can sign in. Defaults to CHAMBER_A2A_DOMAIN_HINT or SWITCHBOARD_DOMAIN_HINT.",
           },
         },
       },
@@ -280,6 +288,12 @@ function updateConnection(state, args) {
   if (typeof args.agent_name === "string" && args.agent_name.trim()) {
     state.agentName = args.agent_name.trim();
   }
+  if (typeof args.login_hint === "string" && args.login_hint.trim()) {
+    state.entraLoginHint = args.login_hint.trim();
+  }
+  if (typeof args.domain_hint === "string" && args.domain_hint.trim()) {
+    state.entraDomainHint = args.domain_hint.trim();
+  }
 }
 
 function createAgentCard(name, relayBaseUrl) {
@@ -404,6 +418,20 @@ async function interactiveLogin(state) {
   authorizeUrl.searchParams.set("code_challenge", challenge);
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
   authorizeUrl.searchParams.set("state", loginState);
+  const loginHint = state.entraLoginHint || process.env.CHAMBER_A2A_LOGIN_HINT || process.env.SWITCHBOARD_LOGIN_HINT;
+  const domainHint = state.entraDomainHint || process.env.CHAMBER_A2A_DOMAIN_HINT || process.env.SWITCHBOARD_DOMAIN_HINT;
+  // Prefer domain_hint when set so contributors who share this repo aren't
+  // pinned to a single user account. Falls back to login_hint when only a
+  // specific UPN is known, and to a forced account picker otherwise.
+  if (domainHint) {
+    authorizeUrl.searchParams.set("domain_hint", domainHint);
+  }
+  if (loginHint) {
+    authorizeUrl.searchParams.set("login_hint", loginHint);
+  }
+  if (!loginHint && !domainHint) {
+    authorizeUrl.searchParams.set("prompt", "select_account");
+  }
 
   state.session?.log(`Opening browser for Switchboard login: ${authorizeUrl.toString()}`, { ephemeral: false });
   await openBrowser(authorizeUrl.toString());

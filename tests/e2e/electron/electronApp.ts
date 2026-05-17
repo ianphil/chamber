@@ -45,9 +45,21 @@ export async function launchElectronApp(options: {
     child,
     logs,
     close: async () => {
-      await browser.close();
-      if (child && !child.killed) {
-        child.kill();
+      try {
+        await browser.close();
+      } catch {
+        // Browser may already be gone; continue with process cleanup.
+      }
+      if (child && !child.killed && typeof child.pid === 'number') {
+        // The npm parent spawned Electron as a grandchild. SIGTERM on the
+        // parent alone leaks Electron windows that keep the CDP port bound.
+        // The child was started as a detached process group so we can SIGKILL
+        // the whole tree at once via the negative pgid.
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        }
       }
     },
   };
@@ -75,7 +87,9 @@ function spawnNpmStart(options: {
   if (process.platform === 'win32') {
     return spawn('cmd.exe', ['/d', '/s', '/c', command], options);
   }
-  return spawn('sh', ['-lc', command], options);
+  // detached:true puts the child in its own process group so we can SIGKILL
+  // the whole tree (Electron + Vite + Forge) on cleanup via -pid.
+  return spawn('sh', ['-lc', command], { ...options, detached: true });
 }
 
 async function waitForCdp(url: string, logs: string[]): Promise<void> {

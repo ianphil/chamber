@@ -38,6 +38,7 @@
     "smoke:server-sdk": "npm --workspace @chamber/server run build && node scripts/run-server-sdk-smoke-test.js",
     "smoke:web": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=web",
     "smoke:desktop": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1",
+    "smoke:a2a-relay": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 --headed tests/e2e/electron/a2a-relay-roundtrip.spec.ts",
     "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js"
   },
   "keywords": [],

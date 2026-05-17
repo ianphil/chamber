@@ -15,6 +15,16 @@
 - **Cache Switchboard Entra tokens** — Persists interactive relay refresh tokens in the OS credential store so reconnects can refresh silently before opening browser auth.
 - **Retry wrong-account relay auth cleanly** — Clears cached Switchboard Entra refresh tokens when the relay rejects authorization so the next Connect can run a fresh browser auth flow.
 - **Anchor post-release bump PR to build SHA** — The release skill now branches the post-release bump PR from the build SHA (insider tag or dispatch commit), not from current `origin/master`. Without this, ship PRs that merge during the 30–60 min build window get silently misattributed to the just-shipped version. Anchoring surfaces interim bullets as a visible 3-way merge conflict at PR-merge time, mechanical to resolve. Documented in the Decision Log with reference to release-please #2754 as the canonical postmortem of what goes wrong without it.
+- **Swallow EPIPE on parent stdio close** — `apps/desktop/src/main.ts` now attaches `'error'` handlers on `process.stdout`/`process.stderr` that ignore `EPIPE`, so the Electron main process no longer crashes with `Uncaught Exception: write EPIPE` when a parent shell (Playwright runner, terminal, etc.) closes the inherited pipe mid-log.
+
+### A2A client extension
+
+- **Default agent name now `copilot-chamber`** — `.github/extensions/a2a-client` registers as `copilot-chamber` instead of `Copilot CLI`, matching a `copilot-<repo>` convention so multiple Copilot CLI sessions across repos don't collide on the relay. Still overridable via `CHAMBER_A2A_AGENT_NAME` or the `agent_name` connect arg.
+- **Support `domain_hint` (and `login_hint`) for Entra interactive login** — The bundled a2a-client extension now sends `domain_hint=<tenant-domain>` and/or `login_hint=<upn>` on the Entra authorize URL. `domain_hint` is preferred for repos with multiple contributors so any account in the tenant can sign in without being pinned to a single UPN; `login_hint` still wins when set. With neither, the client forces `prompt=select_account`. New env vars: `CHAMBER_A2A_DOMAIN_HINT` / `SWITCHBOARD_DOMAIN_HINT` (and the existing `CHAMBER_A2A_LOGIN_HINT` / `SWITCHBOARD_LOGIN_HINT`). Both also exposed as `connect` tool args.
+
+### Tests
+
+- **A2A relay user-flow smoke test** — Adds `npm run smoke:a2a-relay`, a headed Playwright Electron test that drives a real user flow against the live Switchboard relay with the LLM in the loop: a programmable `RelayPeer` (test fixture wrapping the same `a2a-client` tools) joins the relay, then a user opens Alice, asks her to list relay agents, asks her to message Bob with a unique token, and asks her to message the peer with a different token — asserting the tokens land in Alice's transcript, Bob's chat, and the peer's inbox. The Electron launcher now spawns the dev tree as a detached process group and SIGKILLs `-pid` on close so leaked Electron processes can't bind the CDP port for the next run.
 
 ### CI
 

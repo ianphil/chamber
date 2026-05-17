@@ -7,6 +7,16 @@ import { randomBytes } from 'node:crypto';
 import started from 'electron-squirrel-startup';
 import { IPC } from '@chamber/shared';
 
+// When Chamber is spawned by a parent that may close its stdio pipes early
+// (Playwright/Electron Forge teardown, e2e harnesses), subsequent console
+// writes throw EPIPE and crash the main process. Swallow EPIPE on stdout/stderr
+// so logging is best-effort once the parent has gone away.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'EPIPE') throw error;
+  });
+}
+
 import {
   A2aToolProvider,
   A2ARelayModeService,
