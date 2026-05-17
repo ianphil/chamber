@@ -316,6 +316,21 @@ describe('MindManager', () => {
       expect(manager.getMind(mind.mindId)?.selectedModel).toBe('claude-opus');
     });
 
+    it('rolls back the persisted selection when the SDK rejects with a non-stale error', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Existing context');
+      const before = manager.getMind(mind.mindId)?.selectedModel;
+      const beforeProvider = manager.getMind(mind.mindId)?.selectedModelProvider;
+      const liveSession = manager.getMind(mind.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      liveSession.setModel.mockImplementationOnce(async () => {
+        throw new Error('BYO endpoint unreachable: connect ECONNREFUSED 127.0.0.1:11434');
+      });
+
+      await expect(manager.setMindModel(mind.mindId, 'claude-opus')).rejects.toThrow(/ECONNREFUSED/);
+      expect(manager.getMind(mind.mindId)?.selectedModel).toBe(before);
+      expect(manager.getMind(mind.mindId)?.selectedModelProvider).toBe(beforeProvider);
+    });
+
     it('serializes concurrent per-mind model changes against the live session', async () => {
       const liveSession = manager.getMind((await manager.loadMind('/tmp/agents/q')).mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
       const mind = manager.listMinds()[0];

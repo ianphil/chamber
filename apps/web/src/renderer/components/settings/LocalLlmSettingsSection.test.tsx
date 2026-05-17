@@ -212,8 +212,6 @@ describe('LocalLlmSettingsSection', () => {
     fireEvent.change(screen.getByLabelText('Bearer token'), { target: { value: 'token' } });
     fireEvent.click(screen.getByText('Advanced provider settings'));
     fireEvent.change(screen.getByLabelText('Wire API'), { target: { value: 'responses' } });
-    fireEvent.change(screen.getByLabelText('Wire model'), { target: { value: 'deployment-name' } });
-    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'gpt-4o' } });
     fireEvent.change(screen.getByLabelText('Azure API version'), { target: { value: '2024-10-21' } });
     fireEvent.change(screen.getByLabelText('Max prompt tokens'), { target: { value: '131072' } });
     fireEvent.change(screen.getByLabelText('Max output tokens'), { target: { value: '4096' } });
@@ -232,8 +230,6 @@ describe('LocalLlmSettingsSection', () => {
         bearerToken: 'token',
         model: 'm1',
         wireApi: 'responses',
-        wireModel: 'deployment-name',
-        modelId: 'gpt-4o',
         azureApiVersion: '2024-10-21',
         maxPromptTokens: 131072,
         maxOutputTokens: 4096,

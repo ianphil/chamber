@@ -2,17 +2,24 @@
 // custom OpenAI-compatible LLM endpoint surface in Settings.
 
 import { ipcMain, BrowserWindow } from 'electron';
-import * as https from 'https';
-import * as http from 'http';
-import { URL } from 'url';
 import { IPC } from '@chamber/shared';
 import type { ByoLlmConfig, ByoLlmProbeResult, ByoLlmSaveResult } from '@chamber/shared/types';
-import { ByoLlmStore, Logger, MindManager } from '@chamber/services';
+import {
+  ByoLlmStore,
+  Logger,
+  MindManager,
+  probeEndpoint,
+  redactUrlCredentials,
+} from '@chamber/services';
 
 const log = Logger.create('ByoLlm');
 
-const PROBE_TIMEOUT_MS = 15_000;
 const MASKED_SECRET = '********';
+
+// Re-exported so existing callers (apps/desktop/src/main.ts) continue to import
+// probeEndpoint from this module while the implementation lives in
+// @chamber/services. New code should import from '@chamber/services' directly.
+export { probeEndpoint };
 
 function broadcast(config: ByoLlmConfig | null): void {
   const rendererConfig = redactConfigForRenderer(config);
@@ -93,99 +100,10 @@ export function setupByoLlmIPC(
   });
 }
 
-/**
- * Probe a BYO LLM endpoint by hitting `<baseUrl>/models` and parsing the
- * OpenAI-compatible response. Used by Settings before save to confirm
- * connectivity + give the user a model count + populate the model dropdown.
- *
- * Exported for unit testability; in production it's invoked by the IPC handler.
- */
-export async function probeEndpoint(config: ByoLlmConfig): Promise<ByoLlmProbeResult> {
-  try {
-    const modelsUrl = new URL(joinUrl(config.baseUrl, 'models'));
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'User-Agent': 'Chamber-BYO-Probe/1.0',
-    };
-    if (config.bearerToken) {
-      headers.Authorization = `Bearer ${config.bearerToken}`;
-    } else if (config.apiKey) {
-      headers.Authorization = `Bearer ${config.apiKey}`;
-    }
-    if (config.customHeaders) {
-      for (const [k, v] of Object.entries(config.customHeaders)) {
-        headers[k] = v;
-      }
-    }
-
-    const { statusCode, body } = await httpRequest(modelsUrl, headers);
-
-    if (!statusCode || statusCode < 200 || statusCode >= 300) {
-      return {
-        ok: false,
-        status: statusCode,
-        error: `Endpoint returned HTTP ${statusCode ?? 'unknown'}: ${redactSecrets(truncate(body, 200), config)}`,
-      };
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      return { ok: false, status: statusCode, error: 'Endpoint returned non-JSON response' };
-    }
-
-    const models = extractModels(parsed);
-    if (models.length === 0) {
-      return { ok: false, status: statusCode, error: 'Endpoint returned no models in /models response' };
-    }
-
-    return { ok: true, modelCount: models.length, models };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: redactSecrets(message, config) };
-  }
-}
-
-function joinUrl(base: string, path: string): string {
-  const trimmedBase = base.trim().replace(/\/+$/, '');
-  const trimmedPath = path.replace(/^\/+/, '');
-  return `${trimmedBase}/${trimmedPath}`;
-}
-
-function extractModels(parsed: unknown): Array<{ id: string; name?: string }> {
-  if (!parsed || typeof parsed !== 'object') return [];
-  const data = (parsed as { data?: unknown }).data;
-  if (!Array.isArray(data)) return [];
-  const models: Array<{ id: string; name?: string }> = [];
-  for (const item of data) {
-    if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
-      const id = (item as { id: string }).id;
-      const name = typeof (item as { name?: unknown }).name === 'string' ? (item as { name: string }).name : undefined;
-      models.push(name ? { id, name } : { id });
-    }
-  }
-  return models;
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? `${s.slice(0, max)}...` : s;
-}
-
-function redactSecrets(value: string, config: ByoLlmConfig): string {
-  let redacted = value;
-  const customHeaderSecrets = config.customHeaders ? Object.values(config.customHeaders) : [];
-  for (const secret of [config.apiKey, config.bearerToken, ...customHeaderSecrets]) {
-    if (secret && secret.length > 0) {
-      redacted = redacted.split(secret).join('<redacted>');
-    }
-  }
-  return redacted;
-}
-
 function redactConfigForRenderer(config: ByoLlmConfig | null): ByoLlmConfig | null {
   if (!config) return null;
   const redacted: ByoLlmConfig = { ...config };
+  if (redacted.baseUrl) redacted.baseUrl = redactUrlCredentials(redacted.baseUrl);
   if (redacted.apiKey) redacted.apiKey = MASKED_SECRET;
   if (redacted.bearerToken) redacted.bearerToken = MASKED_SECRET;
   if (redacted.customHeaders) {
@@ -232,33 +150,4 @@ function dropUnresolvedMasks(config: ByoLlmConfig): ByoLlmConfig {
     cleaned.customHeaders = Object.keys(headers).length > 0 ? headers : undefined;
   }
   return cleaned;
-}
-
-function httpRequest(url: URL, headers: Record<string, string>): Promise<{ statusCode?: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    const lib: typeof https | typeof http = url.protocol === 'http:' ? http : https;
-    const req = lib.request(
-      {
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'http:' ? 80 : 443),
-        path: `${url.pathname}${url.search}`,
-        method: 'GET',
-        headers,
-      },
-      (res) => {
-        let body = '';
-        res.on('data', (chunk: string) => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          resolve({ statusCode: res.statusCode, body });
-        });
-      },
-    );
-    req.on('error', reject);
-    req.setTimeout(PROBE_TIMEOUT_MS, () => {
-      req.destroy(new Error(`Probe timed out after ${PROBE_TIMEOUT_MS}ms`));
-    });
-    req.end();
-  });
 }

@@ -196,4 +196,38 @@ describe('probeEndpoint (live HTTP, mocked)', () => {
       });
     }
   });
+
+  it('BVT-IPC10: rejects 3xx redirect responses without following them (SSRF defense-in-depth)', async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(302, { Location: 'http://169.254.169.254/latest/meta-data/' });
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to bind local probe test server');
+    }
+
+    try {
+      const result = await probeEndpoint({
+        enabled: true,
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(302);
+        expect(result.error).toMatch(/redirect/i);
+        expect(result.error).toMatch(/not followed/i);
+        expect(result.error).toContain('169.254.169.254');
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+  });
 });

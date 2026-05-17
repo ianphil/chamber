@@ -18,31 +18,38 @@ const localRelaySentinel = 'BYO_LOCAL_RELAY_SENTINEL';
 /**
  * Real BYO LLM endpoint used by the FVT.
  *
- * Defaults to the user's personal dev tunnel, which exposes an OpenAI-
- * compatible /models and /chat/completions surface. Override via
- * CHAMBER_E2E_BYO_LLM_BASE_URL when running against another local/provider
- * endpoint.
+ * Defaults to a local Ollama instance (http://localhost:11434/v1), which
+ * exposes an OpenAI-compatible /models and /chat/completions surface. Override
+ * via CHAMBER_E2E_BYO_LLM_BASE_URL when running against another local/provider
+ * endpoint. Optional custom-header pair (CHAMBER_E2E_BYO_LLM_HEADER_NAME +
+ * _HEADER_VALUE) is only applied when both are set.
  *
  * Tests in this block probe the endpoint up-front. If it doesn't respond, the
- * live-endpoint FVT is skipped so disconnected dev runs stay green.
+ * live-endpoint FVT is skipped so disconnected dev runs stay green. The
+ * deterministic provider-routing coverage lives in the local-relay block
+ * below and runs without any external dependency.
  */
 const BYO_BASE_URL = process.env.CHAMBER_E2E_BYO_LLM_BASE_URL
-  ?? 'https://6nttj6rb-18081.usw3.devtunnels.ms/v1';
-const BYO_API_KEY = process.env.CHAMBER_E2E_BYO_LLM_API_KEY ?? 'not-needed';
-const BYO_HEADER_NAME = process.env.CHAMBER_E2E_BYO_LLM_HEADER_NAME
-  ?? 'X-Tunnel-Skip-AntiPhishing-Page';
-const BYO_HEADER_VALUE = process.env.CHAMBER_E2E_BYO_LLM_HEADER_VALUE ?? 'true';
+  ?? 'http://localhost:11434/v1';
+const BYO_API_KEY = process.env.CHAMBER_E2E_BYO_LLM_API_KEY ?? 'ollama';
+const BYO_HEADER_NAME = process.env.CHAMBER_E2E_BYO_LLM_HEADER_NAME ?? '';
+const BYO_HEADER_VALUE = process.env.CHAMBER_E2E_BYO_LLM_HEADER_VALUE ?? '';
+const BYO_PREFERRED_MODEL = process.env.CHAMBER_E2E_BYO_LLM_MODEL ?? 'gemma4:e4b-it-q4_K_M';
+const BYO_CUSTOM_HEADERS: Record<string, string> | undefined = BYO_HEADER_NAME && BYO_HEADER_VALUE
+  ? { [BYO_HEADER_NAME]: BYO_HEADER_VALUE }
+  : undefined;
 
 async function probeEndpointAvailable(): Promise<{ ok: boolean; modelCount: number; modelIds: string[]; reason?: string }> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      Authorization: `Bearer ${BYO_API_KEY}`,
+    };
+    if (BYO_CUSTOM_HEADERS) Object.assign(headers, BYO_CUSTOM_HEADERS);
     const response = await fetch(`${BYO_BASE_URL.replace(/\/$/, '')}/models`, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${BYO_API_KEY}`,
-        [BYO_HEADER_NAME]: BYO_HEADER_VALUE,
-      },
+      headers,
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -115,7 +122,7 @@ test.describe.serial('electron BYO LLM Settings smoke (live endpoint)', () => {
     await waitForApp(page);
     await openSettings(page);
 
-    await fillByoSettings(page, BYO_BASE_URL, BYO_API_KEY, { [BYO_HEADER_NAME]: BYO_HEADER_VALUE });
+    await fillByoSettings(page, BYO_BASE_URL, BYO_API_KEY, BYO_CUSTOM_HEADERS);
     await page.getByRole('button', { name: /Test connection/i }).click();
 
     await expect(page.getByText(/Found \d+ models?/i)).toBeVisible({ timeout: 30_000 });
@@ -136,7 +143,7 @@ test.describe.serial('electron BYO LLM Settings smoke (live endpoint)', () => {
     await waitForApp(page);
     await openSettings(page);
 
-    await fillByoSettings(page, BYO_BASE_URL, BYO_API_KEY, { [BYO_HEADER_NAME]: BYO_HEADER_VALUE });
+    await fillByoSettings(page, BYO_BASE_URL, BYO_API_KEY, BYO_CUSTOM_HEADERS);
     await page.getByRole('button', { name: /Test connection/i }).click();
     await expect(page.getByText(/Found \d+ models?/i)).toBeVisible({ timeout: 30_000 });
     const preferredModel = preferredChatModel(probeResult!.modelIds);
@@ -167,7 +174,7 @@ test.describe.serial('electron BYO LLM Settings smoke (live endpoint)', () => {
       baseUrl: BYO_BASE_URL,
       providerType: 'openai',
       apiKey: BYO_API_KEY,
-      customHeaders: { [BYO_HEADER_NAME]: BYO_HEADER_VALUE },
+      customHeaders: BYO_CUSTOM_HEADERS,
       model: preferredModel,
       wireApi: 'completions',
       maxPromptTokens: 3000,
@@ -372,6 +379,9 @@ async function setByoEnabled(page: Page, enabled: boolean): Promise<void> {
 }
 
 function preferredChatModel(modelIds: string[]): string {
+  if (BYO_PREFERRED_MODEL && modelIds.includes(BYO_PREFERRED_MODEL)) {
+    return BYO_PREFERRED_MODEL;
+  }
   return modelIds.find((id) => !/embedding|embed/i.test(id))
     ?? modelIds[0];
 }

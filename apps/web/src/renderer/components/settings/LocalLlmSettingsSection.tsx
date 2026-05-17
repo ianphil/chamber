@@ -355,30 +355,6 @@ export function LocalLlmSettingsSection() {
                   </select>
                 </label>
 
-                <label className="block">
-                  <span className="text-xs font-medium text-muted-foreground">Wire model / deployment name (optional)</span>
-                  <input
-                    type="text"
-                    value={form.wireModel ?? ''}
-                    onChange={(e) => updateForm('wireModel', e.target.value)}
-                    placeholder="e.g. azure deployment name"
-                    aria-label="Wire model"
-                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-none focus:border-muted-foreground"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-medium text-muted-foreground">Model ID for token limits (optional)</span>
-                  <input
-                    type="text"
-                    value={form.modelId ?? ''}
-                    onChange={(e) => updateForm('modelId', e.target.value)}
-                    placeholder="e.g. gpt-4o"
-                    aria-label="Model ID"
-                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-none focus:border-muted-foreground"
-                  />
-                </label>
-
                 {form.providerType === 'azure' ? (
                   <label className="block">
                     <span className="text-xs font-medium text-muted-foreground">Azure API version (optional)</span>
@@ -427,7 +403,7 @@ export function LocalLlmSettingsSection() {
               <textarea
                 value={headersText}
                 onChange={(e) => updateHeadersText(e.target.value)}
-                placeholder='{ "X-Tunnel-Skip-AntiPhishing-Page": "true" }'
+                placeholder='{ "X-Custom-Header": "value" }'
                 aria-label="Custom headers JSON"
                 rows={4}
                 className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-none focus:border-muted-foreground"

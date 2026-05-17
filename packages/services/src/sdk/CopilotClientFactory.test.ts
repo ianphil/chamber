@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'node:path';
 
 vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
@@ -135,24 +136,26 @@ describe('CopilotClientFactory', () => {
     });
 
     it('prepends the Chamber tools bin directory to the CLI PATH when configured', async () => {
-      factory = new CopilotClientFactory({ toolsBinDir: 'C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin' });
+      const toolsBinDir = path.join('chamber-root', 'tools', 'bin');
+      factory = new CopilotClientFactory({ toolsBinDir });
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
       const env = client.options.env as Record<string, string>;
       const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
 
-      expect(env[pathKey].split(';')[0]).toBe('C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin');
+      expect(env[pathKey].split(path.delimiter)[0]).toBe(toolsBinDir);
     });
 
     it('does not duplicate the Chamber tools bin directory in the CLI PATH', async () => {
-      const toolsBinDir = 'C:\\Users\\ianphil\\AppData\\Roaming\\Chamber\\tools\\bin';
+      const toolsBinDir = path.join('chamber-root', 'tools', 'bin');
+      const existing = path.join('usr', 'bin');
       factory = new CopilotClientFactory({
         toolsBinDir,
-        env: { Path: `${toolsBinDir};C:\\Windows\\System32` },
+        env: { Path: `${toolsBinDir}${path.delimiter}${existing}` },
       });
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
       const env = client.options.env as Record<string, string>;
 
-      expect(env.Path).toBe(`${toolsBinDir};C:\\Windows\\System32`);
+      expect(env.Path).toBe(`${toolsBinDir}${path.delimiter}${existing}`);
     });
 
     it('creates separate clients for different mind paths', async () => {
@@ -186,15 +189,17 @@ describe('CopilotClientFactory', () => {
     });
 
     it('BVT-F02: combines BYO extraEnv with toolsBinDir PATH munging', async () => {
+      const toolsBin = path.join('chamber-root', 'tools', 'bin');
+      const existing = path.join('usr', 'bin');
       factory = new CopilotClientFactory({
-        toolsBinDir: 'C:\\Chamber\\tools\\bin',
-        env: { Path: 'C:\\Windows\\System32', EXISTING_VAR: 'existing' },
+        toolsBinDir: toolsBin,
+        env: { Path: existing, EXISTING_VAR: 'existing' },
       });
       const client = await factory.createClient('C:\\agents\\q', {
         extraEnv: { COPILOT_PROVIDER_BASE_URL: 'https://example.com/v1' },
       }) as unknown as FakeCopilotClient;
       const env = client.options.env as Record<string, string>;
-      expect(env.Path).toBe('C:\\Chamber\\tools\\bin;C:\\Windows\\System32');
+      expect(env.Path).toBe(`${toolsBin}${path.delimiter}${existing}`);
       expect(env.EXISTING_VAR).toBe('existing');
       expect(env.COPILOT_PROVIDER_BASE_URL).toBe('https://example.com/v1');
     });

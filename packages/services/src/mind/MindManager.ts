@@ -601,6 +601,7 @@ export class MindManager extends EventEmitter {
       return this.toExternalContext(context);
     }
 
+    const previousModel = context.selectedModel;
     const previousProvider = context.selectedModelProvider;
 
     // Persist intent before applying so stale-recovery on send uses the new model.
@@ -612,10 +613,25 @@ export class MindManager extends EventEmitter {
     // SDK setModel can change model ids within the same provider, but it cannot
     // swap a session between GitHub/Copilot and a custom BYO provider.
     const providerChanged = previousProvider !== selectedModelProvider;
-    if (context.session && selectedModel && !providerChanged) {
-      await context.session.setModel(selectedModel);
-    } else if (context.session) {
-      await this.createNewConversationSession(mindId, context);
+    try {
+      if (context.session && selectedModel && !providerChanged) {
+        await context.session.setModel(selectedModel);
+      } else if (context.session) {
+        await this.createNewConversationSession(mindId, context);
+      }
+    } catch (err) {
+      // Stale-session errors trigger a recovery path that re-creates the
+      // session with the *new* model, so keep the persisted selection.
+      // For all other errors (e.g. unreachable BYO endpoint, bad config),
+      // roll back so the recorded selection matches the live session —
+      // otherwise the next send would use a model the SDK already rejected.
+      if (!isStaleSessionError(err)) {
+        context.selectedModel = previousModel;
+        context.selectedModelProvider = previousProvider;
+        this.upsertMindSelectionRecord(mindId, context);
+        this.persistConfig();
+      }
+      throw err;
     }
 
     this.upsertMindSelectionRecord(mindId, context);

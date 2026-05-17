@@ -54,6 +54,9 @@ import {
   ViewDiscovery,
   ByoLlmStore,
   buildProviderConfig,
+  createByoLlmModelsProvider,
+  probeEndpoint,
+  redactUrlCredentials,
   configureSdkRuntimeLayout,
   getChamberToolsBinDir,
   getPlatformCopilotBinaryPath,
@@ -82,7 +85,7 @@ import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupMarketplaceIPC } from './main/ipc/marketplace';
 import { setupToolsIPC } from './main/ipc/tools';
 import { setupAuthIPC } from './main/ipc/auth';
-import { setupByoLlmIPC, probeEndpoint } from './main/ipc/byoLlm';
+import { setupByoLlmIPC } from './main/ipc/byoLlm';
 import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
@@ -242,18 +245,18 @@ const taskManager = new TaskManager(mindManager, agentCardRegistry);
 // so it can be merged into the chat model picker alongside the SDK's Copilot models.
 // The SDK's `client.listModels()` always returns GitHub Copilot's official catalog
 // even when SessionConfig.provider is active, so this side-channel is required.
-const byoLlmModelsProvider = async (): Promise<import('@chamber/shared/types').ModelInfo[] | null> => {
-  const config = cachedByoLlmConfig;
-  if (!config?.enabled || !config.baseUrl) return null;
-  try {
-    const result = await probeEndpoint(config);
-    if (!result.ok || !result.models) return null;
-    return result.models.map((m) => ({ id: m.id, name: m.name ?? m.id, provider: 'byo' as const }));
-  } catch (err) {
-    log.warn('BYO LLM models provider probe failed:', err);
-    return null;
-  }
-};
+//
+// When the probe fails, the provider returns a stub entry for the user's saved
+// BYO model so the renderer keeps that selection. Without this stub, the
+// renderer would silently fall back to the first cloud model and BYO-routed
+// minds would quietly send traffic to GitHub Copilot — see byoLlmModelsProvider.ts.
+const byoLlmModelsProvider = createByoLlmModelsProvider({
+  getConfig: () => cachedByoLlmConfig,
+  probe: probeEndpoint,
+  onProbeError: (err, config) => {
+    log.warn(`BYO LLM models provider probe failed (baseUrl=${redactUrlCredentials(config.baseUrl)}):`, err);
+  },
+});
 const chatService: ChatService = new ChatService(mindManager, turnQueue, undefined, byoLlmModelsProvider);
 const messageRouter: MessageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
 const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);

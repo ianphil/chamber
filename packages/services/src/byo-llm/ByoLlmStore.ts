@@ -155,6 +155,9 @@ export class ByoLlmStore {
     const raw = input as Record<string, unknown>;
     if (typeof raw.enabled !== 'boolean') return null;
     if (typeof raw.baseUrl !== 'string') return null;
+    if (hasUrlCredentials(raw.baseUrl)) {
+      throw new Error('Refusing to save BYO LLM config: baseUrl must not contain URL credentials (user:password@). Use the API key or bearer token field instead.');
+    }
 
     const out: ByoLlmConfig = {
       enabled: raw.enabled,
@@ -174,7 +177,15 @@ export class ByoLlmStore {
     if (raw.customHeaders && typeof raw.customHeaders === 'object' && !Array.isArray(raw.customHeaders)) {
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(raw.customHeaders)) {
-        if (typeof v === 'string') headers[k] = v;
+        if (typeof v === 'string') {
+          // Reject CR/LF in header names and values to prevent response-splitting /
+          // header-injection (defense-in-depth — Node usually rejects, but the
+          // store-layer guard makes the contract explicit).
+          if (/[\r\n]/.test(k) || /[\r\n]/.test(v)) {
+            throw new Error('Refusing to save BYO LLM config: custom header names and values must not contain CR or LF characters.');
+          }
+          headers[k] = v;
+        }
       }
       if (Object.keys(headers).length > 0) out.customHeaders = headers;
     }
@@ -192,7 +203,7 @@ export class ByoLlmStore {
 export function redactConfigForLog(config: ByoLlmConfig): string {
   const parts: string[] = [
     `enabled=${config.enabled}`,
-    `baseUrl=${config.baseUrl}`,
+    `baseUrl=${redactUrlCredentials(config.baseUrl)}`,
     `providerType=${config.providerType ?? 'openai'}`,
   ];
   if (config.apiKey) parts.push('apiKey=<redacted>');
@@ -205,6 +216,41 @@ export function redactConfigForLog(config: ByoLlmConfig): string {
     parts.push(`customHeaders=<${Object.keys(config.customHeaders).length} keys, redacted>`);
   }
   return parts.join(' ');
+}
+
+/**
+ * Returns true when the given URL string contains an embedded userinfo
+ * component (e.g. https://user:pass@host/v1). Such credentials must never
+ * be persisted or logged — Chamber routes auth through the apiKey /
+ * bearerToken / customHeaders fields instead.
+ */
+export function hasUrlCredentials(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.username.length > 0 || parsed.password.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Strips any userinfo from the given URL string. Returns the original
+ * string unchanged when it does not parse as a URL — callers should
+ * already have rejected credential-bearing URLs at the persistence
+ * boundary, but this remains safe for log/IPC paths.
+ */
+export function redactUrlCredentials(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.username.length === 0 && parsed.password.length === 0) {
+      return rawUrl;
+    }
+    parsed.username = '';
+    parsed.password = '';
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 function stringifyError(err: unknown): string {

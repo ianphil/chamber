@@ -7,7 +7,9 @@ import {
   BYO_LLM_CREDENTIAL_ACCOUNT,
   BYO_LLM_CREDENTIAL_SERVICE,
   ByoLlmStore,
+  hasUrlCredentials,
   redactConfigForLog,
+  redactUrlCredentials,
 } from './ByoLlmStore';
 import type { ByoLlmConfig } from '@chamber/shared/types';
 import type { CredentialStore } from '../ports';
@@ -143,6 +145,50 @@ describe('ByoLlmStore', () => {
     expect(out).toContain('apiKey=<redacted>');
     expect(out).toContain('bearerToken=<redacted>');
     expect(out).toContain('customHeaders=<1 keys, redacted>');
+  });
+
+  it('BVT-S08a: redactConfigForLog strips userinfo from baseUrl', () => {
+    const out = redactConfigForLog({
+      enabled: true,
+      baseUrl: 'https://alice:hunter2@example.com/v1',
+    });
+    expect(out).not.toContain('alice');
+    expect(out).not.toContain('hunter2');
+    expect(out).toContain('baseUrl=https://example.com/v1');
+  });
+
+  it('BVT-S08b: save rejects baseUrl containing URL credentials', async () => {
+    await expect(store.save({
+      enabled: true,
+      baseUrl: 'https://alice:hunter2@example.com/v1',
+    })).rejects.toThrow(/must not contain URL credentials/i);
+    expect(fs.existsSync(store.getFilePath())).toBe(false);
+  });
+
+  it('BVT-S08c: hasUrlCredentials detects userinfo, redactUrlCredentials strips it', () => {
+    expect(hasUrlCredentials('https://alice:hunter2@example.com/v1')).toBe(true);
+    expect(hasUrlCredentials('https://alice@example.com/v1')).toBe(true);
+    expect(hasUrlCredentials('https://example.com/v1')).toBe(false);
+    expect(hasUrlCredentials('not a url')).toBe(false);
+    expect(redactUrlCredentials('https://alice:hunter2@example.com/v1')).toBe('https://example.com/v1');
+    expect(redactUrlCredentials('https://example.com/v1')).toBe('https://example.com/v1');
+    expect(redactUrlCredentials('not a url')).toBe('not a url');
+  });
+
+  it('BVT-S08d: save rejects customHeaders containing CR or LF', async () => {
+    await expect(store.save({
+      enabled: true,
+      baseUrl: 'https://example.com/v1',
+      customHeaders: { 'X-Inject': 'value\r\nX-Smuggled: bad' },
+    })).rejects.toThrow(/must not contain CR or LF/i);
+
+    await expect(store.save({
+      enabled: true,
+      baseUrl: 'https://example.com/v1',
+      customHeaders: { 'X-Bad\nName': 'value' },
+    })).rejects.toThrow(/must not contain CR or LF/i);
+
+    expect(fs.existsSync(store.getFilePath())).toBe(false);
   });
 
   it('BVT-S09: migrates legacy plaintext secrets into the OS credential store and rewrites JSON', async () => {
