@@ -1,6 +1,6 @@
 ---
 name: release
-description: Dispatch a Chamber release build to either the insiders channel (Azure blob, Windows-only, invite-only testers) or the stable channel (public GitHub Releases, Windows + macOS). Use this skill whenever the user asks to release, cut, publish, promote, ship a build, push to insiders, send to testers, go public, or make a new version available — even if they don't explicitly name a channel. This skill picks the channel, runs pre-flight checks, dispatches the matching workflow via `gh`, and reports back. It does not modify source code, does not open PRs, and does not merge anything (use the `ship` skill for those).
+description: Dispatch a Chamber release build to either the insiders channel (Azure blob, Windows-only, invite-only testers) or the stable channel (public GitHub Releases, Windows + macOS). Use this skill whenever the user asks to release, cut, publish, promote, ship a build, push to insiders, send to testers, go public, or make a new version available — even if they don't explicitly name a channel. This skill picks the channel, runs pre-flight checks, handles stable remote feature-flag graduation when needed, dispatches the matching workflow via `gh`, and reports back. It may open mechanical release/policy PRs but never merges anything without explicit user approval.
 ---
 
 # Release Skill
@@ -45,6 +45,10 @@ The core shape to keep in mind:
   (`source_ref: vX.Y.Z-insiders.N`). Direct-from-master dispatch is an
   emergency fallback that derives the version from `## Unreleased` the
   same way insiders does.
+- **Stable feature flags** are controlled by the GitHub Pages policy at
+  `docs/flags/v1/flags.json`. Stable releases must ask whether any
+  preview flags are graduating to stable before dispatching the stable
+  workflow.
 - **Post-stable** (this skill's responsibility, run locally): open a PR
   that bumps `package.json` to the freshly shipped stable version and
   promotes `## Unreleased` into `## vX.Y.Z (date)` in `CHANGELOG.md`.
@@ -64,7 +68,7 @@ hand back the install URL and the new tag.
 Confirm channel is `stable`. Verify `v0.63.0` doesn't already exist
 (`git tag -l v0.63.0`). Verify macOS notary warmup is done. Dispatch
 `gh workflow run release.yml --ref master -f source_ref=v0.63.0-insiders.3`.
-After success, open the post-release bump PR (Phase 3b.6) and surface
+After success, open the post-release bump PR (Phase 3b.7) and surface
 the GitHub Release URL.
 
 **"Release straight from master (emergency)"** →
@@ -235,7 +239,82 @@ Confirm `## Unreleased` has actionable entries and no `v<target>` tag
 already exists. If the tag exists, stop and direct the user to cut an
 insider first (so master gets updated via Flow B's post-release PR).
 
-#### 3b.3 ASK - macOS notary warmup
+#### 3b.3 ASK/AGENT - Stable feature flag graduation
+
+Stable builds read remote feature flags from GitHub Pages:
+
+```text
+https://chmbr.dev/flags/v1/flags.json
+```
+
+The source file is committed at `docs/flags/v1/flags.json` and is
+published from `master` `/docs`. Before dispatching a stable release,
+inspect the current policy and ask whether any flags should be enabled
+for the stable channel:
+
+```bash
+git fetch origin master --quiet
+git show origin/master:docs/flags/v1/flags.json
+curl -fsSL https://chmbr.dev/flags/v1/flags.json
+```
+
+Prompt:
+
+```
+Any remote feature flags graduating to stable for this release?
+  none [default]
+  switchboardRelay
+  byoLlm
+  chamberCopilot
+  multiple (list names)
+```
+
+Default is **none**. Do not infer stable flag graduation from insiders
+values, changelog bullets, or the existence of a feature. A stable flag
+flip is a product decision and must be explicit.
+
+If the user chooses `none`, continue to macOS notary warmup.
+
+If one or more flags should graduate:
+
+1. Create a short-lived branch from `origin/master`.
+2. Update only `channels.stable.<flag>` in `docs/flags/v1/flags.json`.
+   Leave `channels.insiders` unchanged unless the user explicitly asks.
+3. Run:
+
+   ```bash
+   npx vitest run --config config/vitest.config.ts packages/shared/src/feature-flags.test.ts apps/desktop/src/main/services/featureFlags/FeatureFlagService.test.ts
+   npx markdownlint-cli2 ai-docs/feature-flags.md
+   ```
+
+4. Commit with the required trailer:
+
+   ```bash
+   git add docs/flags/v1/flags.json
+   git commit -m "Update stable feature flags"
+   ```
+
+   Include:
+
+   ```text
+   Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+   ```
+
+5. Push and open a small PR titled `Update stable feature flags`.
+6. Stop and ask the user to review/merge it. Do not merge it yourself.
+7. After it lands, wait for GitHub Pages to publish and verify:
+
+   ```bash
+   curl -fsSL https://chmbr.dev/flags/v1/flags.json
+   ```
+
+8. Continue the stable release only after the published JSON reflects
+   the intended stable flags.
+
+This checkpoint prevents releasing a stable build while the remote
+policy still keeps the graduating feature disabled for stable users.
+
+#### 3b.4 ASK - macOS notary warmup
 
 Apple's first-team notarization warmup takes 1–2 days per submission.
 Until warmup is verified complete, stable dispatches may stall on the
@@ -258,7 +337,7 @@ xcrun notarytool history \
 
 Recent submissions completing in <5 minutes means warmup is done.
 
-#### 3b.4 AGENT - Dispatch
+#### 3b.5 AGENT - Dispatch
 
 **Flow B (default):**
 
@@ -283,7 +362,7 @@ gh run list --workflow=release.yml --limit 1
 
 Print the run URL and the watch command.
 
-#### 3b.5 AGENT - After success
+#### 3b.6 AGENT - After success
 
 ```bash
 git fetch origin --tags --quiet
@@ -301,7 +380,7 @@ Surface:
   artifact, not committed. The post-release bump PR (next phase) fixes
   this.
 
-#### 3b.6 AGENT - Post-release bump PR (anchored to build SHA)
+#### 3b.7 AGENT - Post-release bump PR (anchored to build SHA)
 
 Master's `package.json` and `CHANGELOG.md` must now be advanced. This is
 the **only** automation that mutates `package.json` on master under
@@ -428,7 +507,11 @@ dispatched — benefits from a written trail.
   keeping both sections: the new `## vX.Y.Z (date)` AS-IS, and any
   interim `## Unreleased` bullets under a fresh `## Unreleased` block
   above it. Never `--theirs` or `--ours` blindly — both sides carry
-  real content. See Phase 3b.6 for the resolution template.
+  real content. See Phase 3b.7 for the resolution template.
+- **Stable feature flag policy PR needed** — stop before dispatching
+  stable until the policy PR is merged and
+  `https://chmbr.dev/flags/v1/flags.json` reflects the intended stable
+  flags.
 - **Workflow dispatch returns non-zero** — capture and surface the
   error. Don't retry blindly.
 - **macOS warmup uncertain** — default to *not* dispatching stable.
@@ -448,7 +531,7 @@ These are easy to do by accident and hard to undo:
   bump commit is generated. The release workflow mutates `package.json`
   only on the runner. The only legitimate path that mutates master's
   version field is the post-release bump PR opened by this skill
-  (Phase 3b.6).
+  (Phase 3b.7).
 - **Don't reuse the insider binary as the stable artifact.** Promotion
   must rebuild — different channel string, different feed URL,
   different embedded `app-update.yml`, fresh signatures.
@@ -457,7 +540,8 @@ These are easy to do by accident and hard to undo:
 ## Notes
 
 - The ship skill is for PRs and never dispatches a release. This skill
-  is for builds and never modifies code.
+  is for builds. It may open narrowly scoped release/policy PRs, but the
+  user owns the merge.
 - Insider auto-update reads `insiders.yml`. Stable reads `latest.yml` /
   `latest-mac.yml`. The embedded `app-update.yml` (written by
   `scripts/prepare-builder-prepackaged.js`) determines which one a
