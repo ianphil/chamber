@@ -23,13 +23,19 @@ three explicit modes:
 The dev file is committed on purpose. It makes local preview behavior visible in
 code review and avoids hidden per-developer environment setup.
 
-## Packaged remote policy
+## GitHub Pages config source
 
-Packaged builds fetch the feature flag policy from:
+Packaged builds do not derive feature values from source code or user config.
+They fetch one static JSON policy from GitHub Pages:
 
 ```text
 https://chmbr.dev/flags/v1/flags.json
 ```
+
+That JSON file is the remote config source for stable and insiders. Managing it
+through a pull request gives us remote control without adding an admin portal:
+merge a policy change, GitHub Pages publishes it, and the next Chamber startup
+uses the new policy if it validates.
 
 Expected shape:
 
@@ -63,6 +69,10 @@ Remote policy is authoritative for packaged builds. Channel no longer defines a
 local baseline like "stable off, insiders on"; it only chooses which remote JSON
 object to read.
 
+When changing the GitHub Pages policy, update both channel objects explicitly.
+Do not rely on missing fields to mean "off" for the remote policy; packaged
+policy validation requires every known flag to be present for both channels.
+
 ### Failure behavior
 
 `FeatureFlagService` validates the policy schema before using it. On fetch,
@@ -74,6 +84,14 @@ HTTP, timeout, or schema failure, packaged builds fall back in this order:
 The cache is per-channel so an insiders policy is never used for stable, or vice
 versa. The remote fetch is startup-only in v1; there is no live polling or
 renderer update stream yet.
+
+This means channel is still needed for failure isolation, but not for feature
+values:
+
+1. Online packaged stable reads `channels.stable`.
+2. Online packaged insiders reads `channels.insiders`.
+3. Offline packaged stable reads the last cached stable flags, then all-off.
+4. Offline packaged insiders reads the last cached insiders flags, then all-off.
 
 E2E specs that validate preview-only surfaces may opt in with
 `CHAMBER_E2E=1 CHAMBER_E2E_PREVIEW_FEATURES=1`. That harness-only override
@@ -140,17 +158,21 @@ surface on locally.
 Use this checklist when introducing a flag for a feature still under
 development.
 
-1. Add the flag to `AppFeatureFlags` and `DEFAULT_APP_FEATURE_FLAGS`.
-2. Add a dev default in `apps/desktop/src/main/devFeatureFlags.ts`.
-3. Add the flag to the remote policy schema in `packages/shared/src/feature-flags.ts`.
-4. Add the flag to the GitHub Pages policy JSON for both `stable` and `insiders`.
-5. Expose it only through `app:getFeatureFlags`; do not add it to user config.
-6. Gate both the entry point and the target route/component when hiding a UI
+1. Add the flag to `AppFeatureFlags`.
+2. Add the safe default to `DEFAULT_APP_FEATURE_FLAGS`. New flags should usually
+   default to `false`.
+3. Add a dev default in `apps/desktop/src/main/devFeatureFlags.ts`.
+4. Add the flag to complete-policy validation in
+   `packages/shared/src/feature-flags.ts`.
+5. Add the flag to the GitHub Pages policy JSON for both `stable` and
+   `insiders`.
+6. Expose it only through `app:getFeatureFlags`; do not add it to user config.
+7. Gate both the entry point and the target route/component when hiding a UI
    surface.
-7. If disabling the UI is not enough, gate the runtime/service path too.
-8. Add shared resolver tests and renderer tests for enabled and disabled states.
-9. Update this document's current-flags table if the flag is expected to live
-   longer than a one-off experiment.
+8. If disabling the UI is not enough, gate the runtime/service path too.
+9. Add shared resolver tests and renderer tests for enabled and disabled states.
+10. Update this document's current-flags table if the flag is expected to live
+    longer than a one-off experiment.
 
 ### File map
 
@@ -214,6 +236,28 @@ Add tests at the same depth as the gate:
 5. E2E smoke updates only when an existing smoke needs preview features; use
    `CHAMBER_E2E=1 CHAMBER_E2E_PREVIEW_FEATURES=1` for that harness-only path.
 
+### Example guard test: Switchboard Relay
+
+Use guard tests to prove the feature flag controls the guarded surface, not to
+prove the GitHub Pages config file itself. For example, `switchboardRelay` hides
+the Relay activity-bar entry point when disabled.
+
+Manual smoke experiment:
+
+1. Temporarily set `switchboardRelay: false` in
+   `apps/desktop/src/main/devFeatureFlags.ts`.
+2. Temporarily remove `CHAMBER_E2E_PREVIEW_FEATURES: '1'` from
+   `tests/e2e/electron/a2a-relay-roundtrip.spec.ts`; that override forces
+   preview flags on and bypasses dev defaults.
+3. Run `npm run smoke:a2a-relay`.
+4. Expect the smoke to fail while waiting for the `A2A Relay` button, because
+   the activity-bar icon is hidden by the flag.
+5. Restore both temporary edits.
+
+This test demonstrates the UI guard. It does not validate remote policy fetch or
+cache behavior; those belong in `FeatureFlagService.test.ts` because they are
+config-source behavior rather than UI behavior.
+
 ### Do not
 
 - Do not add normal feature flags to `~/.chamber/config.json`.
@@ -222,3 +266,6 @@ Add tests at the same depth as the gate:
 - Do not leave stable builds able to execute disabled runtime paths.
 - Do not use a broad "preview" check directly in renderer components; consume
   named fields from `AppFeatureFlags` so every gate is searchable.
+- Do not use `CHAMBER_E2E_PREVIEW_FEATURES=1` when the test is meant to prove a
+  dev flag can hide a surface; that override intentionally turns preview flags
+  on.
