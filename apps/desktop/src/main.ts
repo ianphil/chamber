@@ -5,8 +5,9 @@ import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import started from 'electron-squirrel-startup';
-import { getAppFeatureFlags, IPC } from '@chamber/shared';
+import { DEFAULT_APP_FEATURE_FLAGS, IPC } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
+import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
 
 function broadcastStartupProgress(event: StartupProgressEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -108,6 +109,7 @@ import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
+import { FeatureFlagService } from './main/services/featureFlags/FeatureFlagService';
 import type sharpModule from 'sharp';
 
 if (started) {
@@ -181,185 +183,187 @@ const notifier: Notifier = {
   },
 };
 
-const chamberToolsBinDir = getChamberToolsBinDir();
-const clientFactory = new CopilotClientFactory({ toolsBinDir: chamberToolsBinDir });
+let appFeatureFlags: AppFeatureFlags = DEFAULT_APP_FEATURE_FLAGS;
+let credentialStore: CredentialStore;
+let sharp: typeof sharpModule;
+let configService: ConfigService;
+let scaffold: MindScaffold;
+let genesisTemplateCatalog: GenesisMindTemplateMarketplaceCatalog;
+let genesisTemplateInstaller: GenesisMindTemplateInstaller;
+let marketplaceRegistryService: MarketplaceRegistryService;
+let toolsService: ToolsService;
+let viewDiscovery: ViewDiscovery;
+let a2aEventBus: EventEmitter;
+let agentCardRegistry: AgentCardRegistry;
+let taskManager: TaskManager;
+let byoLlmStore: ByoLlmStore;
+let cachedByoLlmConfig: import('@chamber/shared/types').ByoLlmConfig | null = null;
+let mindManager: MindManager;
+let mindProfileService: MindProfileService;
+let userProfileService: UserProfileService;
+let microsoftGraphProfileImporter: MicrosoftGraphProfileImporter;
+let chatService: ChatService;
+let a2aRelayModeService: A2ARelayModeService;
+let chatroomService: ChatroomService;
+let canvasService: CanvasService;
+let cronService: CronService;
+let authService: AuthService;
+let chamberCopilotService: ChamberCopilotService | null = null;
+let updaterService: UpdaterService;
 
-// Issue #59 — pre-load the Copilot SDK JS module while the renderer is still
-// drawing the landing/loading screen so the first user-initiated `createClient`
-// (genesis create, mind:add, mind restore) does not pay the import cost on
-// the critical path. Fire-and-forget; the promise is internally deduped by
-// `CopilotClientFactory`, so any concurrent `createClient` awaits the same
-// load instead of triggering a second import.
-void clientFactory.preloadSdk().catch((err: unknown) => {
-  log.warn('SDK preload failed (non-fatal — first createClient will retry):', err);
-});
-const configService = new ConfigService();
-const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
-const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
-  configService.load().marketplaceRegistries ?? [DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE];
-const saveActiveLogin = (login: string | null) => {
-  const config = configService.load();
-  configService.save({ ...config, activeLogin: login });
-};
-const credentialStore = loadKeytar();
-const sharp = loadSharp();
-const userAgent = `Chamber/${app.getVersion()}`;
-function resolveAppFeatureFlags() {
-  return getAppFeatureFlags({
+async function initializeRuntime(): Promise<void> {
+  const userAgent = `Chamber/${app.getVersion()}`;
+  appFeatureFlags = await new FeatureFlagService({
     version: app.getVersion(),
-    devFeatureFlags: app.isPackaged ? undefined : DEV_FEATURE_FLAGS,
+    isPackaged: app.isPackaged,
+    userDataPath: appPaths.userData,
+    devFeatureFlags: DEV_FEATURE_FLAGS,
     previewFeatures: process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_PREVIEW_FEATURES === '1',
+  }).initialize();
+
+  const chamberToolsBinDir = getChamberToolsBinDir();
+  const clientFactory = new CopilotClientFactory({ toolsBinDir: chamberToolsBinDir });
+  void clientFactory.preloadSdk().catch((err: unknown) => {
+    log.warn('SDK preload failed (non-fatal — first createClient will retry):', err);
+  });
+
+  configService = new ConfigService();
+  const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
+  const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
+    configService.load().marketplaceRegistries ?? [DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE];
+  const saveActiveLogin = (login: string | null) => {
+    const config = configService.load();
+    configService.save({ ...config, activeLogin: login });
+  };
+  credentialStore = loadKeytar();
+  sharp = loadSharp();
+  const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore, userAgent);
+  authService = new AuthService(
+    credentialStore,
+    () => configService.load().activeLogin,
+    saveActiveLogin,
+    userAgent,
+  );
+  scaffold = new MindScaffold();
+  genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
+  genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
+  marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
+  const marketplaceToolCatalog = new MarketplaceToolCatalog(githubRegistryClient, getGenesisMarketplaceSources);
+  toolsService = new ToolsService(
+    marketplaceToolCatalog,
+    new ToolInstaller(
+      new ChildProcessRunner(),
+      GitHubReleaseAssetClient.withCredentialStore(credentialStore, userAgent),
+      chamberToolsBinDir,
+    ),
+    configService,
+  );
+  viewDiscovery = new ViewDiscovery();
+
+  a2aEventBus = new EventEmitter();
+  agentCardRegistry = new AgentCardRegistry();
+  const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
+  const turnQueue = new TurnQueue();
+  byoLlmStore = new ByoLlmStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA, credentials: credentialStore });
+  mindManager = new MindManager(
+    clientFactory,
+    identityLoader,
+    configService,
+    viewDiscovery,
+    () => buildProviderConfig(cachedByoLlmConfig),
+    () => cachedByoLlmConfig?.model,
+  );
+  mindProfileService = new MindProfileService({
+    getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
+    restartMind: (mindId) => mindManager.reloadMind(mindId),
+  }, identityLoader, new SharpAvatarNormalizer(sharp));
+  userProfileService = new UserProfileService(configService);
+  microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
+    userProfileService,
+    new MsalBrokerGraphTokenProvider({
+      authDataDir: path.join(appPaths.userData, 'auth', 'microsoft'),
+      openBrowser: (url) => shell.openExternal(url),
+      clientId: process.env.CHAMBER_MICROSOFT_GRAPH_CLIENT_ID,
+      tenantId: process.env.CHAMBER_MICROSOFT_GRAPH_TENANT_ID,
+    }),
+  );
+  taskManager = new TaskManager(mindManager, agentCardRegistry);
+  // The SDK model catalog does not include BYO endpoint models, so keep the
+  // saved BYO model visible through this side-channel when the flag is enabled.
+  const byoLlmModelsProvider = createByoLlmModelsProvider({
+    getConfig: () => appFeatureFlags.byoLlm ? cachedByoLlmConfig : null,
+    probe: probeEndpoint,
+    onProbeError: (err, config) => {
+      log.warn(`BYO LLM models provider probe failed (baseUrl=${redactUrlCredentials(config.baseUrl)}):`, err);
+    },
+  });
+  chatService = new ChatService(mindManager, turnQueue, undefined, byoLlmModelsProvider);
+  const messageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
+  a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
+  const chatroomApprovalGate = new ApprovalGate();
+  chatroomApprovalGate.setApprovalHandler(async (request) => ({
+    correlationId: request.correlationId,
+    approved: false,
+    decidedBy: 'system',
+    timestamp: Date.now(),
+    reason: 'Chatroom approval UI is not wired yet; side-effect tools are blocked.',
+  }));
+  chatroomService = new ChatroomService(mindManager, appPaths, chatroomApprovalGate);
+  canvasService = new CanvasService({
+    onAction: (action) => {
+      if (!action.lensViewId) {
+        log.info('Canvas action received:', action);
+        return;
+      }
+      const mindPath = mindManager.getMind(action.mindId)?.mindPath;
+      if (!mindPath) {
+        log.warn(`Canvas Lens action for unknown mind: ${action.mindId}`);
+        return;
+      }
+      void viewDiscovery.sendCanvasAction(action.lensViewId, {
+        action: action.action,
+        data: action.data,
+      }, mindPath).catch((error: unknown) => {
+        log.warn('Canvas Lens action failed:', error);
+      });
+    },
+    openExternal: { open: (url) => shell.openExternal(url) },
+  });
+  cronService = new CronService({
+    getTaskManager: () => taskManager,
+    showMind: (mindId) => {
+      mindManager.setActiveMind(mindId);
+      showMainWindow();
+    },
+    notifier,
+  });
+  const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
+  const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
+  chamberCopilotService = createChamberCopilotService(mindToolProviders);
+  mindManager.setProviders(mindToolProviders);
+  wireLifecycleEvents({ mindManager, agentCardRegistry, a2aRelayModeService, taskManager, a2aEventBus });
+  viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
+  updaterService = new UpdaterService({
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    allowDevUpdates: process.env.CHAMBER_UPDATER_ALLOW_DEV === '1',
+    setQuitting: () => {
+      isQuitting = true;
+    },
   });
 }
-const appFeatureFlags = resolveAppFeatureFlags();
-const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore, userAgent);
-const authService = new AuthService(
-  credentialStore,
-  () => configService.load().activeLogin,
-  saveActiveLogin,
-  userAgent,
-);
-const scaffold = new MindScaffold();
-const genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
-const genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
-const marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
-const marketplaceToolCatalog = new MarketplaceToolCatalog(githubRegistryClient, getGenesisMarketplaceSources);
-const toolsService = new ToolsService(
-  marketplaceToolCatalog,
-  new ToolInstaller(
-    new ChildProcessRunner(),
-    GitHubReleaseAssetClient.withCredentialStore(credentialStore, userAgent),
-    chamberToolsBinDir,
-  ),
-  configService,
-);
-const viewDiscovery = new ViewDiscovery();
 
-// --- Services (business rules, all dependencies injected) ---
-
-const a2aEventBus = new EventEmitter();
-const agentCardRegistry = new AgentCardRegistry();
-const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
-const turnQueue = new TurnQueue();
-const byoLlmStore = new ByoLlmStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA, credentials: credentialStore });
-let cachedByoLlmConfig: import('@chamber/shared/types').ByoLlmConfig | null = null;
 async function refreshCachedByoLlmConfig(): Promise<void> {
   cachedByoLlmConfig = appFeatureFlags.byoLlm ? await byoLlmStore.load() : null;
 }
-const mindManager: MindManager = new MindManager(
-  clientFactory,
-  identityLoader,
-  configService,
-  viewDiscovery,
-  () => buildProviderConfig(cachedByoLlmConfig),
-  () => cachedByoLlmConfig?.model,
-);
-const mindProfileService = new MindProfileService({
-  getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
-  restartMind: (mindId) => mindManager.reloadMind(mindId),
-}, identityLoader, new SharpAvatarNormalizer(sharp));
-const userProfileService = new UserProfileService(configService);
-const microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
-  userProfileService,
-  new MsalBrokerGraphTokenProvider({
-    authDataDir: path.join(appPaths.userData, 'auth', 'microsoft'),
-    openBrowser: (url) => shell.openExternal(url),
-    clientId: process.env.CHAMBER_MICROSOFT_GRAPH_CLIENT_ID,
-    tenantId: process.env.CHAMBER_MICROSOFT_GRAPH_TENANT_ID,
-  }),
-);
-const taskManager = new TaskManager(mindManager, agentCardRegistry);
-// BYO LLM models provider — when BYO is enabled, fetch the endpoint's model list
-// so it can be merged into the chat model picker alongside the SDK's Copilot models.
-// The SDK's `client.listModels()` always returns GitHub Copilot's official catalog
-// even when SessionConfig.provider is active, so this side-channel is required.
-//
-// When the probe fails, the provider returns a stub entry for the user's saved
-// BYO model so the renderer keeps that selection. Without this stub, the
-// renderer would silently fall back to the first cloud model and BYO-routed
-// minds would quietly send traffic to GitHub Copilot — see byoLlmModelsProvider.ts.
-const byoLlmModelsProvider = createByoLlmModelsProvider({
-  getConfig: () => appFeatureFlags.byoLlm ? cachedByoLlmConfig : null,
-  probe: probeEndpoint,
-  onProbeError: (err, config) => {
-    log.warn(`BYO LLM models provider probe failed (baseUrl=${redactUrlCredentials(config.baseUrl)}):`, err);
-  },
-});
-const chatService: ChatService = new ChatService(mindManager, turnQueue, undefined, byoLlmModelsProvider);
-const messageRouter: MessageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
-const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
-const chatroomApprovalGate = new ApprovalGate();
-chatroomApprovalGate.setApprovalHandler(async (request) => ({
-  correlationId: request.correlationId,
-  approved: false,
-  decidedBy: 'system',
-  timestamp: Date.now(),
-  reason: 'Chatroom approval UI is not wired yet; side-effect tools are blocked.',
-}));
-const chatroomService = new ChatroomService(mindManager, appPaths, chatroomApprovalGate);
-const canvasService = new CanvasService({
-  onAction: (action) => {
-    if (!action.lensViewId) {
-      log.info('Canvas action received:', action);
-      return;
-    }
 
-    const mindPath = mindManager.getMind(action.mindId)?.mindPath;
-    if (!mindPath) {
-      log.warn(`Canvas Lens action for unknown mind: ${action.mindId}`);
-      return;
-    }
-
-    void viewDiscovery.sendCanvasAction(action.lensViewId, {
-      action: action.action,
-      data: action.data,
-    }, mindPath).catch((error: unknown) => {
-      log.warn('Canvas Lens action failed:', error);
-    });
-  },
-  openExternal: { open: (url) => shell.openExternal(url) },
-});
-const cronService = new CronService({
-  getTaskManager: () => taskManager,
-  showMind: (mindId) => {
-    mindManager.setActiveMind(mindId);
-    showMainWindow();
-  },
-  notifier,
-});
-const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
-
-const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
-let chamberCopilotService: ChamberCopilotService | null = null;
-
-if (appFeatureFlags.chamberCopilot) {
+function createChamberCopilotService(mindToolProviders: ChamberToolProvider[]): ChamberCopilotService | null {
+  if (!appFeatureFlags.chamberCopilot) return null;
   const { defaultAcpConnectionFactory, AcpConnection, JobStore, createAcpTools, YOLO_ACP_ARGS } = loadChamberCopilot();
-  // SECURITY/CORRECTNESS:
-  // - command: pin to the bundled @github/copilot CLI exactly the way
-  //   CopilotClientFactory does, so Chamber has a SINGLE source of truth
-  //   for "where the bundled CLI lives" across both the SDK runtime and
-  //   the chamber-copilot ACP path. chamber-copilot >= 0.5.x ships its
-  //   own resolveBundledCopilotBinary helper, but we deliberately reuse
-  //   getPlatformCopilotBinaryPath / resolveNodeModulesDir to avoid two
-  //   different resolvers drifting against each other.
-  //   chamber-copilot >= 0.5.x also makes `command` REQUIRED at runtime
-  //   (defaultAcpConnectionFactory({}) throws), so this pin doubles as
-  //   the type-system contract.
-  // - args: the safe connection matches chamber-copilot's DEFAULT_ACP_ARGS
-  //   (post-0.5.x, after --no-auto-login was dropped). Kept explicit as
-  //   defense-in-depth so any future upstream default change cannot
-  //   silently disable cached host auth or re-enable auto-update on us.
-  // - yolo connection (chamber-copilot >= 0.5.11): a SECOND child worker
-  //   started with `--yolo`, equivalent to `--allow-all-tools
-  //   --allow-all-paths --allow-all-urls`. Any cli_delegate call carrying
-  //   `permission_mode: 'yolo'` routes here and runs without an approval
-  //   gate. The mode is per-call, opt-in by the delegating mind, and the
-  //   upstream tool description warns the model about the trade-off. We
-  //   wire it eagerly so a yolo-failure does not block safe startup
-  //   (ChamberCopilotService falls back to safe-only and surfaces
-  //   UnsupportedPermissionModeError for any yolo request).
+  // Reuse the same bundled Copilot CLI resolver as the SDK runtime so the ACP
+  // path cannot drift to a different binary.
   const cliPath = getPlatformCopilotBinaryPath(resolveNodeModulesDir());
-  chamberCopilotService = new ChamberCopilotService({
+  const service = new ChamberCopilotService({
     connectionsByMode: {
       safe: () => new AcpConnection({
         connectionFactory: defaultAcpConnectionFactory({
@@ -370,31 +374,21 @@ if (appFeatureFlags.chamberCopilot) {
       yolo: () => new AcpConnection({
         connectionFactory: defaultAcpConnectionFactory({
           command: cliPath,
-          // Use upstream's frozen YOLO_ACP_ARGS directly so we cannot
-          // drift from chamber-copilot's own definition of "yolo".
+          // Use upstream's frozen YOLO_ACP_ARGS directly so we cannot drift from
+          // chamber-copilot's own definition of "yolo".
           args: [...YOLO_ACP_ARGS],
         }),
       }),
     },
-    // jobStoreFactory + toolFactory are required, not defaulted, so that
-    // ChamberCopilotService.ts has zero value-level imports from
-    // chamber-copilot. Otherwise the bundled main.js would emit a
-    // top-level require('chamber-copilot') that runs BEFORE the
-    // app.isPackaged check in loadChamberCopilot() — producing the
-    // "Cannot find module 'chamber-copilot'" error from packaged builds.
+    // Keep value-level chamber-copilot imports out of ChamberCopilotService.ts;
+    // packaged builds must only require chamber-copilot after loadChamberCopilot().
     jobStoreFactory: (connections) => new JobStore({ connectionsByMode: connections }),
     toolFactory: (deps) => createAcpTools(deps),
   });
-  mindToolProviders.push(chamberCopilotService);
+  mindToolProviders.push(service);
   log.info('chamber-copilot ACP extension enabled (safe + yolo)', { cliPath });
+  return service;
 }
-
-mindManager.setProviders(mindToolProviders);
-
-wireLifecycleEvents({ mindManager, agentCardRegistry, a2aRelayModeService, taskManager, a2aEventBus });
-
-// Wire Lens refresh to use the mind's session
-viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
 
 let mainWindow: BrowserWindow | null = null;
 let appTray: ElectronTray | null = null;
@@ -406,14 +400,6 @@ const launchProtocolUrl = findMarketplaceInstallUrl(process.argv);
 const pendingProtocolUrls: string[] = launchProtocolUrl ? [launchProtocolUrl] : [];
 const shouldMinimizeToTray = process.platform === 'win32';
 const useMvpServer = process.env.CHAMBER_MVP_SERVER === '1';
-const updaterService = new UpdaterService({
-  currentVersion: app.getVersion(),
-  isPackaged: app.isPackaged,
-  allowDevUpdates: process.env.CHAMBER_UPDATER_ALLOW_DEV === '1',
-  setQuitting: () => {
-    isQuitting = true;
-  },
-});
 
 const requestQuit = () => {
   if (isQuitting) return;
@@ -676,6 +662,8 @@ app.on('ready', async () => {
       log.warn('squirrel-migration: Unexpected cleanup failure:', error);
     });
 
+  await initializeRuntime();
+
   if (useMvpServer) {
     await startMvpServer();
   }
@@ -742,7 +730,7 @@ app.on('ready', async () => {
   });
   ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
-  ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => resolveAppFeatureFlags());
+  ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => appFeatureFlags);
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {

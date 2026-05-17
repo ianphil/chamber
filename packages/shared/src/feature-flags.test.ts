@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APP_FEATURE_FLAGS, getAppFeatureFlags, isInsidersVersion } from './feature-flags';
+import {
+  DEFAULT_APP_FEATURE_FLAGS,
+  getAppFeatureFlags,
+  getFeatureFlagChannel,
+  isInsidersVersion,
+  parseFeatureFlags,
+  parseRemoteFeatureFlagPolicy,
+} from './feature-flags';
 
 describe('feature flags', () => {
   it('keeps preview features disabled by default', () => {
@@ -46,5 +53,43 @@ describe('feature flags', () => {
     expect(isInsidersVersion('0.62.4-insiders.0')).toBe(true);
     expect(isInsidersVersion('0.62.4-beta.0')).toBe(false);
     expect(isInsidersVersion('0.62.4')).toBe(false);
+  });
+
+  it('maps versions to feature flag channels', () => {
+    expect(getFeatureFlagChannel('0.62.4-insiders.0')).toBe('insiders');
+    expect(getFeatureFlagChannel('0.62.4')).toBe('stable');
+  });
+
+  it('parses feature flags with missing known fields defaulted off and unknown fields ignored', () => {
+    expect(parseFeatureFlags({ switchboardRelay: true, unknownFlag: true })).toEqual({
+      switchboardRelay: true,
+      byoLlm: false,
+      chamberCopilot: false,
+    });
+  });
+
+  it('parses a valid remote policy', () => {
+    expect(parseRemoteFeatureFlagPolicy({
+      version: 1,
+      updatedAt: '2026-05-17T21:00:00Z',
+      ignored: true,
+      channels: {
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, futureFlag: true },
+      },
+    })).toEqual({
+      version: 1,
+      updatedAt: '2026-05-17T21:00:00Z',
+      channels: {
+        stable: DEFAULT_APP_FEATURE_FLAGS,
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    });
+  });
+
+  it('rejects malformed remote policies', () => {
+    expect(parseRemoteFeatureFlagPolicy({ version: 2, channels: {} })).toBeNull();
+    expect(parseRemoteFeatureFlagPolicy({ version: 1, channels: { stable: {} } })).toBeNull();
+    expect(parseRemoteFeatureFlagPolicy(null)).toBeNull();
   });
 });

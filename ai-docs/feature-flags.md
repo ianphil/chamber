@@ -10,45 +10,83 @@ The shared flag contract lives in `packages/shared/src/feature-flags.ts`.
 Desktop exposes the resolved flags through `window.electronAPI.app.getFeatureFlags()`,
 and the renderer copies them into app state during startup.
 
-Flags default to the safest stable behavior. Browser mode returns the default
-flags unless it grows its own deployment channel signal. Desktop has three
-explicit modes:
+Flags default to the safest behavior: all disabled. Browser mode returns the
+default flags unless it grows its own deployment policy signal. Desktop has
+three explicit modes:
 
 | Mode | Flag source | Behavior |
 | ---- | ----------- | -------- |
-| Stable packaged build | Embedded stable version, `X.Y.Z` | Preview flags off |
-| Insiders packaged build | Embedded insiders version, `X.Y.Z-insiders.N` | Preview flags on |
+| Stable packaged build | Remote policy `channels.stable` | Remote controls each flag |
+| Insiders packaged build | Remote policy `channels.insiders` | Remote controls each flag |
 | Local dev, `npm start` | `apps/desktop/src/main/devFeatureFlags.ts` | Independently toggleable |
 
 The dev file is committed on purpose. It makes local preview behavior visible in
 code review and avoids hidden per-developer environment setup.
 
-## Release-channel flags
+## Packaged remote policy
 
-Use channel-derived flags for release-channel rollout decisions:
+Packaged builds fetch the feature flag policy from:
+
+```text
+https://chmbr.dev/flags/v1/flags.json
+```
+
+Expected shape:
+
+```json
+{
+  "version": 1,
+  "updatedAt": "2026-05-17T21:00:00Z",
+  "channels": {
+    "stable": {
+      "switchboardRelay": false,
+      "byoLlm": false,
+      "chamberCopilot": false
+    },
+    "insiders": {
+      "switchboardRelay": true,
+      "byoLlm": true,
+      "chamberCopilot": true
+    }
+  }
+}
+```
+
+The embedded app version only selects the channel block:
 
 | Channel | Version shape | Switchboard Relay |
 | ------- | ------------- | ----------------- |
-| Stable | `X.Y.Z` | off |
-| Insiders | `X.Y.Z-insiders.N` | on |
+| Stable | `X.Y.Z` | controlled by `channels.stable.switchboardRelay` |
+| Insiders | `X.Y.Z-insiders.N` | controlled by `channels.insiders.switchboardRelay` |
 
-The same channel rule currently controls these preview surfaces:
+Remote policy is authoritative for packaged builds. Channel no longer defines a
+local baseline like "stable off, insiders on"; it only chooses which remote JSON
+object to read.
+
+### Failure behavior
+
+`FeatureFlagService` validates the policy schema before using it. On fetch,
+HTTP, timeout, or schema failure, packaged builds fall back in this order:
+
+1. Last cached valid policy for the same channel under app `userData`.
+2. `DEFAULT_APP_FEATURE_FLAGS` with every flag disabled.
+
+The cache is per-channel so an insiders policy is never used for stable, or vice
+versa. The remote fetch is startup-only in v1; there is no live polling or
+renderer update stream yet.
+
+E2E specs that validate preview-only surfaces may opt in with
+`CHAMBER_E2E=1 CHAMBER_E2E_PREVIEW_FEATURES=1`. That harness-only override
+short-circuits remote policy and returns all preview flags on. Do not use it for
+normal app runs or release builds.
+
+## Current flags
 
 | Flag | Stable | Insiders | Notes |
 | ---- | ------ | -------- | ----- |
-| `switchboardRelay` | off | on | Hides the activity-bar relay entry point and route. |
-| `byoLlm` | off | on | Hides BYO model settings and disables desktop BYO runtime/IPC usage. |
-| `chamberCopilot` | off | on | Wires the chamber-copilot ACP provider and `cli_*` tools. |
-
-The resolver currently detects insiders builds from the embedded app version.
-This matches the release-channel model in `ai-docs/release-channels.md`: the
-runner mutates the version for the installer at build time, so the installed
-insiders app sees an `-insiders.N` version even though `master` keeps the last
-stable version on disk.
-
-E2E specs that validate preview-only surfaces may opt in with
-`CHAMBER_E2E=1 CHAMBER_E2E_PREVIEW_FEATURES=1`. Do not use that override for
-normal app runs or release builds.
+| `switchboardRelay` | remote | remote | Hides the activity-bar relay entry point and route. |
+| `byoLlm` | remote | remote | Hides BYO model settings and disables desktop BYO runtime/IPC usage. |
+| `chamberCopilot` | remote | remote | Wires the chamber-copilot ACP provider and `cli_*` tools. |
 
 ## Local development flags
 
@@ -104,8 +142,8 @@ development.
 
 1. Add the flag to `AppFeatureFlags` and `DEFAULT_APP_FEATURE_FLAGS`.
 2. Add a dev default in `apps/desktop/src/main/devFeatureFlags.ts`.
-3. Decide whether insiders should get the feature immediately.
-4. Resolve release behavior in `getAppFeatureFlags`.
+3. Add the flag to the remote policy schema in `packages/shared/src/feature-flags.ts`.
+4. Add the flag to the GitHub Pages policy JSON for both `stable` and `insiders`.
 5. Expose it only through `app:getFeatureFlags`; do not add it to user config.
 6. Gate both the entry point and the target route/component when hiding a UI
    surface.
@@ -118,9 +156,10 @@ development.
 
 | Purpose | File |
 | ------- | ---- |
-| Shared flag type and release resolver | `packages/shared/src/feature-flags.ts` |
+| Shared flag type and policy validation | `packages/shared/src/feature-flags.ts` |
 | Shared resolver tests | `packages/shared/src/feature-flags.test.ts` |
 | Dev-mode defaults | `apps/desktop/src/main/devFeatureFlags.ts` |
+| Desktop remote/cache resolver | `apps/desktop/src/main/services/featureFlags/FeatureFlagService.ts` |
 | Desktop IPC exposure | `apps/desktop/src/main.ts` via `app:getFeatureFlags` |
 | Renderer state | `apps/web/src/renderer/lib/store/state.ts` |
 | Renderer startup load | `apps/web/src/renderer/hooks/useAppSubscriptions.ts` |
@@ -130,18 +169,18 @@ Most new flags only touch the shared type/resolver, the dev defaults, and the
 feature-specific gates. The IPC and renderer-state plumbing should already
 carry new fields because the flag object is passed as a whole.
 
-### Release behavior decision
+### Rollout behavior decision
 
 Before wiring the feature, choose one of these rollout shapes:
 
 | Rollout shape | Stable | Insiders | Dev |
 | ------------- | ------ | -------- | --- |
-| Preview feature | off | on | controlled by `DEV_FEATURE_FLAGS` |
-| Dev-only experiment | off | off | controlled by `DEV_FEATURE_FLAGS` |
-| Stable feature | on | on | controlled by `DEV_FEATURE_FLAGS` until cleanup |
+| Preview feature | remote `false` | remote `true` | controlled by `DEV_FEATURE_FLAGS` |
+| Dev-only experiment | remote `false` | remote `false` | controlled by `DEV_FEATURE_FLAGS` |
+| Stable feature | remote `true` | remote `true` | controlled by `DEV_FEATURE_FLAGS` until cleanup |
 
 Most new work should start as a **dev-only experiment** until it is ready for
-insiders. Flip the insiders value when the feature is safe enough for testers.
+insiders. Flip the remote insiders value when the feature is safe enough for testers.
 When a feature graduates to stable, remove the flag in a follow-up cleanup
 instead of leaving dead conditionals around indefinitely.
 
@@ -164,13 +203,15 @@ agent tools, IPC handlers, or scheduled work could still execute.
 
 Add tests at the same depth as the gate:
 
-1. `packages/shared/src/feature-flags.test.ts` for stable, insiders, and dev
-   override behavior.
-2. Renderer component tests for hidden and visible states when the flag controls
+1. `packages/shared/src/feature-flags.test.ts` for policy parsing and schema
+   rejection behavior.
+2. `apps/desktop/src/main/services/featureFlags/FeatureFlagService.test.ts` for
+   dev, remote success, cache fallback, and all-false fallback behavior.
+3. Renderer component tests for hidden and visible states when the flag controls
    UI.
-3. IPC/service tests for explicit disabled behavior when runtime calls must be
+4. IPC/service tests for explicit disabled behavior when runtime calls must be
    unavailable.
-4. E2E smoke updates only when an existing smoke needs preview features; use
+5. E2E smoke updates only when an existing smoke needs preview features; use
    `CHAMBER_E2E=1 CHAMBER_E2E_PREVIEW_FEATURES=1` for that harness-only path.
 
 ### Do not
