@@ -23,7 +23,7 @@
     "lint": "tsc --noEmit && eslint . && npm run deps:check && npm run lint:yaml && npm run lint:md",
     "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#resources\" \"#chamber-copilot-runtime\" \"#dist\" \"#out\" \"#coverage\" \"#.vite\" \"#.cache\" \"#.working-memory\" \"#CHANGELOG.md\"",
     "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\" \"#resources\" \"#chamber-copilot-runtime\" \"#dist\" \"#out\" \"#coverage\" \"#.vite\" \"#.cache\" \"#.working-memory\" \"#CHANGELOG.md\"",
-    "lint:yaml": "node scripts/ensure-actionlint.js && actionlint -color -shellcheck= .github/workflows/*.yml",
+    "lint:yaml": "node scripts/ensure-actionlint.js && actionlint -color -shellcheck=",
     "deps:check": "depcruise apps packages --config config/dependency-cruiser.cjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config config/vitest.config.ts --no-file-parallelism --maxWorkers=1",
