@@ -10,14 +10,20 @@ The shared flag contract lives in `packages/shared/src/feature-flags.ts`.
 Desktop exposes the resolved flags through `window.electronAPI.app.getFeatureFlags()`,
 and the renderer copies them into app state during startup.
 
-Flags default to the safest stable behavior. Browser mode also returns the
-default flags unless it grows its own deployment channel signal. Local desktop
-development (`npm start`) uses the repo-owned defaults in
-`apps/desktop/src/main/devFeatureFlags.ts` so contributors can flip preview
-surfaces independently without changing user config or sharing environment
-variables.
+Flags default to the safest stable behavior. Browser mode returns the default
+flags unless it grows its own deployment channel signal. Desktop has three
+explicit modes:
 
-## Channel-derived flags
+| Mode | Flag source | Behavior |
+| ---- | ----------- | -------- |
+| Stable packaged build | Embedded stable version, `X.Y.Z` | Preview flags off |
+| Insiders packaged build | Embedded insiders version, `X.Y.Z-insiders.N` | Preview flags on |
+| Local dev, `npm start` | `apps/desktop/src/main/devFeatureFlags.ts` | Independently toggleable |
+
+The dev file is committed on purpose. It makes local preview behavior visible in
+code review and avoids hidden per-developer environment setup.
+
+## Release-channel flags
 
 Use channel-derived flags for release-channel rollout decisions:
 
@@ -47,13 +53,22 @@ normal app runs or release builds.
 ## Local development flags
 
 For unpackaged Electron runs, Chamber uses `DEV_FEATURE_FLAGS` from
-`apps/desktop/src/main/devFeatureFlags.ts`. This file is committed on purpose:
-it makes dev-mode preview behavior visible in code review and avoids hidden
-per-developer environment setup. Packaged builds ignore the file entirely.
+`apps/desktop/src/main/devFeatureFlags.ts`. Packaged builds ignore the file
+entirely.
 
 Change individual booleans there when local development needs a different
 combination, for example testing stable-like behavior for only BYO LLM while
 keeping Switchboard Relay enabled.
+
+Default dev values currently keep all preview surfaces on:
+
+```ts
+export const DEV_FEATURE_FLAGS = {
+  switchboardRelay: true,
+  byoLlm: true,
+  chamberCopilot: true,
+};
+```
 
 ## Switchboard Relay
 
@@ -90,4 +105,5 @@ surface on locally.
 4. Expose it only through `app:getFeatureFlags`; do not add it to user config.
 5. Gate both the entry point and the target route/component when hiding a UI
    surface.
-6. Add shared resolver tests and renderer tests for enabled and disabled states.
+6. If disabling the UI is not enough, gate the runtime/service path too.
+7. Add shared resolver tests and renderer tests for enabled and disabled states.
