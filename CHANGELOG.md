@@ -11,6 +11,11 @@
 
 - **Anchor post-release bump PR to build SHA** — The release skill now branches the post-release bump PR from the build SHA (insider tag or dispatch commit), not from current `origin/master`. Without this, ship PRs that merge during the 30–60 min build window get silently misattributed to the just-shipped version. Anchoring surfaces interim bullets as a visible 3-way merge conflict at PR-merge time, mechanical to resolve. Documented in the Decision Log with reference to release-please #2754 as the canonical postmortem of what goes wrong without it.
 
+### CI
+
+- **Add actionlint and markdownlint to CI** — New 'lint-yaml-markdown' job in .github/workflows/governance-check.yml runs actionlint over all workflow files and markdownlint (via 'npm run lint:md') over all repo docs. Configs: .github/actionlint.yaml (allows macos-13 runner label for x86_64 macOS builds; ignores intentional empty-string sentinel in release-insiders bump_type input) and .markdownlint.json (default ruleset minus MD013/MD025/MD033/MD040/MD041/MD060 plus siblings_only for MD024 — calibrated to Chamber's house style). The aggregator 'governance-status' now requires the new lint job. As part of this change: pinned all 'azure/login@v2' references to commit SHA a457da9 (security best practice + bypasses VS Code GitHub Actions extension resolver flakiness); fixed boolean inputs in release.yml that were quoted as strings; ran 'markdownlint --fix' across docs (cosmetic blank-line normalization only). Local commands: 'npm run lint:md' and 'npm run lint:md:fix'.
+- **Wire actionlint + markdownlint into `npm run lint`** — `npm run lint` now also runs `npm run lint:yaml && npm run lint:md`, so local lint matches the governance-check CI job. `scripts/ensure-actionlint.js` lazily downloads a pinned `actionlint` v1.7.12 binary to `node_modules/.bin/` on first run (idempotent via version stamp; cross-platform: macOS/Linux/Windows). CI uses the same `npm run lint:yaml` script, so local and CI run identical versions. Adds `.vscode/settings.json` to suppress the GitHub Actions extension's "Unable to resolve action" false positives (open upstream bug github/vscode-github-actions#433) and to match CI's CHANGELOG.md exclusion for the VS Code markdownlint extension.
+
 ## v0.62.4 (2026-05-16)
 
 ### Release
@@ -147,6 +152,7 @@
 ### SDK
 
 - **Replace broad SDK URL auto-approval with explicit GitHub hosts** — Primary Copilot SDK sessions now drop `--allow-all-urls` and pass only the default first-party GitHub URL allowlist, leaving other URL permission requests to the SDK handler. (#131)
+
 ## v0.54.0 (2026-05-10)
 
 ### SDK
@@ -367,6 +373,7 @@
 - **Auto-install on startup** — On app ready, `ToolsService.reconcile()` diffs marketplace `tools[]` against `config.installedTools[]` and runs `npm install -g <package>@<version>` for any new entry, then runs declared `preflight` commands (e.g. `workiq accept-eula`). Errors are logged per-tool and do not block other installs. Already-installed tools are not auto-updated. (#218)
 - **Runtime tool context in the system message** — `IdentityLoader` accepts an `InstalledTool[]` provider and appends a `## Tools` section to every session's system message. Tool descriptions live in the marketplace manifest's `agentInstructions` field and are captured into the installed-tool record at install time, so model context is available offline. Mind directories are not modified. (#218)
 - **Tools IPC + preload surface** — New `tools:list`, `tools:install`, `tools:uninstall` channels exposed via `window.electronAPI.tools.*`. Browser-mode shim returns descriptive "desktop-only" errors. (#218)
+
 ## v0.45.0 (2026-05-07)
 
 ### Chatroom
@@ -833,6 +840,7 @@
 ## v0.22.0 (2026-04-16)
 
 ### Chat markdown rendering
+
 - **Typography plugin** — registered `@tailwindcss/typography` via Tailwind v4 `@plugin` directive so `prose` classes now actually style headings, lists, tables, and blockquotes in chat messages.
 - **Syntax highlighting** — added `rehype-highlight` with a `github-dark` theme for fenced code blocks.
 - **External links** — markdown links now open in a new window with `rel=noopener noreferrer`.
@@ -841,6 +849,7 @@
 ## v0.21.0 (2026-04-16)
 
 ### Multi-account GitHub auth
+
 - **Account selection** - Settings now lists all stored GitHub accounts, keeps the active account selected, and lets you add another account from the same picker.
 - **Active login persistence** - Chamber now persists `activeLogin` in config so auth status resolves the intended credential instead of whichever one keytar returns first.
 - **Full auth reload on switch** - Switching accounts reloads every mind so Copilot clients, chatroom sessions, and task sessions all restart with fresh auth state.
@@ -849,6 +858,7 @@
 ## v0.20.0 (2026-04-15)
 
 ### Settings view and logout
+
 - **Settings navigation** — added a bottom-pinned gear icon in the ActivityBar that opens a dedicated Settings view.
 - **Account section** — Settings now shows the current GitHub login and a logout action in the app UI.
 - **Logout flow** — logging out deletes the stored keytar credential, broadcasts the event to all windows, and returns AuthGate to the sign-in screen.
@@ -856,11 +866,13 @@
 ## v0.19.7 (2026-04-13)
 
 ### Lens discovery fix
+
 - **Late-created lens folders** — Chamber now discovers lens views created after a mind was already loaded instead of requiring a manual reload.
 
 ## v0.19.6 (2026-04-13)
 
 ### Zero Lint / CI Green
+
 - **ESLint clean** — resolved all errors and warnings across the codebase
 - **CI `validate` job** — new workflow step runs `npm run lint` on every push and PR
 - **Pre-commit hook** — lint check runs before each commit via Husky + lint-staged
@@ -869,11 +881,13 @@
 ## v0.19.5 (2026-04-13)
 
 ### Final Message Drop Fix
+
 - **Reducer `message_final` handler** — was checking `blocks.some(b => b.type === 'text')` which silently dropped final message content when any earlier text block existed. Now checks `b.sdkMessageId === event.sdkMessageId` so the agent's final response after tool calls is correctly added as a new TextBlock.
 
 ## v0.19.4 (2026-04-13)
 
 ### Session Timeout Recovery
+
 - **Stale session detection** — `isStaleSessionError()` utility detects "Session not found" errors from harvested CLI sessions
 - **ChatService retry** — catches stale session on `send()`, emits `reconnecting` event, recreates session via `MindManager.recreateSession()`, retries once
 - **ChatroomService retry** — evicts stale session from cache, creates fresh session, retries broadcast once
@@ -884,6 +898,7 @@
 ## v0.19.0 (2026-04-13)
 
 ### Chatroom (Phase 5)
+
 - **ChatroomService** — broadcast user messages to all loaded agents in parallel with isolated per-mind chatroom sessions
 - **Round-based echo prevention** — agents respond to user messages only; previous round context injected as escaped XML `<chatroom-history>`
 - **Session isolation** — chatroom sessions are separate from individual chat sessions (no context bleed)
@@ -897,6 +912,7 @@
 ## v0.18.1 (2026-04-13)
 
 ### Structural Cleanup (Uncle Bob Review)
+
 - **Deleted orphaned `agent.ts` IPC** — dead module that would crash on import (duplicate handlers)
 - **Deleted `SdkLoader.ts` singleton** — superseded by `CopilotClientFactory`; migrated `MindScaffold` to use injected factory
 - **Created `mind/` barrel export** — consistent with all other service directories
@@ -909,6 +925,7 @@
 ## v0.18.0 (2026-04-13)
 
 ### A2A Tasks (Phase 4)
+
 - **TaskManager service** — full A2A 8-state lifecycle (submitted → working → completed/failed/canceled/input-required/rejected/auth-required)
 - **Isolated sessions per task** — `MindManager.createTaskSession()` creates independent conversation contexts
 - **4 new agent tools** — `a2a_send_task`, `a2a_get_task`, `a2a_list_tasks`, `a2a_cancel_task`
@@ -919,6 +936,7 @@
 - **A2A conformity** — ListTasksResponse wrapper, required contextId, Artifact.extensions, AgentCard.iconUrl, AgentExtension type, historyLength semantics
 
 ### Fixes
+
 - **Boot screen version** — pulls from package.json dynamically (was hardcoded 0.15.0)
 - **TaskSessionFactory interface** — TaskManager depends on interface, not MindManager (DIP)
 - **Typed IPC boundary** — ElectronAPI.a2a methods use real types, not `any`
@@ -930,6 +948,7 @@
 ## v0.17.0 (2026-04-13)
 
 ### A2A Messages (Phase 3)
+
 - **MessageRouter** — in-process A2A routing mirroring SendMessage RPC
 - **AgentCardRegistry** — A2A-conformant AgentCards from mind metadata
 - **TurnQueue** — per-mind turn serialization preventing session.send() races
@@ -942,6 +961,7 @@
 ## v0.16.0 (2026-04-12)
 
 ### Agent Windowing (Phase 2)
+
 - **Pop-out windows** — right-click agent in sidebar → "Open in New Window"
 - **Window management** — `MindManager.attachWindow()`/`detachWindow()`
 - **Independent renderers** — each window gets its own chat panel
@@ -950,6 +970,7 @@
 ## v0.15.0 (2026-04-12)
 
 ### Multi-Mind Runtime (Phase 1)
+
 - **MindManager** — aggregate root with `Map<mindId, InternalMindContext>`
 - **CopilotClientFactory** — instance-based, one CopilotClient per mind
 - **IdentityLoader** — SOUL.md parsing for agent identity
@@ -966,16 +987,19 @@
 ## v0.13.0 (2026-04-09)
 
 ### Auth & Credential Fixes
+
 - **Fix OAuth client ID** — switch from deprecated `Iv1.b507a08c87ecfe98` to current CLI client ID `Ov23ctDVkRmgkPke0Mmm` with correct scopes (`read:user,read:org,repo,gist`)
 - **Fix UTF-16/UTF-8 credential encoding** — cmdkey stores blobs as UTF-16LE but the CLI reads via keytar (UTF-8). Now uses Win32 `CredWriteW` directly with UTF-8 encoding via a compiled helper
 - **Fix PowerShell Add-Type timeout** — replaced slow JIT compilation with a precompiled `CredWrite.exe` via `csc.exe` (cached on first run)
 
 ### Agent Identity & Personality
+
 - **Agent identity injection** — ChatService loads SOUL.md + `.github/agents/*.agent.md` and injects them into the session via `systemMessage` customize mode
 - **Replace SDK identity section** — agent's SOUL replaces the default "You are GitHub Copilot CLI" identity while preserving all tool instructions, safety, and environment context
 - **Remove SDK tone override** — the "100 words or less" tone section was suppressing agent personality; removed so SOUL.md's Vibe section controls voice
 
 ### Genesis & Boot
+
 - **Surface genesis errors** — boot screen now shows red error text with actionable hint instead of spinning forever on failure
 - **Fix BootScreen crash** — React strict mode double-fired useEffect corrupting interval index; fixed with optional chaining and value capture
 

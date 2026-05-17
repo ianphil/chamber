@@ -62,7 +62,7 @@ jobs:
           echo "Computed insider version: $new_version (target stable: ${target_stable:-from script output})"
 
       - name: Azure login (Trusted Signing)
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -94,7 +94,7 @@ jobs:
           Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination "staged/Chamber-Setup-latest-insiders.exe"
 
       - name: Azure login (Insiders blob)
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

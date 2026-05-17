@@ -82,6 +82,29 @@ jobs:
           echo "=== Running npm audit ==="
           npm audit --omit=dev 2>&1 || echo "::warning::npm audit found vulnerabilities"
 
+  lint-yaml-markdown:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: actionlint (GitHub Actions workflows)
+        run: npm run lint:yaml
+
+      - name: markdownlint (repo docs)
+        run: npm run lint:md
+
   model-b-gates:
     runs-on: ubuntu-latest
     permissions:
@@ -233,7 +256,7 @@ jobs:
           echo "Check B passed: branch anchored to declared build SHA."
 
   governance-status:
-    needs: [governance, model-b-gates]
+    needs: [governance, lint-yaml-markdown, model-b-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -241,6 +264,10 @@ jobs:
         run: |
           if [ "${{ needs.governance.result }}" != "success" ]; then
             echo "::error::Governance checks failed. Please fix issues above."
+            exit 1
+          fi
+          if [ "${{ needs.lint-yaml-markdown.result }}" != "success" ]; then
+            echo "::error::YAML/Markdown lint failed. See lint-yaml-markdown job for details."
             exit 1
           fi
           if [ "${{ needs.model-b-gates.result }}" != "success" ]; then

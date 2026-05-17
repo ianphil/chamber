@@ -33,6 +33,7 @@ nothing is published on push to `master`.
 ## Git shape
 
 ### After an insider cut
+
 The CI runner computes the next insider version from `## Unreleased`,
 mutates `package.json` in the runner's working tree (used only by the
 build), and tags master's commit. No commit is created; the tag points
@@ -52,6 +53,7 @@ at master commits. No `insiders/*` branch exists or is needed.
 > is the truthful artifact for the released version string.
 
 ### After promoting an insider to stable
+
 `release.yml` with `source_ref: v0.63.0-insiders.3` checks out master
 at that SHA, derives the stable version from the **tag name**
 (`v0.63.0-insiders.3` → `0.63.0`), applies it via `npm version
@@ -90,12 +92,14 @@ Once merged, master satisfies the invariant again: `package.json#version
 = 0.63.0 = last shipped stable`.
 
 ### Emergency release from master (no insider step)
+
 `release.yml` with `source_ref` empty computes the next stable from
 `## Unreleased` the same way the insiders compute does, applies it on
 the runner, and tags master. The post-release bump PR is still required
 afterward.
 
 ### Tag hygiene
+
 - **Do not delete insider tags casually.** Under Model B insider tags
   point at master commits, so deleting an insider tag does not orphan a
   commit — but you do lose the audit record of "this is what testers
@@ -107,6 +111,7 @@ afterward.
 - No release branches exist or need to.
 
 ### Version conflicts
+
 If `vX.Y.Z` already exists when you try to promote, the workflow will
 fail. Correct behavior — you can't double-publish. Add more changelog
 entries via `ship` so the next target stable advances, cut a new
@@ -115,12 +120,14 @@ insider, then promote.
 ## Insiders channel
 
 ### What it is
+
 - Windows-only signed NSIS installer, published to a private Azure Blob.
 - Auto-update reads `insiders.yml` from the same blob.
 - macOS is intentionally excluded until the Apple Developer ID
   notarization warmup completes. Insider testers run Windows only.
 
 ### Where artifacts live
+
 - Storage account: `chamberinsiders` (resource group `chamber-signing`,
   region `eastus`).
 - Container: `releases`, access level `Blob` (anonymous reads of known
@@ -130,6 +137,7 @@ insider, then promote.
 - Auto-update feed: `https://chamberinsiders.blob.core.windows.net/releases/insiders.yml`
 
 ### Authentication
+
 - GitHub Actions authenticates to Azure with OIDC federated identity —
   no client secret.
 - AAD app: `chamber-gh-actions-insiders`. Federated credential trusts
@@ -145,6 +153,7 @@ insider, then promote.
   secrets.
 
 ### How to cut an insider build
+
 1. Make sure `## Unreleased` in `CHANGELOG.md` has the bullets you want
    the next stable to contain. Each `ship` invocation appends one.
 2. Go to **Actions → Release Insiders → Run workflow** on the default
@@ -172,6 +181,7 @@ insider, then promote.
      the runner's working tree and the built installer.
 
 ### What testers do
+
 - First install: download
   `Chamber-Setup-latest-insiders.exe` from the URL above and run it.
   Share this URL out-of-band — it is not linked from the website or
@@ -187,6 +197,7 @@ this.
 ## Stable channel
 
 ### What it is
+
 - Public release. Windows NSIS installer + macOS DMG/ZIP (arm64;
   optionally Intel).
 - Auto-update reads `latest.yml` / `latest-mac.yml` from the GitHub
@@ -194,9 +205,11 @@ this.
 - macOS builds are signed with the Developer ID identity and notarized.
 
 ### How to cut a stable release
+
 Two flows, same workflow. **Flow B (promote insider) is the default.**
 
 **Flow B — promote an insider build (recommended):**
+
 1. Go to **Actions → Release → Run workflow** on `master`.
 2. Set `source_ref` to the insider tag, e.g. `v0.63.0-insiders.7`.
 3. The workflow will:
@@ -215,6 +228,7 @@ Two flows, same workflow. **Flow B (promote insider) is the default.**
    `CHANGELOG.md`.
 
 **Flow A — emergency release from master:**
+
 1. Make sure `## Unreleased` in `CHANGELOG.md` is non-empty.
 2. Go to **Actions → Release → Run workflow** on `master`.
 3. Leave `source_ref` empty. The workflow computes the next stable
@@ -227,6 +241,7 @@ The `force_release` input (defaults to `true`) skips the patch-only
 auto-skip guard — keep it `true` for manual dispatches.
 
 ### macOS notarization warmup
+
 - The first ~5–10 submissions from a new Apple Developer ID team go
   through Apple's "in-depth analysis" (per Apple DTS), which can take
   1–2 days each. Subsequent builds clear in <5 minutes.
@@ -238,12 +253,14 @@ auto-skip guard — keep it `true` for manual dispatches.
 ## How channels are wired through the build
 
 `config/electron-builder.config.cjs::resolvePublishTargets()`:
+
 - No env vars → GitHub provider (stable default).
 - `CHAMBER_BUILDER_UPDATE_URL` set → generic provider with that URL.
 - `CHAMBER_RELEASE_CHANNEL` set → adds `channel: <name>` to the publish
   entry (controls which `<channel>.yml` electron-builder writes).
 
 `scripts/prepare-builder-prepackaged.js::appendChannel()`:
+
 - Mirrors the channel into the **embedded** `app-update.yml` shipped
   inside the installer. This is what the installed app reads to decide
   which manifest to poll.
@@ -251,10 +268,12 @@ auto-skip guard — keep it `true` for manual dispatches.
   stable sets neither.
 
 `scripts/validate-builder-release.js`:
+
 - `--channel=<name>` (defaults to `latest`) selects which manifest file
   to validate against. The insiders workflow passes `--channel=insiders`.
 
 `scripts/changelog.js`:
+
 - Single source of truth for parsing/writing `CHANGELOG.md`.
   `readUnreleasedSection` returns the headings + raw text under
   `## Unreleased`. `recommendBumpFromChangelog` maps the highest-
@@ -264,6 +283,7 @@ auto-skip guard — keep it `true` for manual dispatches.
   `## vX.Y.Z (date)` section (used by the post-release bump PR).
 
 `scripts/bump-insiders-version.js`:
+
 - `readMasterVersion()` reads `package.json` and refuses to run if it
   contains a prerelease suffix (would mean master's Model B invariant
   was already violated).
@@ -338,6 +358,7 @@ auto-skip guard — keep it `true` for manual dispatches.
   the equivalent — no long-lived secret to rotate.
 
 ## Related docs
+
 - [`../INSIDERS.md`](../INSIDERS.md) — user-facing install instructions
   for testers (intentionally unlinked from the README).
 - [`apple-notary-queue.md`](./apple-notary-queue.md) — runbook for

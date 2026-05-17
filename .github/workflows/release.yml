@@ -6,12 +6,12 @@ on:
       force_release:
         description: 'Force release even for patch versions'
         required: false
-        default: 'true'
+        default: true
         type: boolean
       build_macos_x64:
         description: 'Also build Intel macOS artifacts on macos-13'
         required: false
-        default: 'false'
+        default: false
         type: boolean
       source_ref:
         description: 'Optional commit, tag, or branch to promote (e.g. an insider tag like v0.62.4-insiders.7). Empty means use the triggering ref.'
@@ -148,7 +148,7 @@ jobs:
           fi
 
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

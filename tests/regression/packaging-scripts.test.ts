@@ -135,7 +135,7 @@ describe('packaging scripts', () => {
     expect(validateBuilder).toContain('assertAppUpdatePublisherName');
     expect(validateBuilder).toContain('matchesPublisherName');
     expect(validateBuilder).toContain('SignerCertificate.Subject');
-    expect(releaseWorkflow).toContain('azure/login@v2');
+    expect(releaseWorkflow).toMatch(/azure\/login@[0-9a-f]{40}\s+#\s*v2\b/);
     expect(releaseWorkflow).toContain('CHAMBER_REQUIRE_WINDOWS_SIGNATURE');
     expect(releaseWorkflow).toContain('Import macOS signing certificate');
     expect(releaseWorkflow).toContain('DeveloperIDG2CA.cer');
