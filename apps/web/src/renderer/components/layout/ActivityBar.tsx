@@ -23,7 +23,7 @@ function getIcon(iconName: string, size = 20): React.ReactNode {
 }
 
 export function ActivityBar() {
-  const { activeView, discoveredViews, chatroomStreamingByMind } = useAppState();
+  const { activeView, discoveredViews, featureFlags, chatroomStreamingByMind } = useAppState();
   const dispatch = useAppDispatch();
   const isChatroomRunning = Object.values(chatroomStreamingByMind).some(Boolean);
 
@@ -100,23 +100,25 @@ export function ActivityBar() {
       {/* Bottom-pinned settings */}
       <div data-testid="activity-bar-footer" className="flex flex-col items-center gap-1">
         <UpdateIndicator />
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <button
-              aria-label="A2A Relay"
-              onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'a2a-relay' })}
-              className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
-                activeView === 'a2a-relay'
-                  ? 'bg-accent text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-              )}
-            >
-              <RadioTower size={20} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>A2A Relay</TooltipContent>
-        </Tooltip>
+        {featureFlags.switchboardRelay && (
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <button
+                aria-label="A2A Relay"
+                onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'a2a-relay' })}
+                className={cn(
+                  'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                  activeView === 'a2a-relay'
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                )}
+              >
+                <RadioTower size={20} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>A2A Relay</TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <button

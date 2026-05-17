@@ -19,6 +19,7 @@ import type {
   TaskStatusUpdateEvent,
 } from './a2a-types';
 import type { ChatroomAPI } from './chatroom-types';
+import type { AppFeatureFlags } from './feature-flags';
 import type {
   AgentProfile,
   AgentProfileActionResult,
@@ -166,6 +167,7 @@ export interface ElectronAPI {
     close: () => void;
   };
   app: {
+    getFeatureFlags: () => Promise<AppFeatureFlags>;
     /**
      * Subscribe to per-step app-startup progress events while the main
      * process restores minds from config. Drives the boot-screen activity

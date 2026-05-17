@@ -1,4 +1,5 @@
 import { ChamberClient } from '@chamber/client';
+import { DEFAULT_APP_FEATURE_FLAGS } from '@chamber/shared/feature-flags';
 import type { LensViewManifest, MindContext, ModelInfo } from '@chamber/shared/types';
 import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type { AgentCard, ListTasksResponse, Task } from '@chamber/shared/a2a-types';
@@ -351,6 +352,7 @@ export function installBrowserApi(): void {
       close: () => window.close(),
     },
     app: {
+      getFeatureFlags: async () => DEFAULT_APP_FEATURE_FLAGS,
       // Web browser host has no app-startup phase to report; the renderer
       // only sees a loaded page. Return a noop unsubscribe so the subscriber
       // can install/uninstall freely.

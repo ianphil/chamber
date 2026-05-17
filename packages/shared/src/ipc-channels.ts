@@ -137,6 +137,7 @@ export const IPC = {
     AUTH_COMPLETE_LOGIN: 'e2e:auth:complete-login',
   },
   APP: {
+    GET_FEATURE_FLAGS: 'app:getFeatureFlags',
     STARTUP_PROGRESS: 'app:startupProgress',
   },
 } as const;

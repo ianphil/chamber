@@ -13,6 +13,23 @@ export function useAppSubscriptions() {
   const dispatch = useAppDispatch();
   const viewsLoaded = useRef(false);
 
+  // Feature flags are app-owned, not user-configurable renderer state.
+  useEffect(() => {
+    let cancelled = false;
+    const loadFeatureFlags = async () => {
+      try {
+        const featureFlags = await window.electronAPI.app.getFeatureFlags();
+        if (!cancelled) dispatch({ type: 'SET_FEATURE_FLAGS', payload: featureFlags });
+      } catch (err) {
+        log.error('Failed to load feature flags:', err);
+      }
+    };
+    loadFeatureFlags();
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch]);
+
   // Chat event listener — must stay alive regardless of active view
   useEffect(() => {
     const unsub = window.electronAPI.chat.onEvent((mindId, messageId, event) => {

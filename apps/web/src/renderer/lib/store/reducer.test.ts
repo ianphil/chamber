@@ -614,6 +614,14 @@ describe('appReducer', () => {
     expect(state.activeView).toBe('briefing-1');
   });
 
+  it('SET_FEATURE_FLAGS updates feature flags', () => {
+    const state = appReducer(initialState, {
+      type: 'SET_FEATURE_FLAGS',
+      payload: { switchboardRelay: true },
+    });
+    expect(state.featureFlags.switchboardRelay).toBe(true);
+  });
+
   it('SET_DISCOVERED_VIEWS updates discoveredViews', () => {
     const views = [makeLensViewManifest({ id: 'v1' })];
     const state = appReducer(initialState, { type: 'SET_DISCOVERED_VIEWS', payload: views });

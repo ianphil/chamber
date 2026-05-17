@@ -131,6 +131,7 @@ const electronAPI: ElectronAPI = {
     close: () => ipcRenderer.send(IPC.WINDOW.CLOSE),
   },
   app: {
+    getFeatureFlags: () => ipcRenderer.invoke(IPC.APP.GET_FEATURE_FLAGS),
     onStartupProgress: (callback) => createIpcListener(ipcRenderer, IPC.APP.STARTUP_PROGRESS, callback),
   },
 };

@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import started from 'electron-squirrel-startup';
-import { IPC } from '@chamber/shared';
+import { getAppFeatureFlags, IPC } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
 
 function broadcastStartupProgress(event: StartupProgressEvent): void {
@@ -732,6 +732,7 @@ app.on('ready', async () => {
   });
   ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
+  ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => getAppFeatureFlags({ version: app.getVersion() }));
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {
