@@ -270,6 +270,66 @@ describe('ChatService', () => {
         'SDK contract mismatch for client.listModels',
       );
     });
+
+    it('BVT-CL01: merges BYO models after SDK models when both present', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [{ id: 'gemma-4-26b', name: 'gemma-4-26b', provider: 'byo' as const }],
+      );
+      const models = await svcWithByo.listModels('valid-mind');
+      expect(models).toEqual([
+        { id: 'm1', name: 'Model 1' },
+        { id: 'gemma-4-26b', name: 'gemma-4-26b', provider: 'byo' },
+      ]);
+    });
+
+    it('BVT-CL02: keeps same-id SDK and BYO models distinct', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [{ id: 'm1', name: 'Different Name', provider: 'byo' as const }],
+      );
+      const models = await svcWithByo.listModels('valid-mind');
+      expect(models).toEqual([
+        { id: 'm1', name: 'Model 1' },
+        { id: 'm1', name: 'Different Name', provider: 'byo' },
+      ]);
+    });
+
+    it('BVT-CL03: returns BYO-only when SDK errors but BYO is present', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [{ id: 'gemma', name: 'gemma', provider: 'byo' as const }],
+      );
+      const models = await svcWithByo.listModels('broken-models');
+      expect(models).toEqual([{ id: 'gemma', name: 'gemma', provider: 'byo' }]);
+    });
+
+    it('BVT-CL04: still throws SDK error when no BYO fallback', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [],
+      );
+      await expect(svcWithByo.listModels('broken-models')).rejects.toThrow('model discovery failed');
+    });
+
+    it('BVT-CL05: returns SDK models when BYO provider returns null', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => null,
+      );
+      const models = await svcWithByo.listModels('valid-mind');
+      expect(models).toEqual([{ id: 'm1', name: 'Model 1' }]);
+    });
   });
 
   describe('stale session retry', () => {
@@ -501,5 +561,22 @@ describe('ChatService', () => {
       expect(emit1).toHaveBeenCalledWith({ type: 'done' });
       expect(emit2).toHaveBeenCalledWith({ type: 'done' });
     });
+  });
+});
+
+describe('mapByoLlmError', () => {
+  it('BVT-CE01: rewrites llama.cpp n_keep / n_ctx errors with actionable hint', async () => {
+    const { mapByoLlmError } = await import('./ChatService');
+    const original = '400 "The number of tokens to keep from the initial prompt is greater than the context length (n_keep: 83159>= n_ctx: 4096). Try to load the model with a larger context length, or provide a shorter input."';
+    const out = mapByoLlmError(original);
+    expect(out).toContain('larger-context model');
+    expect(out).toContain('qwen3.5-9b');
+    expect(out).toContain(original);  // original error preserved at the end
+  });
+
+  it('BVT-CE02: passes through non-context errors unchanged', async () => {
+    const { mapByoLlmError } = await import('./ChatService');
+    const original = 'Connection refused: ECONNREFUSED 127.0.0.1:8080';
+    expect(mapByoLlmError(original)).toBe(original);
   });
 });

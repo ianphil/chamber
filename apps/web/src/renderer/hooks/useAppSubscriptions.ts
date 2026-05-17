@@ -53,6 +53,12 @@ export function useAppSubscriptions() {
       }
     };
     loadModels();
+
+    // Re-fetch the model list whenever the BYO LLM config changes so
+    // BYO models appear/disappear without forcing cloud-selected minds
+    // onto the custom provider.
+    const unsub = window.electronAPI.byoLlm.onChanged(() => { void loadModels(); });
+    return () => { unsub(); };
   }, [minds.length, activeMindId, dispatch]);
 
   // Fetch discovered Lens views

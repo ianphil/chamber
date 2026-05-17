@@ -13,6 +13,7 @@ import type { CopilotClient } from '@github/copilot-sdk';
 export interface CopilotClientFactoryOptions {
   toolsBinDir?: string;
   env?: Record<string, string | undefined>;
+  stopTimeoutMs?: number;
 }
 
 // Side-effect tool kinds Chamber auto-approves at the CLI layer. The list
@@ -32,13 +33,23 @@ export const TOOLS_AUTO_APPROVED: readonly string[] = ['shell', 'write'];
 // docs). Subdomain coverage requires the `*.host` pattern in addition
 // to the bare host.
 export const URLS_ALLOWED: readonly string[] = ['github.com', '*.github.com'];
+const DEFAULT_CLIENT_STOP_TIMEOUT_MS = 10_000;
+
+export interface CreateClientOptions {
+  /**
+   * Additional environment variables to merge into the spawned CLI process env.
+   * Used for BYO LLM (COPILOT_PROVIDER_*) without leaking config across mind
+   * lifetimes. Caller passes {} (or omits) when BYO is disabled.
+   */
+  extraEnv?: Record<string, string>;
+}
 
 export class CopilotClientFactory {
   private sdkModule: typeof import('@github/copilot-sdk') | null = null;
 
   constructor(private readonly options: CopilotClientFactoryOptions = {}) {}
 
-  async createClient(mindPath: string): Promise<CopilotClient> {
+  async createClient(mindPath: string, createOptions: CreateClientOptions = {}): Promise<CopilotClient> {
     const sdk = await this.getSdk();
     const modulesDir = resolveNodeModulesDir();
     const cliPath = getPlatformCopilotBinaryPath(modulesDir);
@@ -86,12 +97,18 @@ export class CopilotClientFactory {
       ...URLS_ALLOWED.map((host) => `--allow-url=${host}`),
     ];
 
+    const baseEnv = this.options.env ?? process.env;
+    const withTools = this.options.toolsBinDir ? prependToPath(baseEnv, this.options.toolsBinDir) : { ...baseEnv };
+    const finalEnv = createOptions.extraEnv && Object.keys(createOptions.extraEnv).length > 0
+      ? { ...withTools, ...createOptions.extraEnv }
+      : withTools;
+
     const client = new sdk.CopilotClient({
       cliPath,
       cwd: mindPath,
       logLevel: 'all',
       cliArgs,
-      ...(this.options.toolsBinDir ? { env: prependToPath(this.options.env ?? process.env, this.options.toolsBinDir) } : {}),
+      env: finalEnv,
     });
 
     await client.start();
@@ -100,9 +117,20 @@ export class CopilotClientFactory {
 
   async destroyClient(client: CopilotClient): Promise<void> {
     try {
-      await client.stop();
+      const stopErrors = await withTimeout(
+        client.stop(),
+        this.options.stopTimeoutMs ?? DEFAULT_CLIENT_STOP_TIMEOUT_MS,
+        'Timed out stopping Copilot client',
+      );
+      if (stopErrors.length === 0) return;
     } catch {
-      // Swallow stop errors — cleanup is best-effort
+      // Fall through to forceStop — cleanup is best-effort.
+    }
+
+    try {
+      await client.forceStop();
+    } catch {
+      // Swallow force-stop errors — cleanup is best-effort.
     }
   }
 
@@ -129,4 +157,15 @@ function prependToPath(env: Record<string, string | undefined>, entry: string): 
 
 function samePath(left: string, right: string): boolean {
   return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${message} after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }

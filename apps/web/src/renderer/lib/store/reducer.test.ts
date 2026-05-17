@@ -506,7 +506,7 @@ describe('appReducer', () => {
       payload: [{ ...withActiveMind.minds[0], selectedModel: 'model-2' }],
     });
 
-    expect(state.selectedModel).toBe('model-2');
+    expect(state.selectedModel).toBe('copilot:model-2');
   });
 
   it('SET_ACTIVE_MIND switches active mind', () => {
@@ -525,7 +525,7 @@ describe('appReducer', () => {
       selectedModel: 'model-1',
     }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
 
-    expect(state.selectedModel).toBe('model-2');
+    expect(state.selectedModel).toBe('copilot:model-2');
   });
 
   it('SET_ACTIVE_MIND preserves the selected mind streaming state', () => {
@@ -584,13 +584,20 @@ describe('appReducer', () => {
       minds: [{ ...withActiveMind.minds[0], selectedModel: 'missing-model' }],
     }, { type: 'SET_AVAILABLE_MODELS', payload: models });
 
-    expect(state.selectedModel).toBe('model-1');
+    expect(state.selectedModel).toBe('copilot:model-1');
   });
 
   it('SET_SELECTED_MODEL updates selection for the active mind', () => {
     const state = appReducer(withActiveMind, { type: 'SET_SELECTED_MODEL', payload: 'model-1' });
     expect(state.selectedModel).toBe('model-1');
     expect(state.minds[0].selectedModel).toBe('model-1');
+  });
+
+  it('SET_SELECTED_MODEL preserves BYO provider metadata from composite keys', () => {
+    const state = appReducer(withActiveMind, { type: 'SET_SELECTED_MODEL', payload: 'byo:model-1' });
+    expect(state.selectedModel).toBe('byo:model-1');
+    expect(state.minds[0].selectedModel).toBe('model-1');
+    expect(state.minds[0].selectedModelProvider).toBe('byo');
   });
 
   it('SET_SELECTED_MODEL with null clears selection', () => {

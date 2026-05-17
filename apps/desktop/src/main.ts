@@ -52,6 +52,11 @@ import {
   TurnQueue,
   UserProfileService,
   ViewDiscovery,
+  ByoLlmStore,
+  buildProviderConfig,
+  createByoLlmModelsProvider,
+  probeEndpoint,
+  redactUrlCredentials,
   configureSdkRuntimeLayout,
   getChamberToolsBinDir,
   getPlatformCopilotBinaryPath,
@@ -80,6 +85,7 @@ import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupMarketplaceIPC } from './main/ipc/marketplace';
 import { setupToolsIPC } from './main/ipc/tools';
 import { setupAuthIPC } from './main/ipc/auth';
+import { setupByoLlmIPC } from './main/ipc/byoLlm';
 import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
@@ -207,7 +213,19 @@ const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
 const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
 const turnQueue = new TurnQueue();
-const mindManager: MindManager = new MindManager(clientFactory, identityLoader, configService, viewDiscovery);
+const byoLlmStore = new ByoLlmStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA, credentials: credentialStore });
+let cachedByoLlmConfig: import('@chamber/shared/types').ByoLlmConfig | null = null;
+async function refreshCachedByoLlmConfig(): Promise<void> {
+  cachedByoLlmConfig = await byoLlmStore.load();
+}
+const mindManager: MindManager = new MindManager(
+  clientFactory,
+  identityLoader,
+  configService,
+  viewDiscovery,
+  () => buildProviderConfig(cachedByoLlmConfig),
+  () => cachedByoLlmConfig?.model,
+);
 const mindProfileService = new MindProfileService({
   getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
   restartMind: (mindId) => mindManager.reloadMind(mindId),
@@ -223,7 +241,23 @@ const microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
   }),
 );
 const taskManager = new TaskManager(mindManager, agentCardRegistry);
-const chatService: ChatService = new ChatService(mindManager, turnQueue);
+// BYO LLM models provider — when BYO is enabled, fetch the endpoint's model list
+// so it can be merged into the chat model picker alongside the SDK's Copilot models.
+// The SDK's `client.listModels()` always returns GitHub Copilot's official catalog
+// even when SessionConfig.provider is active, so this side-channel is required.
+//
+// When the probe fails, the provider returns a stub entry for the user's saved
+// BYO model so the renderer keeps that selection. Without this stub, the
+// renderer would silently fall back to the first cloud model and BYO-routed
+// minds would quietly send traffic to GitHub Copilot — see byoLlmModelsProvider.ts.
+const byoLlmModelsProvider = createByoLlmModelsProvider({
+  getConfig: () => cachedByoLlmConfig,
+  probe: probeEndpoint,
+  onProbeError: (err, config) => {
+    log.warn(`BYO LLM models provider probe failed (baseUrl=${redactUrlCredentials(config.baseUrl)}):`, err);
+  },
+});
+const chatService: ChatService = new ChatService(mindManager, turnQueue, undefined, byoLlmModelsProvider);
 const messageRouter: MessageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
 const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
 const chatroomApprovalGate = new ApprovalGate();
@@ -656,6 +690,9 @@ app.on('ready', async () => {
   setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);
   setupAuthIPC(authService, mindManager);
+  setupByoLlmIPC(byoLlmStore, mindManager, {
+    onConfigChanged: (config) => { cachedByoLlmConfig = config; },
+  });
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,
     configStore: configService,
@@ -703,10 +740,12 @@ app.on('ready', async () => {
   });
   updaterService.start();
 
-  // Restore minds async — awaitRestore() lets IPC handlers wait for completion
-  mindManager.restoreFromConfig().catch((err: unknown) => {
-    log.error('Failed to restore minds:', err);
-  });
+  // Restore minds async — awaitRestore() lets IPC handlers wait for completion.
+  void refreshCachedByoLlmConfig()
+    .then(() => mindManager.restoreFromConfig())
+    .catch((err: unknown) => {
+      log.error('Failed to restore minds:', err);
+    });
 });
 
 app.on('window-all-closed', () => {

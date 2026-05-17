@@ -316,6 +316,21 @@ describe('MindManager', () => {
       expect(manager.getMind(mind.mindId)?.selectedModel).toBe('claude-opus');
     });
 
+    it('rolls back the persisted selection when the SDK rejects with a non-stale error', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Existing context');
+      const before = manager.getMind(mind.mindId)?.selectedModel;
+      const beforeProvider = manager.getMind(mind.mindId)?.selectedModelProvider;
+      const liveSession = manager.getMind(mind.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      liveSession.setModel.mockImplementationOnce(async () => {
+        throw new Error('BYO endpoint unreachable: connect ECONNREFUSED 127.0.0.1:11434');
+      });
+
+      await expect(manager.setMindModel(mind.mindId, 'claude-opus')).rejects.toThrow(/ECONNREFUSED/);
+      expect(manager.getMind(mind.mindId)?.selectedModel).toBe(before);
+      expect(manager.getMind(mind.mindId)?.selectedModelProvider).toBe(beforeProvider);
+    });
+
     it('serializes concurrent per-mind model changes against the live session', async () => {
       const liveSession = manager.getMind((await manager.loadMind('/tmp/agents/q')).mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
       const mind = manager.listMinds()[0];
@@ -1504,6 +1519,243 @@ describe('MindManager', () => {
         expect(savedMindIds(config)).toEqual(['bad-c3d4', 'good-a1b2']);
       }
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('BYO LLM provider config integration (SDK-native)', () => {
+    it('BVT-MM01: passes provider into createSession only when a BYO model is selected', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://example.com/v1', apiKey: 'lm-studio' };
+      const byoProviderConfigProvider = vi.fn().mockReturnValue(provider);
+      const byoDefaultModelProvider = vi.fn().mockReturnValue('gemma-4-e4b');
+      currentConfig = {
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q', selectedModel: 'gemma-4-e4b', selectedModelProvider: 'byo' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'dark',
+      };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+        byoDefaultModelProvider,
+      );
+
+      await mgr.restoreFromConfig();
+
+      expect(byoProviderConfigProvider).toHaveBeenCalled();
+      // Client factory is called WITHOUT extraEnv now (provider is passed via session config)
+      expect(mockClientFactory.createClient).toHaveBeenCalledWith('/tmp/agents/q');
+      // Verify provider + model were passed into createSession
+      const createSessionCall = mockCreateSession.mock.calls[mockCreateSession.mock.calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionCall?.provider).toEqual(provider);
+      expect(createSessionCall?.model).toBe('gemma-4-e4b');
+    });
+
+    it('BVT-MM02: omits provider from createSession when BYO is enabled but no BYO model is selected', async () => {
+      const byoProviderConfigProvider = vi.fn().mockReturnValue({ type: 'openai' as const, baseUrl: 'https://example.com/v1' });
+      const byoDefaultModelProvider = vi.fn().mockReturnValue(undefined);
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+        byoDefaultModelProvider,
+      );
+
+      await mgr.loadMind('/tmp/agents/q');
+
+      const createSessionCall = mockCreateSession.mock.calls[mockCreateSession.mock.calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionCall?.provider).toBeUndefined();
+      expect(createSessionCall?.model).toBeUndefined();
+      expect(byoProviderConfigProvider).not.toHaveBeenCalled();
+    });
+
+    it('BVT-MM02b: rejects a BYO model selection when BYO provider config is unavailable', async () => {
+      const byoProviderConfigProvider = vi.fn().mockReturnValue(null);
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+      );
+      const q = await mgr.loadMind('/tmp/agents/q');
+      mockCreateSession.mockClear();
+
+      await expect(mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b')).rejects.toThrow(
+        'BYO LLM model selected, but BYO LLM is not enabled or configured.',
+      );
+
+      expect(byoProviderConfigProvider).toHaveBeenCalled();
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
+    it('BVT-MM03: restartAllMindsForByoChange refreshes only BYO-selected loaded minds', async () => {
+      const byoProviderConfigProvider = vi.fn().mockReturnValue({ type: 'openai' as const, baseUrl: 'https://x/v1' });
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      await mgr.loadMind('/tmp/agents/fox');
+      await mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b');
+      mockClientFactory.destroyClient.mockClear();
+
+      const result = await mgr.restartAllMindsForByoChange();
+
+      expect(result).toEqual({ restartedCount: 1 });
+      expect(mockClientFactory.destroyClient).toHaveBeenCalledTimes(1);
+    });
+
+    it('BVT-MM04: per-mind selectedModel takes precedence over BYO default', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: typeof provider) => string | undefined }).resolveModelForSdk('qwen3.5-9b', provider);
+      expect(resolved).toBe('qwen3.5-9b');
+    });
+
+    it('BVT-MM05: BYO default model is used when per-mind selectedModel is undefined', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: typeof provider) => string | undefined }).resolveModelForSdk(undefined, provider);
+      expect(resolved).toBe('gemma-4-e4b');
+    });
+
+    it('BVT-MM06: empty-string selectedModel falls back to BYO default', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: typeof provider) => string | undefined }).resolveModelForSdk('  ', provider);
+      expect(resolved).toBe('gemma-4-e4b');
+    });
+
+    it('BVT-MM07: BYO default model is not used when provider is inactive', () => {
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => null,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: null) => string | undefined }).resolveModelForSdk(undefined, null);
+      expect(resolved).toBeUndefined();
+    });
+
+    it('BVT-MM08: cloud-to-BYO model switch recreates a provider-scoped session', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      await mgr.setMindModel(q.mindId, 'claude-sonnet-4.6');
+      const cloudSession = mgr.getMind(q.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      mockCreateSession.mockClear();
+      mockResumeSession.mockClear();
+
+      const updated = await mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b');
+
+      expect(updated?.selectedModel).toBe('gemma-4-e4b');
+      expect(updated?.selectedModelProvider).toBe('byo');
+      expect(cloudSession.setModel).toHaveBeenCalledWith('claude-sonnet-4.6');
+      expect(cloudSession.disconnect).toHaveBeenCalled();
+      expect(mockResumeSession).not.toHaveBeenCalled();
+      const createSessionConfig = mockCreateSession.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionConfig?.provider).toBe(provider);
+      expect(createSessionConfig?.model).toBe('gemma-4-e4b');
+      expect(lastSavedConfig().minds[0]).toMatchObject({
+        selectedModel: 'gemma-4-e4b',
+        selectedModelProvider: 'byo',
+      });
+    });
+
+    it('BVT-MM09: BYO-to-cloud model switch recreates a cloud session without provider', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      await mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b');
+      const byoSession = mgr.getMind(q.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      mockCreateSession.mockClear();
+      mockResumeSession.mockClear();
+
+      const updated = await mgr.setMindModel(q.mindId, 'copilot:claude-sonnet-4.6');
+
+      expect(updated?.selectedModel).toBe('claude-sonnet-4.6');
+      expect(updated?.selectedModelProvider).toBeUndefined();
+      expect(byoSession.setModel).not.toHaveBeenCalledWith('claude-sonnet-4.6');
+      expect(byoSession.disconnect).toHaveBeenCalled();
+      expect(mockResumeSession).not.toHaveBeenCalled();
+      const createSessionConfig = mockCreateSession.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionConfig?.provider).toBeUndefined();
+      expect(createSessionConfig?.model).toBe('claude-sonnet-4.6');
+    });
+
+    it('BVT-MM10: restartAllMindsForByoChange clears only BYO-selected models when BYO is disabled', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      const fox = await mgr.loadMind('/tmp/agents/fox');
+      await mgr.setMindModel(q.mindId, 'byo:google%2Fgemma-4-e4b');
+      await mgr.setMindModel(fox.mindId, 'gpt-5.4');
+
+      const result = await mgr.restartAllMindsForByoChange(null);
+
+      expect(result).toEqual({ restartedCount: 1 });
+      const qRecord = currentConfig.minds.find((mind) => mind.id === q.mindId);
+      const foxRecord = currentConfig.minds.find((mind) => mind.id === fox.mindId);
+      expect(qRecord?.selectedModel).toBeUndefined();
+      expect(qRecord?.selectedModelProvider).toBeUndefined();
+      expect(foxRecord?.selectedModel).toBe('gpt-5.4');
+      expect(foxRecord?.selectedModelProvider).toBeUndefined();
     });
   });
 });
