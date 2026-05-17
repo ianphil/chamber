@@ -41,6 +41,7 @@ import type {
   MarketplaceRegistryActionResult,
   MindContext,
   ModelInfo,
+  StartupProgressEvent,
   ToolActionResult,
   ToolCatalogEntry,
   UserProfile,
@@ -163,6 +164,14 @@ export interface ElectronAPI {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
+  };
+  app: {
+    /**
+     * Subscribe to per-step app-startup progress events while the main
+     * process restores minds from config. Drives the boot-screen activity
+     * log (#56). Returns an unsubscribe function — call it on unmount.
+     */
+    onStartupProgress: (callback: (event: StartupProgressEvent) => void) => () => void;
   };
 }
 

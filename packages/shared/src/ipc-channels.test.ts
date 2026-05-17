@@ -106,6 +106,8 @@ describe('IPC channel constants', () => {
     expect(IPC.E2E.A2A_INCOMING).toBe('e2e:a2a:incoming');
     expect(IPC.E2E.AUTH_EMIT_PROGRESS).toBe('e2e:auth:emit-progress');
     expect(IPC.E2E.AUTH_COMPLETE_LOGIN).toBe('e2e:auth:complete-login');
+
+    expect(IPC.APP.STARTUP_PROGRESS).toBe('app:startupProgress');
   });
 
   it('exposes channels as readonly literals via IpcChannel', () => {

@@ -136,6 +136,9 @@ export const IPC = {
     AUTH_EMIT_PROGRESS: 'e2e:auth:emit-progress',
     AUTH_COMPLETE_LOGIN: 'e2e:auth:complete-login',
   },
+  APP: {
+    STARTUP_PROGRESS: 'app:startupProgress',
+  },
 } as const;
 
 type IpcNamespace = typeof IPC;

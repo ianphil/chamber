@@ -130,6 +130,9 @@ const electronAPI: ElectronAPI = {
     maximize: () => ipcRenderer.send(IPC.WINDOW.MAXIMIZE),
     close: () => ipcRenderer.send(IPC.WINDOW.CLOSE),
   },
+  app: {
+    onStartupProgress: (callback) => createIpcListener(ipcRenderer, IPC.APP.STARTUP_PROGRESS, callback),
+  },
 };
 
 if (ipcRenderer.sendSync(IPC.E2E.IS_ENABLED) === true) {

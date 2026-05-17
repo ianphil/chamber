@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { APP_VERSION } from '@/renderer/lib/appVersion';
+import type { StartupProgressEvent } from '@chamber/shared/types';
 
 const STARTUP_LINES = [
   `> chamber v${APP_VERSION}`,
@@ -17,6 +18,23 @@ function getBootLines(mode: 'startup' | 'switching-account', login?: string | nu
   }
 
   return STARTUP_LINES;
+}
+
+function formatStartupEvent(event: StartupProgressEvent): string {
+  switch (event.kind) {
+    case 'restore-start':
+      return `> ${event.detail}`;
+    case 'mind-restoring':
+      return `>   waking ${event.detail}...`;
+    case 'mind-restored':
+      return `>   ${event.detail} ready`;
+    case 'mind-failed':
+      return `>   ! failed to restore ${event.detail}`;
+    case 'restore-complete':
+      return `> ${event.detail}`;
+    default:
+      return `> ${event.detail}`;
+  }
 }
 
 interface Props {
@@ -43,6 +61,20 @@ export function ChamberLoadingScreen({ mode = 'startup', login }: Props) {
 
     return () => clearInterval(interval);
   }, [login, mode]);
+
+  // Subscribe to real app-startup progress (#56) so the user sees actual
+  // activity once the main process starts restoring minds. The fake boot
+  // lines above keep the early frames lively while we wait for the first
+  // real event; real events stream in alongside them.
+  useEffect(() => {
+    if (mode !== 'startup') return undefined;
+    const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
+    if (!api?.app?.onStartupProgress) return undefined;
+    const unsubscribe = api.app.onStartupProgress((event) => {
+      setLines((prev) => [...prev, formatStartupEvent(event)]);
+    });
+    return unsubscribe;
+  }, [mode]);
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50">

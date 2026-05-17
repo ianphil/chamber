@@ -6,6 +6,15 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import started from 'electron-squirrel-startup';
 import { IPC } from '@chamber/shared';
+import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
+
+function broadcastStartupProgress(event: StartupProgressEvent): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC.APP.STARTUP_PROGRESS, event);
+    }
+  }
+}
 
 // When Chamber is spawned by a parent that may close its stdio pipes early
 // (Playwright/Electron Forge teardown, e2e harnesses), subsequent console
@@ -751,10 +760,28 @@ app.on('ready', async () => {
   updaterService.start();
 
   // Restore minds async — awaitRestore() lets IPC handlers wait for completion.
+  //
+  // Boot-screen activity log (#56) — broadcast structured progress to the
+  // ChamberLoadingScreen so the user sees real work instead of a passive
+  // spinner. Subscribe to mind:loaded BEFORE calling restoreFromConfig so we
+  // catch the first event the restore loop emits.
+  const onMindLoadedForBoot = (mind: MindContext) => {
+    broadcastStartupProgress({ kind: 'mind-restored', detail: mind.identity.name });
+  };
+  mindManager.on('mind:loaded', onMindLoadedForBoot);
+  broadcastStartupProgress({ kind: 'restore-start', detail: 'restoring minds from config' });
   void refreshCachedByoLlmConfig()
     .then(() => mindManager.restoreFromConfig())
     .catch((err: unknown) => {
       log.error('Failed to restore minds:', err);
+    })
+    .finally(() => {
+      mindManager.off('mind:loaded', onMindLoadedForBoot);
+      const count = mindManager.listMinds().length;
+      broadcastStartupProgress({
+        kind: 'restore-complete',
+        detail: count === 1 ? '1 mind ready' : `${count} minds ready`,
+      });
     });
 });
 

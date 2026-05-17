@@ -508,6 +508,27 @@ export interface ByoLlmSaveResult {
   error?: string;
 }
 
+/**
+ * Per-step progress event broadcast from the main process to all renderer
+ * windows while the app boots. Drives the boot-screen activity log (#56) so
+ * the user sees real work happening instead of a passive spinner.
+ *
+ * `kind` summarizes the step; `detail` is human-readable text to display
+ * (e.g. mind name, error reason). Payload contents are display-safe — no
+ * secrets, no file contents, no SDK event bodies.
+ */
+export type StartupProgressEventKind =
+  | 'restore-start'
+  | 'mind-restoring'
+  | 'mind-restored'
+  | 'mind-failed'
+  | 'restore-complete';
+
+export interface StartupProgressEvent {
+  kind: StartupProgressEventKind;
+  detail: string;
+}
+
 // `ElectronAPI` and the `Window.electronAPI` global declaration live in
 // `./electron-types`. It is the single source of truth; import from
 // `@chamber/shared/electron-types` directly. Intentionally NOT re-exported
