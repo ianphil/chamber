@@ -1674,6 +1674,31 @@ describe('MindManager', () => {
       expect(createSessionCall?.model).toBe('gemma-4-e4b');
     });
 
+    it('restores BYO-selected minds with the default provider when BYO is disabled', async () => {
+      currentConfig = {
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q', selectedModel: 'gemma-4-e4b', selectedModelProvider: 'byo' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'dark',
+      };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => null,
+      );
+
+      await mgr.restoreFromConfig();
+
+      const createSessionCall = mockCreateSession.mock.calls[mockCreateSession.mock.calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionCall?.provider).toBeUndefined();
+      expect(createSessionCall?.model).toBeUndefined();
+      expect(mgr.listMinds()[0].selectedModel).toBeUndefined();
+      expect(mgr.listMinds()[0].selectedModelProvider).toBeUndefined();
+    });
+
     it('BVT-MM02: omits provider from createSession when BYO is enabled but no BYO model is selected', async () => {
       const byoProviderConfigProvider = vi.fn().mockReturnValue({ type: 'openai' as const, baseUrl: 'https://example.com/v1' });
       const byoDefaultModelProvider = vi.fn().mockReturnValue(undefined);

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-17T21:00:00Z",
+  "channels": {
+    "stable": {
+      "switchboardRelay": false,
+      "byoLlm": false,
+      "chamberCopilot": false
+    },
+    "insiders": {
+      "switchboardRelay": true,
+      "byoLlm": true,
+      "chamberCopilot": true
+    }
+  }
+}

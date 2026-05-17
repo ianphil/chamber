@@ -359,7 +359,7 @@ async function refreshCachedByoLlmConfig(): Promise<void> {
 
 function createChamberCopilotService(mindToolProviders: ChamberToolProvider[]): ChamberCopilotService | null {
   if (!appFeatureFlags.chamberCopilot) return null;
-  const { defaultAcpConnectionFactory, AcpConnection, JobStore, createAcpTools, YOLO_ACP_ARGS } = loadChamberCopilot();
+  const { defaultAcpConnectionFactory, AcpConnection, JobStore, createAcpTools } = loadChamberCopilot();
   // Reuse the same bundled Copilot CLI resolver as the SDK runtime so the ACP
   // path cannot drift to a different binary.
   const cliPath = getPlatformCopilotBinaryPath(resolveNodeModulesDir());
@@ -371,14 +371,6 @@ function createChamberCopilotService(mindToolProviders: ChamberToolProvider[]): 
           args: ['--acp', '--no-auto-update'],
         }),
       }),
-      yolo: () => new AcpConnection({
-        connectionFactory: defaultAcpConnectionFactory({
-          command: cliPath,
-          // Use upstream's frozen YOLO_ACP_ARGS directly so we cannot drift from
-          // chamber-copilot's own definition of "yolo".
-          args: [...YOLO_ACP_ARGS],
-        }),
-      }),
     },
     // Keep value-level chamber-copilot imports out of ChamberCopilotService.ts;
     // packaged builds must only require chamber-copilot after loadChamberCopilot().
@@ -386,7 +378,7 @@ function createChamberCopilotService(mindToolProviders: ChamberToolProvider[]): 
     toolFactory: (deps) => createAcpTools(deps),
   });
   mindToolProviders.push(service);
-  log.info('chamber-copilot ACP extension enabled (safe + yolo)', { cliPath });
+  log.info('chamber-copilot ACP extension enabled (safe only)', { cliPath });
   return service;
 }
 

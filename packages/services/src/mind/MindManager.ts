@@ -180,8 +180,7 @@ export class MindManager extends EventEmitter {
     const sessionTools = this.getSessionTools(id, resolvedMindPath);
 
     const knownRecord = this.knownMindRecords.get(id);
-    const selectedModel = knownRecord?.selectedModel;
-    const selectedModelProvider = selectedModel ? knownRecord?.selectedModelProvider : undefined;
+    const { selectedModel, selectedModelProvider } = this.getRestorableModelSelection(id, knownRecord);
     const activeSessionId = knownRecord?.activeSessionId ?? this.createConversationRecord(id).sessionId;
     const conversationRecord = this.ensureConversationRecord(id, activeSessionId, knownRecord?.conversations);
     const session = knownRecord?.activeSessionId
@@ -942,6 +941,30 @@ export class MindManager extends EventEmitter {
 
   private normalizeModelSelection(model: string | null | undefined): ModelSelection | null {
     return parseModelSelectionKey(model);
+  }
+
+  private getRestorableModelSelection(
+    mindId: string,
+    record: MindRecord | undefined,
+  ): { selectedModel?: string; selectedModelProvider?: ModelProvider } {
+    const selectedModel = record?.selectedModel;
+    if (!selectedModel) return {};
+    const selectedModelProvider = record.selectedModelProvider;
+    if (selectedModelProvider !== 'byo') {
+      return { selectedModel, selectedModelProvider };
+    }
+    if (this.byoProviderConfigProvider()) {
+      return { selectedModel, selectedModelProvider };
+    }
+
+    log.warn(`Ignoring saved BYO LLM model selection for mind ${mindId} because BYO LLM is disabled or not configured.`);
+    if (record) {
+      const next = { ...record };
+      delete next.selectedModel;
+      delete next.selectedModelProvider;
+      this.knownMindRecords.set(mindId, next);
+    }
+    return {};
   }
 
   private resolveProviderForSelection(modelProvider: ModelProvider | undefined): SdkProviderConfig | null {
