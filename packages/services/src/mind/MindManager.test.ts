@@ -448,6 +448,9 @@ describe('MindManager', () => {
         const normalized = String(candidate).replace(/\\/g, '/').toLowerCase();
         return normalized === '/tmp/agents/q/soul.md' || normalized === '/tmp/agents/q/.github';
       });
+      vi.mocked(fs.realpathSync.native).mockImplementation((candidate) =>
+        String(candidate).replace(/\\/g, '/').toLowerCase(),
+      );
 
       const mind1 = await manager.loadMind('/tmp/agents/q');
       const mind2 = await manager.loadMind('/tmp/agents/Q/');

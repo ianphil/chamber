@@ -62,7 +62,7 @@ import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 describe('MindScaffold.generateSoul — CopilotClientFactory integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fs.existsSync).mockImplementation((p) => !/^C:\\agents\\[^\\]+$/.test(String(p)));
+    vi.mocked(fs.existsSync).mockImplementation((p) => !/^C:\\agents[\\/][^\\/]+$/.test(String(p)));
     // Re-wire defaults so session.idle fires immediately
     mockOn.mockImplementation((event: string, cb: (...args: unknown[]) => void) => {
       if (event === 'session.idle') setTimeout(() => cb(), 0);

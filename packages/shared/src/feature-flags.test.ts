@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   DEFAULT_APP_FEATURE_FLAGS,
   getAppFeatureFlags,
@@ -91,5 +93,19 @@ describe('feature flags', () => {
     expect(parseRemoteFeatureFlagPolicy({ version: 2, channels: {} })).toBeNull();
     expect(parseRemoteFeatureFlagPolicy({ version: 1, channels: { stable: {} } })).toBeNull();
     expect(parseRemoteFeatureFlagPolicy(null)).toBeNull();
+  });
+
+  it('keeps the published GitHub Pages policy valid', () => {
+    const policyPath = path.resolve(process.cwd(), 'docs', 'flags', 'v1', 'flags.json');
+    const policy = parseRemoteFeatureFlagPolicy(JSON.parse(fs.readFileSync(policyPath, 'utf-8')) as unknown);
+
+    expect(policy).toEqual({
+      version: 1,
+      updatedAt: '2026-05-17T21:00:00Z',
+      channels: {
+        stable: DEFAULT_APP_FEATURE_FLAGS,
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    });
   });
 });
