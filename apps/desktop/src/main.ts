@@ -330,7 +330,7 @@ const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, ta
 const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
 let chamberCopilotService: ChamberCopilotService | null = null;
 
-if (configService.load().chamberCopilotEnabled === true) {
+if (appFeatureFlags.chamberCopilot) {
   const { defaultAcpConnectionFactory, AcpConnection, JobStore, createAcpTools, YOLO_ACP_ARGS } = loadChamberCopilot();
   // SECURITY/CORRECTNESS:
   // - command: pin to the bundled @github/copilot CLI exactly the way

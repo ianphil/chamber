@@ -103,6 +103,19 @@ describe('ConfigService', () => {
       }));
     });
 
+    it('drops the legacy chamber-copilot user config flag', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        chamberCopilotEnabled: true,
+      }));
+
+      expect(svc.load()).toEqual(DEFAULT_CONFIG);
+    });
+
     it('preserves per-mind conversation history metadata without transcript text', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,

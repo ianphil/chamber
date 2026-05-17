@@ -11,6 +11,7 @@ describe('feature flags', () => {
     expect(getAppFeatureFlags({ version: '0.62.4-insiders.7' })).toEqual({
       switchboardRelay: true,
       byoLlm: true,
+      chamberCopilot: true,
     });
   });
 
@@ -22,6 +23,7 @@ describe('feature flags', () => {
     expect(getAppFeatureFlags({ version: '0.62.4', previewFeatures: true })).toEqual({
       switchboardRelay: true,
       byoLlm: true,
+      chamberCopilot: true,
     });
   });
 

@@ -124,7 +124,7 @@ export class ChamberCopilotService implements ChamberToolProvider {
   // Safe to call multiple times. Failures are logged and swallowed; the
   // service stays in a valid degraded state where getToolsForMind
   // returns []. The composition root is expected to call this once
-  // during app boot when chamberCopilotEnabled === true.
+  // during app boot when the channel-derived chamberCopilot feature flag is on.
   async prewarm(): Promise<void> {
     try {
       await this.ensureStarted();

@@ -28,6 +28,7 @@ The same channel rule currently controls these preview surfaces:
 | ---- | ------ | -------- | ----- |
 | `switchboardRelay` | off | on | Hides the activity-bar relay entry point and route. |
 | `byoLlm` | off | on | Hides BYO model settings and disables desktop BYO runtime/IPC usage. |
+| `chamberCopilot` | off | on | Wires the chamber-copilot ACP provider and `cli_*` tools. |
 
 The resolver currently detects insiders builds from the embedded app version.
 This matches the release-channel model in `ai-docs/release-channels.md`: the
@@ -57,6 +58,14 @@ unavailable in the current release channel.
 
 Existing saved BYO credentials are not deleted when a stable build runs. They
 are simply ignored until the user runs an insiders build again.
+
+## chamber-copilot ACP
+
+`chamberCopilot` gates the chamber-copilot ACP extension. When disabled,
+`ChamberCopilotService` is not constructed and the `cli_*` tools are not added
+to mind tool providers. Stable builds also ignore the legacy
+`chamberCopilotEnabled` key in `~/.chamber/config.json`; users cannot turn this
+surface on locally.
 
 ## Adding a flag
 

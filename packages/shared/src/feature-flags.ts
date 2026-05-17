@@ -1,11 +1,13 @@
 export interface AppFeatureFlags {
   readonly switchboardRelay: boolean;
   readonly byoLlm: boolean;
+  readonly chamberCopilot: boolean;
 }
 
 export const DEFAULT_APP_FEATURE_FLAGS: AppFeatureFlags = {
   switchboardRelay: false,
   byoLlm: false,
+  chamberCopilot: false,
 };
 
 export function getAppFeatureFlags(options: { version: string; previewFeatures?: boolean }): AppFeatureFlags {
@@ -13,6 +15,7 @@ export function getAppFeatureFlags(options: { version: string; previewFeatures?:
   return {
     switchboardRelay: insiders,
     byoLlm: insiders,
+    chamberCopilot: insiders,
   };
 }
 
