@@ -339,7 +339,7 @@ export function mockElectronAPI(): ElectronAPI {
       close: vi.fn(),
     },
     app: {
-      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false }),
+      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false }),
       onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     },
   };

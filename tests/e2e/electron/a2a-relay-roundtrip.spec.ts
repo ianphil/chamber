@@ -76,7 +76,7 @@ test.describe.serial('A2A relay smoke (live Switchboard, model in the loop)', ()
 
     app = await launchElectronApp({
       cdpPort,
-      env: { CHAMBER_E2E_USER_DATA: path.join(root, 'user-data') },
+      env: { CHAMBER_E2E_USER_DATA: path.join(root, 'user-data'), CHAMBER_E2E_PREVIEW_FEATURES: '1' },
     });
     page = await findRendererPage(app.browser, app.logs);
     await page.waitForLoadState('domcontentloaded');

@@ -92,7 +92,7 @@ test.describe.serial('electron BYO LLM Settings smoke (live endpoint)', () => {
     seedAppConfig(userData, settingsMindRoot, 'live-settings-hera');
     app = await launchElectronApp({
       cdpPort,
-      env: { CHAMBER_E2E_USER_DATA: userData },
+      env: { CHAMBER_E2E_USER_DATA: userData, CHAMBER_E2E_PREVIEW_FEATURES: '1' },
     });
   });
 
@@ -212,7 +212,7 @@ test.describe.serial('electron BYO LLM provider routing (local relay)', () => {
     seedMind(mindRoot, 'Relay Hera');
     app = await launchElectronApp({
       cdpPort: localRelayCdpPort,
-      env: { CHAMBER_E2E_USER_DATA: path.join(root, 'user-data') },
+      env: { CHAMBER_E2E_USER_DATA: path.join(root, 'user-data'), CHAMBER_E2E_PREVIEW_FEATURES: '1' },
     });
     const page = await findRendererPage(app.browser, app.logs);
     await waitForApp(page);

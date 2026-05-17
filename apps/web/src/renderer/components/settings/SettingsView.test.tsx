@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { version } from '../../../../../../package.json';
 import { SettingsView } from './SettingsView';
+import { AppStateProvider } from '../../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
 describe('SettingsView', () => {
@@ -67,6 +68,23 @@ describe('SettingsView', () => {
     render(<SettingsView />);
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /settings/i })).toBeTruthy();
+    });
+  });
+
+  it('hides Local & Custom LLM settings when BYO LLM is feature-flagged off', async () => {
+    render(<SettingsView />);
+    await screen.findByRole('heading', { name: /settings/i });
+    expect(screen.queryByRole('heading', { name: /local & custom llm/i })).toBeNull();
+  });
+
+  it('shows Local & Custom LLM settings when BYO LLM is feature-flagged on', async () => {
+    render(
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true } }}>
+        <SettingsView />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /local & custom llm/i })).toBeTruthy();
     });
   });
 

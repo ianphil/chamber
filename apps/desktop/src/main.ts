@@ -203,6 +203,13 @@ const saveActiveLogin = (login: string | null) => {
 const credentialStore = loadKeytar();
 const sharp = loadSharp();
 const userAgent = `Chamber/${app.getVersion()}`;
+function resolveAppFeatureFlags() {
+  return getAppFeatureFlags({
+    version: app.getVersion(),
+    previewFeatures: process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_PREVIEW_FEATURES === '1',
+  });
+}
+const appFeatureFlags = resolveAppFeatureFlags();
 const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore, userAgent);
 const authService = new AuthService(
   credentialStore,
@@ -235,7 +242,7 @@ const turnQueue = new TurnQueue();
 const byoLlmStore = new ByoLlmStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA, credentials: credentialStore });
 let cachedByoLlmConfig: import('@chamber/shared/types').ByoLlmConfig | null = null;
 async function refreshCachedByoLlmConfig(): Promise<void> {
-  cachedByoLlmConfig = await byoLlmStore.load();
+  cachedByoLlmConfig = appFeatureFlags.byoLlm ? await byoLlmStore.load() : null;
 }
 const mindManager: MindManager = new MindManager(
   clientFactory,
@@ -270,7 +277,7 @@ const taskManager = new TaskManager(mindManager, agentCardRegistry);
 // renderer would silently fall back to the first cloud model and BYO-routed
 // minds would quietly send traffic to GitHub Copilot — see byoLlmModelsProvider.ts.
 const byoLlmModelsProvider = createByoLlmModelsProvider({
-  getConfig: () => cachedByoLlmConfig,
+  getConfig: () => appFeatureFlags.byoLlm ? cachedByoLlmConfig : null,
   probe: probeEndpoint,
   onProbeError: (err, config) => {
     log.warn(`BYO LLM models provider probe failed (baseUrl=${redactUrlCredentials(config.baseUrl)}):`, err);
@@ -710,7 +717,8 @@ app.on('ready', async () => {
   setupToolsIPC(toolsService);
   setupAuthIPC(authService, mindManager);
   setupByoLlmIPC(byoLlmStore, mindManager, {
-    onConfigChanged: (config) => { cachedByoLlmConfig = config; },
+    featureEnabled: appFeatureFlags.byoLlm,
+    onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },
   });
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,
@@ -732,7 +740,7 @@ app.on('ready', async () => {
   });
   ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
-  ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => getAppFeatureFlags({ version: app.getVersion() }));
+  ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => resolveAppFeatureFlags());
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {

@@ -148,6 +148,22 @@ describe('setupByoLlmIPC', () => {
     const result = await handler![1]({} as never, { enabled: true, baseUrl: '' } as ByoLlmConfig);
     expect(result.ok).toBe(false);
   });
+
+  it('BVT-IPC07b: feature flag off hides saved config and rejects mutation', async () => {
+    const store = createFakeStore();
+    (store.load as ReturnType<typeof vi.fn>).mockResolvedValue(validConfig);
+    setupByoLlmIPC(store, createFakeMindManager(), { featureEnabled: false });
+
+    const getHandler = vi.mocked(ipcMain.handle).mock.calls.find((c) => c[0] === IPC.BYO_LLM.GET);
+    const saveHandler = vi.mocked(ipcMain.handle).mock.calls.find((c) => c[0] === IPC.BYO_LLM.SAVE);
+
+    await expect(getHandler![1]({} as never, ...([] as unknown[]))).resolves.toBeNull();
+    const result = await saveHandler![1]({} as never, validConfig);
+
+    expect(result).toEqual({ success: false, error: 'BYO LLM is unavailable in this release channel' });
+    expect(store.load).not.toHaveBeenCalled();
+    expect(store.save).not.toHaveBeenCalled();
+  });
 });
 
 describe('probeEndpoint (live HTTP, mocked)', () => {

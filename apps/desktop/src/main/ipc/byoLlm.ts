@@ -29,6 +29,7 @@ function broadcast(config: ByoLlmConfig | null): void {
 }
 
 export interface ByoLlmIpcOptions {
+  featureEnabled?: boolean;
   /**
    * Optional callback fired after a successful save/disable so the host can
    * refresh any cached BYO provider config before minds are restarted.
@@ -41,9 +42,15 @@ export function setupByoLlmIPC(
   mindManager: MindManager,
   options: ByoLlmIpcOptions = {},
 ): void {
-  ipcMain.handle(IPC.BYO_LLM.GET, async (): Promise<ByoLlmConfig | null> => redactConfigForRenderer(await store.load()));
+  const featureEnabled = options.featureEnabled ?? true;
+
+  ipcMain.handle(IPC.BYO_LLM.GET, async (): Promise<ByoLlmConfig | null> => {
+    if (!featureEnabled) return null;
+    return redactConfigForRenderer(await store.load());
+  });
 
   ipcMain.handle(IPC.BYO_LLM.SAVE, async (_event, config: ByoLlmConfig): Promise<ByoLlmSaveResult> => {
+    if (!featureEnabled) return featureUnavailableSaveResult();
     try {
       if (!config || typeof config !== 'object') {
         return { success: false, error: 'Invalid config payload' };
@@ -68,6 +75,7 @@ export function setupByoLlmIPC(
   });
 
   ipcMain.handle(IPC.BYO_LLM.DISABLE, async (): Promise<ByoLlmSaveResult> => {
+    if (!featureEnabled) return featureUnavailableSaveResult();
     try {
       await store.clear();
       options.onConfigChanged?.(null);
@@ -81,6 +89,7 @@ export function setupByoLlmIPC(
   });
 
   ipcMain.handle(IPC.BYO_LLM.PROBE, async (_event, config: ByoLlmConfig): Promise<ByoLlmProbeResult> => {
+    if (!featureEnabled) return { ok: false, error: featureUnavailableMessage() };
     if (!config || !config.baseUrl || !config.baseUrl.trim()) {
       return { ok: false, error: 'Base URL is required' };
     }
@@ -88,6 +97,7 @@ export function setupByoLlmIPC(
   });
 
   ipcMain.handle(IPC.BYO_LLM.RESTART_AGENTS, async (): Promise<{ success: boolean; restartedCount: number; error?: string }> => {
+    if (!featureEnabled) return { success: false, restartedCount: 0, error: featureUnavailableMessage() };
     try {
       const config = await store.load();
       const result = await mindManager.restartAllMindsForByoChange(config?.enabled === true ? undefined : null);
@@ -98,6 +108,14 @@ export function setupByoLlmIPC(
       return { success: false, restartedCount: 0, error: message };
     }
   });
+}
+
+function featureUnavailableMessage(): string {
+  return 'BYO LLM is unavailable in this release channel';
+}
+
+function featureUnavailableSaveResult(): ByoLlmSaveResult {
+  return { success: false, error: featureUnavailableMessage() };
 }
 
 function redactConfigForRenderer(config: ByoLlmConfig | null): ByoLlmConfig | null {

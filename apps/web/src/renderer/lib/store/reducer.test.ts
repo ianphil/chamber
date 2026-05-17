@@ -617,9 +617,10 @@ describe('appReducer', () => {
   it('SET_FEATURE_FLAGS updates feature flags', () => {
     const state = appReducer(initialState, {
       type: 'SET_FEATURE_FLAGS',
-      payload: { switchboardRelay: true },
+      payload: { switchboardRelay: true, byoLlm: true },
     });
     expect(state.featureFlags.switchboardRelay).toBe(true);
+    expect(state.featureFlags.byoLlm).toBe(true);
   });
 
   it('SET_DISCOVERED_VIEWS updates discoveredViews', () => {

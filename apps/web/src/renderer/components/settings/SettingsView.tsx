@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Camera, LogOut, UserRound } from 'lucide-react';
 import type { MarketplaceRegistry, UserProfile } from '@chamber/shared/types';
 import { APP_VERSION } from '@/renderer/lib/appVersion';
+import { useAppState } from '../../lib/store';
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import { LocalLlmSettingsSection } from './LocalLlmSettingsSection';
 const ADD_ACCOUNT_VALUE = '__add-account__';
 
 export function SettingsView() {
+  const { featureFlags } = useAppState();
   const [login, setLogin] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Array<{ login: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -404,7 +406,7 @@ export function SettingsView() {
         </div>
       </section>
 
-      <LocalLlmSettingsSection />
+      {featureFlags.byoLlm ? <LocalLlmSettingsSection /> : null}
 
       <AddAccountModal
         open={addAccountOpen}
