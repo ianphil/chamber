@@ -11,7 +11,11 @@ Desktop exposes the resolved flags through `window.electronAPI.app.getFeatureFla
 and the renderer copies them into app state during startup.
 
 Flags default to the safest stable behavior. Browser mode also returns the
-default flags unless it grows its own deployment channel signal.
+default flags unless it grows its own deployment channel signal. Local desktop
+development (`npm start`) uses the repo-owned defaults in
+`apps/desktop/src/main/devFeatureFlags.ts` so contributors can flip preview
+surfaces independently without changing user config or sharing environment
+variables.
 
 ## Channel-derived flags
 
@@ -39,6 +43,17 @@ stable version on disk.
 E2E specs that validate preview-only surfaces may opt in with
 `CHAMBER_E2E=1 CHAMBER_E2E_PREVIEW_FEATURES=1`. Do not use that override for
 normal app runs or release builds.
+
+## Local development flags
+
+For unpackaged Electron runs, Chamber uses `DEV_FEATURE_FLAGS` from
+`apps/desktop/src/main/devFeatureFlags.ts`. This file is committed on purpose:
+it makes dev-mode preview behavior visible in code review and avoids hidden
+per-developer environment setup. Packaged builds ignore the file entirely.
+
+Change individual booleans there when local development needs a different
+combination, for example testing stable-like behavior for only BYO LLM while
+keeping Switchboard Relay enabled.
 
 ## Switchboard Relay
 
@@ -70,8 +85,9 @@ surface on locally.
 ## Adding a flag
 
 1. Add the flag to `AppFeatureFlags` and `DEFAULT_APP_FEATURE_FLAGS`.
-2. Resolve it in `getAppFeatureFlags`.
-3. Expose it only through `app:getFeatureFlags`; do not add it to user config.
-4. Gate both the entry point and the target route/component when hiding a UI
+2. Add a dev default in `apps/desktop/src/main/devFeatureFlags.ts`.
+3. Resolve it in `getAppFeatureFlags`.
+4. Expose it only through `app:getFeatureFlags`; do not add it to user config.
+5. Gate both the entry point and the target route/component when hiding a UI
    surface.
-5. Add shared resolver tests and renderer tests for enabled and disabled states.
+6. Add shared resolver tests and renderer tests for enabled and disabled states.

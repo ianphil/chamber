@@ -107,6 +107,7 @@ import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
 import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
+import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
 import type sharpModule from 'sharp';
 
 if (started) {
@@ -206,6 +207,7 @@ const userAgent = `Chamber/${app.getVersion()}`;
 function resolveAppFeatureFlags() {
   return getAppFeatureFlags({
     version: app.getVersion(),
+    devFeatureFlags: app.isPackaged ? undefined : DEV_FEATURE_FLAGS,
     previewFeatures: process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_PREVIEW_FEATURES === '1',
   });
 }

@@ -10,7 +10,12 @@ export const DEFAULT_APP_FEATURE_FLAGS: AppFeatureFlags = {
   chamberCopilot: false,
 };
 
-export function getAppFeatureFlags(options: { version: string; previewFeatures?: boolean }): AppFeatureFlags {
+export function getAppFeatureFlags(options: {
+  version: string;
+  devFeatureFlags?: AppFeatureFlags;
+  previewFeatures?: boolean;
+}): AppFeatureFlags {
+  if (options.devFeatureFlags) return options.devFeatureFlags;
   const insiders = options.previewFeatures === true || isInsidersVersion(options.version);
   return {
     switchboardRelay: insiders,
