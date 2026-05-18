@@ -1,8 +1,8 @@
-// The a2a-client extension is plain ESM with JSDoc; TS resolves it via allowJs.
-import { createA2ATools, disconnectA2AClient, pollA2AMessages } from '../../../../.github/extensions/a2a-client/tools/a2a-tools.mjs';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 
 type RelayMessagePayload = {
   recipient?: string;
@@ -30,6 +30,18 @@ export interface RelayPeerInboxEntry {
 interface ToolHandler {
   name: string;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
+}
+
+interface A2AClientToolsModule {
+  createA2ATools: (
+    state: Record<string, unknown>,
+    hooks: { onMessage: (payload: RelayMessagePayload) => RelayPeerInboxEntry | void },
+  ) => ToolHandler[];
+  disconnectA2AClient: (state: Record<string, unknown>) => Promise<void>;
+  pollA2AMessages: (
+    state: Record<string, unknown>,
+    hooks: { onMessage: (payload: RelayMessagePayload) => RelayPeerInboxEntry | void },
+  ) => Promise<void>;
 }
 
 export interface RelayPeerOptions {
@@ -65,7 +77,9 @@ export interface RelayPeerOptions {
  */
 export class RelayPeer {
   readonly inbox: RelayPeerInboxEntry[] = [];
-  private readonly tools: ToolHandler[];
+  private tools: ToolHandler[] = [];
+  private disconnectA2AClient: A2AClientToolsModule['disconnectA2AClient'] | undefined;
+  private pollA2AMessages: A2AClientToolsModule['pollA2AMessages'] | undefined;
   // The a2a-tools polling loop reads/writes this state shape directly.
   private readonly state: Record<string, unknown> & { agentName: string };
   private readonly refreshTokenCachePath: string | undefined;
@@ -94,31 +108,17 @@ export class RelayPeer {
       session: { log: () => undefined },
     };
 
-    this.tools = createA2ATools(this.state, {
-      onMessage: (payload: RelayMessagePayload): RelayPeerInboxEntry => {
-        const fromName = payload.message?.metadata?.fromName ?? payload.message?.metadata?.fromId ?? 'A2A peer';
-        const fromId = payload.message?.metadata?.fromId ?? fromName;
-        const text = payload.message?.parts?.find((part) => typeof part.text === 'string')?.text ?? '';
-        const entry: RelayPeerInboxEntry = {
-          id: payload.message.messageId,
-          receivedAt: new Date().toISOString(),
-          read: false,
-          recipient: payload.recipient,
-          sender: { id: String(fromId), name: String(fromName) },
-          contextId: payload.message.contextId,
-          text,
-          message: payload.message,
-        };
-        if (!this.inbox.some((existing) => existing.id === entry.id)) {
-          this.inbox.push(entry);
-        }
-        return entry;
-      },
-    }) as ToolHandler[];
   }
 
   async connect(): Promise<void> {
-    await this.callTool('chamber_a2a_connect', {});
+    const a2aClient = await loadA2AClientTools();
+    this.disconnectA2AClient = a2aClient.disconnectA2AClient;
+    this.pollA2AMessages = a2aClient.pollA2AMessages;
+    this.tools = a2aClient.createA2ATools(this.state, {
+      onMessage: (payload: RelayMessagePayload) => this.recordMessage(payload),
+    }) as ToolHandler[];
+
+    await this.callTool('a2a_connection', {});
     this.persistRefreshToken();
     // a2a-tools.mjs starts its own setTimeout poll loop on connect.
     // Stop it and replace with a tighter loop so tests don't wait 1s per poll.
@@ -130,25 +130,8 @@ export class RelayPeer {
     const loop = async (): Promise<void> => {
       while (!cancelled) {
         try {
-          await pollA2AMessages(this.state, {
-            onMessage: (payload: RelayMessagePayload) => {
-              const fromName = payload.message?.metadata?.fromName ?? payload.message?.metadata?.fromId ?? 'A2A peer';
-              const fromId = payload.message?.metadata?.fromId ?? fromName;
-              const text = payload.message?.parts?.find((part) => typeof part.text === 'string')?.text ?? '';
-              const entry: RelayPeerInboxEntry = {
-                id: payload.message.messageId,
-                receivedAt: new Date().toISOString(),
-                read: false,
-                recipient: payload.recipient,
-                sender: { id: String(fromId), name: String(fromName) },
-                contextId: payload.message.contextId,
-                text,
-                message: payload.message,
-              };
-              if (!this.inbox.some((existing) => existing.id === entry.id)) {
-                this.inbox.push(entry);
-              }
-            },
+          await this.pollA2AMessages!(this.state, {
+            onMessage: (payload: RelayMessagePayload) => this.recordMessage(payload),
           });
         } catch {
           // Swallow transient poll errors; tests assert on inbox state.
@@ -161,11 +144,11 @@ export class RelayPeer {
   }
 
   async sendTo(recipient: string, message: string, contextId?: string): Promise<unknown> {
-    return this.callTool('chamber_a2a_send_message', { recipient, message, context_id: contextId });
+    return this.callTool('a2a_send_agent_message', { recipient, message, context_id: contextId });
   }
 
   async listAgents(): Promise<{ agents?: Array<{ name?: string; id?: string }> }> {
-    return this.callTool('chamber_a2a_list_agents', {}) as Promise<{ agents?: Array<{ name?: string; id?: string }> }>;
+    return this.callTool('a2a_list_remote_agents', {}) as Promise<{ agents?: Array<{ name?: string; id?: string }> }>;
   }
 
   async waitForMessage(
@@ -194,7 +177,27 @@ export class RelayPeer {
     this.pollLoop?.stop();
     this.pollLoop = undefined;
     this.persistRefreshToken();
-    await disconnectA2AClient(this.state).catch(() => undefined);
+    await this.disconnectA2AClient?.(this.state).catch(() => undefined);
+  }
+
+  private recordMessage(payload: RelayMessagePayload): RelayPeerInboxEntry {
+    const fromName = payload.message?.metadata?.fromName ?? payload.message?.metadata?.fromId ?? 'A2A peer';
+    const fromId = payload.message?.metadata?.fromId ?? fromName;
+    const text = payload.message?.parts?.find((part) => typeof part.text === 'string')?.text ?? '';
+    const entry: RelayPeerInboxEntry = {
+      id: payload.message.messageId,
+      receivedAt: new Date().toISOString(),
+      read: false,
+      recipient: payload.recipient,
+      sender: { id: String(fromId), name: String(fromName) },
+      contextId: payload.message.contextId,
+      text,
+      message: payload.message,
+    };
+    if (!this.inbox.some((existing) => existing.id === entry.id)) {
+      this.inbox.push(entry);
+    }
+    return entry;
   }
 
   private persistRefreshToken(): void {
@@ -224,4 +227,27 @@ function readRefreshTokenCache(filePath: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+async function loadA2AClientTools(): Promise<A2AClientToolsModule> {
+  const toolsPath = resolveA2AClientToolsPath();
+  return import(pathToFileURL(toolsPath).href) as Promise<A2AClientToolsModule>;
+}
+
+function resolveA2AClientToolsPath(): string {
+  const explicitDir = process.env.A2A_CLIENT_EXTENSION_DIR;
+  const copilotHome = process.env.COPILOT_HOME ?? path.join(os.homedir(), '.copilot');
+  const candidates = [
+    explicitDir ? path.join(explicitDir, 'tools', 'a2a-tools.mjs') : '',
+    path.join(copilotHome, 'extensions', 'a2a-client', 'tools', 'a2a-tools.mjs'),
+    path.resolve(__dirname, '..', '..', '..', '..', '..', 'a2a-client', 'extensions', 'a2a-client', 'tools', 'a2a-tools.mjs'),
+  ].filter(Boolean);
+
+  const match = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!match) {
+    throw new Error(
+      `A2A client tools not found. Install https://github.com/ipdelete/a2a-client or set A2A_CLIENT_EXTENSION_DIR. Checked: ${candidates.join(', ')}`,
+    );
+  }
+  return match;
 }
