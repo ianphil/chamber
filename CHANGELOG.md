@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **Rename bundled A2A client tools** — The a2a-client extension now exposes `a2a_connection`, `a2a_list_remote_agents`, and `a2a_send_agent_message` instead of the previous `chamber_a2a_*` tool names. Update skills, scripts, and prompts that call the old names directly.
+
 ### Fixed
 
 - **Surface ambiguous A2A recipients** — A2A message routing now reports duplicate display-name matches with usable recipient identifiers instead of falling through to an unknown-recipient error. (#322) (#322)
