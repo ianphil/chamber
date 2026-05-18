@@ -4,14 +4,14 @@ import type { AgentCard, AgentSkill } from './types';
 import type { MindContext } from '@chamber/shared/types';
 
 export class AgentCardRegistry {
-  private cards = new Map<string, AgentCard>();
+  private localCards = new Map<string, AgentCard>();
 
-  getCard(mindId: string): AgentCard | null {
-    return this.cards.get(mindId) ?? null;
+  getCard(identifier: string): AgentCard | null {
+    return this.localCards.get(identifier) ?? null;
   }
 
   getCards(): AgentCard[] {
-    return [...this.cards.values()];
+    return [...this.localCards.values()];
   }
 
   getCardByName(name: string): AgentCard | null {
@@ -28,7 +28,11 @@ export class AgentCardRegistry {
       description,
       version: '1.0.0',
       supportedInterfaces: [
-        { url: 'in-process', protocolBinding: 'IN_PROCESS', protocolVersion: '1.0' },
+        {
+          url: `chamber:mind:${encodeURIComponent(ctx.mindId)}`,
+          protocolBinding: 'https://github.com/ianphil/chamber/a2a/bindings/in-process/v1',
+          protocolVersion: '1.0',
+        },
       ],
       capabilities: { streaming: true },
       defaultInputModes: ['text/plain'],
@@ -36,11 +40,11 @@ export class AgentCardRegistry {
       skills,
       mindId: ctx.mindId,
     };
-    this.cards.set(ctx.mindId, card);
+    this.localCards.set(ctx.mindId, card);
   }
 
   unregister(mindId: string): void {
-    this.cards.delete(mindId);
+    this.localCards.delete(mindId);
   }
 
   private discoverSkills(mindPath: string): AgentSkill[] {

@@ -1,16 +1,23 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
     inputs:
       force_release:
         description: 'Force release even for patch versions'
         required: false
-        default: 'true'
+        default: true
         type: boolean
+      build_macos_x64:
+        description: 'Also build Intel macOS artifacts on macos-13'
+        required: false
+        default: false
+        type: boolean
+      source_ref:
+        description: 'Optional commit, tag, or branch to promote (e.g. an insider tag like v0.62.4-insiders.7). Empty means use the triggering ref.'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: release
@@ -22,28 +29,69 @@ jobs:
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       version: ${{ steps.check.outputs.version }}
+      source_ref: ${{ steps.check.outputs.source_ref }}
+      promoted_from: ${{ steps.check.outputs.promoted_from }}
     steps:
+      - name: Resolve source ref
+        id: source
+        run: |
+          source_ref="${{ inputs.source_ref }}"
+          if [ -z "$source_ref" ]; then
+            source_ref="${{ github.sha }}"
+          fi
+          echo "source_ref=$source_ref" >> $GITHUB_OUTPUT
+          echo "Using source ref: $source_ref"
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ steps.source.outputs.source_ref }}
 
       - name: Check for major/minor version change
         id: check
         run: |
-          CURRENT_VERSION=$(jq -r '.version' package.json)
-          echo "Current version: $CURRENT_VERSION"
+          source_ref="${{ steps.source.outputs.source_ref }}"
+
+          # Model B: derive the stable target from the insider tag name when
+          # promoting (master's package.json points at the last shipped stable,
+          # so stripping its suffix would yield the wrong value). For direct
+          # dispatches without an insider tag, compute from ## Unreleased.
+          INSIDER_TAG_REGEX='^v?([0-9]+\.[0-9]+\.[0-9]+)-insiders\.[0-9]+$'
+          if [[ "$source_ref" =~ $INSIDER_TAG_REGEX ]]; then
+            CURRENT_VERSION="${BASH_REMATCH[1]}"
+            PROMOTED_FROM="$source_ref"
+            echo "Promoting from insider tag $source_ref -> stable v$CURRENT_VERSION"
+          else
+            CURRENT_VERSION=$(node -e "
+              const ch = require('./scripts/changelog');
+              const pkg = require('./package.json');
+              const semver = require('semver');
+              const { bump } = ch.recommendBumpFromChangelog('./CHANGELOG.md');
+              if (!bump) {
+                console.error('No actionable ## Unreleased section. Either add entries via ship or promote an insider tag.');
+                process.exit(1);
+              }
+              process.stdout.write(semver.inc(pkg.version, bump));
+            ")
+            PROMOTED_FROM=""
+            echo "Computed stable version from ## Unreleased: v$CURRENT_VERSION"
+          fi
+          echo "Stable version: $CURRENT_VERSION"
 
           CURRENT_MAJOR_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1,2)
           echo "Current major.minor: $CURRENT_MAJOR_MINOR"
 
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "Latest tag: $LATEST_TAG"
+          LATEST_TAG=$(git describe --tags --abbrev=0 --exclude='*-insiders.*' 2>/dev/null || echo "")
+          echo "Latest stable tag: $LATEST_TAG"
+
+          echo "source_ref=$source_ref" >> $GITHUB_OUTPUT
+          echo "promoted_from=$PROMOTED_FROM" >> $GITHUB_OUTPUT
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
           if [ -z "$LATEST_TAG" ]; then
             echo "No previous tags found - this will be the first release"
             echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           else
             PREVIOUS_VERSION=${LATEST_TAG#v}
             echo "Previous version: $PREVIOUS_VERSION"
@@ -51,19 +99,27 @@ jobs:
             PREVIOUS_MAJOR_MINOR=$(echo "$PREVIOUS_VERSION" | cut -d. -f1,2)
             echo "Previous major.minor: $PREVIOUS_MAJOR_MINOR"
 
-            if [ "$CURRENT_MAJOR_MINOR" != "$PREVIOUS_MAJOR_MINOR" ]; then
+            if [ -n "$PROMOTED_FROM" ]; then
+              echo "Promoting from insiders - triggering release"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+            elif [ "$CURRENT_MAJOR_MINOR" != "$PREVIOUS_MAJOR_MINOR" ]; then
               echo "Major or minor version changed - triggering release"
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             elif [ "${{ github.event.inputs.force_release }}" == "true" ]; then
               echo "Manual trigger with force_release - triggering release"
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             else
               echo "Only patch version changed - skipping release"
               echo "should_release=false" >> $GITHUB_OUTPUT
-              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             fi
+          fi
+
+      - name: Report macOS release scope
+        run: |
+          if [ "${{ vars.STABLE_RELEASE_BUILD_MACOS }}" = "false" ]; then
+            echo "::warning::STABLE_RELEASE_BUILD_MACOS=false; this stable release will publish Windows artifacts only."
+          else
+            echo "macOS artifacts are enabled for this stable release."
           fi
 
   build:
@@ -76,6 +132,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -86,8 +144,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Apply promoted version
+        shell: bash
+        run: |
+          target="${{ needs.check-version.outputs.version }}"
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "$target" ]; then
+            echo "Promoting $current -> $target for stable build"
+            npm version "$target" --no-git-tag-version --allow-same-version
+            npm install
+          fi
+
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -122,24 +191,226 @@ jobs:
           path: staged/*
           if-no-files-found: error
 
+  build-macos:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true' && vars.STABLE_RELEASE_BUILD_MACOS != 'false'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Apply promoted version
+        shell: bash
+        run: |
+          target="${{ needs.check-version.outputs.version }}"
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "$target" ]; then
+            echo "Promoting $current -> $target for stable build"
+            npm version "$target" --no-git-tag-version --allow-same-version
+            npm install
+          fi
+
+      - name: Import macOS signing certificate
+        run: |
+          keychain="$RUNNER_TEMP/chamber-signing.keychain-db"
+          certificate="$RUNNER_TEMP/chamber-signing.p12"
+          intermediate="$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$intermediate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security add-certificates -k "$keychain" "$intermediate" || true
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+          xcrun notarytool store-credentials chamber-notary \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --keychain "$keychain"
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-macos
+
+      - name: Build signed macOS package
+        run: npm run make:builder:mac
+        env:
+          CHAMBER_MACOS_SIGNING: 'true'
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CHAMBER_NOTARY_KEYCHAIN_PROFILE: chamber-notary
+          CHAMBER_NOTARY_KEYCHAIN: ${{ runner.temp }}/chamber-signing.keychain-db
+
+      - name: Stage artifacts
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          mkdir -p staged
+          cp out/builder/Chamber-"$version"-*.dmg staged/
+          cp out/builder/Chamber-"$version"-*.dmg.blockmap staged/
+          cp out/builder/Chamber-"$version"-*.zip staged/
+          cp out/builder/Chamber-"$version"-*.zip.blockmap staged/
+          cp out/builder/latest-mac.yml staged/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: staged/*
+          if-no-files-found: error
+
+  build-macos-x64:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true' && vars.STABLE_RELEASE_BUILD_MACOS != 'false' && github.event_name == 'workflow_dispatch' && inputs.build_macos_x64
+    runs-on: macos-13
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Apply promoted version
+        shell: bash
+        run: |
+          target="${{ needs.check-version.outputs.version }}"
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "$target" ]; then
+            echo "Promoting $current -> $target for stable build"
+            npm version "$target" --no-git-tag-version --allow-same-version
+            npm install
+          fi
+
+      - name: Import macOS signing certificate
+        run: |
+          keychain="$RUNNER_TEMP/chamber-signing.keychain-db"
+          certificate="$RUNNER_TEMP/chamber-signing.p12"
+          intermediate="$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$intermediate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security add-certificates -k "$keychain" "$intermediate" || true
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+          xcrun notarytool store-credentials chamber-notary \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --keychain "$keychain"
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-macos-x64
+
+      - name: Build signed Intel macOS package
+        run: npm run make:builder:mac
+        env:
+          CHAMBER_MACOS_SIGNING: 'true'
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CHAMBER_NOTARY_KEYCHAIN_PROFILE: chamber-notary
+          CHAMBER_NOTARY_KEYCHAIN: ${{ runner.temp }}/chamber-signing.keychain-db
+
+      - name: Stage artifacts
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          mkdir -p staged
+          cp out/builder/Chamber-"$version"-*.dmg staged/
+          cp out/builder/Chamber-"$version"-*.dmg.blockmap staged/
+          cp out/builder/Chamber-"$version"-*.zip staged/
+          cp out/builder/Chamber-"$version"-*.zip.blockmap staged/
+          cp out/builder/latest-mac.yml staged/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-x64
+          path: staged/*
+          if-no-files-found: error
+
   release:
-    needs: [check-version, build]
-    if: needs.check-version.outputs.should_release == 'true'
+    needs: [check-version, build, build-macos, build-macos-x64]
+    if: always() && needs.check-version.outputs.should_release == 'true' && needs.build.result == 'success' && (needs['build-macos'].result == 'success' || needs['build-macos'].result == 'skipped') && (needs['build-macos-x64'].result == 'success' || needs['build-macos-x64'].result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-version.outputs.source_ref }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-windows
+          pattern: release-*
           path: artifacts
+          merge-multiple: true
 
       - name: Display downloaded files
         run: find artifacts -type f
+
+      - name: Compose release notes header
+        id: notes
+        shell: bash
+        run: |
+          promoted_from="${{ needs.check-version.outputs.promoted_from }}"
+          build_macos="${{ vars.STABLE_RELEASE_BUILD_MACOS }}"
+          {
+            echo "body<<EOF"
+            if [ -n "$promoted_from" ]; then
+              echo "Promoted from insiders build \`$promoted_from\`."
+              echo ""
+            fi
+            if [ "$build_macos" = "false" ]; then
+              echo "macOS artifacts were skipped because repository variable \`STABLE_RELEASE_BUILD_MACOS\` is set to \`false\`."
+              echo ""
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -147,6 +418,7 @@ jobs:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: Release v${{ needs.check-version.outputs.version }}
           generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

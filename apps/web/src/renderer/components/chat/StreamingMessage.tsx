@@ -1,11 +1,19 @@
-import React from 'react';
+import React, { memo } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import type { PluggableList } from 'unified';
+import type { Components } from 'react-markdown';
 import { cn } from '../../lib/utils';
 import { WorkGroup, hasRunningTool } from './WorkGroup';
 import { groupBlocksIntoChunks } from './WorkGroup.logic';
 import type { ContentBlock, TextBlock } from '@chamber/shared/types';
+
+const REMARK_PLUGINS: PluggableList = [remarkGfm];
+const REHYPE_PLUGINS: PluggableList = [[rehypeHighlight, { detect: true, ignoreMissing: true }]];
+const MARKDOWN_COMPONENTS: Components = {
+  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+};
 
 interface Props {
   blocks: ContentBlock[];
@@ -65,7 +73,7 @@ export function StreamingMessage({ blocks, isStreaming }: Props) {
   );
 }
 
-function TextChunk({ block, streaming }: { block: TextBlock; streaming: boolean }) {
+const TextChunk = memo(function TextChunk({ block, streaming }: { block: TextBlock; streaming: boolean }) {
   return (
     <div
       className={cn(
@@ -74,11 +82,9 @@ function TextChunk({ block, streaming }: { block: TextBlock; streaming: boolean 
       )}
     >
       <Markdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-        components={{
-          a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-        }}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={MARKDOWN_COMPONENTS}
       >
         {block.content}
       </Markdown>
@@ -87,7 +93,7 @@ function TextChunk({ block, streaming }: { block: TextBlock; streaming: boolean 
       )}
     </div>
   );
-}
+});
 
 function ThinkingDots({ label }: { label: string }) {
   return (

@@ -61,6 +61,17 @@ export function setupGenesisIPC(
   ipcMain.handle(IPC.GENESIS.CREATE, async (event, config: GenesisConfig) => {
     const win = BrowserWindow.fromWebContents(event.sender);
 
+    // Issue #44 — detect name collision BEFORE scaffolding so we never
+    // create a directory the user can't activate. The check is
+    // case-insensitive against currently-loaded minds; persisted-but-not-
+    // loaded minds are not considered.
+    const collision = mindManager.findByName(config.name);
+    if (collision) {
+      const message = `An agent named "${config.name}" already exists. Choose a different name.`;
+      if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
+      return { success: false, error: message };
+    }
+
     scaffold.setProgressHandler((progress) => {
       if (win) win.webContents.send(IPC.GENESIS.PROGRESS, progress);
     });
@@ -93,14 +104,22 @@ export function setupGenesisIPC(
   });
 }
 
-async function activateCreatedMind(mindManager: MindManager, mindPath: string): Promise<{ success: true; mindId: string; mindPath: string }> {
+async function activateCreatedMind(mindManager: MindManager, mindPath: string): Promise<{ success: true; mindId: string; mindPath: string } | { success: false; error: string }> {
   appendE2EGenesisMemory(mindPath);
   bootstrapMindCapabilities(mindPath);
 
-  const mind = await mindManager.loadMind(mindPath);
-  mindManager.setActiveMind(mind.mindId);
-
-  return { success: true, mindId: mind.mindId, mindPath };
+  try {
+    // Defense in depth — between the IPC pre-check (in IPC.GENESIS.CREATE)
+    // and this load, a concurrent mind:add or genesis:create_from_template
+    // could land a colliding mind. Also covers the template-install path
+    // which has no pre-check of its own.
+    const mind = await mindManager.loadMind(mindPath, undefined, { enforceUnique: true });
+    mindManager.setActiveMind(mind.mindId);
+    return { success: true, mindId: mind.mindId, mindPath };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 }
 
 function getDefaultGenesisBasePath(): string {

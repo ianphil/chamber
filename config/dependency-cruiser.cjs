@@ -19,17 +19,17 @@ module.exports = {
       to: { path: '^(node:|electron$|apps/|packages/(client|services))' },
     },
     {
-      name: 'hono-stays-in-server-adapter',
+      name: 'hono-stays-in-web-adapters',
       severity: 'error',
-      from: { path: '^(apps/server|packages)' },
+      from: { path: '^(apps/(desktop|web)(/|$)|packages)' },
       to: { path: '^hono' },
-      comment: 'Only apps/server/src/honoAdapter.ts may import Hono; enforce this with focused lint once apps/server exists.',
+      comment: 'Only apps/server owns Hono route adapters.',
     },
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
     exclude: {
-      path: '(^node_modules|^dist|^out|^\\.vite|^coverage)',
+      path: '(^node_modules|(^|/)dist|^out|^\\.vite|^coverage)',
     },
     tsConfig: {
       fileName: 'tsconfig.json',

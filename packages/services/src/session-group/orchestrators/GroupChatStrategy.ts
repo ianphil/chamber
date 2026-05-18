@@ -128,7 +128,7 @@ export class GroupChatStrategy extends BaseStrategy {
         prompt: openingPrompt,
         roundId,
         context,
-        abortSignal: this.abortController!.signal,
+        abortSignal: this.requireAbortController().signal,
         unsubs: this.currentUnsubs,
         orchestrationMode: 'group-chat',
       }));
@@ -201,7 +201,7 @@ export class GroupChatStrategy extends BaseStrategy {
           prompt: speakerPrompt,
           roundId,
           context,
-          abortSignal: this.abortController!.signal,
+          abortSignal: this.requireAbortController().signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'group-chat',
         }));
@@ -246,7 +246,7 @@ export class GroupChatStrategy extends BaseStrategy {
           prompt: moderatorPrompt,
           roundId,
           context,
-          abortSignal: this.abortController!.signal,
+          abortSignal: this.requireAbortController().signal,
           unsubs: this.currentUnsubs,
           orchestrationMode: 'group-chat',
         }));
@@ -479,7 +479,7 @@ export class GroupChatStrategy extends BaseStrategy {
       prompt: xml,
       roundId,
       context,
-      abortSignal: this.abortController?.signal ?? new AbortController().signal,
+      abortSignal: this.requireAbortController().signal,
       unsubs: this.currentUnsubs,
       orchestrationMode: 'group-chat',
     });

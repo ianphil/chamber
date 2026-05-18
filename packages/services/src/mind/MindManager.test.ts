@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MindManager } from './MindManager';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import type { IdentityLoader } from '../chat/IdentityLoader';
 import type { ChamberToolProvider } from '../chamberTools';
@@ -155,10 +156,14 @@ describe('MindManager', () => {
       void sessionId;
     });
     vi.mocked(fs.existsSync).mockImplementation((candidate) => {
-      // Default: every checked path exists EXCEPT `.mcp.json`. Tests that
-      // need MindManager to discover an `.mcp.json` opt in by overriding
-      // existsSync + readFileSync per test (#199).
-      return !String(candidate).endsWith('.mcp.json');
+      // Default: every checked path exists EXCEPT `.mcp.json` and
+      // `.chamber.json`. Tests that need MindManager to discover either
+      // file opt in by overriding existsSync + readFileSync per test
+      // (#199 / #131). Without the chamber.json exclusion, the default
+      // readFileSync stub ('# TestAgent\nSome content') fails JSON.parse
+      // and pollutes every test with a chamberMindConfig warn.
+      const s = String(candidate);
+      return !s.endsWith('.mcp.json') && !s.endsWith('.chamber.json');
     });
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     vi.mocked(fs.realpathSync.native).mockImplementation((candidate) => String(candidate));
@@ -311,6 +316,21 @@ describe('MindManager', () => {
       expect(manager.getMind(mind.mindId)?.selectedModel).toBe('claude-opus');
     });
 
+    it('rolls back the persisted selection when the SDK rejects with a non-stale error', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Existing context');
+      const before = manager.getMind(mind.mindId)?.selectedModel;
+      const beforeProvider = manager.getMind(mind.mindId)?.selectedModelProvider;
+      const liveSession = manager.getMind(mind.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      liveSession.setModel.mockImplementationOnce(async () => {
+        throw new Error('BYO endpoint unreachable: connect ECONNREFUSED 127.0.0.1:11434');
+      });
+
+      await expect(manager.setMindModel(mind.mindId, 'claude-opus')).rejects.toThrow(/ECONNREFUSED/);
+      expect(manager.getMind(mind.mindId)?.selectedModel).toBe(before);
+      expect(manager.getMind(mind.mindId)?.selectedModelProvider).toBe(beforeProvider);
+    });
+
     it('serializes concurrent per-mind model changes against the live session', async () => {
       const liveSession = manager.getMind((await manager.loadMind('/tmp/agents/q')).mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
       const mind = manager.listMinds()[0];
@@ -428,6 +448,9 @@ describe('MindManager', () => {
         const normalized = String(candidate).replace(/\\/g, '/').toLowerCase();
         return normalized === '/tmp/agents/q/soul.md' || normalized === '/tmp/agents/q/.github';
       });
+      vi.mocked(fs.realpathSync.native).mockImplementation((candidate) =>
+        String(candidate).replace(/\\/g, '/').toLowerCase(),
+      );
 
       const mind1 = await manager.loadMind('/tmp/agents/q');
       const mind2 = await manager.loadMind('/tmp/agents/Q/');
@@ -463,6 +486,135 @@ describe('MindManager', () => {
       manager.on('mind:loaded', listener);
       await manager.loadMind('/tmp/agents/q');
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({ mindPath: '/tmp/agents/q' }));
+    });
+
+    describe('display-name uniqueness (#44)', () => {
+      // mockImplementation overrides on shared mocks persist across vi.clearAllMocks().
+      // Re-install the basename-derived default each time so tests below us in the
+      // file (and the rest of this describe) see consistent identity loader behavior.
+      const defaultIdentityImpl = (mindPath: string) => ({
+        name: mindPath.split('/').pop() ?? 'unknown',
+        systemMessage: `Identity for ${mindPath}`,
+      });
+      beforeEach(() => {
+        mockIdentityLoader.load.mockImplementation(defaultIdentityImpl);
+      });
+      afterEach(() => {
+        mockIdentityLoader.load.mockImplementation(defaultIdentityImpl);
+      });
+      it('findByName returns the mind whose identity.name matches (case-insensitive)', async () => {
+        await manager.loadMind('/tmp/agents/q');
+        await manager.loadMind('/tmp/agents/fox');
+
+        expect(manager.findByName('q')?.mindPath).toBe('/tmp/agents/q');
+        expect(manager.findByName('Q')?.mindPath).toBe('/tmp/agents/q');
+        expect(manager.findByName('  q  ')?.mindPath).toBe('/tmp/agents/q');
+        expect(manager.findByName('fox')?.mindPath).toBe('/tmp/agents/fox');
+        expect(manager.findByName('nonexistent')).toBeUndefined();
+      });
+
+      it('default loadMind (no options) does NOT enforce name uniqueness — preserves startup-replay behavior', async () => {
+        // IdentityLoader mock returns identity.name = basename. Two distinct paths
+        // with the same basename produce two minds with the same display name.
+        // Pre-existing persisted configs may legitimately contain such pairs;
+        // startup must not refuse to restore them.
+        const a = await manager.loadMind('/tmp/agents/q');
+        const b = await manager.loadMind('/tmp/other/q');
+
+        expect(a.identity.name).toBe('q');
+        expect(b.identity.name).toBe('q');
+        expect(a.mindId).not.toBe(b.mindId);
+      });
+
+      it('loadMind with enforceUnique: true throws when name collides with an already-loaded mind at a different path', async () => {
+        await manager.loadMind('/tmp/agents/q');
+
+        await expect(
+          manager.loadMind('/tmp/other/q', undefined, { enforceUnique: true }),
+        ).rejects.toThrow(/already exists/i);
+        // And the colliding mind must not have been registered or created any SDK state.
+        expect(manager.listMinds()).toHaveLength(1);
+      });
+
+      it('loadMind with enforceUnique: true still deduplicates the same mind path (no collision against itself)', async () => {
+        const first = await manager.loadMind('/tmp/agents/q');
+        const second = await manager.loadMind('/tmp/agents/q', undefined, { enforceUnique: true });
+
+        expect(second.mindId).toBe(first.mindId);
+        expect(mockClientFactory.createClient).toHaveBeenCalledTimes(1);
+      });
+
+      it('loadMind with enforceUnique: true compares names case-insensitively', async () => {
+        await manager.loadMind('/tmp/agents/Alfred');
+
+        await expect(
+          manager.loadMind('/tmp/other/alfred', undefined, { enforceUnique: true }),
+        ).rejects.toThrow(/already exists/i);
+      });
+
+      it('loadMind with enforceUnique: true rolls back identity load without creating an SDK client', async () => {
+        await manager.loadMind('/tmp/agents/q');
+        const clientsBefore = mockClientFactory.createClient.mock.calls.length;
+
+        await expect(
+          manager.loadMind('/tmp/other/q', undefined, { enforceUnique: true }),
+        ).rejects.toThrow(/already exists/i);
+
+        // The collision is detected before clientFactory.createClient runs,
+        // so no extra SDK client is spawned for the rejected load.
+        expect(mockClientFactory.createClient.mock.calls.length).toBe(clientsBefore);
+      });
+
+      it('serializes concurrent enforce-unique loads with colliding names so only one succeeds', async () => {
+        // Two concurrent loads of different paths whose IdentityLoader returns
+        // the same name. Without a reservation, both would pass the
+        // this.minds-only check (this.minds.set happens much later in the
+        // pipeline, after client/session setup) and both would load.
+        mockIdentityLoader.load.mockImplementation(() => ({
+          name: 'alfred',
+          systemMessage: 'identity',
+        }));
+
+        const results = await Promise.allSettled([
+          manager.loadMind('/tmp/agents/butler-a', undefined, { enforceUnique: true }),
+          manager.loadMind('/tmp/agents/butler-b', undefined, { enforceUnique: true }),
+        ]);
+
+        const fulfilled = results.filter((r) => r.status === 'fulfilled');
+        const rejected = results.filter((r) => r.status === 'rejected');
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+          message: expect.stringMatching(/already exists/i),
+        });
+        expect(manager.listMinds()).toHaveLength(1);
+      });
+
+      it('findByName matches across Unicode normalization forms (NFC vs NFD)', async () => {
+        // macOS clipboard often produces NFD ("Cafe\u0301"); Windows produces NFC ("Café").
+        // Without normalization the duplicate check would let two visually-identical
+        // names through. Loaded mind uses NFD; lookup uses NFC.
+        const nfd = 'Cafe\u0301';
+        const nfc = 'Café';
+        expect(nfd).not.toBe(nfc);
+        mockIdentityLoader.load.mockImplementation(() => ({
+          name: nfd,
+          systemMessage: 'identity',
+        }));
+        await manager.loadMind('/tmp/agents/cafe-nfd');
+
+        expect(manager.findByName(nfc)?.mindPath).toBe('/tmp/agents/cafe-nfd');
+        expect(manager.findByName(nfd)?.mindPath).toBe('/tmp/agents/cafe-nfd');
+      });
+    });
+
+    it('wires approveForSessionCompat and does not short-circuit via setApproveAll (issue #131)', async () => {
+      const created = createSessionStub();
+      mockCreateSession.mockResolvedValueOnce(created);
+      await manager.loadMind('/tmp/agents/q');
+      const sessionConfig = mockCreateSession.mock.calls[0][0] as { onPermissionRequest?: unknown };
+      expect(sessionConfig.onPermissionRequest).toBe(approveForSessionCompat);
+      expect(created.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
     });
   });
 
@@ -753,6 +905,22 @@ describe('MindManager', () => {
       expect(result.conversations.map((conversation) => conversation.sessionId)).toEqual(
         historyBeforeResume.map((conversation) => conversation.sessionId),
       );
+    });
+
+    it('wires approveForSessionCompat on resumed sessions and does not short-circuit via setApproveAll (issue #131)', async () => {
+      const resumedSession = createSessionStub();
+      resumedSession.getMessages.mockResolvedValue([]);
+      mockResumeSession.mockResolvedValueOnce(resumedSession);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');
+      await manager.recreateSession(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+
+      await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      const resumeConfig = mockResumeSession.mock.calls[0][1] as { onPermissionRequest?: unknown };
+      expect(resumeConfig.onPermissionRequest).toBe(approveForSessionCompat);
+      expect(resumedSession.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
     });
 
     it('hydrates the already-active conversation without resuming the SDK session again', async () => {
@@ -1249,6 +1417,72 @@ describe('MindManager', () => {
     });
   });
 
+  describe('chamber mind config (#131 — per-mind excludedTools)', () => {
+    it('passes excludedTools through to createSession when .chamber.json declares them', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: ['shell', 'str_replace'] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          excludedTools: ['shell', 'str_replace'],
+        }),
+      );
+    });
+
+    it('omits excludedTools from session config when .chamber.json is absent', async () => {
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'excludedTools')).toBe(false);
+    });
+
+    it('omits excludedTools from session config when .chamber.json declares an empty array', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: [] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+
+      await manager.loadMind('/tmp/agents/q');
+
+      const config = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(config).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(config, 'excludedTools')).toBe(false);
+    });
+
+    it('passes excludedTools through to resumeSession when resuming a prior conversation', async () => {
+      const chamberJson = JSON.stringify({ excludedTools: ['shell'] });
+      vi.mocked(fs.existsSync).mockImplementation(() => true);
+      vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+        return String(candidate).endsWith('.chamber.json')
+          ? chamberJson
+          : '# TestAgent\nSome content';
+      });
+      const resumedSession = createSessionStub();
+      resumedSession.getMessages.mockResolvedValue([]);
+      mockResumeSession.mockResolvedValueOnce(resumedSession);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');
+      await manager.recreateSession(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+
+      await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      const resumeConfig = mockResumeSession.mock.calls[0][1] as Record<string, unknown>;
+      expect(resumeConfig.excludedTools).toEqual(['shell']);
+    });
+  });
+
   describe('provider integration', () => {
     it('activates providers after creating a mind session', async () => {
       await manager.loadMind('/tmp/agents/q');
@@ -1408,6 +1642,268 @@ describe('MindManager', () => {
         expect(savedMindIds(config)).toEqual(['bad-c3d4', 'good-a1b2']);
       }
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('BYO LLM provider config integration (SDK-native)', () => {
+    it('BVT-MM01: passes provider into createSession only when a BYO model is selected', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://example.com/v1', apiKey: 'lm-studio' };
+      const byoProviderConfigProvider = vi.fn().mockReturnValue(provider);
+      const byoDefaultModelProvider = vi.fn().mockReturnValue('gemma-4-e4b');
+      currentConfig = {
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q', selectedModel: 'gemma-4-e4b', selectedModelProvider: 'byo' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'dark',
+      };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+        byoDefaultModelProvider,
+      );
+
+      await mgr.restoreFromConfig();
+
+      expect(byoProviderConfigProvider).toHaveBeenCalled();
+      // Client factory is called WITHOUT extraEnv now (provider is passed via session config)
+      expect(mockClientFactory.createClient).toHaveBeenCalledWith('/tmp/agents/q');
+      // Verify provider + model were passed into createSession
+      const createSessionCall = mockCreateSession.mock.calls[mockCreateSession.mock.calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionCall?.provider).toEqual(provider);
+      expect(createSessionCall?.model).toBe('gemma-4-e4b');
+    });
+
+    it('restores BYO-selected minds with the default provider when BYO is disabled', async () => {
+      currentConfig = {
+        version: 2,
+        minds: [{ id: 'q-a1b2', path: '/tmp/agents/q', selectedModel: 'gemma-4-e4b', selectedModelProvider: 'byo' }],
+        activeMindId: 'q-a1b2',
+        activeLogin: null,
+        theme: 'dark',
+      };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => null,
+      );
+
+      await mgr.restoreFromConfig();
+
+      const createSessionCall = mockCreateSession.mock.calls[mockCreateSession.mock.calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionCall?.provider).toBeUndefined();
+      expect(createSessionCall?.model).toBeUndefined();
+      expect(mgr.listMinds()[0].selectedModel).toBeUndefined();
+      expect(mgr.listMinds()[0].selectedModelProvider).toBeUndefined();
+    });
+
+    it('BVT-MM02: omits provider from createSession when BYO is enabled but no BYO model is selected', async () => {
+      const byoProviderConfigProvider = vi.fn().mockReturnValue({ type: 'openai' as const, baseUrl: 'https://example.com/v1' });
+      const byoDefaultModelProvider = vi.fn().mockReturnValue(undefined);
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+        byoDefaultModelProvider,
+      );
+
+      await mgr.loadMind('/tmp/agents/q');
+
+      const createSessionCall = mockCreateSession.mock.calls[mockCreateSession.mock.calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionCall?.provider).toBeUndefined();
+      expect(createSessionCall?.model).toBeUndefined();
+      expect(byoProviderConfigProvider).not.toHaveBeenCalled();
+    });
+
+    it('BVT-MM02b: rejects a BYO model selection when BYO provider config is unavailable', async () => {
+      const byoProviderConfigProvider = vi.fn().mockReturnValue(null);
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+      );
+      const q = await mgr.loadMind('/tmp/agents/q');
+      mockCreateSession.mockClear();
+
+      await expect(mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b')).rejects.toThrow(
+        'BYO LLM model selected, but BYO LLM is not enabled or configured.',
+      );
+
+      expect(byoProviderConfigProvider).toHaveBeenCalled();
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
+    it('BVT-MM03: restartAllMindsForByoChange refreshes only BYO-selected loaded minds', async () => {
+      const byoProviderConfigProvider = vi.fn().mockReturnValue({ type: 'openai' as const, baseUrl: 'https://x/v1' });
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        byoProviderConfigProvider,
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      await mgr.loadMind('/tmp/agents/fox');
+      await mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b');
+      mockClientFactory.destroyClient.mockClear();
+
+      const result = await mgr.restartAllMindsForByoChange();
+
+      expect(result).toEqual({ restartedCount: 1 });
+      expect(mockClientFactory.destroyClient).toHaveBeenCalledTimes(1);
+    });
+
+    it('BVT-MM04: per-mind selectedModel takes precedence over BYO default', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: typeof provider) => string | undefined }).resolveModelForSdk('qwen3.5-9b', provider);
+      expect(resolved).toBe('qwen3.5-9b');
+    });
+
+    it('BVT-MM05: BYO default model is used when per-mind selectedModel is undefined', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: typeof provider) => string | undefined }).resolveModelForSdk(undefined, provider);
+      expect(resolved).toBe('gemma-4-e4b');
+    });
+
+    it('BVT-MM06: empty-string selectedModel falls back to BYO default', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: typeof provider) => string | undefined }).resolveModelForSdk('  ', provider);
+      expect(resolved).toBe('gemma-4-e4b');
+    });
+
+    it('BVT-MM07: BYO default model is not used when provider is inactive', () => {
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => null,
+        () => 'gemma-4-e4b',
+      );
+      const resolved = (mgr as unknown as { resolveModelForSdk: (m: string | undefined, p: null) => string | undefined }).resolveModelForSdk(undefined, null);
+      expect(resolved).toBeUndefined();
+    });
+
+    it('BVT-MM08: cloud-to-BYO model switch recreates a provider-scoped session', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      await mgr.setMindModel(q.mindId, 'claude-sonnet-4.6');
+      const cloudSession = mgr.getMind(q.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      mockCreateSession.mockClear();
+      mockResumeSession.mockClear();
+
+      const updated = await mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b');
+
+      expect(updated?.selectedModel).toBe('gemma-4-e4b');
+      expect(updated?.selectedModelProvider).toBe('byo');
+      expect(cloudSession.setModel).toHaveBeenCalledWith('claude-sonnet-4.6');
+      expect(cloudSession.disconnect).toHaveBeenCalled();
+      expect(mockResumeSession).not.toHaveBeenCalled();
+      const createSessionConfig = mockCreateSession.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionConfig?.provider).toBe(provider);
+      expect(createSessionConfig?.model).toBe('gemma-4-e4b');
+      expect(lastSavedConfig().minds[0]).toMatchObject({
+        selectedModel: 'gemma-4-e4b',
+        selectedModelProvider: 'byo',
+      });
+    });
+
+    it('BVT-MM09: BYO-to-cloud model switch recreates a cloud session without provider', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+        () => 'gemma-4-e4b',
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      await mgr.setMindModel(q.mindId, 'byo:gemma-4-e4b');
+      const byoSession = mgr.getMind(q.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      mockCreateSession.mockClear();
+      mockResumeSession.mockClear();
+
+      const updated = await mgr.setMindModel(q.mindId, 'copilot:claude-sonnet-4.6');
+
+      expect(updated?.selectedModel).toBe('claude-sonnet-4.6');
+      expect(updated?.selectedModelProvider).toBeUndefined();
+      expect(byoSession.setModel).not.toHaveBeenCalledWith('claude-sonnet-4.6');
+      expect(byoSession.disconnect).toHaveBeenCalled();
+      expect(mockResumeSession).not.toHaveBeenCalled();
+      const createSessionConfig = mockCreateSession.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+      expect(createSessionConfig?.provider).toBeUndefined();
+      expect(createSessionConfig?.model).toBe('claude-sonnet-4.6');
+    });
+
+    it('BVT-MM10: restartAllMindsForByoChange clears only BYO-selected models when BYO is disabled', async () => {
+      const provider = { type: 'openai' as const, baseUrl: 'https://x/v1' };
+      const mgr = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => provider,
+      );
+
+      const q = await mgr.loadMind('/tmp/agents/q');
+      const fox = await mgr.loadMind('/tmp/agents/fox');
+      await mgr.setMindModel(q.mindId, 'byo:google%2Fgemma-4-e4b');
+      await mgr.setMindModel(fox.mindId, 'gpt-5.4');
+
+      const result = await mgr.restartAllMindsForByoChange(null);
+
+      expect(result).toEqual({ restartedCount: 1 });
+      const qRecord = currentConfig.minds.find((mind) => mind.id === q.mindId);
+      const foxRecord = currentConfig.minds.find((mind) => mind.id === fox.mindId);
+      expect(qRecord?.selectedModel).toBeUndefined();
+      expect(qRecord?.selectedModelProvider).toBeUndefined();
+      expect(foxRecord?.selectedModel).toBe('gpt-5.4');
+      expect(foxRecord?.selectedModelProvider).toBeUndefined();
     });
   });
 });

@@ -1,5 +1,5 @@
 import type { MessageRouter } from './MessageRouter';
-import type { AgentCardRegistry } from './AgentCardRegistry';
+import type { A2AAgentResolver } from './ActiveA2AResolver';
 import type { TaskManager } from './TaskManager';
 import type { TaskState } from './types';
 import { createTextMessage } from './helpers';
@@ -14,7 +14,7 @@ export interface SessionTool {
 export function buildA2ATools(
   mindId: string,
   messageRouter: MessageRouter,
-  agentCardRegistry: AgentCardRegistry,
+  agentResolver: A2AAgentResolver,
   taskManager: TaskManager,
 ): SessionTool[] {
   const sendMessage: SessionTool = {
@@ -54,10 +54,10 @@ export function buildA2ATools(
   const listAgents: SessionTool = {
     name: 'a2a_list_agents',
     description:
-      'List other agents in this workspace that you can talk to. Returns their names, descriptions, and skills. Use this when the user asks about other agents or wants to send a message to one.',
+      'List other agents that you can talk to through the active A2A registry. Returns their names, descriptions, and skills. Use this when the user asks about other agents or wants to send a message to one.',
     parameters: { type: 'object', properties: {} },
     handler: async () => {
-      return agentCardRegistry.getCards().filter((c) => c.mindId !== mindId);
+      return (await agentResolver.getCards()).filter((c) => c.mindId !== mindId);
     },
   };
 
@@ -65,7 +65,7 @@ export function buildA2ATools(
 }
 
 const VALID_TASK_STATES: Set<string> = new Set([
-  'submitted', 'working', 'completed', 'failed', 'canceled', 'input-required', 'rejected', 'auth-required',
+  'TASK_STATE_SUBMITTED', 'TASK_STATE_WORKING', 'TASK_STATE_COMPLETED', 'TASK_STATE_FAILED', 'TASK_STATE_CANCELED', 'TASK_STATE_INPUT_REQUIRED', 'TASK_STATE_REJECTED', 'TASK_STATE_AUTH_REQUIRED',
 ]);
 
 function buildTaskTools(mindId: string, taskManager: TaskManager): SessionTool[] {

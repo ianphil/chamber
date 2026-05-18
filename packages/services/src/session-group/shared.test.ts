@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { escapeXml, textContent, extractJsonObject, stripControlJson } from './shared';
+import { textContent, extractJsonObject, stripControlJson } from './shared';
 import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
-
-// ---------------------------------------------------------------------------
-// Helper to build a minimal ChatroomMessage with typed blocks
-// ---------------------------------------------------------------------------
 
 function msg(blocks: ChatroomMessage['blocks']): ChatroomMessage {
   return {
@@ -17,48 +13,6 @@ function msg(blocks: ChatroomMessage['blocks']): ChatroomMessage {
     roundId: 'r1',
   };
 }
-
-// ---------------------------------------------------------------------------
-// escapeXml
-// ---------------------------------------------------------------------------
-
-describe('escapeXml', () => {
-  it('escapes ampersand', () => {
-    expect(escapeXml('a&b')).toBe('a&amp;b');
-  });
-
-  it('escapes less-than', () => {
-    expect(escapeXml('a<b')).toBe('a&lt;b');
-  });
-
-  it('escapes greater-than', () => {
-    expect(escapeXml('a>b')).toBe('a&gt;b');
-  });
-
-  it('escapes double quote', () => {
-    expect(escapeXml('a"b')).toBe('a&quot;b');
-  });
-
-  it('escapes single quote', () => {
-    expect(escapeXml("a'b")).toBe('a&apos;b');
-  });
-
-  it('returns empty string unchanged', () => {
-    expect(escapeXml('')).toBe('');
-  });
-
-  it('passes through strings with no special characters', () => {
-    expect(escapeXml('hello world')).toBe('hello world');
-  });
-
-  it('escapes multiple occurrences of the same character', () => {
-    expect(escapeXml('a&b&c&d')).toBe('a&amp;b&amp;c&amp;d');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// textContent
-// ---------------------------------------------------------------------------
 
 describe('textContent', () => {
   it('extracts content from a single text block', () => {

@@ -10,6 +10,8 @@
  */
 import type {
   A2AIncomingPayload,
+  A2ARelayConnectRequest,
+  A2ARelayStatus,
   AgentCard,
   ListTasksResponse,
   Task,
@@ -17,6 +19,7 @@ import type {
   TaskStatusUpdateEvent,
 } from './a2a-types';
 import type { ChatroomAPI } from './chatroom-types';
+import type { AppFeatureFlags } from './feature-flags';
 import type {
   AgentProfile,
   AgentProfileActionResult,
@@ -24,6 +27,9 @@ import type {
   AgentProfileAvatarSaveRequest,
   AgentProfileSaveRequest,
   AgentProfileSaveResult,
+  ByoLlmConfig,
+  ByoLlmProbeResult,
+  ByoLlmSaveResult,
   ChatEvent,
   ChatImageAttachment,
   ConversationResumeResult,
@@ -36,6 +42,7 @@ import type {
   MarketplaceRegistryActionResult,
   MindContext,
   ModelInfo,
+  StartupProgressEvent,
   ToolActionResult,
   ToolCatalogEntry,
   UserProfile,
@@ -136,16 +143,37 @@ export interface ElectronAPI {
     getTask: (taskId: string, historyLength?: number) => Promise<Task | null>;
     listTasks: (filter?: { contextId?: string; status?: string }) => Promise<ListTasksResponse>;
     cancelTask: (taskId: string) => Promise<Task | { error: string }>;
+    relayStatus: () => Promise<A2ARelayStatus>;
+    relayConnect: (request: A2ARelayConnectRequest) => Promise<A2ARelayStatus>;
+    relayDisconnect: () => Promise<A2ARelayStatus>;
+    onRelayStateChanged: (callback: (status: A2ARelayStatus) => void) => () => void;
   };
   e2e?: {
     emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;
     emitAuthProgress: (payload: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => Promise<void>;
     completeLoginStub: (payload: { success?: boolean; login?: string }) => Promise<void>;
   };
+  byoLlm: {
+    get: () => Promise<ByoLlmConfig | null>;
+    save: (config: ByoLlmConfig) => Promise<ByoLlmSaveResult>;
+    disable: () => Promise<ByoLlmSaveResult>;
+    probe: (config: ByoLlmConfig) => Promise<ByoLlmProbeResult>;
+    restartAgents: () => Promise<{ success: boolean; restartedCount: number; error?: string }>;
+    onChanged: (callback: (config: ByoLlmConfig | null) => void) => () => void;
+  };
   window: {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
+  };
+  app: {
+    getFeatureFlags: () => Promise<AppFeatureFlags>;
+    /**
+     * Subscribe to per-step app-startup progress events while the main
+     * process restores minds from config. Drives the boot-screen activity
+     * log (#56). Returns an unsubscribe function — call it on unmount.
+     */
+    onStartupProgress: (callback: (event: StartupProgressEvent) => void) => () => void;
   };
 }
 

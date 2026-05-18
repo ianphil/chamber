@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MindScaffold } from './MindScaffold';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -109,6 +110,43 @@ describe('MindScaffold.create', () => {
     expect(sentPrompt).toEqual(expect.stringContaining('<current_datetime>'));
     expect(sentPrompt).toEqual(expect.stringContaining('<timezone>'));
     expect(sentPrompt).toEqual(expect.stringContaining('Bob'));
+  });
+
+  it('wires approveForSessionCompat for genesis sessions and does not short-circuit via setApproveAll (issue #131)', async () => {
+    const session = {
+      send: vi.fn<(_: { prompt: string }) => Promise<void>>(async () => undefined),
+      destroy: vi.fn(async () => undefined),
+      on: vi.fn((event: string, callback: () => void) => {
+        if (event === 'session.idle') setTimeout(callback, 0);
+        return vi.fn();
+      }),
+      rpc: { permissions: { setApproveAll: vi.fn(async () => ({ success: true })) } },
+    };
+    const createSession = vi.fn<(_: Record<string, unknown>) => Promise<typeof session>>(async () => session);
+    const client = { createSession };
+    const clientFactory = {
+      createClient: vi.fn(async () => client),
+      destroyClient: vi.fn(async () => undefined),
+    } as unknown as CopilotClientFactory;
+    const scaffold = new MindScaffold(
+      {} as unknown as GitHubRegistryClient,
+      clientFactory,
+    );
+
+    const generateSoul = scaffold as unknown as {
+      generateSoul(mindPath: string, config: Parameters<MindScaffold['create']>[0], slug: string): Promise<void>;
+    };
+    await generateSoul.generateSoul('/tmp/minds/zed', {
+      name: 'Zed',
+      role: 'reviewer',
+      voice: 'direct',
+      voiceDescription: 'direct',
+      basePath: '/tmp/minds',
+    }, 'zed');
+
+    const sessionConfig = createSession.mock.calls[0]?.[0] as { onPermissionRequest?: unknown } | undefined;
+    expect(sessionConfig?.onPermissionRequest).toBe(approveForSessionCompat);
+    expect(session.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
   });
 });
 

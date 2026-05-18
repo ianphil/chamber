@@ -1,5 +1,224 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Breaking
+
+- **Move the A2A client extension out of Chamber** — The repo-scoped `.github/extensions/a2a-client` copy has moved to the standalone [`ipdelete/a2a-client`](https://github.com/ipdelete/a2a-client) extension, which installs to user or repo scope and exposes the `a2a_connection`, `a2a_list_remote_agents`, and `a2a_send_agent_message` tools.
+- **Remove the repo-scoped Canvas extension** — The `.github/extensions/canvas` copy has been removed from Chamber now that Canvas lives as a standalone extension.
+
+### Fixed
+
+- **Surface ambiguous A2A recipients** — A2A message routing now reports duplicate display-name matches with usable recipient identifiers instead of falling through to an unknown-recipient error. (#322) (#322)
+- **Complete turns after root turn end** — Chat streaming now finishes after a guarded root assistant.turn_end quiescence path when the SDK omits session.idle, while still waiting for outstanding tools and sub-agent turns so late output is preserved. (#297) (#297)
+
+
+## [0.63.0] - 2026-05-17
+
+### Added
+
+- **Move to Model B release versioning** — Master's `package.json#version` now stays at the last shipped stable version between releases. Ship appends bullets to `## Unreleased` under conventional `### Headings` (Breaking / Features / Fixes / …). The release skill reads those headings at insider-cut time to compute the next stable version, and the `-insiders.N` counter grows across iterations against the same future stable. Eliminates stable-version gaps. See [`ai-docs/release-channels.md`](ai-docs/release-channels.md).
+- **Enforce Model B / Pattern E with PR gates** — New `model-b-gates` job in `.github/workflows/governance-check.yml` enforces (a) `package.json` version bumps and `## vX.Y.Z` CHANGELOG promotions only on `release/bump-v*` branches, with branch-name/package/CHANGELOG version coherence and a strict forward-bump guard; (b) Pattern E build-SHA anchoring on release branches via `Build-SHA:` + `Source-Ref:` lines in the PR body and `merge-base` verification. Lockfile version coherence checked on every PR. The release skill PR body template now emits both headers.
+- **Add Bring Your Own LLM configuration** — Adds a Local & Custom LLM settings flow for OpenAI-compatible, Azure OpenAI, Anthropic, and local provider endpoints (Ollama, LM Studio, vLLM, Foundry Local, etc.). BYO models appear in the chat picker only when enabled, cloud models stay on the default provider, and endpoint credentials are stored in the OS credential store with renderer-safe masking. Probe + Apply flow exposes available models via the endpoint's `/models` listing. Safety hardening on top of the original PR: (a) the BYO models provider preserves the saved selection as a stub entry when the endpoint probe fails so BYO-routed minds no longer silently fall back to a cloud model after an Ollama/LM-Studio outage; (b) `baseUrl` values containing URL credentials (e.g. `https://user:pass@host`) are rejected at save and stripped from every log + IPC path; (c) failed model-switches now roll back the persisted selection unless the SDK error is a stale-session recovery signal; (d) `probeEndpoint` moved from the IPC adapter into `@chamber/services` for testability and IPC-thinness; (e) unused `wireModel`/`modelId` form fields removed from Settings (the SDK `ProviderConfig` has no slot for them); (f) Playwright spec dropped the personal dev-tunnel default and now defaults to local Ollama with `gemma4:e4b-it-q4_K_M` plus a new `smoke:byo-llm` script mirroring `smoke:a2a-relay`; (g) `probeEndpoint` now explicitly rejects 3xx redirect responses rather than relying on Node's implicit non-follow behavior (SSRF defense-in-depth against future changes or proxies that could chase 302 → internal targets); (h) `customHeaders` are rejected at save when names or values contain CR/LF, preventing response-splitting / header-injection; (i) settings placeholder no longer advertises the `X-Tunnel-Skip-AntiPhishing-Page` bypass header.
+- **Surface real startup activity in the boot screen** — Adds `IPC.APP.STARTUP_PROGRESS` and a typed `StartupProgressEvent` stream so the Electron main process can broadcast restore progress while `MindManager` loads saved minds. The boot screen now appends real activity lines such as `restoring minds from config`, per-mind `ready` entries, and a final `N minds ready` summary instead of relying only on hardcoded animated text. Payloads carry display-safe metadata only: mind display names already shown in the sidebar and static summary text. Closes #56.
+- **Add remote feature flags** — Add app-owned feature flags with committed dev defaults, GitHub Pages remote policy resolution for packaged channels, and runtime guards for Switchboard Relay, BYO LLM, and chamber-copilot. (#326)
+
+### Fixed
+
+- **Fix relay message routing and visibility** — Routes relay-discovered Chamber mind cards through Switchboard even when they include `mindId`, renders outbound relay sends in the sender transcript, switches to the target mind chat when inbound relay messages arrive without stealing focus, and keeps inactive relay replies scoped to the target mind.
+- **Remember static relay tokens securely** — Stores static A2A relay tokens in the OS credential store and lets the Relay view reconnect without re-entering the token.
+- **Remember relay auth mode** — Restores the last successful relay authentication mode after restart and checks saved static tokens before falling back to interactive auto-auth.
+- **Cache Switchboard Entra tokens** — Persists interactive relay refresh tokens in the OS credential store so reconnects can refresh silently before opening browser auth.
+- **Retry wrong-account relay auth cleanly** — Clears cached Switchboard Entra refresh tokens when the relay rejects authorization so the next Connect can run a fresh browser auth flow.
+- **Anchor post-release bump PR to build SHA** — The release skill now branches the post-release bump PR from the build SHA (insider tag or dispatch commit), not from current `origin/master`. Without this, ship PRs that merge during the 30–60 min build window get silently misattributed to the just-shipped version. Anchoring surfaces interim bullets as a visible 3-way merge conflict at PR-merge time, mechanical to resolve. Documented in the Decision Log with reference to release-please #2754 as the canonical postmortem of what goes wrong without it.
+- **Swallow EPIPE on parent stdio close** — `apps/desktop/src/main.ts` now attaches `'error'` handlers on `process.stdout`/`process.stderr` that ignore `EPIPE`, so the Electron main process no longer crashes with `Uncaught Exception: write EPIPE` when a parent shell (Playwright runner, terminal, etc.) closes the inherited pipe mid-log.
+- **Instrument single-chat turn lifecycle for stuck-streaming diagnosis** — Adds a per-turn ring buffer of SDK events (`type`, `timestamp`, `agentId`, `toolCallId`, outstanding-tool count; no payload contents) and logs a structured summary on turn termination. Surfaces at `info` only when the turn aborted after `assistant.turn_end` arrived without `session.idle` — the exact fingerprint of the user-visible stuck-streaming bug — so the next reproduction lands in default logs without re-enabling debug. No behavior change to terminal handling: no wall-clock fallback, no premature `done`. Defensive completion is intentionally deferred to a follow-up PR pending live evidence (TODO marker in `ChatService.streamTurn`). Closes #299.
+- **Detect duplicate agent display-name collisions at creation** — `MindManager.findByName(name)` provides a case-insensitive, NFC-normalized lookup over loaded minds, and `MindManager.loadMind(..., { enforceUnique: true })` blocks loads whose `identity.name` collides with an existing loaded mind before the SDK subprocess spawns. Wired through `IPC.GENESIS.CREATE` (pre-check + `activateCreatedMind`), `IPC.GENESIS.CREATE_FROM_TEMPLATE` (via `activateCreatedMind`), and `IPC.MIND.ADD` so users get a clear "name taken" error instead of two same-labeled entries in the sidebar. A `pendingNames` reservation set serializes concurrent enforce-unique loads so the race between `identityLoader.load` and `this.minds.set` can't slip a duplicate through. Default `loadMind` behavior is unchanged so startup replay of persisted records (which may include legitimate pre-existing duplicates) is unaffected. Known limitation: only loaded minds are scanned; collisions that re-emerge after a failed-load + restart are out of scope and tracked separately. Closes #44.
+- **Harden release-asset tool installs** — Reject release-asset tool binaries that escape the tools bin directory with platform-mixed path separators while refreshing related service test coverage. (#326)
+
+### Packaging
+
+- **Gate loopback MVP server resource on `CHAMBER_MVP_SERVER=1` at package time** — `forge.config.ts` now only includes `./apps/server/dist` in `extraResource` when `process.env.CHAMBER_MVP_SERVER === '1'` is set at module-load, mirroring the existing runtime spawn gate in `apps/desktop/src/main.ts`. Default installs no longer ship installer bytes for a code path they never reach; opt-in users who set the same env get the same behavior they had before. Unconditional resources (`./resources/node`, `./resources/copilot-runtime`, `./node_modules/keytar`) are unaffected. New regression tests cover off/on toggles and the unconditional resources. Closes #145.
+
+### Performance
+
+- **Pre-load the Copilot SDK module at app launch** — `CopilotClientFactory.preloadSdk()` kicks off the SDK JavaScript module load once at `app.on('ready', ...)` so the first user-initiated `createClient` call no longer pays the import cost on the critical path. Safe to call repeatedly and concurrently (first call kicks off the load; subsequent calls await the same Promise). No subprocess is spawned — only the JS module is warmed. Closes #59.
+
+### A2A client extension
+
+- **Default agent name now `copilot-chamber`** — `.github/extensions/a2a-client` registers as `copilot-chamber` instead of `Copilot CLI`, matching a `copilot-<repo>` convention so multiple Copilot CLI sessions across repos don't collide on the relay. Still overridable via `CHAMBER_A2A_AGENT_NAME` or the `agent_name` connect arg.
+- **Support `domain_hint` (and `login_hint`) for Entra interactive login** — The bundled a2a-client extension now sends `domain_hint=<tenant-domain>` and/or `login_hint=<upn>` on the Entra authorize URL. `domain_hint` is preferred for repos with multiple contributors so any account in the tenant can sign in without being pinned to a single UPN; `login_hint` still wins when set. With neither, the client forces `prompt=select_account`. New env vars: `CHAMBER_A2A_DOMAIN_HINT` / `SWITCHBOARD_DOMAIN_HINT` (and the existing `CHAMBER_A2A_LOGIN_HINT` / `SWITCHBOARD_LOGIN_HINT`). Both also exposed as `connect` tool args.
+
+### Tests
+
+- **A2A relay user-flow smoke test** — Adds `npm run smoke:a2a-relay`, a headed Playwright Electron test that drives a real user flow against the live Switchboard relay with the LLM in the loop: a programmable `RelayPeer` (test fixture wrapping the same `a2a-client` tools) joins the relay, then a user opens Alice, asks her to list relay agents, asks her to message Bob with a unique token, and asks her to message the peer with a different token — asserting the tokens land in Alice's transcript, Bob's chat, and the peer's inbox. The Electron launcher now spawns the dev tree as a detached process group and SIGKILLs `-pid` on close so leaked Electron processes can't bind the CDP port for the next run.
+
+### CI
+
+- **Add actionlint and markdownlint to CI** — New 'lint-yaml-markdown' job in .github/workflows/governance-check.yml runs actionlint over all workflow files and markdownlint (via 'npm run lint:md') over all repo docs. Configs: .github/actionlint.yaml (allows macos-13 runner label for x86_64 macOS builds; ignores intentional empty-string sentinel in release-insiders bump_type input) and .markdownlint.json (default ruleset minus MD013/MD025/MD033/MD040/MD041/MD060 plus siblings_only for MD024 — calibrated to Chamber's house style). The aggregator 'governance-status' now requires the new lint job. As part of this change: pinned all 'azure/login@v2' references to commit SHA a457da9 (security best practice + bypasses VS Code GitHub Actions extension resolver flakiness); fixed boolean inputs in release.yml that were quoted as strings; ran 'markdownlint --fix' across docs (cosmetic blank-line normalization only). Local commands: 'npm run lint:md' and 'npm run lint:md:fix'.
+- **Wire actionlint + markdownlint into `npm run lint`** — `npm run lint` now also runs `npm run lint:yaml && npm run lint:md`, so local lint matches the governance-check CI job. `scripts/ensure-actionlint.js` lazily downloads a pinned `actionlint` v1.7.12 binary to `node_modules/.bin/` on first run (idempotent via version stamp; cross-platform: macOS/Linux/Windows). CI uses the same `npm run lint:yaml` script, so local and CI run identical versions. Adds `.vscode/settings.json` to suppress the GitHub Actions extension's "Unable to resolve action" false positives (open upstream bug github/vscode-github-actions#433) and to match CI's CHANGELOG.md exclusion for the VS Code markdownlint extension.
+- **Gate stable macOS release jobs** — Adds a GitHub repository-variable switch, `STABLE_RELEASE_BUILD_MACOS=false`, so stable releases can publish Windows-only artifacts while macOS notarization is unavailable.
+
+## v0.62.4 (2026-05-16)
+
+### Release
+
+- **Add insiders release channel** — Introduces a private, Windows-only insiders track published to an Azure Blob feed (`chamberinsiders.blob.core.windows.net/releases`) via the new `release-insiders.yml` workflow. Insider cuts carry `-insiders.N` suffixes, ship signed by Azure Trusted Signing, and update through electron-updater's `insiders.yml` channel without affecting stable users' `latest.yml` feed.
+- **Promote insider tags to stable from SHA** — Extends `release.yml` with an optional `source_ref` input that strips the `-insiders.N` suffix on the runner before building, so an insider release can be promoted to stable from the exact commit it was cut from without code changes between the two cuts.
+- **Remove auto-deploy from master** — Stable releases are now `workflow_dispatch`-only; merging to `master` no longer publishes. Insider releases are also dispatch-only.
+- **Document the two-channel flow** — Adds `ai-docs/release-channels.md` covering audiences, OIDC auth, build wiring, git shape, and the decision log. Adds `ai-docs/apple-notary-queue.md` runbook for checking Apple notarization throughput before stable dispatches.
+- **Add release skill** — Adds `.github/skills/release/` to drive insider vs stable dispatch decisions, with worked examples and guardrails. Updates the ship skill to clarify that merging does not release.
+- **Add MIT LICENSE** — Adds the project license file.
+
+## v0.62.3 (2026-05-15)
+
+### Release
+
+- **Staple notarization tickets into macOS apps** — Notarizes and staples the signed prepackaged `Chamber.app` before DMG/ZIP creation so downloaded Developer ID builds pass Gatekeeper instead of showing the unverified malware warning.
+
+## v0.62.2 (2026-05-15)
+
+### Release
+
+- **Fix macOS release bundle shape and icon** — Adds the macOS `.icns` app icon and passes the actual `Chamber.app` bundle to electron-builder so signed DMG and ZIP artifacts contain a valid app instead of a nested app directory.
+
+## v0.62.1 (2026-05-15)
+
+### Release
+
+- **Test signed macOS release artifacts** — Adds a macOS release workflow leg that builds signed DMG and ZIP artifacts from the Developer ID Application certificate stored in GitHub Actions secrets, then includes those artifacts in the GitHub Release alongside Windows.
+
+## v0.62.0 (2026-05-14)
+
+### A2A
+
+- **Support Switchboard relay Entra auth** — Adds Microsoft Entra PKCE login for cloud Switchboard relays, keeps static bearer tokens for local/private relays, allows HTTPS relay URLs, simplifies the Relay UI to require only the relay address for Entra, and publishes a richer Chamber Copilot CLI A2A card for repo collaboration.
+- **Guide Chamber agents toward A2A collaboration** — Adds shared system guidance so Chamber minds deliberately discover A2A agents, inspect cards and skills, and treat remote agents as autonomous collaborators instead of deterministic tools.
+- **Refresh the packaged Copilot runtime** — Pins the packaged Copilot CLI runtime to `1.0.48` so installer sandbox packaging validates the same CLI version bundled by the current dependency.
+
+## v0.61.1 (2026-05-13)
+
+### Chat
+
+- **Unlock conversations after Stop and bound resume retries** — Clears the chat streaming guard when Stop cancels a wedged send and stops the history panel from repeatedly retrying a rejected resume; the failed selection now shows the IPC error inline instead of spamming `conversationHistory:resume`. Closes #292.
+
+## v0.61.0 (2026-05-12)
+
+### A2A
+
+- **Fix stale-session task retries** — Prevents a stale SDK `session.error` from marking an A2A task failed before the stale-session retry path can create a fresh task session and complete the work.
+
+## v0.60.0 (2026-05-12)
+
+### A2A
+
+- **Add mailbox-based A2A relay mode** — Splits the A2A extension into a polling `a2a-client` and an `a2a-server` relay, lets Chamber connect from the Relay panel, publish local mind cards, use the relay as the active A2A registry, enqueue outbound messages, poll/ack inbound mailbox messages, and fall back to local mode on disconnect. The relay baseline uses explicit queue/ack/lease semantics for Chamber/CLI interop; long-polling and optional WebSockets can build on the same contract later.
+
+### SDK
+
+- **Pin the packaged Copilot runtime to 1.0.45** — Updates the committed root and packaged `chamber-copilot-runtime` `@github/copilot` pins to match the CLI binary version expected by the package smoke check while keeping `@github/copilot-sdk` pinned at `0.3.0`.
+
+## v0.59.7 (2026-05-12)
+
+### Fixes
+
+- **Revert the Refresh models subprocess recycle affordance** — Removes the `chat:refreshModels` IPC path, model-picker refresh button, `MindManager.recycleClientForMind`, and chatroom `mind:client-recycled` listener added in #271. The cache diagnosis from #270 remains, but Chamber no longer restarts a mind's Copilot CLI subprocess from the chat UI while #287 verifies the conversation-context risk. Closes #287.
+
+## v0.59.6 (2026-05-11)
+
+### Refactoring
+
+- **Apply focused MindManager fixes for session parameters, rollback, listener cleanup, and dead arguments** — Four findings (TS6, TS13, M7, TS18) from the 2026-05-10 codebase review applied as targeted edits ahead of the larger ConversationStore / MindSessionFactory / ProviderRegistry extraction (deferred to a follow-up). `MindManager.createSessionForMind` is converted from 9 positional parameters with a bare `true` boolean at call sites to a single `CreateSessionRequest` object; defaults preserved. `MindManager.doLoadMind`'s rollback now captures the prior `knownMindRecord` before the providers/views activation, extends the try/catch to cover `knownMindRecords.set` and `persistConfig`, and restores or deletes the record on any failure — closing the gap where a thrown `persistConfig()` would leave the mind registered with stale config. `MindManager.pushSystemPrompt`'s 120s timeout path now invokes the `session.idle` unsubscribe before resolving (was previously a guaranteed listener leak on every timeout). `ChatroomService.broadcast` drops the unused model parameter; the IPC adapter and three test sites updated. Closes #277.
+
+## v0.59.5 (2026-05-10)
+
+### Refactoring
+
+- **Extract MagenticStrategy prompts and parsers; replace unsafe `abortController!` assertions with a guarded helper** — Two clusters of TS3 + TS7 from the 2026-05-10 codebase review. The 744-LOC `MagenticStrategy.ts` (a security-critical orchestration surface per `AGENTS.md`) shrinks to 543 LOC by extracting `formatManagerResponse`, `parseManagerResponse`, `ManagerDecision`, and `failTask` into `magenticParsers.ts` and the four prompt builders (`buildPlanPrompt`, `buildAssignPrompt`, `buildWorkerPrompt`, `buildSynthesisPrompt`) into `magenticPrompts.ts` as pure functions. The runner methods (`runWorkerTask`, `executeAssignments`, `resolveAssignments`) remain on the class and are deferred to a follow-up — extracting them safely requires explicit dependency injection of the controller, unsubs, and worker timeout. `BaseStrategy` gains `protected requireAbortController(): AbortController` that throws a named error when the controller is missing instead of producing a deep TypeError inside the SDK call site; every `this.abortController!.signal` across `MagenticStrategy`, `GroupChatStrategy`, `HandoffStrategy`, and `SequentialStrategy` is replaced. Closes #276.
+
+## v0.59.4 (2026-05-10)
+
+### Security
+
+- **Add Content-Security-Policy and lock down `setPermissionRequestHandler`** — Two missing Electron security checklist items. The renderer now receives a strict CSP via `session.webRequest.onHeadersReceived`: production uses `script-src 'self'`; development adds `'unsafe-eval'` only because Vite's HMR transform requires it. Both modes set `default-src 'self'`, `style-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`, `object-src 'none'`, `form-action 'none'`, `base-uri 'self'`, with `connect-src` allow-listed to `'self'` plus `https://api.github.com`, `https://api.githubcopilot.com`, `https://github.com`, and `localhost` for the loopback server and HMR. `session.setPermissionRequestHandler` and `setPermissionCheckHandler` now allow only `notifications` and deny every other Chromium permission (`media`, `geolocation`, `midi`, `pointerLock`, `fullscreen`, `clipboard-read`, ...), so a compromised mind canvas or Lens view cannot silently capture the microphone or camera. With `sandbox: false` (justified by the Copilot SDK preload bridge) these two controls are the highest-leverage XSS mitigations Chamber can adopt without regressing the SDK contract. Composition root in `apps/desktop/src/main.ts` wires the helpers; pure logic lives in `apps/desktop/src/main/security/sessionSecurity.ts` with 11 focused tests using a fake `Session`. Closes #274.
+
+## v0.59.3 (2026-05-10)
+
+### Refactoring
+
+- **Decompose 838-LOC `appReducer` god-switch into per-domain reducer slices** — `apps/web/src/renderer/lib/store/reducer.ts` was a single switch statement with ~50 cases (the symptom: a 1127-LOC test file). Now `reducer.ts` is a 1-line re-export and the implementation lives in `apps/web/src/renderer/lib/store/reducers/`: `messagesReducer.ts` (chat-message + compose actions, owns the exported `handleChatEvent`), `conversationReducer.ts` (history hydration), `mindsReducer.ts` (minds + models + active mind), `lifecycleReducer.ts` (UI + account + landing), `a2aReducer.ts` (A2A messages + task updates), `chatroomReducer.ts` (every `CHATROOM_*` plus orchestration config), `helpers.ts` (shared utilities), and `index.ts` (the dispatcher: `Record<AppAction['type'], (state, action) => Partial<AppState> | AppState>` with reference-identity short-circuit for no-op handlers). All 111 reducer tests preserved unchanged as the integration safety net; behavior parity verified end-to-end. Closes #275.
+
+## v0.59.2 (2026-05-10)
+
+### Fixes
+
+- **Stop the chat box from leaking memory on long replies** — Two compounding causes during streaming addressed in the renderer: (1) `react-markdown` was re-parsing the entire growing assistant message on every token because `remarkPlugins` and `rehypePlugins` were declared as inline array literals (defeating the library's internal memoization) and `TextChunk` was not memoized; (2) the `BroadcastChannel` cross-window sync effect re-published the entire `messagesByMind` map on every reducer change, structured-cloning every block of every mind per token. Plugin arrays are now module-level constants, `TextChunk` is wrapped in `React.memo`, and the `BroadcastChannel` post is coalesced via `requestAnimationFrame` so a burst of streaming chunks results in at most one cross-window post per frame. Closes #273.
+
+## v0.59.0 (2026-05-10)
+
+### Chat
+
+- **"Refresh models" affordance recycles the CLI subprocess in place** — A small refresh icon next to the model picker invokes a new `chat:refreshModels` IPC channel that calls a narrow `MindManager.recycleClientForMind` (destroy SDK client → create new client → resume the active session against the fresh client) and then returns a fresh `listModels()`. This is the only way to bust the Copilot CLI's 30-minute in-memory model cache (see #270 / `docs/model-cache-investigation.md`). The active conversation is preserved, chatroom orchestration is not torn down (no `mind:unloaded` teardown), and the call is serialized through `TurnQueue` so it cannot race a queued send. Refresh is gated behind a confirm dialog and is refused when a turn is mid-stream; if the call rejects, the dialog stays open with an inline error so the user can retry or cancel. A new `mind:client-recycled` event lets `ChatroomService` drop only its cached `SessionGroup` session for the recycled mind without affecting any active orchestrator or `disabledMindIds`. Closes #90.
+
+## v0.58.2 (2026-05-10)
+
+### Refactoring
+
+- **Consolidate `Logger` and `escapeXml` into `@chamber/shared`** — Two duplicate utilities had drifted in behavior. The renderer `Logger` (`apps/web/src/renderer/lib/logger.ts`) lacked `CHAMBER_LOG_LEVEL` env-var support and `resetLevel()` that the services `Logger` (`packages/services/src/logger/Logger.ts`) had; `escapeXml` had three incompatible copies (chained `.replace()` in `a2a/helpers.ts`, regex+lookup in `session-group/shared.ts`, and a 3-of-5-char version in `chat/currentDateTimeContext.ts`). One implementation each now lives in `@chamber/shared/logger` and `@chamber/shared/escapeXml`; legacy locations remain as 1-line re-exports so every existing import path continues to resolve. The `currentDateTimeContext` callsite now escapes `"` and `'` consistently with every other XML emitter — safe inside element content. Adds three new `Logger` tests for the previously-untested env-var branch. Net -257 LOC of duplicate code. Closes #272.
+
+## v0.58.1 (2026-05-10)
+
+### Documentation
+
+- **Diagnose `@github/copilot` model-cache location and TTL** — Document the actual cache topology in `docs/model-cache-investigation.md`: the SDK and renderer don't cache, but the CLI subprocess holds a 30-minute in-memory `LIST_MODELS_CACHE` keyed by `${baseURL}:${Authorization}` with no on-disk persistence and no remote-clear JSON-RPC method. Adds `scripts/diagnose-model-cache.js` (read-only probe) and corrects three stale source comments that claimed no caching. Refs #90.
+
+## v0.58.0 (2026-05-10)
+
+### SDK
+
+- **Per-mind tool exclusion via `.chamber.json`** — Mind authors can drop a `.chamber.json` at the mind root with `"excludedTools": ["shell", "str_replace"]` to remove specific tool names from the agent's toolset on every session create + resume. Missing file, missing key, malformed JSON, and empty arrays are all treated as no exclusions so a typo never bricks the mind. Closes #131.
+
+## v0.57.0 (2026-05-10)
+
+### SDK
+
+- **Surface SDK permission requests and denials in chat** — `ChatService` now subscribes to the SDK's `permission.requested` / `permission.completed` events and emits `permission_request` / `permission_outcome` chat events, with a per-kind summary builder (paths for write, command preview for shell, URL for url, server for mcp, tool for custom-tool, hook for hook, scope for read/memory). The renderer reducer pairs requests to outcomes by `requestId` and the chat work group renders an inline permission entry that updates from pending to approved/denied with kind-appropriate icons and human-readable outcome detail. (#131)
+
+## v0.56.0 (2026-05-10)
+
+### SDK
+
+- **Use session-scoped SDK permission approvals where supported** — Primary mind and Genesis SDK sessions now rely on `approveForSessionCompat`, returning session-wide approvals for read, write, and memory requests while preserving approve-once behavior for permission kinds that need richer request data. (#131)
+
+## v0.55.0 (2026-05-10)
+
+### SDK
+
+- **Replace broad SDK URL auto-approval with explicit GitHub hosts** — Primary Copilot SDK sessions now drop `--allow-all-urls` and pass only the default first-party GitHub URL allowlist, leaving other URL permission requests to the SDK handler. (#131)
+
+## v0.54.0 (2026-05-10)
+
+### SDK
+
+- **Replace broad SDK tool auto-approval with explicit tool kinds** — Primary Copilot SDK sessions now drop `--allow-all-tools` and pass only the side-effect tool kinds Chamber intentionally auto-approves at the CLI layer, leaving other tool permission requests to the SDK handler. (#131)
+
+## v0.53.0 (2026-05-10)
+
+### SDK
+
+- **Declare explicit SDK CLI add-dir entries** — Primary Copilot SDK sessions now pass `--add-dir` for the active mind cwd and the shared `~/.chamber` root, making the allowed-path surface explicit ahead of removing broad path allowances. Closes #131.
+
+## v0.52.2 (2026-05-10)
+
+### Reliability
+
+- **Split chamber-copilot scoped job IDs at the last separator** — `MindScopedJobs` now preserves mind IDs that contain `:` when validating `cli_*` job ownership, while rejecting colon-containing raw job IDs at delegate time so scoping remains unambiguous. Closes #261.
+
 ## v0.52.1 (2026-05-10)
 
 ### Dependencies
@@ -202,6 +421,7 @@
 - **Auto-install on startup** — On app ready, `ToolsService.reconcile()` diffs marketplace `tools[]` against `config.installedTools[]` and runs `npm install -g <package>@<version>` for any new entry, then runs declared `preflight` commands (e.g. `workiq accept-eula`). Errors are logged per-tool and do not block other installs. Already-installed tools are not auto-updated. (#218)
 - **Runtime tool context in the system message** — `IdentityLoader` accepts an `InstalledTool[]` provider and appends a `## Tools` section to every session's system message. Tool descriptions live in the marketplace manifest's `agentInstructions` field and are captured into the installed-tool record at install time, so model context is available offline. Mind directories are not modified. (#218)
 - **Tools IPC + preload surface** — New `tools:list`, `tools:install`, `tools:uninstall` channels exposed via `window.electronAPI.tools.*`. Browser-mode shim returns descriptive "desktop-only" errors. (#218)
+
 ## v0.45.0 (2026-05-07)
 
 ### Chatroom
@@ -668,6 +888,7 @@
 ## v0.22.0 (2026-04-16)
 
 ### Chat markdown rendering
+
 - **Typography plugin** — registered `@tailwindcss/typography` via Tailwind v4 `@plugin` directive so `prose` classes now actually style headings, lists, tables, and blockquotes in chat messages.
 - **Syntax highlighting** — added `rehype-highlight` with a `github-dark` theme for fenced code blocks.
 - **External links** — markdown links now open in a new window with `rel=noopener noreferrer`.
@@ -676,6 +897,7 @@
 ## v0.21.0 (2026-04-16)
 
 ### Multi-account GitHub auth
+
 - **Account selection** - Settings now lists all stored GitHub accounts, keeps the active account selected, and lets you add another account from the same picker.
 - **Active login persistence** - Chamber now persists `activeLogin` in config so auth status resolves the intended credential instead of whichever one keytar returns first.
 - **Full auth reload on switch** - Switching accounts reloads every mind so Copilot clients, chatroom sessions, and task sessions all restart with fresh auth state.
@@ -684,6 +906,7 @@
 ## v0.20.0 (2026-04-15)
 
 ### Settings view and logout
+
 - **Settings navigation** — added a bottom-pinned gear icon in the ActivityBar that opens a dedicated Settings view.
 - **Account section** — Settings now shows the current GitHub login and a logout action in the app UI.
 - **Logout flow** — logging out deletes the stored keytar credential, broadcasts the event to all windows, and returns AuthGate to the sign-in screen.
@@ -691,11 +914,13 @@
 ## v0.19.7 (2026-04-13)
 
 ### Lens discovery fix
+
 - **Late-created lens folders** — Chamber now discovers lens views created after a mind was already loaded instead of requiring a manual reload.
 
 ## v0.19.6 (2026-04-13)
 
 ### Zero Lint / CI Green
+
 - **ESLint clean** — resolved all errors and warnings across the codebase
 - **CI `validate` job** — new workflow step runs `npm run lint` on every push and PR
 - **Pre-commit hook** — lint check runs before each commit via Husky + lint-staged
@@ -704,11 +929,13 @@
 ## v0.19.5 (2026-04-13)
 
 ### Final Message Drop Fix
+
 - **Reducer `message_final` handler** — was checking `blocks.some(b => b.type === 'text')` which silently dropped final message content when any earlier text block existed. Now checks `b.sdkMessageId === event.sdkMessageId` so the agent's final response after tool calls is correctly added as a new TextBlock.
 
 ## v0.19.4 (2026-04-13)
 
 ### Session Timeout Recovery
+
 - **Stale session detection** — `isStaleSessionError()` utility detects "Session not found" errors from harvested CLI sessions
 - **ChatService retry** — catches stale session on `send()`, emits `reconnecting` event, recreates session via `MindManager.recreateSession()`, retries once
 - **ChatroomService retry** — evicts stale session from cache, creates fresh session, retries broadcast once
@@ -719,6 +946,7 @@
 ## v0.19.0 (2026-04-13)
 
 ### Chatroom (Phase 5)
+
 - **ChatroomService** — broadcast user messages to all loaded agents in parallel with isolated per-mind chatroom sessions
 - **Round-based echo prevention** — agents respond to user messages only; previous round context injected as escaped XML `<chatroom-history>`
 - **Session isolation** — chatroom sessions are separate from individual chat sessions (no context bleed)
@@ -732,6 +960,7 @@
 ## v0.18.1 (2026-04-13)
 
 ### Structural Cleanup (Uncle Bob Review)
+
 - **Deleted orphaned `agent.ts` IPC** — dead module that would crash on import (duplicate handlers)
 - **Deleted `SdkLoader.ts` singleton** — superseded by `CopilotClientFactory`; migrated `MindScaffold` to use injected factory
 - **Created `mind/` barrel export** — consistent with all other service directories
@@ -744,6 +973,7 @@
 ## v0.18.0 (2026-04-13)
 
 ### A2A Tasks (Phase 4)
+
 - **TaskManager service** — full A2A 8-state lifecycle (submitted → working → completed/failed/canceled/input-required/rejected/auth-required)
 - **Isolated sessions per task** — `MindManager.createTaskSession()` creates independent conversation contexts
 - **4 new agent tools** — `a2a_send_task`, `a2a_get_task`, `a2a_list_tasks`, `a2a_cancel_task`
@@ -754,6 +984,7 @@
 - **A2A conformity** — ListTasksResponse wrapper, required contextId, Artifact.extensions, AgentCard.iconUrl, AgentExtension type, historyLength semantics
 
 ### Fixes
+
 - **Boot screen version** — pulls from package.json dynamically (was hardcoded 0.15.0)
 - **TaskSessionFactory interface** — TaskManager depends on interface, not MindManager (DIP)
 - **Typed IPC boundary** — ElectronAPI.a2a methods use real types, not `any`
@@ -765,6 +996,7 @@
 ## v0.17.0 (2026-04-13)
 
 ### A2A Messages (Phase 3)
+
 - **MessageRouter** — in-process A2A routing mirroring SendMessage RPC
 - **AgentCardRegistry** — A2A-conformant AgentCards from mind metadata
 - **TurnQueue** — per-mind turn serialization preventing session.send() races
@@ -777,6 +1009,7 @@
 ## v0.16.0 (2026-04-12)
 
 ### Agent Windowing (Phase 2)
+
 - **Pop-out windows** — right-click agent in sidebar → "Open in New Window"
 - **Window management** — `MindManager.attachWindow()`/`detachWindow()`
 - **Independent renderers** — each window gets its own chat panel
@@ -785,6 +1018,7 @@
 ## v0.15.0 (2026-04-12)
 
 ### Multi-Mind Runtime (Phase 1)
+
 - **MindManager** — aggregate root with `Map<mindId, InternalMindContext>`
 - **CopilotClientFactory** — instance-based, one CopilotClient per mind
 - **IdentityLoader** — SOUL.md parsing for agent identity
@@ -801,16 +1035,19 @@
 ## v0.13.0 (2026-04-09)
 
 ### Auth & Credential Fixes
+
 - **Fix OAuth client ID** — switch from deprecated `Iv1.b507a08c87ecfe98` to current CLI client ID `Ov23ctDVkRmgkPke0Mmm` with correct scopes (`read:user,read:org,repo,gist`)
 - **Fix UTF-16/UTF-8 credential encoding** — cmdkey stores blobs as UTF-16LE but the CLI reads via keytar (UTF-8). Now uses Win32 `CredWriteW` directly with UTF-8 encoding via a compiled helper
 - **Fix PowerShell Add-Type timeout** — replaced slow JIT compilation with a precompiled `CredWrite.exe` via `csc.exe` (cached on first run)
 
 ### Agent Identity & Personality
+
 - **Agent identity injection** — ChatService loads SOUL.md + `.github/agents/*.agent.md` and injects them into the session via `systemMessage` customize mode
 - **Replace SDK identity section** — agent's SOUL replaces the default "You are GitHub Copilot CLI" identity while preserving all tool instructions, safety, and environment context
 - **Remove SDK tone override** — the "100 words or less" tone section was suppressing agent personality; removed so SOUL.md's Vibe section controls voice
 
 ### Genesis & Boot
+
 - **Surface genesis errors** — boot screen now shows red error text with actionable hint instead of spinning forever on failure
 - **Fix BootScreen crash** — React strict mode double-fired useEffect corrupting interval index; fixed with optional chaining and value capture
 

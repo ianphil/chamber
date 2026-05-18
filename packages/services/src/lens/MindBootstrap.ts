@@ -137,12 +137,17 @@ function backupLegacyLensSkill(skillDir: string, installedContent: string): void
 }
 
 function readBundledLensSkill(): string | null {
+  // Lookup order:
+  //   1-2. Packaged Electron — Forge places assets under `process.resourcesPath`.
+  //   3.   Dev — running from the repo root via `npm start`, `npm test`, etc.
+  // Source-relative paths (e.g. `__dirname` / `import.meta.url`) are deliberately
+  // omitted: services is `"type": "module"` so `__dirname` is undefined in the
+  // ESM bundle, and `import.meta.url` is rejected by CJS-mode TS loaders such
+  // as Playwright's. The cwd fallback covers every dev scenario.
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? '';
   const candidates = [
     path.join(resourcesPath, 'assets', 'lens-skill', 'SKILL.md'),
     path.join(resourcesPath, 'lens-skill', 'SKILL.md'),
-    path.join(__dirname, '..', 'assets', 'lens-skill', 'SKILL.md'),
-    path.join(__dirname, '..', '..', 'src', 'main', 'assets', 'lens-skill', 'SKILL.md'),
     path.join(process.cwd(), 'apps', 'desktop', 'src', 'main', 'assets', 'lens-skill', 'SKILL.md'),
   ];
 

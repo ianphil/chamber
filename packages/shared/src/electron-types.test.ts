@@ -27,7 +27,13 @@ describe('ElectronAPI contract', () => {
     expectTypeOf<ElectronAPI['chatroom']['onEvent']>().toBeFunction();
 
     expectTypeOf<ElectronAPI['updater']['getState']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['onIncoming']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['listAgents']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['relayStatus']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['relayConnect']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['relayDisconnect']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['onRelayStateChanged']>().toBeFunction();
+    expectTypeOf<ElectronAPI['app']['getFeatureFlags']>().toBeFunction();
   });
 
   it('declares window.electronAPI as ElectronAPI globally', () => {

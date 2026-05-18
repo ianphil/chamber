@@ -1,3 +1,5 @@
+import { escapeXml } from '@chamber/shared/escapeXml';
+
 export interface CurrentDateTimeContext {
   currentDateTime: string;
   timezone: string;
@@ -30,9 +32,3 @@ export function stripInjectedCurrentDateTimeContext(prompt: string): string {
   );
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}

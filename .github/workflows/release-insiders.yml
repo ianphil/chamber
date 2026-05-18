@@ -1,0 +1,127 @@
+name: Release Insiders
+
+on:
+  workflow_dispatch:
+    inputs:
+      override_bump:
+        description: 'Emergency override: force patch/minor/major instead of reading ## Unreleased from CHANGELOG.md. Leave empty for normal Model B behavior.'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: release-insiders
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  INSIDERS_FEED_URL: https://chamberinsiders.blob.core.windows.net/releases/
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Bump insiders version
+        id: bump
+        shell: bash
+        run: |
+          bump_arg=""
+          if [ -n "${{ inputs.override_bump }}" ]; then
+            bump_arg="--override-bump=${{ inputs.override_bump }}"
+          fi
+          node scripts/bump-insiders-version.js $bump_arg
+          new_version=$(jq -r '.version' package.json)
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
+          echo "Computed insider version: $new_version (target stable: ${target_stable:-from script output})"
+
+      - name: Azure login (Trusted Signing)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build signed NSIS package (insiders channel)
+        run: npm run make:builder
+        env:
+          CHAMBER_WINDOWS_SIGNING: 'true'
+          CHAMBER_RELEASE_CHANNEL: insiders
+          CHAMBER_BUILDER_UPDATE_URL: ${{ env.INSIDERS_FEED_URL }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: chamber-signing
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: chamber-public
+
+      - name: Validate updater artifacts
+        run: node scripts/validate-builder-release.js --artifacts-dir=out/builder --version=${{ steps.bump.outputs.version }} --channel=insiders
+        env:
+          CHAMBER_REQUIRE_WINDOWS_SIGNATURE: 'true'
+
+      - name: Stage artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.bump.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path staged
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe.blockmap" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/insiders.yml" -Destination staged/
+          Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination "staged/Chamber-Setup-latest-insiders.exe"
+
+      - name: Azure login (Insiders blob)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload artifacts to Azure Blob
+        shell: pwsh
+        run: |
+          az storage blob upload-batch `
+            --account-name "${{ vars.INSIDERS_STORAGE_ACCOUNT }}" `
+            --destination "${{ vars.INSIDERS_STORAGE_CONTAINER }}" `
+            --source staged `
+            --auth-mode login `
+            --overwrite `
+            --output none
+          Write-Host "Uploaded:"
+          Get-ChildItem staged | ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Tag insiders release
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Model B: do NOT commit the package.json/package-lock.json mutation.
+          # Master holds the last shipped stable version on disk. The runner
+          # mutates package.json only to build with the right embedded version;
+          # the tag points at the original master commit so promotion-from-SHA
+          # and master's own history stay aligned.
+          git tag -a "${{ steps.bump.outputs.tag }}" -m "Insiders release ${{ steps.bump.outputs.tag }}"
+          git push origin "${{ steps.bump.outputs.tag }}"

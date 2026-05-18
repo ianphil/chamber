@@ -59,6 +59,14 @@ const electronAPI: ElectronAPI = {
     onAccountSwitched: (callback) => createIpcListener(ipcRenderer, IPC.AUTH.ACCOUNT_SWITCHED, callback),
     onLoggedOut: (callback) => createIpcListener(ipcRenderer, IPC.AUTH.LOGGED_OUT, callback),
   },
+  byoLlm: {
+    get: () => ipcRenderer.invoke(IPC.BYO_LLM.GET),
+    save: (config) => ipcRenderer.invoke(IPC.BYO_LLM.SAVE, config),
+    disable: () => ipcRenderer.invoke(IPC.BYO_LLM.DISABLE),
+    probe: (config) => ipcRenderer.invoke(IPC.BYO_LLM.PROBE, config),
+    restartAgents: () => ipcRenderer.invoke(IPC.BYO_LLM.RESTART_AGENTS),
+    onChanged: (callback) => createIpcListener(ipcRenderer, IPC.BYO_LLM.CHANGED, callback),
+  },
   genesis: {
     getDefaultPath: () => ipcRenderer.invoke(IPC.GENESIS.GET_DEFAULT_PATH),
     pickPath: () => ipcRenderer.invoke(IPC.GENESIS.PICK_PATH),
@@ -112,11 +120,19 @@ const electronAPI: ElectronAPI = {
     getTask: (taskId: string, historyLength?: number) => ipcRenderer.invoke(IPC.A2A.GET_TASK, taskId, historyLength),
     listTasks: (filter?: { contextId?: string; status?: string }) => ipcRenderer.invoke(IPC.A2A.LIST_TASKS, filter),
     cancelTask: (taskId: string) => ipcRenderer.invoke(IPC.A2A.CANCEL_TASK, taskId),
+    relayStatus: () => ipcRenderer.invoke(IPC.A2A.RELAY_STATUS),
+    relayConnect: (request) => ipcRenderer.invoke(IPC.A2A.RELAY_CONNECT, request),
+    relayDisconnect: () => ipcRenderer.invoke(IPC.A2A.RELAY_DISCONNECT),
+    onRelayStateChanged: (callback) => createIpcListener(ipcRenderer, IPC.A2A.RELAY_STATE_CHANGED, callback),
   },
   window: {
     minimize: () => ipcRenderer.send(IPC.WINDOW.MINIMIZE),
     maximize: () => ipcRenderer.send(IPC.WINDOW.MAXIMIZE),
     close: () => ipcRenderer.send(IPC.WINDOW.CLOSE),
+  },
+  app: {
+    getFeatureFlags: () => ipcRenderer.invoke(IPC.APP.GET_FEATURE_FLAGS),
+    onStartupProgress: (callback) => createIpcListener(ipcRenderer, IPC.APP.STARTUP_PROGRESS, callback),
   },
 };
 

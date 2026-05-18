@@ -1,0 +1,11 @@
+self-hosted-runner:
+  labels:
+    # macos-13 is the last x86_64 macOS runner; required for build-macos-x64.
+    - macos-13
+
+paths:
+  ".github/workflows/release-insiders.yml":
+    ignore:
+      # The empty string default is the intentional "no override" sentinel
+      # in the bump-type choice input.
+      - "string should not be empty"

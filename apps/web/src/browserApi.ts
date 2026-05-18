@@ -1,4 +1,5 @@
 import { ChamberClient } from '@chamber/client';
+import { DEFAULT_APP_FEATURE_FLAGS } from '@chamber/shared/feature-flags';
 import type { LensViewManifest, MindContext, ModelInfo } from '@chamber/shared/types';
 import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type { AgentCard, ListTasksResponse, Task } from '@chamber/shared/a2a-types';
@@ -236,6 +237,15 @@ export function installBrowserApi(): void {
           loggedOutHandlers.delete(callback);
         };
       },
+      cancelLogin: async () => undefined,
+    },
+    byoLlm: {
+      get: async () => null,
+      save: async () => ({ success: false, error: 'BYO LLM management is desktop-only in browser mode.' }),
+      disable: async () => ({ success: false, error: 'BYO LLM management is desktop-only in browser mode.' }),
+      probe: async () => ({ ok: false, error: 'BYO LLM probe is desktop-only in browser mode.' }),
+      restartAgents: async () => ({ success: false, restartedCount: 0, error: 'Agent restart is desktop-only in browser mode.' }),
+      onChanged: () => noopUnsubscribe,
     },
     genesis: {
       getDefaultPath: async () => '',
@@ -304,11 +314,49 @@ export function installBrowserApi(): void {
       getTask: async (): Promise<Task | null> => null,
       listTasks: async (): Promise<ListTasksResponse> => ({ tasks: [], nextPageToken: '', pageSize: 0, totalSize: 0 }),
       cancelTask: async (taskId) => ({ error: `Task cancellation is unavailable in browser mode: ${taskId}` }),
+      relayStatus: async () => ({
+        state: 'disconnected',
+        mode: 'local',
+        relayBaseUrl: null,
+        publishedBaseUrl: null,
+        publishedAgentCount: 0,
+        relayAgentCount: 0,
+        lastError: 'A2A relay is unavailable in browser mode.',
+        connectedAt: null,
+      }),
+      relayConnect: async () => ({
+        state: 'error',
+        mode: 'local',
+        relayBaseUrl: null,
+        publishedBaseUrl: null,
+        publishedAgentCount: 0,
+        relayAgentCount: 0,
+        lastError: 'A2A relay is unavailable in browser mode.',
+        connectedAt: null,
+      }),
+      relayDisconnect: async () => ({
+        state: 'disconnected',
+        mode: 'local',
+        relayBaseUrl: null,
+        publishedBaseUrl: null,
+        publishedAgentCount: 0,
+        relayAgentCount: 0,
+        lastError: null,
+        connectedAt: null,
+      }),
+      onRelayStateChanged: () => noopUnsubscribe,
     },
     window: {
       minimize: () => unavailable('window minimize'),
       maximize: () => unavailable('window maximize'),
       close: () => window.close(),
+    },
+    app: {
+      getFeatureFlags: async () => DEFAULT_APP_FEATURE_FLAGS,
+      // Web browser host has no app-startup phase to report; the renderer
+      // only sees a loaded page. Return a noop unsubscribe so the subscriber
+      // can install/uninstall freely.
+      onStartupProgress: () => noopUnsubscribe,
     },
   };
   window.electronAPI = api;

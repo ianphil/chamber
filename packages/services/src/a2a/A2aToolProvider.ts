@@ -1,14 +1,14 @@
 import type { ChamberToolProvider } from '../chamberTools';
 import { buildA2ATools } from './tools';
 import type { MessageRouter } from './MessageRouter';
-import type { AgentCardRegistry } from './AgentCardRegistry';
+import type { A2AAgentResolver } from './ActiveA2AResolver';
 import type { TaskManager } from './TaskManager';
 import type { Tool } from '../mind/types';
 
 export class A2aToolProvider implements ChamberToolProvider {
   constructor(
     private readonly messageRouter: MessageRouter,
-    private readonly agentCardRegistry: AgentCardRegistry,
+    private readonly agentResolver: A2AAgentResolver,
     private readonly taskManager: TaskManager,
   ) {}
 
@@ -17,7 +17,7 @@ export class A2aToolProvider implements ChamberToolProvider {
     return buildA2ATools(
       mindId,
       this.messageRouter,
-      this.agentCardRegistry,
+      this.agentResolver,
       this.taskManager,
     ) as Tool[];
   }

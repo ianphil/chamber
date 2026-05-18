@@ -132,7 +132,8 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const artifactsDir = path.resolve(repoRoot, args.get('artifacts-dir') ?? 'out/builder');
   const expectedVersion = args.get('version') ?? require(path.join(repoRoot, 'package.json')).version;
-  const manifestPath = path.join(artifactsDir, 'latest.yml');
+  const channel = args.get('channel') ?? 'latest';
+  const manifestPath = path.join(artifactsDir, `${channel}.yml`);
 
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Missing update manifest: ${manifestPath}`);
@@ -157,7 +158,7 @@ function main() {
 
   const actualSha512 = computeSha512Base64(installerPath);
   if (actualSha512 !== manifest.sha512) {
-    throw new Error('Installer SHA-512 does not match latest.yml.');
+    throw new Error(`Installer SHA-512 does not match ${channel}.yml.`);
   }
 
   const blockmapPath = `${installerPath}.blockmap`;

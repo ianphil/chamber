@@ -1,0 +1,13 @@
+node_modules/
+**/node_modules/
+dist/
+out/
+build/
+coverage/
+.vite/
+.cache/
+.working-memory/
+.github/skills/**/example/
+resources/
+chamber-copilot-runtime/
+CHANGELOG.md

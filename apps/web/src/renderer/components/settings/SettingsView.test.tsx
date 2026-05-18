@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { version } from '../../../../../../package.json';
 import { SettingsView } from './SettingsView';
+import { AppStateProvider } from '../../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
 describe('SettingsView', () => {
@@ -67,6 +68,23 @@ describe('SettingsView', () => {
     render(<SettingsView />);
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /settings/i })).toBeTruthy();
+    });
+  });
+
+  it('hides Local & Custom LLM settings when BYO LLM is feature-flagged off', async () => {
+    render(<SettingsView />);
+    await screen.findByRole('heading', { name: /settings/i });
+    expect(screen.queryByRole('heading', { name: /local & custom llm/i })).toBeNull();
+  });
+
+  it('shows Local & Custom LLM settings when BYO LLM is feature-flagged on', async () => {
+    render(
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false } }}>
+        <SettingsView />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /local & custom llm/i })).toBeTruthy();
     });
   });
 
@@ -224,7 +242,7 @@ describe('SettingsView', () => {
 
     render(<SettingsView />);
 
-    const trigger = await screen.findByRole('combobox');
+    const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
 
     const options = await screen.findAllByRole('option');
@@ -238,7 +256,7 @@ describe('SettingsView', () => {
     render(<SettingsView />);
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox').textContent).toContain('bob');
+      expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('bob');
     });
   });
 
@@ -248,7 +266,7 @@ describe('SettingsView', () => {
 
     render(<SettingsView />);
 
-    const trigger = await screen.findByRole('combobox');
+    const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     fireEvent.click(await screen.findByRole('option', { name: 'bob' }));
 
@@ -263,7 +281,7 @@ describe('SettingsView', () => {
 
     render(<SettingsView />);
 
-    const trigger = await screen.findByRole('combobox');
+    const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     fireEvent.click(await screen.findByRole('option', { name: '+ Add Account' }));
 
@@ -297,7 +315,7 @@ describe('SettingsView', () => {
     onAccountSwitched!();
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox').textContent).toContain('bob');
+      expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('bob');
     });
   });
 
@@ -322,7 +340,7 @@ describe('SettingsView', () => {
     onAccountSwitched!();
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox').textContent).toContain('newuser');
+      expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('newuser');
     });
   });
 

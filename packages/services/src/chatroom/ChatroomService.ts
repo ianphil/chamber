@@ -36,6 +36,7 @@ import type { ProductHooks } from '../session-group';
 
 export interface ChatroomSessionFactory {
   createChatroomSession(mindId: string, onPermissionRequest?: PermissionHandler): Promise<CopilotSession>;
+  setMindModel?(mindId: string, model: string | null): Promise<MindContext | null>;
   listMinds(): MindContext[];
   on?(event: string, listener: (...args: unknown[]) => void): unknown;
   removeListener?(event: string, listener: (...args: unknown[]) => void): unknown;
@@ -103,8 +104,7 @@ export class ChatroomService extends EventEmitter {
   // Public API
   // -------------------------------------------------------------------------
 
-  async broadcast(userMessage: string, _model?: string, suppliedRoundId?: string): Promise<void> {
-    void _model;
+  async broadcast(userMessage: string, suppliedRoundId?: string, selectedModel?: string): Promise<void> {
     // Cancel any in-flight agents from previous round
     this.stopAll();
 
@@ -125,6 +125,9 @@ export class ChatroomService extends EventEmitter {
       .listMinds()
       .filter((m) => m.status === 'ready');
     const participants = readyMinds.filter((m) => !this.disabledMindIds.has(m.mindId));
+    if (selectedModel && this.sessionFactory.setMindModel) {
+      await Promise.all(participants.map((participant) => this.sessionFactory.setMindModel?.(participant.mindId, selectedModel)));
+    }
 
     // Create and persist user message
     const userMsg = this.createUserMessage(userMessage, roundId);

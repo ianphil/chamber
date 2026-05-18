@@ -13,6 +13,7 @@ export function AppStateProvider({ children, testInitialState }: { children: Rea
   const stateRef = useRef(state);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const applyingRemoteState = useRef(false);
+  const pendingFlushRaf = useRef<number | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -24,11 +25,23 @@ export function AppStateProvider({ children, testInitialState }: { children: Rea
       applyingRemoteState.current = false;
       return;
     }
-    channelRef.current.postMessage(createChatStateSyncMessage({
-      messagesByMind: state.messagesByMind,
-      streamingByMind: state.streamingByMind,
-      conversationViewByMind: state.conversationViewByMind,
-    }));
+    if (pendingFlushRaf.current !== null) return;
+    // The cleanup of the channel-lifecycle effect (below) deliberately does
+    // not cancel the pending rAF on every state change — that would defeat
+    // coalescing. Cancel-and-final-flush only happens on full unmount.
+    pendingFlushRaf.current = requestAnimationFrame(() => {
+      const channel = channelRef.current;
+      if (!channel) {
+        pendingFlushRaf.current = null;
+        return;
+      }
+      channel.postMessage(createChatStateSyncMessage({
+        messagesByMind: stateRef.current.messagesByMind,
+        streamingByMind: stateRef.current.streamingByMind,
+        conversationViewByMind: stateRef.current.conversationViewByMind,
+      }));
+      pendingFlushRaf.current = null;
+    });
   }, [state.conversationViewByMind, state.messagesByMind, state.streamingByMind, testInitialState]);
 
   useEffect(() => {
@@ -56,6 +69,17 @@ export function AppStateProvider({ children, testInitialState }: { children: Rea
     channel.postMessage({ type: 'request-state' } satisfies ChatStateSyncMessage);
 
     return () => {
+      if (pendingFlushRaf.current !== null) {
+        cancelAnimationFrame(pendingFlushRaf.current);
+        pendingFlushRaf.current = null;
+        // Final synchronous flush so peer windows do not lose the last
+        // delta when the source window unmounts mid-frame.
+        channel.postMessage(createChatStateSyncMessage({
+          messagesByMind: stateRef.current.messagesByMind,
+          streamingByMind: stateRef.current.streamingByMind,
+          conversationViewByMind: stateRef.current.conversationViewByMind,
+        }));
+      }
       channelRef.current = null;
       channel.close();
     };

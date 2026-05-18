@@ -18,7 +18,7 @@ describe('A2A Types', () => {
       const msg = createTextMessage('sender-1', 'Hello');
       expect(msg.messageId).toBeTruthy();
       expect(typeof msg.messageId).toBe('string');
-      expect(msg.role).toBe('user');
+      expect(msg.role).toBe('ROLE_USER');
       expect(msg.parts).toHaveLength(1);
       expect(msg.parts[0].text).toBe('Hello');
       expect(msg.parts[0].mediaType).toBe('text/plain');
@@ -94,12 +94,12 @@ describe('A2A Types', () => {
 
   describe('createTaskStatus', () => {
     it('sets state correctly', () => {
-      const status = createTaskStatus('working');
-      expect(status.state).toBe('working');
+      const status = createTaskStatus('TASK_STATE_WORKING');
+      expect(status.state).toBe('TASK_STATE_WORKING');
     });
 
     it('includes ISO timestamp', () => {
-      const status = createTaskStatus('submitted');
+      const status = createTaskStatus('TASK_STATE_SUBMITTED');
       expect(status.timestamp).toBeDefined();
       if (!status.timestamp) throw new Error('expected timestamp');
       const ts = status.timestamp;
@@ -110,10 +110,10 @@ describe('A2A Types', () => {
     it('attaches optional message as full Message object', () => {
       const msg: Message = {
         messageId: 'msg-1',
-        role: 'agent',
+        role: 'ROLE_AGENT',
         parts: [{ text: 'done' }],
       };
-      const status = createTaskStatus('completed', msg);
+      const status = createTaskStatus('TASK_STATE_COMPLETED', msg);
       expect(status.message).toBe(msg);
       expect(status.message?.messageId).toBe('msg-1');
       expect(status.message?.parts[0].text).toBe('done');

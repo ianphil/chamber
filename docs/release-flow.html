@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chamber Release Flow</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f2ecdf;
+    --panel: #fbf7ec;
+    --ink: #1f1a12;
+    --muted: #5e5448;
+    --line: #deceb4;
+    --green: #2d7038;
+    --green-bg: #ebf8ed;
+    --orange: #a86504;
+    --orange-bg: #fff0d5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--ink);
+    padding: 24px;
+  }
+  main {
+    max-width: 1220px;
+    margin: 0 auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: 0 20px 56px rgba(48, 34, 14, 0.15);
+    padding: 32px 40px 36px;
+  }
+  h1 { margin: 0; font-size: 32px; line-height: 1.08; }
+  .subtitle { margin: 8px 0 22px; color: var(--muted); font-size: 15px; }
+  .top-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+  .invariant {
+    border: 1.5px solid #d5c4a8;
+    border-radius: 14px;
+    background: #fffdf8;
+    padding: 15px 18px;
+  }
+  .invariant strong { display: block; font-size: 18px; margin-bottom: 6px; }
+  .invariant span { display: block; color: var(--muted); font-size: 14px; line-height: 1.4; }
+  .diagram-wrap {
+    background: #fffdf8;
+    border: 1.5px solid #e2d5c1;
+    border-radius: 16px;
+    padding: 14px 12px 2px;
+    overflow-x: auto;
+  }
+  .mermaid { min-width: 940px; display: flex; justify-content: center; }
+  .file-flow {
+    margin-top: 24px;
+    border-top: 1.5px solid var(--line);
+    padding-top: 22px;
+  }
+  .file-flow h2 { margin: 0 0 6px; font-size: 21px; }
+  .file-flow p { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 36px 1.12fr 36px 1fr;
+    align-items: stretch;
+  }
+  .card {
+    min-height: 138px;
+    border-radius: 16px;
+    padding: 17px 20px;
+    border: 2px solid #8f8069;
+    background: #fffdf8;
+  }
+  .card.pr { border-color: var(--orange); background: var(--orange-bg); }
+  .card.after { border-color: var(--green); background: var(--green-bg); }
+  .card h3 { margin: 0 0 12px; font-size: 18px; }
+  code {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 13px;
+    color: #2b2419;
+    margin: 7px 0;
+    white-space: nowrap;
+  }
+  .card small { display: block; margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  .arrow {
+    display: grid;
+    place-items: center;
+    color: var(--orange);
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .arrow.green { color: var(--green); }
+  .note {
+    margin-top: 14px;
+    border: 1.5px solid #b9d1ea;
+    background: #eef6ff;
+    border-radius: 14px;
+    padding: 12px 16px;
+    color: #31485f;
+    font-size: 14px;
+  }
+  .note code { display: inline; margin: 0; white-space: normal; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Three insiders, then one stable</h1>
+  <p class="subtitle">Master stays at the last stable version while insiders preview the next target. Stable promotes the final tested source SHA.</p>
+
+  <section class="top-grid" aria-label="Release invariants">
+    <div class="invariant">
+      <strong>master invariant</strong>
+      <span><code>package.json</code> stays at the last shipped stable until the post-release PR merges.</span>
+    </div>
+    <div class="invariant">
+      <strong>version source</strong>
+      <span><code>CHANGELOG.md ## Unreleased</code> headings compute the next stable version.</span>
+    </div>
+  </section>
+
+  <section class="diagram-wrap" aria-label="Release sequence">
+    <pre class="mermaid">
+sequenceDiagram
+    participant PR as PRs
+    participant M as master
+    participant I as Insiders feed
+    participant S as Stable release
+    participant R as Post-release PR
+
+    Note over M,I: repo still says 0.63.4<br/>Unreleased computes 0.64.0
+    PR->>M: merge feature/fix
+    M->>I: cut v0.64.0-insiders.0 (tag B)
+    Note right of I: testers get build .0
+    PR->>M: merge candidate
+    M->>I: cut v0.64.0-insiders.1 (tag C)
+    Note right of I: testers get build .1
+    PR->>M: merge final fix
+    M->>I: cut v0.64.0-insiders.2 (tag D)
+    Note right of I: testers approve build .2
+    I->>S: promote source SHA D
+    S->>S: tag v0.64.0 on D<br/>rebuild public artifacts
+    S->>R: generate PR from D
+    R->>M: merge version + changelog bump
+    Note over M: package.json = 0.64.0<br/>CHANGELOG has ## v0.64.0<br/>newer bullets remain Unreleased
+    </pre>
+  </section>
+
+  <section class="file-flow" aria-label="File states">
+    <h2>What actually changes in files</h2>
+    <p>The workflows build from computed versions in CI. The repository only catches up after the generated post-release PR merges.</p>
+    <div class="cards">
+      <article class="card">
+        <h3>Before stable</h3>
+        <code>package.json: 0.63.4</code>
+        <code>CHANGELOG: ## Unreleased</code>
+        <small>Insider artifacts have 0.64.0-insiders.N, but that version is not committed.</small>
+      </article>
+      <div class="arrow">-&gt;</div>
+      <article class="card pr">
+        <h3>Post-release PR</h3>
+        <code>package.json: 0.64.0</code>
+        <code>CHANGELOG: ## v0.64.0</code>
+        <small>Generated from released SHA D, moving shipped bullets out of Unreleased.</small>
+      </article>
+      <div class="arrow green">-&gt;</div>
+      <article class="card after">
+        <h3>After merge</h3>
+        <code>package.json: 0.64.0</code>
+        <code>CHANGELOG: ## v0.64.0</code>
+        <small>Master now matches stable. Later work continues under Unreleased.</small>
+      </article>
+    </div>
+    <div class="note"><strong>Key point:</strong> <code>v0.64.0-insiders.2</code> and <code>v0.64.0</code> point at the same source SHA; stable rebuilds public artifacts instead of republishing the insider binary.</div>
+  </section>
+</main>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    sequence: {
+      mirrorActors: false,
+      showSequenceNumbers: false,
+      actorMargin: 52,
+      messageMargin: 34,
+      noteMargin: 10,
+      boxMargin: 8
+    },
+    themeVariables: {
+      fontFamily: "Segoe UI, system-ui, sans-serif",
+      primaryColor: "#fffdf8",
+      primaryBorderColor: "#d5c4a8",
+      primaryTextColor: "#1f1a12",
+      actorBkg: "#fffdf8",
+      actorBorder: "#8f8069",
+      actorTextColor: "#1f1a12",
+      signalColor: "#242017",
+      signalTextColor: "#1f1a12",
+      noteBkgColor: "#fff0d5",
+      noteBorderColor: "#a86504",
+      noteTextColor: "#1f1a12",
+      labelBoxBkgColor: "#e9f4ff",
+      labelBoxBorderColor: "#1e6599",
+      labelTextColor: "#1f1a12"
+    }
+  });
+</script>
+</body>
+</html>

@@ -55,7 +55,7 @@ export class SequentialStrategy extends BaseStrategy {
         this.currentUnsubs = unsubs;
         const { message } = await sendToAgentWithRetry({
           mind, prompt, roundId, context,
-          abortSignal: this.abortController!.signal,
+          abortSignal: this.requireAbortController().signal,
           unsubs,
           orchestrationMode: 'sequential',
         });

@@ -80,6 +80,14 @@ export const IPC = {
     INSTALL: 'tools:install',
     UNINSTALL: 'tools:uninstall',
   },
+  BYO_LLM: {
+    GET: 'byoLlm:get',
+    SAVE: 'byoLlm:save',
+    DISABLE: 'byoLlm:disable',
+    PROBE: 'byoLlm:probe',
+    RESTART_AGENTS: 'byoLlm:restartAgents',
+    CHANGED: 'byoLlm:changed',
+  },
   CHATROOM: {
     SEND: 'chatroom:send',
     HISTORY: 'chatroom:history',
@@ -108,6 +116,10 @@ export const IPC = {
     GET_TASK: 'a2a:getTask',
     LIST_TASKS: 'a2a:listTasks',
     CANCEL_TASK: 'a2a:cancelTask',
+    RELAY_STATUS: 'a2a:relay-status',
+    RELAY_CONNECT: 'a2a:relay-connect',
+    RELAY_DISCONNECT: 'a2a:relay-disconnect',
+    RELAY_STATE_CHANGED: 'a2a:relay-state-changed',
   },
   WINDOW: {
     MINIMIZE: 'window:minimize',
@@ -123,6 +135,10 @@ export const IPC = {
     A2A_INCOMING: 'e2e:a2a:incoming',
     AUTH_EMIT_PROGRESS: 'e2e:auth:emit-progress',
     AUTH_COMPLETE_LOGIN: 'e2e:auth:complete-login',
+  },
+  APP: {
+    GET_FEATURE_FLAGS: 'app:getFeatureFlags',
+    STARTUP_PROGRESS: 'app:startupProgress',
   },
 } as const;
 
