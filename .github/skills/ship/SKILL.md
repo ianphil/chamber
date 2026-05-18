@@ -27,8 +27,8 @@ In autopilot mode, do not stop for repeated confirmation prompts. Apply these de
 
 | Prompt area | Autopilot default |
 |---|---|
-| Change classification | Pick the conventional kind (`breaking`/`feature`/`fix`/`perf`/`refactor`/`docs`/`tests`/`build`/`ci`/`chore`) from the diff; the release skill computes the actual version bump later from accumulated `## Unreleased` entries. |
-| Changelog | Append a bullet under the matching `### Heading` of `## Unreleased` using `scripts/append-changelog-entry.js`. |
+| Change classification | Pick the conventional kind (KaC canonical: `added`/`changed`/`deprecated`/`removed`/`fixed`/`security`; Chamber extensions: `breaking`/`perf`/`refactor`/`docs`/`tests`/`build`/`ci`/`chore`/`packaging`) from the diff; the release skill computes the actual version bump later from accumulated `## [Unreleased]` entries. |
+| Changelog | Append a bullet under the matching `### Heading` of `## [Unreleased]` using `scripts/append-changelog-entry.js`. |
 | Closing issue | Include all planned issue refs from the roadmap or branch commit messages. |
 | Uncle Bob | Run for non-trivial, runtime, architecture, SDK, security, or broad behavior changes; skip for small docs, tests, and focused UI fixes. |
 | Packaging sandbox | Do not run `npm run make:sandbox`; use `npm run package` only when packaging/startup paths need smoke coverage. |
@@ -69,12 +69,13 @@ git rebase origin/<parent-branch>
 
 If the rebase has conflicts, stop and surface them. Do not attempt automatic resolution unless the user explicitly approves.
 
-### 2. ASK/AUTOPILOT - Classify the change and append a `## Unreleased` entry
+### 2. ASK/AUTOPILOT - Classify the change and append a `## [Unreleased]` entry
 
 > **Under Model B, ship does not bump `package.json`.** Versions are computed
-> at release time from accumulated bullets in `## Unreleased`. Ship's job is
+> at release time from accumulated bullets in `## [Unreleased]`. Ship's job is
 > to file an entry under the right conventional `### Heading` so the release
-> skill can compute the next version deterministically. See
+> skill can compute the next version deterministically. The CHANGELOG follows
+> [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). See
 > [`ai-docs/release-channels.md`](../../../ai-docs/release-channels.md).
 
 Inspect the diff against the intended base:
@@ -87,18 +88,24 @@ git --no-pager diff <base-ref> -- <changed-files>
 Classify the change using these conventional kinds (in precedence order — the
 release skill picks the highest one across all bullets to compute the bump):
 
-- **breaking** - intentional incompatible change (API removed, contract broken). Drives a major bump.
-- **feature** - new user-visible capability (new mind capability, new Lens view type, new cron job kind, new tool, schema additions). Drives a minor bump.
-- **fix** - bug fix.
-- **perf** - performance improvement with no behavior change.
-- **refactor** - internal restructuring, no behavior change.
-- **docs** - documentation only.
-- **tests** - test-only changes.
-- **build** - build/packaging tooling.
-- **ci** - CI workflow / governance.
-- **chore** - everything else (release plumbing, dependency hygiene).
+KaC canonical:
 
-All non-feature/non-breaking kinds drive a patch bump.
+- **removed** - a public API/feature has been removed. Drives a **major** bump.
+- **added** - a new user-visible capability. Drives a **minor** bump.
+- **changed** - a non-breaking change in existing behavior. Drives a **minor** bump.
+- **deprecated** - feature marked for future removal. Drives a **minor** bump.
+- **fixed** - bug fix. Drives a **patch** bump.
+- **security** - vulnerability fix. Drives a **patch** bump.
+
+Chamber extension:
+
+- **breaking** - intentional incompatible change (API removed, contract broken). Drives a **major** bump. Use when "removed" doesn't fit (e.g. signature change, semantics change).
+
+Chamber area-tag extensions (all patch precedence):
+
+- **perf / performance**, **refactor**, **docs**, **tests**, **build**, **ci**, **chore**, **release**, **packaging**.
+
+Legacy aliases still accepted: **feature / features** → Added, **fix / fixes** → Fixed.
 
 Interactive mode: use `ask_user` to confirm the kind with a suggested choice.
 
@@ -114,7 +121,7 @@ node scripts/append-changelog-entry.js \
   --issue=NNN
 ```
 
-The script creates `## Unreleased` if missing, ensures the right `### Heading`
+The script creates `## [Unreleased]` if missing, ensures the right `### Heading`
 exists under it, and appends the bullet in the existing format
 (`- **<summary>** - <detail> (#<issue>)`). It does **not** touch `package.json`.
 
@@ -217,10 +224,10 @@ Print the resulting PR URL.
 - **Current branch is `master`** - abort.
 - **Unknown PR base** - ask.
 - **Rebase conflicts** - stop, surface conflicts, ask for direction.
-- **Empty / missing `## Unreleased` section after appending** - script failure; surface the error and stop.
+- **Empty / missing `## [Unreleased]` section after appending** - script failure; surface the error and stop.
 - **Lint, test, or smoke failure** - stop, show the failure, do not push.
 - **Critical Uncle Bob finding** - fix if clearly in scope; otherwise ask.
-- **No `## Unreleased` bullet for a non-trivial change** - block until one exists. Docs/test-only PRs may use a `### Docs` / `### Tests` bullet.
+- **No `## [Unreleased]` bullet for a non-trivial change** - block until one exists. Docs/test-only PRs may use a `### Docs` / `### Tests` bullet.
 - **Dirty working tree at the end** - never push with uncommitted changes.
 
 ## Notes

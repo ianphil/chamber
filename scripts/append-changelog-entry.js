@@ -1,20 +1,26 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * CLI: append a bullet to `## Unreleased` in CHANGELOG.md.
+ * CLI: append a bullet to `## [Unreleased]` in CHANGELOG.md.
  *
- * Used by the ship skill. Creates `## Unreleased` and the relevant
- * `### Heading` if missing.
+ * Used by the ship skill. Creates `## [Unreleased]` and the relevant
+ * `### Heading` if missing. Follows the Keep a Changelog 1.1.0
+ * vocabulary.
  *
  * Usage:
  *   node scripts/append-changelog-entry.js \
- *     --kind=fixes \
+ *     --kind=fixed \
  *     --summary="Bold one-liner" \
  *     --detail="Longer explanation of the change" \
  *     --issue=123
  *
- *   --kind     one of: breaking, features, fixes, performance, refactor,
- *              docs, tests, build, ci, chore, release (case-insensitive)
+ *   --kind     one of:
+ *                added, changed, deprecated, removed, fixed, security  (KaC canonical)
+ *                breaking                                              (Chamber extension → major)
+ *                feature(s), fix(es)                                   (legacy aliases for added/fixed)
+ *                perf, performance, refactor, docs, tests, build,
+ *                ci, chore, release, packaging                         (Chamber extensions, patch)
+ *              (case-insensitive)
  *   --summary  required, becomes **bolded** at the start of the bullet
  *   --detail   optional, follows " — " after the summary
  *   --issue    optional, appended as " (#N)" at the end

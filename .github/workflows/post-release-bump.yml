@@ -1,0 +1,170 @@
+name: Post-release bump
+
+# Mechanically opens the Phase 3b.7 post-release bump PR whenever a
+# stable tag is pushed (v0.63.0, v1.2.3, etc. — excludes -insiders.N).
+# Replaces the human-coupled "remember to open the bump PR after the
+# stable release workflow finishes" step in the release skill, which is
+# easy to drop because the workflow takes 30–60 min and the dispatching
+# session usually ends in the meantime.
+#
+# Pattern E is preserved: the branch is cut from the tag's SHA, not from
+# current origin/master, so `## [Unreleased]` content promoted into the
+# new `## [X.Y.Z]` section reflects exactly what was in the file at
+# build time. Interim bullets that landed during the build window will
+# show up as a visible 3-way merge conflict at PR-merge time.
+
+on:
+  push:
+    tags:
+      # Stable tags only. Insider tags (vX.Y.Z-insiders.N) are excluded
+      # because they don't bump master under Model B.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: post-release-bump-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  open-bump-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout at the tagged SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Resolve version + branch
+        id: vars
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          branch="release/bump-v${version}"
+          today="$(date -u +%Y-%m-%d)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          echo "build_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "source_ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "today=${today}" >> "$GITHUB_OUTPUT"
+          echo "Computed: branch=${branch}, version=${version}, build_sha=${GITHUB_SHA}"
+
+      - name: Skip if branch or PR already exists
+        id: skip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.vars.outputs.branch }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Branch $BRANCH already exists on origin; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          existing="$(gh pr list --head "$BRANCH" --state all --json number --jq 'length')"
+          if [ "${existing:-0}" -gt 0 ]; then
+            echo "::notice::PR for $BRANCH already exists (open or closed); nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git
+        if: steps.skip.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Branch from build SHA
+        if: steps.skip.outputs.skip == 'false'
+        run: |
+          git checkout -b "${{ steps.vars.outputs.branch }}"
+
+      - name: Bump package.json
+        if: steps.skip.outputs.skip == 'false'
+        run: |
+          npm version "${{ steps.vars.outputs.version }}" \
+            --no-git-tag-version --allow-same-version
+          # Refresh lockfile so package-lock.json version stays coherent
+          # with package.json (the model-b-gates lockfile-coherence check
+          # validates this). Full install (not --package-lock-only) per
+          # past lockfile-stripping issues with cross-platform entries.
+          npm install --no-audit --no-fund --ignore-scripts
+
+      - name: Promote ## [Unreleased] in CHANGELOG.md
+        if: steps.skip.outputs.skip == 'false'
+        run: |
+          node -e "
+            const ch = require('./scripts/changelog');
+            ch.promoteUnreleasedToVersion(
+              './CHANGELOG.md',
+              '${{ steps.vars.outputs.version }}',
+              '${{ steps.vars.outputs.today }}',
+            );
+          "
+
+      - name: Commit + push
+        if: steps.skip.outputs.skip == 'false'
+        env:
+          BRANCH: ${{ steps.vars.outputs.branch }}
+          VERSION: ${{ steps.vars.outputs.version }}
+          BUILD_SHA: ${{ steps.vars.outputs.build_sha }}
+          SOURCE_REF: ${{ steps.vars.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          git add package.json package-lock.json CHANGELOG.md
+          # Build the commit message in a file rather than inline so the
+          # YAML block scalar stays well-indented.
+          cat > /tmp/commit-msg.txt <<EOF
+          chore(release): bump master to v${VERSION} post-release
+
+          Auto-opened by .github/workflows/post-release-bump.yml on push of tag ${SOURCE_REF}. Pattern E anchored to the build SHA.
+
+          Build-SHA: ${BUILD_SHA}
+          Source-Ref: ${SOURCE_REF}
+
+          Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+          EOF
+          # Strip the 10-space leading indent that YAML preserved.
+          sed -i 's/^          //' /tmp/commit-msg.txt
+          git commit --no-verify -F /tmp/commit-msg.txt
+          git push -u origin "${BRANCH}"
+
+      - name: Open PR
+        if: steps.skip.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.vars.outputs.branch }}
+          VERSION: ${{ steps.vars.outputs.version }}
+          BUILD_SHA: ${{ steps.vars.outputs.build_sha }}
+          SOURCE_REF: ${{ steps.vars.outputs.source_ref }}
+          TODAY: ${{ steps.vars.outputs.today }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/pr-body.md <<EOF
+          Auto-opened by [\`.github/workflows/post-release-bump.yml\`](.github/workflows/post-release-bump.yml) on stable tag push.
+
+          Post-release bump anchored to build SHA \`${BUILD_SHA}\` (tag \`${SOURCE_REF}\`). Master now reflects the freshly shipped stable version. \`## [Unreleased]\` content at build time has been promoted to \`## [${VERSION}] - ${TODAY}\` in CHANGELOG.md (Keep a Changelog 1.1.0 format) by \`promoteUnreleasedToVersion\`.
+
+          Build-SHA: ${BUILD_SHA}
+          Source-Ref: ${SOURCE_REF}
+
+          If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## [${VERSION}] - ${TODAY}\` section AS-IS, and keep any \`## [Unreleased]\` bullets that landed during the build window under a fresh \`## [Unreleased]\` block above it. **Do not rebase or merge master into this branch** — that would defeat Pattern E anchoring and the \`model-b-gates\` PR check will fail. Resolve at PR-merge time only.
+
+          This is the standard Phase 3b.7 PR from the release skill, opened automatically so it can't be forgotten between the long stable build and the next human turn. Review and merge after green checks.
+          EOF
+          sed -i 's/^          //' /tmp/pr-body.md
+          gh pr create \
+            --base master \
+            --head "${BRANCH}" \
+            --title "chore(release): bump master to v${VERSION} post-release" \
+            --body-file /tmp/pr-body.md

@@ -15,9 +15,12 @@ nothing is published on push to `master`.
   that mutates it is the post-release bump PR opened by the `release`
   skill after a stable cut succeeds.
 - The next stable version is **computed at release time** from the
-  conventional `### Headings` accumulated in `## Unreleased` in
-  `CHANGELOG.md`. `### Breaking` → major; `### Features` → minor;
-  everything else → patch. Highest precedence wins.
+  conventional `### Headings` accumulated in `## [Unreleased]` in
+  `CHANGELOG.md` (Keep a Changelog 1.1.0 format). The mapping is:
+  `### Removed` or `### Breaking` → major; `### Added`, `### Changed`,
+  or `### Deprecated` → minor; `### Fixed`, `### Security`, and all
+  Chamber area-tag extensions (`### Performance`, `### Docs`, …) →
+  patch. Highest precedence wins.
 - Insiders preview the **next stable**. `v0.63.0-insiders.0` is the
   first preview of the upcoming `v0.63.0`. The counter (`N`) advances
   with each preview against that target. If a new ship adds a
@@ -77,15 +80,16 @@ bump PR** that:
 
 - branches from the **build SHA** (the insider tag in Flow B, the
   dispatch SHA in Flow A) — **not** from current `origin/master`. This
-  ensures the CHANGELOG content promoted into `## vX.Y.Z` reflects
-  exactly what was in `## Unreleased` at the moment we built. Any
-  bullets added to `## Unreleased` during the build window land as a
-  visible 3-way merge conflict at PR-merge time (mechanical to resolve:
-  keep both sections), rather than silently being misattributed to the
-  released version,
+  ensures the CHANGELOG content promoted into `## [X.Y.Z] - YYYY-MM-DD`
+  reflects exactly what was in `## [Unreleased]` at the moment we built.
+  Any bullets added to `## [Unreleased]` during the build window land as
+  a visible 3-way merge conflict at PR-merge time (mechanical to
+  resolve: keep both sections), rather than silently being misattributed
+  to the released version,
 - runs `npm version 0.63.0 --no-git-tag-version --allow-same-version`,
 - calls `promoteUnreleasedToVersion` on `CHANGELOG.md` to turn the
-  `## Unreleased` block into `## v0.63.0 (YYYY-MM-DD)`,
+  `## [Unreleased]` block into `## [0.63.0] - YYYY-MM-DD` (Keep a
+  Changelog 1.1.0 format),
 - opens the PR for review.
 
 Once merged, master satisfies the invariant again: `package.json#version
@@ -94,7 +98,7 @@ Once merged, master satisfies the invariant again: `package.json#version
 ### Emergency release from master (no insider step)
 
 `release.yml` with `source_ref` empty computes the next stable from
-`## Unreleased` the same way the insiders compute does, applies it on
+`## [Unreleased]` the same way the insiders compute does, applies it on
 the runner, and tags master. The post-release bump PR is still required
 afterward.
 
@@ -154,17 +158,17 @@ insider, then promote.
 
 ### How to cut an insider build
 
-1. Make sure `## Unreleased` in `CHANGELOG.md` has the bullets you want
+1. Make sure `## [Unreleased]` in `CHANGELOG.md` has the bullets you want
    the next stable to contain. Each `ship` invocation appends one.
 2. Go to **Actions → Release Insiders → Run workflow** on the default
    branch.
 3. Optional `override_bump` input — `patch`, `minor`, `major`, or `none`
-   (default = derive from `## Unreleased`). Only use for emergencies
+   (default = derive from `## [Unreleased]`). Only use for emergencies
    where the changelog doesn't reflect the intended bump.
 4. The workflow will:
    - Run `scripts/bump-insiders-version.js`, which reads master's
      `package.json#version` and the highest-precedence `### Heading`
-     in `## Unreleased`, computes the target stable via SemVer, and
+     in `## [Unreleased]`, computes the target stable via SemVer, and
      advances/resets the `-insiders.N` counter against existing tags.
    - Run `npm install` to refresh the lockfile in the runner workspace.
    - Sign via the existing Trusted Signing identity.
@@ -229,17 +233,18 @@ Two flows, same workflow. **Flow B (promote insider) is the default.**
      `Promoted from insiders build vX.Y.Z-insiders.N`.
 4. After the workflow succeeds, the `release` skill opens a
    **post-release bump PR** that advances master's `package.json` to
-   `X.Y.Z` and promotes `## Unreleased` into `## vX.Y.Z (date)` in
-   `CHANGELOG.md`.
+   `X.Y.Z` and promotes `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`
+   in `CHANGELOG.md` (Keep a Changelog 1.1.0 format).
 
 **Flow A — emergency release from master:**
 
-1. Make sure `## Unreleased` in `CHANGELOG.md` is non-empty.
+1. Make sure `## [Unreleased]` in `CHANGELOG.md` is non-empty.
 2. Go to **Actions → Release → Run workflow** on `master`.
 3. Leave `source_ref` empty. The workflow computes the next stable
-   version from `## Unreleased` using the same precedence rules as
-   insiders (`### Breaking` → major; `### Features` → minor; else
-   patch), applies it on the runner, builds, and tags master.
+   version from `## [Unreleased]` using the same precedence rules as
+   insiders (`### Removed`/`### Breaking` → major; `### Added`,
+   `### Changed`, or `### Deprecated` → minor; else patch), applies it
+   on the runner, builds, and tags master.
 4. The post-release bump PR is still required afterward.
 
 The `force_release` input (defaults to `true`) skips the patch-only
@@ -291,13 +296,15 @@ the next stable should return to the normal Windows + macOS shape.
 
 `scripts/changelog.js`:
 
-- Single source of truth for parsing/writing `CHANGELOG.md`.
-  `readUnreleasedSection` returns the headings + raw text under
-  `## Unreleased`. `recommendBumpFromChangelog` maps the highest-
-  precedence heading to `patch`/`minor`/`major`/null. `appendEntry`
-  writes a new bullet under the correct `### Heading` (used by ship).
-  `promoteUnreleasedToVersion` turns `## Unreleased` into a real
-  `## vX.Y.Z (date)` section (used by the post-release bump PR).
+- Single source of truth for parsing/writing `CHANGELOG.md` in the Keep
+  a Changelog 1.1.0 format. `readUnreleasedSection` returns the headings
+  + raw text under `## [Unreleased]` (also tolerates the legacy
+  `## Unreleased` for back-compat). `recommendBumpFromChangelog` maps
+  the highest-precedence heading to `patch`/`minor`/`major`/null.
+  `appendEntry` writes a new bullet under the correct `### Heading`
+  (used by ship). `promoteUnreleasedToVersion` turns `## [Unreleased]`
+  into a real `## [X.Y.Z] - YYYY-MM-DD` section (used by the
+  post-release bump PR).
 
 `scripts/bump-insiders-version.js`:
 
