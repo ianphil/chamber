@@ -70,7 +70,7 @@ let tools become A2A-addressable:
 
 - **Not** exposed as an A2A agent. It does not appear in
   `a2a_list_agents` and cannot be reached by
-  `chamber_a2a_send_message`.
+  `a2a_send_agent_message`.
 - Adopted as a first-class **in-process tool provider via ACP**:
   - `packages/services/src/chamberCopilot/ChamberCopilotService.ts` —
     implements `ChamberToolProvider`, exposes `cli_*` ACP tool
