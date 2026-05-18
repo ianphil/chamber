@@ -721,6 +721,44 @@ describe('ChatService', () => {
       }
     });
 
+    it('does not complete from root assistant.turn_end while a permission request is pending', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({
+            type: 'permission.requested',
+            data: {
+              requestId: 'perm-1',
+              permissionRequest: {
+                kind: 'shell',
+                fullCommandText: 'echo hello',
+              },
+            },
+          });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't-root' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({
+          type: 'permission.completed',
+          data: {
+            requestId: 'perm-1',
+            result: { kind: 'approved' },
+          },
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('does not complete from root assistant.turn_end while a sub-agent turn is active', async () => {
       vi.useFakeTimers();
       try {
