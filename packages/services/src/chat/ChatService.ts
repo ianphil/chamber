@@ -170,6 +170,7 @@ export class ChatService {
       }
     };
     const outstandingToolIds = new Set<string>();
+    const pendingPermissionIds = new Set<string>();
     const activeSubAgentIds = new Set<string>();
     let sawRootTurnEnd = false;
     let turnEndQuiescenceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -185,6 +186,7 @@ export class ChatService {
         abortController.signal.aborted ||
         !sawRootTurnEnd ||
         outstandingToolIds.size > 0 ||
+        pendingPermissionIds.size > 0 ||
         activeSubAgentIds.size > 0
       ) {
         return;
@@ -204,6 +206,12 @@ export class ChatService {
       }
       if (event.type === 'tool.execution_complete' && typeof event.data?.toolCallId === 'string') {
         outstandingToolIds.delete(event.data.toolCallId);
+      }
+      if (event.type === 'permission.requested' && typeof event.data?.requestId === 'string') {
+        pendingPermissionIds.add(event.data.requestId);
+      }
+      if (event.type === 'permission.completed' && typeof event.data?.requestId === 'string') {
+        pendingPermissionIds.delete(event.data.requestId);
       }
       if (event.type === 'assistant.turn_start' && typeof event.agentId === 'string') {
         activeSubAgentIds.add(event.agentId);
