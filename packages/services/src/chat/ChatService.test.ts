@@ -650,35 +650,97 @@ describe('ChatService', () => {
       expect(allEventsHandlers).toHaveLength(0);
     });
 
-    it('logs a lifecycle summary at info level when assistant.turn_end arrives without session.idle (the #299 fingerprint)', async () => {
-      const infoSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    it('defensively completes after root assistant.turn_end when no tools or sub-agents remain', async () => {
+      vi.useFakeTimers();
       try {
         mockSession.send.mockImplementation(async () => {
-          // assistant.turn_end has no typed listener in ChatService, so we can fire it
-          // without tripping the Zod contract validators.
+          fireSdkEvent({ type: 'assistant.message', data: { messageId: 'm1', content: 'final output' } });
           fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
-          // NO session.idle ever fires — exactly the #299 bug scenario.
         });
 
-        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
-
-        // Wait for send + microtasks; then the user gives up and hits Stop.
-        await new Promise((r) => setTimeout(r, 10));
-        await svc.cancelMessage('valid-mind', 'msg-1');
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(1_000);
         await pending;
 
-        const fingerprintCall = infoSpy.mock.calls.find(([tag, label, payload]) =>
-          tag === '[ChatService]'
-          && label === 'chat.turn.lifecycle'
-          && payload
-          && typeof payload === 'object'
-          && (payload as { reason?: string }).reason === 'aborted'
-          && (payload as { sawTurnEnd?: boolean }).sawTurnEnd === true
-          && (payload as { sawIdle?: boolean }).sawIdle === false,
-        );
-        expect(fingerprintCall, 'expected a chat.turn.lifecycle log matching the #299 fingerprint').toBeDefined();
+        expect(emit).toHaveBeenCalledWith({ type: 'message_final', sdkMessageId: 'm1', content: 'final output' });
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
       } finally {
-        infoSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('waits for outstanding tools to finish after root assistant.turn_end before completing defensively', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'tool.execution_start', data: { toolCallId: 't1', toolName: 'shell' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({
+          type: 'tool.execution_complete',
+          data: { toolCallId: 't1', success: true, result: { content: 'tool output' } },
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('delays defensive completion when more output arrives during turn-end quiescence', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(500);
+
+        fireSdkEvent({ type: 'assistant.message', data: { messageId: 'm1', content: 'late final output' } });
+        await vi.advanceTimersByTimeAsync(999);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        await vi.advanceTimersByTimeAsync(1);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'message_final', sdkMessageId: 'm1', content: 'late final output' });
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not complete from root assistant.turn_end while a sub-agent turn is active', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.turn_start', agentId: 'sub-1', data: { turnId: 't-sub' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't-root' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({ type: 'assistant.turn_end', agentId: 'sub-1', data: { turnId: 't-sub' } });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
       }
     });
 
