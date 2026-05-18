@@ -5,7 +5,7 @@ different questions:
 
 | Surface | Talks to | Answers |
 |---------|----------|---------|
-| **A2A** (`packages/services/src/a2a`, `.github/extensions/a2a-client`) | Other agents (minds) — yours or someone else's, in-process or across the Switchboard relay | "Which **reasoning entity** should think about this?" |
+| **A2A** (`packages/services/src/a2a`, `ipdelete/a2a-client`) | Other agents (minds) — yours or someone else's, in-process or across the Switchboard relay | "Which **reasoning entity** should think about this?" |
 | **ACP** (`packages/services/src/chamberCopilot`, `chamber-copilot-acp-runtime/`) | Tools a mind has been given (e.g. `chamber-copilot`'s `cli_*` surface) | "Which **capability** does the mind use to act on what it decided?" |
 
 Both ship today and they look superficially similar (both are request/response,
@@ -26,7 +26,7 @@ applied to some work:
 
 1. The caller sends an A2A message to a mind that has chamber-copilot
    wired in as a tool provider.
-   `a2a_send_message --recipient <mind-name> ...`
+   `a2a_send_agent_message --recipient <mind-name> ...`
 2. The mind reads the message in its own session, with its persona,
    memory, and approval gate intact.
 3. If the mind decides the request needs `cli_*`, it invokes the tool
@@ -133,7 +133,8 @@ execute."
 - `packages/services/src/a2a` — A2A implementation
   (`AgentCardRegistry`, `MessageRouter`, `TaskManager`).
 - `packages/services/src/chamberCopilot` — ACP-backed tool provider.
-- `.github/extensions/a2a-client/` — Switchboard relay client
-  extension (the A2A wire we use across Chamber installs).
+- [`ipdelete/a2a-client`](https://github.com/ipdelete/a2a-client) —
+  Switchboard relay client extension (the A2A wire we use across
+  Chamber installs).
 - Closed issue #247 — the proposal this doc is meant to prevent
   re-deriving from scratch.

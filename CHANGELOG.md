@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
-- **Rename bundled A2A client tools** — The a2a-client extension now exposes `a2a_connection`, `a2a_list_remote_agents`, and `a2a_send_agent_message` instead of the previous `chamber_a2a_*` tool names. Update skills, scripts, and prompts that call the old names directly.
+- **Move the A2A client extension out of Chamber** — The repo-scoped `.github/extensions/a2a-client` copy has moved to the standalone [`ipdelete/a2a-client`](https://github.com/ipdelete/a2a-client) extension, which installs to user or repo scope and exposes the `a2a_connection`, `a2a_list_remote_agents`, and `a2a_send_agent_message` tools.
 
 ### Fixed
 
