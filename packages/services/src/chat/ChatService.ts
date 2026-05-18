@@ -28,6 +28,10 @@ import { TurnLifecycleTrace } from './turnLifecycleTrace';
 
 const log = Logger.create('ChatService');
 
+// INVARIANT: this is a post-root-turn_end debounce, not a turn deadline.
+// It is never armed unless the SDK has already signalled the root turn ended.
+const TURN_END_QUIESCENCE_MS = 1_000;
+
 export class ChatService {
   private abortControllers = new Map<string, AbortController>();
 
@@ -131,20 +135,11 @@ export class ChatService {
     // metadata-only entries (no payload contents) so we can distinguish missing
     // `session.idle` from a Chamber typed-listener miss after the fact.
     //
-    // TODO(#299 follow-up): once live evidence from this trace confirms the
-    // SDK terminal semantics, add a defensive completion path. Per rubber-duck
-    // review, that path must require ALL of:
-    //   (a) `assistant.turn_end` from the root agent (`!event.agentId`) —
-    //       sub-agent turn_end fires routinely in multi-agent / delegated
-    //       work and is NOT terminal for the root chat turn; completing on
-    //       any turn_end would prematurely clear the UI while sub-agents or
-    //       their tools are still active.
-    //   (b) `outstandingToolCount === 0` — root turn_end can still arrive
-    //       while tools are pending; completing then would orphan tool
-    //       output and confuse the next user turn.
-    //   (c) A corroborating signal (e.g. `session.task_complete`, or a short
-    //       quiescence window with no further events) — the SDK does not
-    //       document `assistant.turn_end` alone as terminal.
+    // Defensive completion path (#297): if the SDK emits root
+    // `assistant.turn_end` but never follows with `session.idle`, complete
+    // only after a post-turn quiescence window with no tools or sub-agent
+    // turns still active. This is intentionally NOT a wall-clock turn
+    // deadline: no root turn_end means no timer is armed.
     const trace = new TurnLifecycleTrace();
     // Default to 'threw' so that any pathway which escapes via an exception
     // before the idle / error / abort handlers fire (e.g. `session.send`
@@ -153,7 +148,13 @@ export class ChatService {
     // to 'completed'. Without this default, the summary would lie about
     // turns that failed before reaching `await turnDone` — defeating the
     // forensic purpose of the trace.
-    let terminalReason: 'completed' | 'aborted' | 'sdk_error' | 'sdk_contract' | 'threw' = 'threw';
+    let terminalReason:
+      | 'completed'
+      | 'turn_end_quiescence'
+      | 'aborted'
+      | 'sdk_error'
+      | 'sdk_contract'
+      | 'threw' = 'threw';
     const logTraceSummary = () => {
       const summary = trace.summary(terminalReason);
       // Fingerprint of the #299 stuck-streaming bug: the SDK signalled the
@@ -168,9 +169,60 @@ export class ChatService {
         log.debug('chat.turn.lifecycle', summary);
       }
     };
+    const outstandingToolIds = new Set<string>();
+    const activeSubAgentIds = new Set<string>();
+    let sawRootTurnEnd = false;
+    let turnEndQuiescenceTimer: ReturnType<typeof setTimeout> | undefined;
+    let resolveTurnEndQuiescence: (() => void) | undefined;
+    const clearTurnEndQuiescence = () => {
+      if (turnEndQuiescenceTimer) {
+        clearTimeout(turnEndQuiescenceTimer);
+        turnEndQuiescenceTimer = undefined;
+      }
+    };
+    const maybeArmTurnEndQuiescence = () => {
+      if (
+        abortController.signal.aborted ||
+        !sawRootTurnEnd ||
+        outstandingToolIds.size > 0 ||
+        activeSubAgentIds.size > 0
+      ) {
+        return;
+      }
+      clearTurnEndQuiescence();
+      turnEndQuiescenceTimer = setTimeout(() => {
+        turnEndQuiescenceTimer = undefined;
+        terminalReason = 'turn_end_quiescence';
+        resolveTurnEndQuiescence?.();
+      }, TURN_END_QUIESCENCE_MS);
+    };
+    const trackTerminalCandidate = (event: Parameters<TurnLifecycleTrace['record']>[0]) => {
+      clearTurnEndQuiescence();
+
+      if (event.type === 'tool.execution_start' && typeof event.data?.toolCallId === 'string') {
+        outstandingToolIds.add(event.data.toolCallId);
+      }
+      if (event.type === 'tool.execution_complete' && typeof event.data?.toolCallId === 'string') {
+        outstandingToolIds.delete(event.data.toolCallId);
+      }
+      if (event.type === 'assistant.turn_start' && typeof event.agentId === 'string') {
+        activeSubAgentIds.add(event.agentId);
+      }
+      if (event.type === 'assistant.turn_end') {
+        if (typeof event.agentId === 'string') {
+          activeSubAgentIds.delete(event.agentId);
+        } else {
+          sawRootTurnEnd = true;
+        }
+      }
+
+      maybeArmTurnEndQuiescence();
+    };
     try {
       const unsubTrace = session.on((event) => {
-        trace.record(event as Parameters<TurnLifecycleTrace['record']>[0]);
+        const sdkEvent = event as Parameters<TurnLifecycleTrace['record']>[0];
+        trace.record(sdkEvent);
+        trackTerminalCandidate(sdkEvent);
       });
       unsubs.push(unsubTrace);
 
@@ -235,6 +287,7 @@ export class ChatService {
       const turnDone = new Promise<void>((resolve, reject) => {
         const unsubIdle = session.on('session.idle', () => {
           unsubIdle();
+          clearTurnEndQuiescence();
           terminalReason = 'completed';
           resolve();
         });
@@ -242,6 +295,7 @@ export class ChatService {
 
         const unsubError = session.on('session.error', (event) => {
           unsubError();
+          clearTurnEndQuiescence();
           try {
             terminalReason = 'sdk_error';
             reject(new Error(getSdkSessionErrorMessage(event)));
@@ -258,11 +312,13 @@ export class ChatService {
         unsubs.push(unsubError);
 
         abortController.signal.addEventListener('abort', () => {
+          clearTurnEndQuiescence();
           // failSdkContract aborts after setting sdkContractFailed; preserve
           // that classification rather than overwriting with 'aborted'.
           terminalReason = sdkContractFailed ? 'sdk_contract' : 'aborted';
           resolve();
         }, { once: true });
+        resolveTurnEndQuiescence = resolve;
       });
       // Defensive no-op catch: if `session.send` throws and we never reach
       // `await turnDone` below, this guarantees a later SDK error rejection is
@@ -296,6 +352,7 @@ export class ChatService {
       if (abortController.signal.aborted) return;
       emit({ type: 'done' });
     } finally {
+      clearTurnEndQuiescence();
       for (const unsub of unsubs) unsub();
       logTraceSummary();
     }
