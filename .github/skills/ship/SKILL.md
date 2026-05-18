@@ -36,6 +36,27 @@ In autopilot mode, do not stop for repeated confirmation prompts. Apply these de
 
 Autopilot still stops for dirty working trees, being on `master`, rebase conflicts, failing checks, destructive operations, serious review findings, missing issue refs, or anything that would merge code. Opening a PR is allowed; merging still requires explicit user approval.
 
+## Stack merge safety
+
+Do not delete a merged stack parent branch until every child PR has been
+retargeted and rebased. GitHub may close child PRs instead of retargeting them
+when their base branch is deleted.
+
+Safe stack-parent merge sequence:
+
+1. Merge the parent PR without `--delete-branch`.
+2. Pull latest `master`.
+3. Retarget each child PR to its next base (`master` after the root parent lands, or the next stack parent).
+4. Rebase each child branch on its new base and force-push with `--force-with-lease`.
+5. Delete the merged parent branch only after all child PRs are open on the correct base.
+
+If `gh pr edit --base` hits GitHub's Projects classic GraphQL deprecation path,
+retarget through REST:
+
+```powershell
+gh api -X PATCH repos/ianphil/chamber/pulls/<child-pr-number> -f base=<new-base>
+```
+
 ## Prerequisites
 
 Before doing anything, verify:
