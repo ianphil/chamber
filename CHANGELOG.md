@@ -1,8 +1,15 @@
 # Changelog
 
-## Unreleased
+All notable changes to this project will be documented in this file.
 
-### Features
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.63.0] - 2026-05-17
+
+### Added
 
 - **Move to Model B release versioning** — Master's `package.json#version` now stays at the last shipped stable version between releases. Ship appends bullets to `## Unreleased` under conventional `### Headings` (Breaking / Features / Fixes / …). The release skill reads those headings at insider-cut time to compute the next stable version, and the `-insiders.N` counter grows across iterations against the same future stable. Eliminates stable-version gaps. See [`ai-docs/release-channels.md`](ai-docs/release-channels.md).
 - **Enforce Model B / Pattern E with PR gates** — New `model-b-gates` job in `.github/workflows/governance-check.yml` enforces (a) `package.json` version bumps and `## vX.Y.Z` CHANGELOG promotions only on `release/bump-v*` branches, with branch-name/package/CHANGELOG version coherence and a strict forward-bump guard; (b) Pattern E build-SHA anchoring on release branches via `Build-SHA:` + `Source-Ref:` lines in the PR body and `merge-base` verification. Lockfile version coherence checked on every PR. The release skill PR body template now emits both headers.
@@ -10,7 +17,7 @@
 - **Surface real startup activity in the boot screen** — Adds `IPC.APP.STARTUP_PROGRESS` and a typed `StartupProgressEvent` stream so the Electron main process can broadcast restore progress while `MindManager` loads saved minds. The boot screen now appends real activity lines such as `restoring minds from config`, per-mind `ready` entries, and a final `N minds ready` summary instead of relying only on hardcoded animated text. Payloads carry display-safe metadata only: mind display names already shown in the sidebar and static summary text. Closes #56.
 - **Add remote feature flags** — Add app-owned feature flags with committed dev defaults, GitHub Pages remote policy resolution for packaged channels, and runtime guards for Switchboard Relay, BYO LLM, and chamber-copilot. (#326)
 
-### Fixes
+### Fixed
 
 - **Fix relay message routing and visibility** — Routes relay-discovered Chamber mind cards through Switchboard even when they include `mindId`, renders outbound relay sends in the sender transcript, switches to the target mind chat when inbound relay messages arrive without stealing focus, and keeps inactive relay replies scoped to the target mind.
 - **Remember static relay tokens securely** — Stores static A2A relay tokens in the OS credential store and lets the Relay view reconnect without re-entering the token.

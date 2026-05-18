@@ -2,12 +2,17 @@
 /**
  * CHANGELOG.md parser + writer for Chamber's Model B release flow.
  *
+ * Format: Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/).
+ * `## [Unreleased]` placeholder + `## [X.Y.Z] - YYYY-MM-DD` versioned
+ * sections. Legacy `## Unreleased` / `## vX.Y.Z (YYYY-MM-DD)` sections
+ * written before the KaC migration are still parsed for back-compat.
+ *
  * The single source of truth for:
- *   - reading the `## Unreleased` section and the conventional `### Headings`
+ *   - reading the `## [Unreleased]` section and the conventional `### Headings`
  *     it contains,
  *   - recommending the next stable version bump (patch / minor / major) from
  *     those headings,
- *   - promoting `## Unreleased` into `## vX.Y.Z (YYYY-MM-DD)` at stable
+ *   - promoting `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` at stable
  *     release time.
  *
  * This module is consumed by:
@@ -21,15 +26,47 @@ const fs = require('node:fs');
 
 const UNRELEASED_HEADING = 'Unreleased';
 
+// CHANGELOG.md follows the Keep a Changelog 1.1.0 format:
+//   - `## [Unreleased]` placeholder at the top.
+//   - Versioned sections `## [X.Y.Z] - YYYY-MM-DD` below.
+//   - Sub-headings drawn from KaC's canonical vocabulary
+//     (Added / Changed / Deprecated / Removed / Fixed / Security)
+//     plus a `Breaking` heading kept as a Chamber extension because KaC
+//     has no inherent breaking signal and we want a mechanical bump.
+// Historical sections written before the migration use `## Unreleased`
+// (no brackets) and `## vX.Y.Z (YYYY-MM-DD)`; the read paths in this
+// module tolerate both formats indefinitely so we never have to rewrite
+// frozen release history.
+
+// Match `## Unreleased`, `## [Unreleased]`, or any case variation thereof.
+const UNRELEASED_HEADING_RE = /^##\s+\[?Unreleased\]?\s*$/i;
+// Match either the legacy `## v1.2.3 (2025-01-01)` or the KaC
+// `## [1.2.3] - 2025-01-01` versioned heading.
+const VERSION_HEADING_RE =
+  /^##\s+(?:v\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?\s*\(\d{4}-\d{2}-\d{2}\)|\[\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?\]\s*-\s*\d{4}-\d{2}-\d{2})\s*$/;
+
 // Precedence: higher number wins. Headings are matched case-insensitively
 // against the leading word of the `### Heading`. Anything not listed defaults
 // to patch precedence so unknown sections never block a release.
 const HEADING_PRECEDENCE = {
+  // KaC canonical
+  removed: { rank: 3, bump: 'major' },
+  changed: { rank: 2, bump: 'minor' },
+  added: { rank: 2, bump: 'minor' },
+  deprecated: { rank: 2, bump: 'minor' },
+  fixed: { rank: 1, bump: 'patch' },
+  security: { rank: 1, bump: 'patch' },
+  // Chamber extension: explicit Breaking heading. KaC has no inherent
+  // breaking signal; keeping this lets the release skill detect a major
+  // bump mechanically without scanning bullet text.
   breaking: { rank: 3, bump: 'major' },
+  // Legacy aliases (pre-KaC migration). New tooling emits canonical
+  // names, but parsing these keeps historical Unreleased state valid.
   features: { rank: 2, bump: 'minor' },
   feature: { rank: 2, bump: 'minor' },
   fixes: { rank: 1, bump: 'patch' },
   fix: { rank: 1, bump: 'patch' },
+  // Chamber extensions kept as area-tagging sub-headings; all patch.
   performance: { rank: 1, bump: 'patch' },
   perf: { rank: 1, bump: 'patch' },
   refactor: { rank: 1, bump: 'patch' },
@@ -41,6 +78,7 @@ const HEADING_PRECEDENCE = {
   ci: { rank: 1, bump: 'patch' },
   chore: { rank: 1, bump: 'patch' },
   release: { rank: 1, bump: 'patch' },
+  packaging: { rank: 1, bump: 'patch' },
 };
 
 function normalizeHeading(raw) {
@@ -63,7 +101,7 @@ function normalizeHeading(raw) {
 function readUnreleasedSection(changelogPath) {
   const text = fs.readFileSync(changelogPath, 'utf8');
   const lines = text.split(/\r?\n/);
-  const startLine = lines.findIndex((line) => /^##\s+Unreleased\s*$/i.test(line));
+  const startLine = lines.findIndex((line) => UNRELEASED_HEADING_RE.test(line));
   if (startLine === -1) {
     return { present: false, raw: '', headings: [], bulletCount: 0, startLine: -1, endLine: -1 };
   }
@@ -133,9 +171,12 @@ function recommendBumpFromChangelog(changelogPath) {
 }
 
 /**
- * Replace `## Unreleased` with `## v<version> (<dateISO>)` and leave a fresh
- * empty `## Unreleased` placeholder at the top. Idempotent if Unreleased is
- * missing — returns false instead of throwing.
+ * Replace `## [Unreleased]` with `## [<version>] - <dateISO>` (Keep a
+ * Changelog 1.1.0 format) and leave a fresh empty `## [Unreleased]`
+ * placeholder at the top. Tolerates a legacy `## Unreleased` heading
+ * (no brackets) at read time; always writes the bracketed KaC form.
+ * Idempotent if Unreleased is missing — returns false instead of
+ * throwing.
  *
  * @param {string} changelogPath
  * @param {string} version — bare SemVer (no `v` prefix)
@@ -145,17 +186,19 @@ function recommendBumpFromChangelog(changelogPath) {
 function promoteUnreleasedToVersion(changelogPath, version, dateISO) {
   const text = fs.readFileSync(changelogPath, 'utf8');
   const lines = text.split(/\r?\n/);
-  const startLine = lines.findIndex((line) => /^##\s+Unreleased\s*$/i.test(line));
+  const startLine = lines.findIndex((line) => UNRELEASED_HEADING_RE.test(line));
   if (startLine === -1) return false;
-  const newSection = ['## Unreleased', '', `## v${version} (${dateISO})`];
+  const newSection = ['## [Unreleased]', '', `## [${version}] - ${dateISO}`];
   const rewritten = [...lines.slice(0, startLine), ...newSection, ...lines.slice(startLine + 1)];
   fs.writeFileSync(changelogPath, rewritten.join('\n'));
   return true;
 }
 
 /**
- * Ensure `## Unreleased` exists at the top of CHANGELOG.md, immediately after
- * the `# Changelog` H1. Idempotent; returns true if a section was inserted.
+ * Ensure `## [Unreleased]` exists at the top of CHANGELOG.md, immediately
+ * after the `# Changelog` H1 (and any KaC header annotation block).
+ * Idempotent — also recognized as present if a legacy `## Unreleased`
+ * heading is found; returns true only if a new section was inserted.
  *
  * @param {string} changelogPath
  * @returns {boolean}
@@ -163,29 +206,60 @@ function promoteUnreleasedToVersion(changelogPath, version, dateISO) {
 function ensureUnreleasedSection(changelogPath) {
   const text = fs.readFileSync(changelogPath, 'utf8');
   const lines = text.split(/\r?\n/);
-  if (lines.some((line) => /^##\s+Unreleased\s*$/i.test(line))) return false;
+  if (lines.some((line) => UNRELEASED_HEADING_RE.test(line))) return false;
   const h1Line = lines.findIndex((line) => /^#\s+/.test(line));
-  const insertAt = h1Line === -1 ? 0 : h1Line + 1;
-  const newLines = [...lines.slice(0, insertAt), '', '## Unreleased', '', ...lines.slice(insertAt)];
+  // Insert after the H1 and any contiguous non-heading prose lines that
+  // follow it (KaC's standard "All notable changes…" annotation block),
+  // stopping at the first `##` heading or end of file. This keeps the
+  // header annotation above `## [Unreleased]`.
+  let insertAt = h1Line === -1 ? 0 : h1Line + 1;
+  while (insertAt < lines.length && !/^##\s+/.test(lines[insertAt])) {
+    insertAt += 1;
+  }
+  const newLines = [
+    ...lines.slice(0, insertAt),
+    '## [Unreleased]',
+    '',
+    ...lines.slice(insertAt),
+  ];
   fs.writeFileSync(changelogPath, newLines.join('\n'));
   return true;
 }
 
+// Map of accepted kind aliases to the canonical heading we render under
+// `## [Unreleased]`. Keep a Changelog canonical names are preferred for
+// newly-appended bullets; legacy aliases (`feature(s)`, `fix(es)`) map
+// to the KaC canonical so old tooling/skills land entries under the
+// right heading post-migration. Chamber extensions (Performance, etc.)
+// retain their own headings and patch precedence.
 const CANONICAL_HEADINGS = {
+  // KaC canonical
+  added: 'Added',
+  changed: 'Changed',
+  deprecated: 'Deprecated',
+  removed: 'Removed',
+  fixed: 'Fixed',
+  security: 'Security',
+  // Chamber extension
   breaking: 'Breaking',
-  feature: 'Features',
-  features: 'Features',
-  fix: 'Fixes',
-  fixes: 'Fixes',
+  // Legacy → KaC canonical
+  feature: 'Added',
+  features: 'Added',
+  fix: 'Fixed',
+  fixes: 'Fixed',
+  // Chamber extensions (area tags)
   perf: 'Performance',
   performance: 'Performance',
   refactor: 'Refactor',
   docs: 'Docs',
+  documentation: 'Docs',
   tests: 'Tests',
+  test: 'Tests',
   build: 'Build',
   ci: 'CI',
   chore: 'Chore',
   release: 'Release',
+  packaging: 'Packaging',
 };
 
 function canonicalHeading(kind) {
@@ -247,7 +321,10 @@ function appendEntry(changelogPath, { kind, summary, detail, issue }) {
 
 module.exports = {
   UNRELEASED_HEADING,
+  UNRELEASED_HEADING_RE,
+  VERSION_HEADING_RE,
   HEADING_PRECEDENCE,
+  CANONICAL_HEADINGS,
   readUnreleasedSection,
   recommendBump,
   recommendBumpFromChangelog,

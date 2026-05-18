@@ -38,12 +38,12 @@ Both are `workflow_dispatch` only — neither fires on push.
 
 The core shape to keep in mind:
 
-- **Insiders cut** = compute target stable from `## Unreleased` in
+- **Insiders cut** = compute target stable from `## [Unreleased]` in
   `CHANGELOG.md` → bump counter (`vX.Y.Z-insiders.N`) → build → upload
   to blob → push the tag only. Master is never modified.
 - **Stable cut** is almost always **promote an insider tag**
   (`source_ref: vX.Y.Z-insiders.N`). Direct-from-master dispatch is an
-  emergency fallback that derives the version from `## Unreleased` the
+  emergency fallback that derives the version from `## [Unreleased]` the
   same way insiders does.
 - **Stable feature flags** are controlled by the GitHub Pages policy at
   `docs/flags/v1/flags.json`. Stable releases must ask whether any
@@ -51,15 +51,16 @@ The core shape to keep in mind:
   workflow.
 - **Post-stable** (this skill's responsibility, run locally): open a PR
   that bumps `package.json` to the freshly shipped stable version and
-  promotes `## Unreleased` into `## vX.Y.Z (date)` in `CHANGELOG.md`.
-  This keeps master's invariant (version = last shipped stable).
+  promotes `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` in
+  `CHANGELOG.md` (Keep a Changelog 1.1.0 format). This keeps master's
+  invariant (version = last shipped stable).
 
 ## Worked examples
 
 **"Cut an insider build for testers"** →
 Confirm channel is `insiders`. Predict the next tag with
 `node scripts/bump-insiders-version.js --dry-run` — this reads
-`## Unreleased` in `CHANGELOG.md`, classifies the highest-precedence
+`## [Unreleased]` in `CHANGELOG.md`, classifies the highest-precedence
 heading, and prints the target stable + insider counter. Dispatch
 `gh workflow run release-insiders.yml --ref master`. After success,
 hand back the install URL and the new tag.
@@ -73,7 +74,7 @@ the GitHub Release URL.
 
 **"Release straight from master (emergency)"** →
 Confirm channel is `stable`, flow A. The workflow will compute the
-target stable from `## Unreleased`. Confirm the computed version
+target stable from `## [Unreleased]`. Confirm the computed version
 doesn't already exist as a tag. Dispatch
 `gh workflow run release.yml --ref master`. After success, open the
 post-release bump PR.
@@ -82,6 +83,55 @@ post-release bump PR.
 
 Phases marked **ASK** must confirm in interactive mode; skip in
 autopilot mode only when the caller already supplied the answers.
+
+### 0. AGENT - Initialize the release checklist
+
+Every release dispatch creates a per-run checklist that the skill
+ticks off as it executes. The checklist is the mechanism that prevents
+silent skips like the v0.63.0 post-release bump (Phase 3b.7 was never
+run because the dispatching session ended before the build finished).
+
+1. Load the template that matches the channel **once it's been
+   chosen** (Phase 2 picks the channel; if running this phase before
+   the channel is known, defer the load until after Phase 2 and just
+   reserve the file path):
+   - Insiders: `.github/skills/release/assets/insiders-checklist.md`
+   - Stable: `.github/skills/release/assets/stable-checklist.md`
+2. Substitute the placeholders the skill already has at dispatch time
+   (`{{VERSION}}`, `{{BUILD_SHA}}`, `{{SOURCE_REF}}`, `{{FLOW}}`,
+   `{{TARGET_STABLE}}`, `{{COUNTER}}`, `{{BUMP_SOURCE}}`,
+   `{{BUMP_KIND}}`, `{{DATE}}`, `{{FLOW_DESCRIPTION}}`). Leave any
+   placeholder unsubstituted (with the literal `{{…}}`) when the
+   value isn't known yet — the skill fills it on the relevant phase.
+3. Write the substituted checklist to the session-state files folder
+   so it survives checkpoints. The path is:
+
+   ```
+   ~/.copilot/session-state/<session-id>/files/release-v<version>-<channel>-checklist.md
+   ```
+
+   (the session folder is given in the `session_context` block at the
+   top of every conversation).
+4. **Mirror every `- [ ]` item into the session todos table.** Use
+   the kebab-case id in `[brackets]` as the todo `id` and the line
+   text as the `title`. Initial status is `pending`. Add dependencies
+   that match the phase order (`preflight-auth → channel-confirmed →
+   compute-version → … → summary-written`).
+5. As each phase completes, flip **both** the todo row
+   (`UPDATE todos SET status='done' WHERE id=…`) **and** the
+   matching `- [ ]` → `- [x]` in the checklist file on disk. The
+   file is the durable record; the todos table is what blocks the
+   session from ending with work outstanding.
+6. **Refuse to end the session** with any `pending` or `in_progress`
+   todos from the checklist. If a phase must be deferred (e.g. macOS
+   notary warmup not done), mark the todo `blocked` with a reason in
+   the description and append a note to the **Notes** section of the
+   checklist file.
+
+This checklist is **session-local**. It is intentionally not
+committed: it captures dispatch-time decisions, links to run URLs,
+and per-session context that would be noise in the repo. The skill
+loads a fresh checklist on every dispatch.
 
 ### 1. AGENT - Pre-flight
 
@@ -122,15 +172,15 @@ node scripts/bump-insiders-version.js --dry-run
 ```
 
 The script reads `package.json` (last shipped stable), parses
-`## Unreleased` in `CHANGELOG.md` for the highest-precedence conventional
+`## [Unreleased]` in `CHANGELOG.md` for the highest-precedence conventional
 heading, derives the target stable via SemVer, queries `git tag -l` for
 existing `v<target>-insiders.*` tags, and prints the next insider version
 plus the bump source heading.
 
 Surface the predicted target stable, counter, and bump source to the
 user so they can confirm intent (e.g. "next insider is
-`v0.63.0-insiders.0`, derived from a `### Features` bullet in
-Unreleased"). If `## Unreleased` is empty the script fails — direct the
+`v0.63.0-insiders.0`, derived from an `### Added` bullet in
+Unreleased"). If `## [Unreleased]` is empty the script fails — direct the
 user to ship a change first, or to use the override below for a
 genuinely test-only build.
 
@@ -227,7 +277,7 @@ node -e "
   const pkg = require('./package.json');
   const semver = require('semver');
   const { bump, section } = ch.recommendBumpFromChangelog('./CHANGELOG.md');
-  if (!bump) { console.error('Empty ## Unreleased — nothing to release.'); process.exit(1); }
+  if (!bump) { console.error('Empty ## [Unreleased] — nothing to release.'); process.exit(1); }
   console.log('Master version (last shipped stable):', pkg.version);
   console.log('Bump source headings:', section.headings.join(', '));
   console.log('Target stable:', semver.inc(pkg.version, bump));
@@ -235,7 +285,7 @@ node -e "
 git tag -l 'v*' --sort=-v:refname | grep -v -- '-insiders\.' | head -5
 ```
 
-Confirm `## Unreleased` has actionable entries and no `v<target>` tag
+Confirm `## [Unreleased]` has actionable entries and no `v<target>` tag
 already exists. If the tag exists, stop and direct the user to cut an
 insider first (so master gets updated via Flow B's post-release PR).
 
@@ -402,7 +452,36 @@ Surface:
   artifact, not committed. The post-release bump PR (next phase) fixes
   this.
 
-#### 3b.7 AGENT - Post-release bump PR (anchored to build SHA)
+> **Important — async coupling:** stable builds take 30–60 min (longer
+> with macOS notarization warmup). Once the workflow dispatched at
+> Phase 3b.5 finishes and `softprops/action-gh-release@v2` pushes the
+> `vX.Y.Z` tag, `.github/workflows/post-release-bump.yml` fires
+> automatically and opens the Phase 3b.7 bump PR for you. Do **not**
+> end your work without confirming one of:
+>
+> 1. The `Post-release bump` workflow ran (`gh run list
+>    --workflow=post-release-bump.yml --limit 1`) and the
+>    `release/bump-v<version>` PR exists (`gh pr list --head
+>    release/bump-v<version>`).
+> 2. The user has been explicitly handed the link to that PR for
+>    review.
+>
+> If the workflow hasn't fired yet — set a reminder via
+> `manage_schedule` (or `gh run watch`) and check back. If it has
+> fired but failed, fall through to Phase 3b.7 manually.
+
+#### 3b.7 AGENT - Post-release bump PR (anchored to build SHA) — automated path + manual fallback
+
+> **Default path is automatic.** `.github/workflows/post-release-bump.yml`
+> opens this PR on stable tag push. Use the manual path below **only**
+> when (a) the workflow failed, (b) the workflow was disabled, or (c)
+> you're doing a release for which automation is intentionally not
+> appropriate (rare). Verify automation status first:
+>
+> ```bash
+> gh run list --workflow=post-release-bump.yml --limit 3
+> gh pr list --head release/bump-v<version>
+> ```
 
 Master's `package.json` and `CHANGELOG.md` must now be advanced. This is
 the **only** automation that mutates `package.json` on master under
@@ -440,7 +519,7 @@ git checkout -b release/bump-vX.Y.Z "$BUILD_SHA"
 # Bump to the freshly shipped stable version
 npm version <X.Y.Z> --no-git-tag-version --allow-same-version
 
-# Promote ## Unreleased into ## vX.Y.Z (YYYY-MM-DD)
+# Promote ## [Unreleased] into ## [X.Y.Z] - YYYY-MM-DD (Keep a Changelog 1.1.0)
 node -e "
   const ch = require('./scripts/changelog');
   const today = new Date().toISOString().slice(0, 10);
@@ -455,38 +534,39 @@ git push -u origin HEAD
 
 gh pr create --base master --head release/bump-vX.Y.Z \
   --title "chore(release): bump master to vX.Y.Z post-release" \
-  --body "Post-release bump anchored to build SHA \`$BUILD_SHA\` (tag \`vX.Y.Z-insiders.N\`). Master now reflects the freshly shipped stable version. \`## Unreleased\` content at build time has been promoted to \`## vX.Y.Z\` in CHANGELOG.md.
+  --body "Post-release bump anchored to build SHA \`$BUILD_SHA\` (tag \`vX.Y.Z-insiders.N\`). Master now reflects the freshly shipped stable version. \`## [Unreleased]\` content at build time has been promoted to \`## [X.Y.Z] - YYYY-MM-DD\` in CHANGELOG.md (Keep a Changelog 1.1.0 format).
 
 Build-SHA: $BUILD_SHA
 Source-Ref: vX.Y.Z-insiders.N
 
-If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## vX.Y.Z\` section AS-IS, and keep any \`## Unreleased\` bullets that landed during the build window under a fresh \`## Unreleased\` block above it. **Do not rebase or merge master into this branch** — that would defeat Pattern E anchoring and the \`model-b-gates\` PR check will fail. Resolve at PR-merge time only.
+If commits landed on master after the build SHA, the PR merge will surface a 3-way conflict in CHANGELOG.md — resolution is mechanical: keep the new \`## [X.Y.Z] - YYYY-MM-DD\` section AS-IS, and keep any \`## [Unreleased]\` bullets that landed during the build window under a fresh \`## [Unreleased]\` block above it. **Do not rebase or merge master into this branch** — that would defeat Pattern E anchoring and the \`model-b-gates\` PR check will fail. Resolve at PR-merge time only.
 
 This PR is mechanical and CI-validated; merge after green checks."
 ```
 
 **Conflict resolution on merge.** Common ancestor is the build SHA.
-Master may have added bullets to `## Unreleased`; the bump branch
-removed all `## Unreleased` content and inserted a new `## vX.Y.Z`
-section. Git usually auto-merges (non-overlapping edits). When it
-doesn't, resolve by keeping **both** sections:
+Master may have added bullets to `## [Unreleased]`; the bump branch
+removed all `## [Unreleased]` content and inserted a new
+`## [X.Y.Z] - YYYY-MM-DD` section. Git usually auto-merges
+(non-overlapping edits). When it doesn't, resolve by keeping **both**
+sections:
 
 ```
-## Unreleased
+## [Unreleased]
 
-### Fixes
+### Fixed
 
 - **Bullet that landed during the build window** - ...
 
-## vX.Y.Z (YYYY-MM-DD)
+## [X.Y.Z] - YYYY-MM-DD
 
-### Features
+### Added
 
 - **Bullet that was in Unreleased at build SHA** - ...
 ```
 
-No bullet is ever lost. The interim bullets stay in `## Unreleased` for
-the next release to pick up.
+No bullet is ever lost. The interim bullets stay in `## [Unreleased]`
+for the next release to pick up.
 
 The user reviews and merges the PR. Do not auto-merge — the user owns
 the master-mutation moment.
@@ -504,11 +584,34 @@ see exactly what happened. Example:
    - Install URL:  https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe
    - Auto-update:  existing testers receive it automatically
    - Run:          <gh URL>
+   - Checklist:    ~/.copilot/session-state/<id>/files/release-vX.Y.Z-<channel>-checklist.md
 ```
 
 This summary is the most valuable thing the skill produces. Releases
 are infrequent enough that everyone — including the person who
 dispatched — benefits from a written trail.
+
+### 5. AGENT - Close the checklist
+
+Before ending the session:
+
+1. Confirm every checklist todo is `done` or `blocked` (with a
+   documented reason in the checklist's **Notes** section). Any
+   `pending` or `in_progress` row means the release isn't actually
+   complete and the session must not end yet.
+2. Append a final timestamped line to the checklist's **Notes**
+   section: `Closed: <ISO datetime> · Session: <session-id>`.
+3. Surface the checklist file path to the user as part of the summary
+   above so they can review later or resume in a new session.
+
+If the dispatching session has to end with a release still in flight
+(e.g. waiting on a 30-min build), explicitly hand off:
+
+- Tell the user which todos are still `pending` and what triggers
+  each one (typically "the `Post-release bump` workflow firing").
+- Suggest scheduling a check-in with `manage_schedule` so a future
+  session re-loads the checklist (the file is the source of truth)
+  and completes the outstanding items.
 
 ## Failure modes
 
@@ -518,7 +621,7 @@ dispatched — benefits from a written trail.
   should land via `ship` first.
 - **`gh auth status` fails** — stop, surface the message, ask to
   re-auth.
-- **Empty `## Unreleased`** (insiders compute or Flow A) — stop. Direct
+- **Empty `## [Unreleased]`** (insiders compute or Flow A) — stop. Direct
   the user to ship at least one change so the bump source exists.
 - **Insider tag doesn't exist** (Flow B) — stop, list recent tags.
 - **Stable version tag already exists** (Flow A or B) — stop. Direct
@@ -526,10 +629,10 @@ dispatched — benefits from a written trail.
   and re-cut the insider, then promote.
 - **Post-release bump PR has CHANGELOG conflict at merge** — expected
   when commits landed on master during the build window. Resolve by
-  keeping both sections: the new `## vX.Y.Z (date)` AS-IS, and any
-  interim `## Unreleased` bullets under a fresh `## Unreleased` block
-  above it. Never `--theirs` or `--ours` blindly — both sides carry
-  real content. See Phase 3b.7 for the resolution template.
+  keeping both sections: the new `## [X.Y.Z] - YYYY-MM-DD` AS-IS, and
+  any interim `## [Unreleased]` bullets under a fresh `## [Unreleased]`
+  block above it. Never `--theirs` or `--ours` blindly — both sides
+  carry real content. See Phase 3b.7 for the resolution template.
 - **Stable feature flag policy PR needed** — stop before dispatching
   stable until the policy PR is merged and
   `https://chmbr.dev/flags/v1/flags.json` reflects the intended stable
