@@ -1,7 +1,7 @@
 import { approveAll } from "@github/copilot-sdk";
 import { joinSession } from "@github/copilot-sdk/extension";
 
-import { createA2ATools, disconnectA2AClient } from "./tools/a2a-tools.mjs";
+import { createA2ATools, defaultAgentName, disconnectA2AClient } from "./tools/a2a-tools.mjs";
 
 const state = {
   chamberBaseUrl: process.env.CHAMBER_A2A_URL ?? "",
@@ -14,7 +14,7 @@ const state = {
   refreshToken: null,
   accessTokenExpiresAt: 0,
   tokenRequest: null,
-  agentName: process.env.CHAMBER_A2A_AGENT_NAME ?? "copilot-chamber",
+  agentName: process.env.CHAMBER_A2A_AGENT_NAME?.trim() || defaultAgentName(),
   entraLoginHint: process.env.CHAMBER_A2A_LOGIN_HINT ?? process.env.SWITCHBOARD_LOGIN_HINT ?? "",
   entraDomainHint: process.env.CHAMBER_A2A_DOMAIN_HINT ?? process.env.SWITCHBOARD_DOMAIN_HINT ?? "",
   registeredAgentName: null,
@@ -70,7 +70,7 @@ function deliverToCopilotSession(entry) {
 </a2a-inbound-message>
 
 ${contextLine}
-Treat this as a real incoming message from another A2A agent. If it asks a question or expects a response, reply by calling chamber_a2a_reply with message_id "${entry.id}" so the same A2A contextId is preserved.`;
+Treat this as a real incoming message from another A2A agent. If it asks a question or expects a response, reply by calling a2a_send_agent_message with reply_to_message_id "${entry.id}" so the same A2A contextId is preserved.`;
 
   state.session.send({ prompt }).catch((error) => {
     state.session?.log(`A2A delivery failed: ${error instanceof Error ? error.message : String(error)}`, {

@@ -118,7 +118,7 @@ export class RelayPeer {
   }
 
   async connect(): Promise<void> {
-    await this.callTool('chamber_a2a_connect', {});
+    await this.callTool('a2a_connection', {});
     this.persistRefreshToken();
     // a2a-tools.mjs starts its own setTimeout poll loop on connect.
     // Stop it and replace with a tighter loop so tests don't wait 1s per poll.
@@ -161,11 +161,11 @@ export class RelayPeer {
   }
 
   async sendTo(recipient: string, message: string, contextId?: string): Promise<unknown> {
-    return this.callTool('chamber_a2a_send_message', { recipient, message, context_id: contextId });
+    return this.callTool('a2a_send_agent_message', { recipient, message, context_id: contextId });
   }
 
   async listAgents(): Promise<{ agents?: Array<{ name?: string; id?: string }> }> {
-    return this.callTool('chamber_a2a_list_agents', {}) as Promise<{ agents?: Array<{ name?: string; id?: string }> }>;
+    return this.callTool('a2a_list_remote_agents', {}) as Promise<{ agents?: Array<{ name?: string; id?: string }> }>;
   }
 
   async waitForMessage(

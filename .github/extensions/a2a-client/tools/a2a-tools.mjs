@@ -2,19 +2,28 @@ import { randomUUID } from "node:crypto";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 
 const POLL_INTERVAL_MS = 1_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+const A2A_RELAY_CREDENTIAL_SERVICE = "chamber-a2a-relay";
+const A2A_RELAY_ENTRA_CREDENTIAL_SERVICE = "chamber-a2a-relay-entra";
 
 export function createA2ATools(state, hooks) {
   return [
     {
-      name: "chamber_a2a_connect",
+      name: "a2a_connection",
       description:
-        "Connect this Copilot CLI session to an A2A relay and register the CLI agent card.",
+        "Manage this Copilot CLI session's A2A relay connection: connect, disconnect, or report status.",
       parameters: {
         type: "object",
         properties: {
+          action: {
+            type: "string",
+            enum: ["connect", "disconnect", "status"],
+            description: "Connection action. Defaults to connect.",
+          },
           base_url: {
             type: "string",
             description: "A2A relay base URL, for example http://127.0.0.1:3210. Defaults to CHAMBER_A2A_URL.",
@@ -42,7 +51,7 @@ export function createA2ATools(state, hooks) {
           },
           agent_name: {
             type: "string",
-            description: "Optional display name to register for this CLI session. Defaults to copilot-chamber.",
+            description: "Optional display name to register for this CLI session. Defaults to {user}-copilot-{repo}-{host_os}.",
           },
           login_hint: {
             type: "string",
@@ -55,8 +64,17 @@ export function createA2ATools(state, hooks) {
         },
       },
       handler: async (args) => {
+        const action = args.action ?? "connect";
+        if (action === "disconnect") {
+          await disconnectA2AClient(state);
+          return connectionStatus(state);
+        }
+        if (action === "status") {
+          return connectionStatus(state);
+        }
         await disconnectA2AClient(state);
-        updateConnection(state, args);
+        const connectionUpdate = updateConnection(state, args);
+        await prepareRelayAuth(state, connectionUpdate);
         const card = createAgentCard(state.agentName, state.chamberBaseUrl);
         const response = await chamberFetch(state, "/api/a2a/agents", {
           method: "POST",
@@ -66,18 +84,22 @@ export function createA2ATools(state, hooks) {
         if (!response.ok) {
           throw new Error(`A2A relay registration failed: ${body?.error ?? response.statusText}`);
         }
+        if (connectionUpdate.staticTokenFromArgument) {
+          await saveStaticRelayToken(state, state.chamberToken);
+        }
         state.registeredAgentName = card.name;
         startPolling(state, hooks);
         return {
           registered: true,
           agent: card,
           chamber: state.chamberBaseUrl,
+          status: connectionStatus(state),
           response: body,
         };
       },
     },
     {
-      name: "chamber_a2a_list_agents",
+      name: "a2a_list_remote_agents",
       description: "List A2A agent cards currently registered in the connected relay.",
       parameters: { type: "object", properties: {} },
       handler: async () => {
@@ -86,8 +108,8 @@ export function createA2ATools(state, hooks) {
       },
     },
     {
-      name: "chamber_a2a_send_message",
-      description: "Send a message from this Copilot CLI session to another registered A2A agent.",
+      name: "a2a_send_agent_message",
+      description: "Send a message or reply from this Copilot CLI session to another registered A2A agent.",
       parameters: {
         type: "object",
         properties: {
@@ -103,75 +125,15 @@ export function createA2ATools(state, hooks) {
             type: "string",
             description: "Optional A2A contextId for continuing a conversation.",
           },
-        },
-        required: ["recipient", "message"],
-      },
-      handler: async (args) => {
-        return sendA2AMessage(state, args);
-      },
-    },
-    {
-      name: "chamber_a2a_read_messages",
-      description:
-        "Read inbound A2A messages received by this Copilot CLI session. Use this to notice questions from Chamber agents and continue the conversation with the same contextId.",
-      parameters: {
-        type: "object",
-        properties: {
-          unread_only: {
-            type: "boolean",
-            description: "Only return unread messages. Defaults to true.",
-          },
-          mark_read: {
-            type: "boolean",
-            description: "Mark returned messages as read. Defaults to true.",
-          },
-        },
-      },
-      handler: async (args) => {
-        const unreadOnly = args.unread_only !== false;
-        const markRead = args.mark_read !== false;
-        const messages = state.inbox.filter((entry) => !unreadOnly || !entry.read);
-        if (markRead) {
-          for (const entry of messages) {
-            entry.read = true;
-          }
-        }
-        return { messages };
-      },
-    },
-    {
-      name: "chamber_a2a_reply",
-      description:
-        "Reply to an inbound A2A message. Defaults to the original sender and preserves that message's contextId for multi-turn conversation continuity.",
-      parameters: {
-        type: "object",
-        properties: {
-          message_id: {
+          reply_to_message_id: {
             type: "string",
-            description: "Inbound A2A messageId to reply to. Defaults to the latest inbound message.",
-          },
-          recipient: {
-            type: "string",
-            description: "Override target A2A agent id or name. Defaults to the inbound message sender id.",
-          },
-          message: {
-            type: "string",
-            description: "Plain text reply to send.",
+            description: "Optional inbound A2A messageId to reply to. Infers recipient and context_id from that inbound message unless overridden.",
           },
         },
         required: ["message"],
       },
       handler: async (args) => {
-        const source = findReplySource(state.inbox, args.message_id);
-        const recipient = args.recipient ?? source?.sender?.id;
-        if (!recipient) {
-          throw new Error("No inbound A2A message is available to infer a reply recipient.");
-        }
-        return sendA2AMessage(state, {
-          recipient,
-          message: args.message,
-          context_id: source?.contextId,
-        });
+        return sendA2AMessage(state, args);
       },
     },
   ];
@@ -192,12 +154,31 @@ export async function disconnectA2AClient(state) {
   }
 }
 
+function connectionStatus(state) {
+  const connection = {
+    connected: Boolean(state.registeredAgentName),
+    relayBaseUrl: state.chamberBaseUrl || null,
+    agentName: state.registeredAgentName ?? state.agentName ?? null,
+    polling: Boolean(state.pollTimer),
+  };
+  return {
+    ...connection,
+    connections: [connection],
+  };
+}
+
 async function sendA2AMessage(state, args) {
+  const source = findReplySource(state.inbox, args.reply_to_message_id);
+  const recipient = args.recipient ?? source?.sender?.id;
+  if (!recipient) {
+    throw new Error("A2A recipient is required unless reply_to_message_id matches an inbound message.");
+  }
+  const contextId = args.context_id ?? source?.contextId;
   const request = {
-    recipient: args.recipient,
+    recipient,
     message: {
       messageId: `msg-${randomUUID()}`,
-      contextId: args.context_id,
+      contextId,
       role: "ROLE_USER",
       parts: [{ text: args.message, mediaType: "text/plain" }],
       metadata: { fromName: state.agentName, fromId: state.agentName },
@@ -208,7 +189,17 @@ async function sendA2AMessage(state, args) {
     method: "POST",
     body: JSON.stringify(request),
   });
-  return response.json();
+  const body = await response.json();
+  return {
+    ...body,
+    threading: {
+      mode: source ? "reply_to_message_id" : contextId ? "context_id" : "direct",
+      ...(args.reply_to_message_id ? { replyToMessageId: args.reply_to_message_id } : {}),
+      ...(contextId ? { contextId } : {}),
+      inferredRecipient: Boolean(!args.recipient && source?.sender?.id),
+      inferredContext: Boolean(!args.context_id && source?.contextId),
+    },
+  };
 }
 
 function findReplySource(inbox, messageId) {
@@ -267,11 +258,13 @@ function stopPolling(state) {
 }
 
 function updateConnection(state, args) {
+  const update = { staticTokenFromArgument: false };
   if (typeof args.base_url === "string" && args.base_url.trim()) {
     state.chamberBaseUrl = args.base_url.trim().replace(/\/$/, "");
   }
   if (typeof args.token === "string" && args.token.trim()) {
     state.chamberToken = args.token.trim();
+    update.staticTokenFromArgument = true;
   }
   if (typeof args.auth_mode === "string" && args.auth_mode.trim()) {
     state.authMode = args.auth_mode.trim();
@@ -294,6 +287,10 @@ function updateConnection(state, args) {
   if (typeof args.domain_hint === "string" && args.domain_hint.trim()) {
     state.entraDomainHint = args.domain_hint.trim();
   }
+  if (!state.agentName || !String(state.agentName).trim()) {
+    state.agentName = typeof state.defaultAgentName === "function" ? state.defaultAgentName() : defaultAgentName();
+  }
+  return update;
 }
 
 function createAgentCard(name, relayBaseUrl) {
@@ -328,7 +325,7 @@ function createAgentCard(name, relayBaseUrl) {
 
 async function chamberFetch(state, path, options) {
   if (!state.chamberBaseUrl) {
-    throw new Error("A2A relay base URL is not configured. Run chamber_a2a_connect with base_url first.");
+    throw new Error("A2A relay base URL is not configured. Run a2a_connection with action connect and base_url first.");
   }
   const authorization = await getAuthorizationHeader(state);
   const response = await fetch(`${state.chamberBaseUrl}${path}`, {
@@ -354,9 +351,10 @@ function hasRelayAuth(state) {
 }
 
 async function getAuthorizationHeader(state) {
+  await prepareRelayAuth(state, { staticTokenFromArgument: false });
   if (selectAuthMode(state) === "static") {
     if (!state.chamberToken) {
-      throw new Error("A2A relay token is not configured. Run chamber_a2a_connect with token first.");
+      throw new Error("A2A relay token is not configured. Run a2a_connection with token first.");
     }
     return `Bearer ${state.chamberToken}`;
   }
@@ -371,6 +369,7 @@ function selectAuthMode(state) {
 }
 
 async function ensureAccessToken(state) {
+  await loadCachedEntraRefreshToken(state);
   const now = Date.now();
   if (state.accessToken && state.accessTokenExpiresAt && state.accessTokenExpiresAt - now > TOKEN_REFRESH_SKEW_MS) {
     return state.accessToken;
@@ -385,6 +384,13 @@ async function ensureAccessToken(state) {
         try {
           return await refreshAccessToken(state);
         } catch (error) {
+          state.refreshToken = null;
+          await clearCachedEntraRefreshToken(state).catch((clearError) => {
+            state.session?.log(`A2A token cache clear failed: ${clearError instanceof Error ? clearError.message : String(clearError)}`, {
+              level: "warning",
+              ephemeral: true,
+            });
+          });
           state.session?.log(`A2A token refresh failed, starting interactive login: ${error instanceof Error ? error.message : String(error)}`, {
             level: "warning",
             ephemeral: true,
@@ -407,7 +413,8 @@ async function interactiveLogin(state) {
   const verifier = base64Url(randomBytes(32));
   const challenge = base64Url(createHash("sha256").update(verifier).digest());
   const loginState = base64Url(randomBytes(24));
-  const callback = await waitForAuthCode(loginState);
+  const waitForCode = state.waitForAuthCode ?? waitForAuthCode;
+  const callback = await waitForCode(loginState);
   const redirectUri = `http://localhost:${callback.port}`;
   const authorizeUrl = new URL(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize`);
   authorizeUrl.searchParams.set("client_id", clientId);
@@ -434,9 +441,9 @@ async function interactiveLogin(state) {
   }
 
   state.session?.log(`Opening browser for Switchboard login: ${authorizeUrl.toString()}`, { ephemeral: false });
-  await openBrowser(authorizeUrl.toString());
+  await (state.openBrowser ?? openBrowser)(authorizeUrl.toString());
   const code = await callback.code;
-  const token = await exchangeToken(tenantId, {
+  const token = await exchangeToken(state, tenantId, {
     client_id: clientId,
     grant_type: "authorization_code",
     code,
@@ -444,7 +451,7 @@ async function interactiveLogin(state) {
     code_verifier: verifier,
     scope: `openid profile offline_access ${scope}`,
   });
-  applyTokenResponse(state, token);
+  await applyTokenResponse(state, token);
   return state.accessToken;
 }
 
@@ -452,13 +459,13 @@ async function refreshAccessToken(state) {
   const clientId = getClientId(state);
   const tenantId = state.entraTenantId || process.env.CHAMBER_A2A_TENANT_ID || "common";
   const scope = state.entraScope || `api://${clientId}/user_impersonation`;
-  const token = await exchangeToken(tenantId, {
+  const token = await exchangeToken(state, tenantId, {
     client_id: clientId,
     grant_type: "refresh_token",
     refresh_token: state.refreshToken,
     scope: `openid profile offline_access ${scope}`,
   });
-  applyTokenResponse(state, token);
+  await applyTokenResponse(state, token);
   return state.accessToken;
 }
 
@@ -522,8 +529,9 @@ function waitForAuthCode(expectedState) {
   });
 }
 
-async function exchangeToken(tenantId, form) {
-  const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`, {
+async function exchangeToken(state, tenantId, form) {
+  const fetchImpl = state.fetchImpl ?? fetch;
+  const response = await fetchImpl(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(form),
@@ -535,12 +543,15 @@ async function exchangeToken(tenantId, form) {
   return body;
 }
 
-function applyTokenResponse(state, token) {
+async function applyTokenResponse(state, token) {
   state.accessToken = token.access_token;
   state.refreshToken = token.refresh_token ?? state.refreshToken;
   state.accessTokenExpiresAt = Date.now() + Number(token.expires_in ?? 3600) * 1000;
   if (!state.accessToken) {
     throw new Error("Switchboard token response did not include an access token.");
+  }
+  if (state.refreshToken) {
+    await saveCachedEntraRefreshToken(state, state.refreshToken);
   }
 }
 
@@ -554,4 +565,153 @@ function openBrowser(url) {
 
 function base64Url(buffer) {
   return Buffer.from(buffer).toString("base64").replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function prepareRelayAuth(state, update) {
+  const mode = state.authMode && state.authMode !== "auto" ? state.authMode : "auto";
+  if ((mode === "static" || mode === "auto") && !state.chamberToken) {
+    state.chamberToken = await getStoredStaticRelayToken(state) ?? "";
+  }
+  if (update.staticTokenFromArgument && !state.chamberToken) {
+    throw new Error("A2A relay token is not configured. Run a2a_connection with token first.");
+  }
+}
+
+async function getStoredStaticRelayToken(state) {
+  const credentialStore = await getCredentialStore(state);
+  if (!credentialStore || !state.chamberBaseUrl) return null;
+  const account = getRelayCredentialAccount(state.chamberBaseUrl);
+  const credential = (await credentialStore.findCredentials(A2A_RELAY_CREDENTIAL_SERVICE))
+    .find((entry) => entry.account === account);
+  return credential?.password?.trim() || null;
+}
+
+async function saveStaticRelayToken(state, token) {
+  if (!token?.trim()) return;
+  const credentialStore = await requireCredentialStore(state);
+  await credentialStore.setPassword(
+    A2A_RELAY_CREDENTIAL_SERVICE,
+    getRelayCredentialAccount(state.chamberBaseUrl),
+    token.trim(),
+  );
+}
+
+async function loadCachedEntraRefreshToken(state) {
+  if (state.entraTokenCacheLoaded) return;
+  state.entraTokenCacheLoaded = true;
+  if (state.refreshToken) return;
+  const credentialStore = await getCredentialStore(state);
+  if (!credentialStore || !state.chamberBaseUrl) return;
+  const account = getEntraRelayCredentialAccount(state);
+  const credential = (await credentialStore.findCredentials(A2A_RELAY_ENTRA_CREDENTIAL_SERVICE))
+    .find((entry) => entry.account === account);
+  if (!credential?.password) return;
+  const entry = parseEntraRelayTokenCacheEntry(credential.password);
+  if (!entry) {
+    await credentialStore.deletePassword(A2A_RELAY_ENTRA_CREDENTIAL_SERVICE, account);
+    return;
+  }
+  state.refreshToken = entry.refreshToken;
+}
+
+async function saveCachedEntraRefreshToken(state, refreshToken) {
+  const credentialStore = await requireCredentialStore(state);
+  await credentialStore.setPassword(
+    A2A_RELAY_ENTRA_CREDENTIAL_SERVICE,
+    getEntraRelayCredentialAccount(state),
+    JSON.stringify({ refreshToken }),
+  );
+}
+
+async function clearCachedEntraRefreshToken(state) {
+  const credentialStore = await getCredentialStore(state);
+  if (!credentialStore || !state.chamberBaseUrl) return;
+  await credentialStore.deletePassword(
+    A2A_RELAY_ENTRA_CREDENTIAL_SERVICE,
+    getEntraRelayCredentialAccount(state),
+  );
+}
+
+function parseEntraRelayTokenCacheEntry(value) {
+  if (value.trim().length > 0 && !value.trim().startsWith("{")) {
+    return { refreshToken: value.trim() };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  return typeof parsed.refreshToken === "string" && parsed.refreshToken.trim()
+    ? { refreshToken: parsed.refreshToken.trim() }
+    : null;
+}
+
+export function getRelayCredentialAccount(relayBaseUrl) {
+  return URL.canParse(relayBaseUrl) ? new URL(relayBaseUrl).origin : relayBaseUrl.trim();
+}
+
+export function getEntraRelayCredentialAccount(state) {
+  const clientId = getClientId(state);
+  const tenantId = state.entraTenantId || process.env.CHAMBER_A2A_TENANT_ID || "common";
+  const scope = state.entraScope || `api://${clientId}/user_impersonation`;
+  return [
+    getRelayCredentialAccount(state.chamberBaseUrl),
+    clientId.trim(),
+    tenantId.trim() || "common",
+    scope.trim() || `api://${clientId}/user_impersonation`,
+  ].join("|");
+}
+
+async function requireCredentialStore(state) {
+  const credentialStore = await getCredentialStore(state);
+  if (!credentialStore) {
+    throw new Error("A2A credential store is unavailable. Install or unlock the OS keychain/keyring, or pass a token explicitly.");
+  }
+  return credentialStore;
+}
+
+async function getCredentialStore(state) {
+  if ("credentialStore" in state) return state.credentialStore ?? null;
+  if (state.credentialStoreRequest) return state.credentialStoreRequest;
+  state.credentialStoreRequest = import("keytar")
+    .then((module) => module.default ?? module)
+    .catch((error) => {
+      state.session?.log(`A2A credential store unavailable: ${error instanceof Error ? error.message : String(error)}`, {
+        level: "warning",
+        ephemeral: true,
+      });
+      return null;
+    });
+  return state.credentialStoreRequest;
+}
+
+export function defaultAgentName(options = {}) {
+  const env = options.env ?? process.env;
+  const userInfo = options.userInfo ?? (() => os.userInfo());
+  const cwd = options.cwd ?? process.cwd();
+  const platform = options.platform ?? process.platform;
+  const user = slug(firstNonEmpty(env.CHAMBER_A2A_USER, env.GITHUB_USER, env.USER, env.USERNAME, userInfo().username) ?? "unknown");
+  const repo = slug(firstNonEmpty(env.CHAMBER_A2A_REPO, env.GITHUB_REPOSITORY?.split("/").at(-1), path.basename(cwd)) ?? "repo");
+  return `${user || "unknown"}-copilot-${repo || "repo"}-${normalizeHostOs(platform)}`;
+}
+
+function normalizeHostOs(platform) {
+  if (platform === "win32") return "windows";
+  if (platform === "darwin") return "mac";
+  if (platform === "linux") return "linux";
+  return slug(platform || "unknown") || "unknown";
+}
+
+function firstNonEmpty(...values) {
+  return values.find((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+function slug(value) {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
