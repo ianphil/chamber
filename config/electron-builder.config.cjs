@@ -9,7 +9,7 @@ const macNotarizeEnabled =
   macSigningEnabled
   && Boolean(process.env.APPLE_TEAM_ID)
   && Boolean(process.env.APPLE_ID)
-  && Boolean(process.env.APPLE_ID_PASSWORD);
+  && Boolean(process.env.APPLE_APP_SPECIFIC_PASSWORD);
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -31,6 +31,34 @@ function resolveMacIcon() {
 function resolveMacEntitlements() {
   const entitlementsPath = path.join(repoRoot, 'assets', 'entitlements.mac.plist');
   return fs.existsSync(entitlementsPath) ? entitlementsPath : undefined;
+}
+
+function resolveMacIdentity() {
+  const identity = process.env.CHAMBER_MACOS_IDENTITY?.trim();
+  return identity?.replace(/^Developer ID Application:\s*/, '') || undefined;
+}
+
+function resolvePublishTargets() {
+  const channel = process.env.CHAMBER_RELEASE_CHANNEL?.trim() || undefined;
+  const genericUrl = process.env.CHAMBER_BUILDER_UPDATE_URL?.trim();
+
+  if (genericUrl) {
+    const entry = {
+      provider: 'generic',
+      url: genericUrl,
+    };
+    if (channel) entry.channel = channel;
+    return [entry];
+  }
+
+  const githubEntry = {
+    provider: 'github',
+    owner: 'ianphil',
+    repo: 'chamber',
+    releaseType: 'release',
+  };
+  if (channel) githubEntry.channel = channel;
+  return [githubEntry];
 }
 
 const config = {
@@ -79,34 +107,22 @@ const config = {
   mac: {
     category: 'public.app-category.productivity',
     icon: resolveMacIcon(),
-    target: [
-      { target: 'dmg', arch: ['arm64', 'x64'] },
-      { target: 'zip', arch: ['arm64', 'x64'] },
-    ],
+    target: ['dmg', 'zip'],
     hardenedRuntime: macSigningEnabled,
     gatekeeperAssess: false,
     entitlements: resolveMacEntitlements(),
     entitlementsInherit: resolveMacEntitlements(),
     ...(macSigningEnabled
       ? {
-          identity: process.env.CHAMBER_MACOS_IDENTITY?.trim() || undefined,
-          ...(macNotarizeEnabled
-            ? { notarize: { teamId: process.env.APPLE_TEAM_ID } }
-            : {}),
+          identity: resolveMacIdentity(),
+          notarize: macNotarizeEnabled,
         }
       : { identity: null }),
   },
   dmg: {
     sign: macSigningEnabled,
   },
-  publish: [
-    {
-      provider: 'github',
-      owner: 'ianphil',
-      repo: 'chamber',
-      releaseType: 'release',
-    },
-  ],
+  publish: resolvePublishTargets(),
 };
 
 module.exports = config;

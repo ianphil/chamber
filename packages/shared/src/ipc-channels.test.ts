@@ -58,6 +58,13 @@ describe('IPC channel constants', () => {
     expect(IPC.TOOLS.INSTALL).toBe('tools:install');
     expect(IPC.TOOLS.UNINSTALL).toBe('tools:uninstall');
 
+    expect(IPC.BYO_LLM.GET).toBe('byoLlm:get');
+    expect(IPC.BYO_LLM.SAVE).toBe('byoLlm:save');
+    expect(IPC.BYO_LLM.DISABLE).toBe('byoLlm:disable');
+    expect(IPC.BYO_LLM.PROBE).toBe('byoLlm:probe');
+    expect(IPC.BYO_LLM.RESTART_AGENTS).toBe('byoLlm:restartAgents');
+    expect(IPC.BYO_LLM.CHANGED).toBe('byoLlm:changed');
+
     expect(IPC.CHATROOM.SEND).toBe('chatroom:send');
     expect(IPC.CHATROOM.HISTORY).toBe('chatroom:history');
     expect(IPC.CHATROOM.TASK_LEDGER).toBe('chatroom:task-ledger');
@@ -83,6 +90,10 @@ describe('IPC channel constants', () => {
     expect(IPC.A2A.GET_TASK).toBe('a2a:getTask');
     expect(IPC.A2A.LIST_TASKS).toBe('a2a:listTasks');
     expect(IPC.A2A.CANCEL_TASK).toBe('a2a:cancelTask');
+    expect(IPC.A2A.RELAY_STATUS).toBe('a2a:relay-status');
+    expect(IPC.A2A.RELAY_CONNECT).toBe('a2a:relay-connect');
+    expect(IPC.A2A.RELAY_DISCONNECT).toBe('a2a:relay-disconnect');
+    expect(IPC.A2A.RELAY_STATE_CHANGED).toBe('a2a:relay-state-changed');
 
     expect(IPC.WINDOW.MINIMIZE).toBe('window:minimize');
     expect(IPC.WINDOW.MAXIMIZE).toBe('window:maximize');
@@ -95,11 +106,14 @@ describe('IPC channel constants', () => {
     expect(IPC.E2E.A2A_INCOMING).toBe('e2e:a2a:incoming');
     expect(IPC.E2E.AUTH_EMIT_PROGRESS).toBe('e2e:auth:emit-progress');
     expect(IPC.E2E.AUTH_COMPLETE_LOGIN).toBe('e2e:auth:complete-login');
+
+    expect(IPC.APP.STARTUP_PROGRESS).toBe('app:startupProgress');
   });
 
   it('exposes channels as readonly literals via IpcChannel', () => {
     expectTypeOf<typeof IPC.CHAT.SEND>().toEqualTypeOf<'chat:send'>();
     expectTypeOf<'chat:send'>().toMatchTypeOf<IpcChannel>();
+    expectTypeOf<'byoLlm:save'>().toMatchTypeOf<IpcChannel>();
     expectTypeOf<'chatroom:set-orchestration'>().toMatchTypeOf<IpcChannel>();
     // Sanity: an unrelated string is not assignable to IpcChannel.
     expectTypeOf<'not:a:channel'>().not.toMatchTypeOf<IpcChannel>();

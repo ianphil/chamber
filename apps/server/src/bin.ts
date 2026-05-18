@@ -4,18 +4,25 @@ import { Logger } from '@chamber/services';
 
 const log = Logger.create('server');
 import {
+  A2aToolProvider,
+  A2ARelayModeService,
+  ActiveA2AResolver,
+  AgentCardRegistry,
   AuthService,
   ChatService,
   ConfigService,
   CopilotClientFactory,
   getChamberToolsBinDir,
   IdentityLoader,
+  MessageRouter,
   MindManager,
+  TaskManager,
   TurnQueue,
   ViewDiscovery,
   type CredentialStore,
 } from '@chamber/services';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import { createCredentialPrivilegedHandler } from './privileged-protocol';
 import type { ChamberCtx } from './types';
 
@@ -46,13 +53,32 @@ const saveActiveLogin = (login: string | null) => {
 };
 const authService = new AuthService(credentialStore, () => configService.load().activeLogin, saveActiveLogin);
 const viewDiscovery = new ViewDiscovery();
+const a2aEventBus = new EventEmitter();
+const agentCardRegistry = new AgentCardRegistry();
+const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
+const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver);
 const mindManager = new MindManager(
   new CopilotClientFactory({ toolsBinDir: getChamberToolsBinDir() }),
   new IdentityLoader(() => configService.load().installedTools ?? []),
   configService,
   viewDiscovery,
 );
+const taskManager = new TaskManager(mindManager, agentCardRegistry);
 const chatService = new ChatService(mindManager, new TurnQueue());
+const messageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
+mindManager.setProviders([new A2aToolProvider(messageRouter, activeA2AResolver, taskManager)]);
+mindManager.on('mind:loaded', (mind) => {
+  agentCardRegistry.register(mind);
+  a2aRelayModeService.publishLocalCard(mind.mindId).catch((error: unknown) => {
+    log.warn(`Failed to publish A2A card for ${mind.mindId}:`, error);
+  });
+});
+mindManager.on('mind:unloaded', (mindId: string) => {
+  a2aRelayModeService.unpublishLocalCard(mindId).catch((error: unknown) => {
+    log.warn(`Failed to unpublish A2A card for ${mindId}:`, error);
+  });
+  agentCardRegistry.unregister(mindId);
+});
 viewDiscovery.setRefreshHandler({
   sendBackgroundPrompt: (mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt),
 });
@@ -131,6 +157,8 @@ const productionContext: ChamberCtx = createServerContext({
   handlePrivilegedRequest: createCredentialPrivilegedHandler(credentialStore),
 });
 
+const useFakeChat = process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_FAKE_CHAT === '1';
+
 function buildE2EFakeChatContext(base: ChamberCtx): ChamberCtx {
   const fakeMinds = new Map<string, {
     mindId: string;
@@ -192,19 +220,27 @@ function buildE2EFakeChatContext(base: ChamberCtx): ChamberCtx {
   };
 }
 
-const ctx: ChamberCtx = (process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_FAKE_CHAT === '1')
+const ctx: ChamberCtx = useFakeChat
   ? buildE2EFakeChatContext(productionContext)
   : productionContext;
+const restorePromise = useFakeChat ? Promise.resolve() : mindManager.restoreFromConfig();
 
 const serverControls = createHttpServer(ctx);
 publishHolder.publish = serverControls.publish;
 const { server } = serverControls;
 
-server.listen(port, '127.0.0.1', () => {
-  const address = server.address();
-  const actualPort = typeof address === 'object' && address ? address.port : port;
-  console.log(JSON.stringify({ type: 'ready', host: '127.0.0.1', port: actualPort, token: ctx.token }));
-});
+restorePromise
+  .then(() => {
+    server.listen(port, '127.0.0.1', () => {
+      const address = server.address();
+      const actualPort = typeof address === 'object' && address ? address.port : port;
+      console.log(JSON.stringify({ type: 'ready', host: '127.0.0.1', port: actualPort, token: ctx.token }));
+    });
+  })
+  .catch((error: unknown) => {
+    log.error('Failed to restore minds before server start:', error);
+    process.exit(1);
+  });
 
 let shuttingDown = false;
 async function shutdown(): Promise<void> {

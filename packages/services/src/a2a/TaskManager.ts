@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
+import { getSdkSessionErrorMessage } from '../sdk';
 
 const log = Logger.create('TaskManager');
 
@@ -33,7 +34,12 @@ import {
   generateMessageId,
 } from './helpers';
 
-const TERMINAL_STATES: Set<TaskState> = new Set(['completed', 'failed', 'canceled', 'rejected']);
+const TERMINAL_STATES: Set<TaskState> = new Set([
+  'TASK_STATE_COMPLETED',
+  'TASK_STATE_FAILED',
+  'TASK_STATE_CANCELED',
+  'TASK_STATE_REJECTED',
+]);
 
 export interface SendTaskRequest extends SendMessageRequest {
   onUserInputRequest?: UserInputHandler;
@@ -72,7 +78,7 @@ export class TaskManager extends EventEmitter {
     const task: Task = {
       id: taskId,
       contextId,
-      status: createTaskStatus('submitted'),
+      status: createTaskStatus('TASK_STATE_SUBMITTED'),
       artifacts: [],
       history: [{ ...request.message, contextId, taskId }],
     };
@@ -96,7 +102,7 @@ export class TaskManager extends EventEmitter {
     Promise.resolve().then(() =>
       this.processTask(task, targetMindId, request.message, request.onUserInputRequest)
         .catch((err) => {
-          this.transitionState(task, 'failed');
+          this.transitionState(task, 'TASK_STATE_FAILED');
           log.error(`Task ${taskId} failed:`, err);
         }),
     );
@@ -143,7 +149,7 @@ export class TaskManager extends EventEmitter {
       throw new Error(`Cannot cancel task in terminal state: ${task.status.state}`);
     }
 
-    this.transitionState(task, 'canceled');
+    this.transitionState(task, 'TASK_STATE_CANCELED');
 
     // Abort session if exists
     const session = this.sessions.get(id);
@@ -159,7 +165,7 @@ export class TaskManager extends EventEmitter {
   resumeTask(id: string, message: Message): Task {
     const task = this.tasks.get(id);
     if (!task) throw new Error(`Task ${id} not found`);
-    if (task.status.state !== 'input-required') {
+    if (task.status.state !== 'TASK_STATE_INPUT_REQUIRED') {
       throw new Error(`Task ${id} is not in input-required state (current: ${task.status.state})`);
     }
 
@@ -167,7 +173,7 @@ export class TaskManager extends EventEmitter {
     if (!resolver) throw new Error(`No pending input request for task ${id}`);
 
     // Transition back to working
-    task.status = createTaskStatus('working');
+    task.status = createTaskStatus('TASK_STATE_WORKING');
     task.history = [...(task.history ?? []), message];
     this.emitStatusUpdate(task);
 
@@ -199,12 +205,12 @@ export class TaskManager extends EventEmitter {
     onUserInputOverride?: UserInputHandler,
   ): Promise<void> {
     // a. Transition to working
-    this.transitionState(task, 'working');
+    this.transitionState(task, 'TASK_STATE_WORKING');
 
     // b. Create isolated session with input-required callback
     const defaultOnUserInputRequest: UserInputHandler = async (request): Promise<UserInputResponse> => {
       const statusMessage = createTextMessage(targetMindId, request.question, { contextId: task.contextId });
-      task.status = createTaskStatus('input-required', statusMessage);
+      task.status = createTaskStatus('TASK_STATE_INPUT_REQUIRED', statusMessage);
       task.history = [...(task.history ?? []), statusMessage];
       this.emitStatusUpdate(task);
 
@@ -253,7 +259,7 @@ export class TaskManager extends EventEmitter {
         task.history = task.history ?? [];
         task.history.push({
           messageId: generateMessageId(),
-          role: 'agent',
+          role: 'ROLE_AGENT',
           parts: [{ text: content, mediaType: 'text/plain' }],
           contextId: task.contextId,
           taskId: task.id,
@@ -280,14 +286,16 @@ export class TaskManager extends EventEmitter {
         this.emit('task:artifact-update', artifactEvent);
       }
 
-      this.transitionState(task, 'completed');
+      this.transitionState(task, 'TASK_STATE_COMPLETED');
       this.sessions.delete(task.id);
       this.taskTargets.delete(task.id);
     });
 
-    session.on('session.error', () => {
+    session.on('session.error', (event) => {
       if (TERMINAL_STATES.has(task.status.state)) return;
-      this.transitionState(task, 'failed');
+      const errorMessage = getSessionErrorMessage(event);
+      if (isStaleSessionError(new Error(errorMessage))) return;
+      this.transitionState(task, 'TASK_STATE_FAILED');
       this.sessions.delete(task.id);
       this.taskTargets.delete(task.id);
     });
@@ -327,5 +335,13 @@ export class TaskManager extends EventEmitter {
       targetMindId: this.taskTargets.get(task.id) ?? '',
     };
     this.emit('task:status-update', event);
+  }
+}
+
+function getSessionErrorMessage(event: unknown): string {
+  try {
+    return getSdkSessionErrorMessage(event);
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }

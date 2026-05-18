@@ -37,17 +37,37 @@ export async function launchElectronApp(options: {
     child.stderr.on('data', (chunk) => logs.push(String(chunk)));
   }
 
-  await waitForCdp(cdpUrl, logs);
-  const browser = await chromium.connectOverCDP(cdpUrl);
+  let browser: Browser;
+  try {
+    await waitForCdp(cdpUrl, logs);
+    browser = await chromium.connectOverCDP(cdpUrl, { timeout: 120_000 });
+  } catch (error) {
+    if (child && !child.killed) {
+      child.kill();
+    }
+    throw error;
+  }
 
   return {
     browser,
     child,
     logs,
     close: async () => {
-      await browser.close();
-      if (child && !child.killed) {
-        child.kill();
+      try {
+        await browser.close();
+      } catch {
+        // Browser may already be gone; continue with process cleanup.
+      }
+      if (child && !child.killed && typeof child.pid === 'number') {
+        // The npm parent spawned Electron as a grandchild. SIGTERM on the
+        // parent alone leaks Electron windows that keep the CDP port bound.
+        // The child was started as a detached process group so we can SIGKILL
+        // the whole tree at once via the negative pgid.
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        }
       }
     },
   };
@@ -55,7 +75,7 @@ export async function launchElectronApp(options: {
 
 export async function findRendererPage(browser: Browser | undefined, logs: string[]): Promise<Page> {
   if (!browser) throw new Error('Browser was not connected.');
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     for (const context of browser.contexts()) {
       const page = context.pages().find((candidate) => /localhost|127\.0\.0\.1/.test(candidate.url()));
@@ -75,7 +95,9 @@ function spawnNpmStart(options: {
   if (process.platform === 'win32') {
     return spawn('cmd.exe', ['/d', '/s', '/c', command], options);
   }
-  return spawn('sh', ['-lc', command], options);
+  // detached:true puts the child in its own process group so we can SIGKILL
+  // the whole tree (Electron + Vite + Forge) on cleanup via -pid.
+  return spawn('sh', ['-lc', command], { ...options, detached: true });
 }
 
 async function waitForCdp(url: string, logs: string[]): Promise<void> {

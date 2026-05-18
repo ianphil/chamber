@@ -5,6 +5,7 @@ import { AgentCardRegistry } from './AgentCardRegistry';
 import { buildA2ATools } from './tools';
 import type { MessageRouter } from './MessageRouter';
 import type { TaskSessionFactory } from './TaskManager';
+import type { MindContext } from '@chamber/shared/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,18 +33,12 @@ function makeMockMindManager(session = makeMockSession()) {
 
 function makeMockRegistry() {
   const registry = new AgentCardRegistry();
-  // Manually insert a card without touching the file system
-  (registry as unknown as { cards: Map<string, unknown> }).cards.set('mind-target', {
-    name: 'Target Agent',
-    description: 'A test agent',
-    version: '1.0.0',
-    supportedInterfaces: [],
-    capabilities: {},
-    defaultInputModes: ['text/plain'],
-    defaultOutputModes: ['text/plain'],
-    skills: [],
+  registry.register({
     mindId: 'mind-target',
-  });
+    mindPath: 'C:\\src\\target-agent',
+    identity: { name: 'Target Agent', systemMessage: 'A test agent' },
+    status: 'ready',
+  } as MindContext);
   return registry;
 }
 
@@ -52,7 +47,7 @@ function makeRequest(overrides: Record<string, unknown> = {}) {
     recipient: 'mind-target',
     message: {
       messageId: 'msg-1',
-      role: 'user' as const,
+      role: 'ROLE_USER' as const,
       parts: [{ text: 'Do a thing', mediaType: 'text/plain' }],
       ...(overrides.message as Record<string, unknown> ?? {}),
     },
@@ -88,7 +83,7 @@ describe('A2A Task Flow Integration', () => {
     );
 
     const task = await taskManager.sendTask(makeRequest());
-    expect(task.status.state).toBe('submitted');
+    expect(task.status.state).toBe('TASK_STATE_SUBMITTED');
 
     // Let microtask queue flush (processTask runs via Promise.resolve().then)
     await vi.waitFor(() => {
@@ -100,19 +95,19 @@ describe('A2A Task Flow Integration', () => {
     session._emit('session.idle');
 
     await vi.waitFor(() => {
-      expect(events.some((e) => e.state === 'completed')).toBe(true);
+      expect(events.some((e) => e.state === 'TASK_STATE_COMPLETED')).toBe(true);
     });
 
     // Verify full state sequence: submitted → working → completed
     const states = events.filter((e) => e.type === 'status').map((e) => e.state);
-    expect(states).toEqual(['submitted', 'working', 'completed']);
+    expect(states).toEqual(['TASK_STATE_SUBMITTED', 'TASK_STATE_WORKING', 'TASK_STATE_COMPLETED']);
 
     // Verify artifact emitted
     expect(events.some((e) => e.type === 'artifact')).toBe(true);
 
     // Verify persisted task
     const persisted = taskManager.getTask(task.id);
-    expect(persisted?.status.state).toBe('completed');
+    expect(persisted?.status.state).toBe('TASK_STATE_COMPLETED');
     expect(persisted?.artifacts).toHaveLength(1);
     expect(persisted?.artifacts?.[0].parts[0].text).toBe('Done!');
   });
@@ -131,15 +126,15 @@ describe('A2A Task Flow Integration', () => {
     const taskId = tasks.tasks[0].id;
 
     const canceled = taskManager.cancelTask(taskId);
-    expect(canceled.status.state).toBe('canceled');
+    expect(canceled.status.state).toBe('TASK_STATE_CANCELED');
     expect(session.abort).toHaveBeenCalled();
   });
 
   // 3. Multiple tasks in same contextId
   it('multiple tasks with same contextId are listed correctly', async () => {
     const ctx = 'ctx-shared';
-    const req1 = makeRequest({ message: { messageId: 'msg-1', role: 'user', parts: [{ text: 'Task A' }], contextId: ctx } });
-    const req2 = makeRequest({ message: { messageId: 'msg-2', role: 'user', parts: [{ text: 'Task B' }], contextId: ctx } });
+    const req1 = makeRequest({ message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'Task A' }], contextId: ctx } });
+    const req2 = makeRequest({ message: { messageId: 'msg-2', role: 'ROLE_USER', parts: [{ text: 'Task B' }], contextId: ctx } });
 
     const t1 = await taskManager.sendTask(req1);
     const t2 = await taskManager.sendTask(req2);

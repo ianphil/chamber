@@ -80,7 +80,7 @@ describe('setupGenesisIPC', () => {
 
     expect(installer.install).toHaveBeenCalledWith({ templateId: 'lucy', basePath: 'C:\\agents' });
     expect(bootstrapMindCapabilities).toHaveBeenCalledWith('C:\\agents\\lucy');
-    expect(mindManager.loadMind).toHaveBeenCalledWith('C:\\agents\\lucy');
+    expect(mindManager.loadMind).toHaveBeenCalledWith('C:\\agents\\lucy', undefined, { enforceUnique: true });
     expect(mindManager.setActiveMind).toHaveBeenCalledWith('lucy-1234');
     expect(mockSend).toHaveBeenCalledWith('genesis:progress', { step: 'complete', detail: 'Genesis template install complete.' });
   });
@@ -133,6 +133,90 @@ describe('setupGenesisIPC', () => {
       ).rejects.toThrow(/templateId/);
     });
   });
+
+  describe('genesis:create duplicate-name pre-check (#44)', () => {
+    it('rejects with a friendly error and does not call scaffold.create when a mind with that name is already loaded', async () => {
+      const scaffold = createScaffold();
+      const mindManager = createMindManager({
+        findByName: vi.fn((name: string) =>
+          name.toLowerCase() === 'alfred' ? { mindId: 'alfred-1234', identity: { name: 'Alfred' } } : undefined,
+        ),
+      });
+      const mockSend = vi.fn();
+      vi.mocked(BrowserWindow.fromWebContents).mockReturnValue({ webContents: { send: mockSend } } as never);
+      setupGenesisIPC(mindManager, scaffold, createCatalog(), createInstaller());
+
+      const result = await getHandler('genesis:create')(EVT, {
+        name: 'Alfred',
+        role: 'butler',
+        voice: 'plain',
+        voiceDescription: 'plain',
+        basePath: 'C:\\agents',
+      });
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringMatching(/already exists/i),
+      });
+      expect(scaffold.create).not.toHaveBeenCalled();
+      expect(mindManager.findByName).toHaveBeenCalledWith('Alfred');
+      expect(mockSend).toHaveBeenCalledWith(
+        'genesis:progress',
+        expect.objectContaining({ step: 'error', detail: expect.stringMatching(/already exists/i) }),
+      );
+    });
+
+    it('proceeds with scaffold.create when no name collision exists', async () => {
+      const scaffold = createScaffold();
+      scaffold.create.mockResolvedValue('C:\\agents\\alfred');
+      const mindManager = createMindManager(); // findByName defaults to () => undefined
+      setupGenesisIPC(mindManager, scaffold, createCatalog(), createInstaller());
+
+      await getHandler('genesis:create')(EVT, {
+        name: 'Alfred',
+        role: 'butler',
+        voice: 'plain',
+        voiceDescription: 'plain',
+        basePath: 'C:\\agents',
+      });
+
+      expect(mindManager.findByName).toHaveBeenCalledWith('Alfred');
+      expect(scaffold.create).toHaveBeenCalled();
+      expect(mindManager.loadMind).toHaveBeenCalledWith(
+        'C:\\agents\\alfred',
+        undefined,
+        { enforceUnique: true },
+      );
+    });
+
+    it('activateCreatedMind passes enforceUnique:true so a TOCTOU collision after pre-check is also caught', async () => {
+      // Pre-check passes (findByName returns undefined), but a concurrent
+      // mind:add or template install lands a colliding mind during the
+      // scaffold I/O window. loadMind throws "already exists"; the IPC
+      // handler must surface the error rather than registering the mind.
+      const scaffold = createScaffold();
+      scaffold.create.mockResolvedValue('C:\\agents\\alfred');
+      const mindManager = createMindManager();
+      mindManager.loadMind.mockRejectedValueOnce(
+        new Error('An agent named "Alfred" already exists. Choose a different name.'),
+      );
+      setupGenesisIPC(mindManager, scaffold, createCatalog(), createInstaller());
+
+      const result = await getHandler('genesis:create')(EVT, {
+        name: 'Alfred',
+        role: 'butler',
+        voice: 'plain',
+        voiceDescription: 'plain',
+        basePath: 'C:\\agents',
+      });
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringMatching(/already exists/i),
+      });
+      expect(mindManager.setActiveMind).not.toHaveBeenCalled();
+    });
+  });
 });
 
 function getHandler(name: string): InvokeHandler {
@@ -141,14 +225,22 @@ function getHandler(name: string): InvokeHandler {
   return call[1] as InvokeHandler;
 }
 
-function createMindManager(): MindManager & {
+function createMindManager(overrides?: {
+  findByName?: ReturnType<typeof vi.fn>;
+}): MindManager & {
   loadMind: ReturnType<typeof vi.fn>;
   setActiveMind: ReturnType<typeof vi.fn>;
+  findByName: ReturnType<typeof vi.fn>;
 } {
   return {
     loadMind: vi.fn().mockResolvedValue({ mindId: 'lucy-1234' }),
     setActiveMind: vi.fn(),
-  } as unknown as MindManager & { loadMind: ReturnType<typeof vi.fn>; setActiveMind: ReturnType<typeof vi.fn> };
+    findByName: overrides?.findByName ?? vi.fn(() => undefined),
+  } as unknown as MindManager & {
+    loadMind: ReturnType<typeof vi.fn>;
+    setActiveMind: ReturnType<typeof vi.fn>;
+    findByName: ReturnType<typeof vi.fn>;
+  };
 }
 
 function createScaffold(): MindScaffold & {

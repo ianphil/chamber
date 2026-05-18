@@ -1,9 +1,12 @@
 import {
   Brain,
   Eye,
+  FileText,
   Globe,
+  HardDrive,
   Layout,
   List,
+  Lock,
   Search,
   Sparkles,
   SquarePen,
@@ -11,6 +14,8 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
+
+import type { PermissionRequestKind } from '@chamber/shared/types';
 
 export type WorkEntryTone = 'running' | 'done' | 'error' | 'thinking';
 
@@ -56,4 +61,27 @@ export function iconForToolName(toolName: string): LucideIcon {
 
 export function iconForReasoning(): LucideIcon {
   return Brain;
+}
+
+export function iconForPermissionKind(kind: PermissionRequestKind): LucideIcon {
+  switch (kind) {
+    case 'shell':
+      return Terminal;
+    case 'write':
+      return SquarePen;
+    case 'read':
+      return FileText;
+    case 'url':
+      return Globe;
+    case 'mcp':
+      return Wrench;
+    case 'custom-tool':
+      return Wrench;
+    case 'memory':
+      return HardDrive;
+    case 'hook':
+      return Lock;
+    default:
+      return Lock;
+  }
 }

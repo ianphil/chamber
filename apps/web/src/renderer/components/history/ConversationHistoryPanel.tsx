@@ -41,6 +41,9 @@ export function ConversationHistoryPanel() {
     : false;
   const isActiveMindBusy = isActiveMindStreaming || Boolean(activeConversationView?.modelSwitching);
   const isHistoryLoading = Boolean(activeMindId && loadingMindId === activeMindId && conversations === undefined);
+  const selectedConversationError = selectedConversationId && activeConversationView?.sessionId === selectedConversationId
+    ? activeConversationView.error
+    : undefined;
 
   const applyResumeResult = useCallback((mindId: string, result: Awaited<ReturnType<typeof window.electronAPI.conversationHistory.resume>>) => {
     dispatch({
@@ -93,11 +96,17 @@ export function ConversationHistoryPanel() {
     if (!activeMindId || !selectedConversationId || isActiveMindBusy || creatingConversationRef.current) return;
     if (activeConversationView?.status === 'hydrating' && activeConversationView.pendingSessionId === selectedConversationId) return;
     if (activeConversationView?.status === 'ready' && activeConversationView.sessionId === selectedConversationId) return;
+    if (
+      activeConversationView?.status === 'idle'
+      && activeConversationView.sessionId === selectedConversationId
+      && activeConversationView.error
+    ) return;
 
     void hydrateConversation(activeMindId, selectedConversationId).catch(() => {
       // The reducer records the failure; the warning above preserves diagnostics.
     });
   }, [
+    activeConversationView?.error,
     activeConversationView?.pendingSessionId,
     activeConversationView?.sessionId,
     activeConversationView?.status,
@@ -265,6 +274,11 @@ export function ConversationHistoryPanel() {
               <p className="px-2 py-3 text-xs text-muted-foreground">Loading history...</p>
             ) : visibleConversations.length === 0 ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">No conversations yet</p>
+            ) : null}
+            {selectedConversationError ? (
+              <p role="alert" className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-2 text-xs text-destructive">
+                {selectedConversationError}
+              </p>
             ) : null}
             {visibleConversations.map((conversation) => {
               const isSelected = conversation.sessionId === selectedConversationId || conversation.active;

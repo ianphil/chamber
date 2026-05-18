@@ -1,20 +1,9 @@
 import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
 
-// ---------------------------------------------------------------------------
-// XML helpers — used by strategies that build XML-structured prompts
-// ---------------------------------------------------------------------------
+// XML helpers and JSON-extraction helpers used by chatroom orchestration
+// strategies that build XML-structured prompts and parse control directives.
 
-const XML_ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&apos;',
-};
-
-export function escapeXml(text: string): string {
-  return text.replace(/[&<>"']/g, (ch) => XML_ESCAPE_MAP[ch]);
-}
+export { escapeXml } from '@chamber/shared/escapeXml';
 
 export function textContent(msg: ChatroomMessage): string {
   return msg.blocks

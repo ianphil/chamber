@@ -99,7 +99,7 @@ Do not invent new smoke scripts. If no existing smoke covers the path, document 
    - For larger slates, create several short stacks, one per cluster.
    - Independent PRs are allowed for design-heavy, uncertain, urgent, or intentionally deferred-version work.
    - Avoid one long stack across unrelated clusters.
-   - Use the repo's automatic branch deletion/retargeting behavior: merge stack parents first, then let GitHub retarget child PRs to `master`.
+   - Do not rely on GitHub to retarget child PRs after a stack parent branch is deleted. Merge stack parents without deleting the parent branch, retarget/rebase child PRs to the next base, then delete the parent branch only after children are safely updated.
 
 7. Choose the release metadata strategy for the slate:
 
@@ -185,7 +185,7 @@ Open each PR against its stack parent:
 - Root PR: `gh pr create --base master --head <parent-branch>`.
 - Child PR: `gh pr create --base <parent-branch> --head <child-branch>`.
 
-Merge stack parents first. Because the repo deletes merged head branches, GitHub should retarget child PRs to `master`; verify this after each merge.
+Merge stack parents first, but do **not** delete the merged parent branch until every child PR has been retargeted/rebased. GitHub may close child PRs instead of retargeting them when their base branch is deleted.
 
 ### 3. Inspect the issue and code
 
@@ -269,10 +269,18 @@ When the user explicitly approves a PR merge:
    gh pr checks <pr-number> --repo ianphil/chamber
    ```
 
-2. Admin squash merge only if the user asks for admin merge:
+2. Admin squash merge only if the user asks for admin merge.
+
+   For independent PRs, delete the branch during merge:
 
    ```powershell
    gh pr merge <pr-number> --repo ianphil/chamber --admin --squash --delete-branch
+   ```
+
+   For stack parent PRs, preserve the branch during merge:
+
+   ```powershell
+   gh pr merge <pr-number> --repo ianphil/chamber --admin --squash
    ```
 
 3. Pull latest `master`:
@@ -282,7 +290,22 @@ When the user explicitly approves a PR merge:
    git pull --ff-only origin master
    ```
 
-4. For stacked child PRs, verify GitHub retargeted correctly. If needed, rebase the child branch and update its base with `gh pr edit --base`.
+4. For stacked child PRs, retarget and rebase explicitly before deleting the parent branch:
+
+   ```powershell
+   gh pr edit <child-pr-number> --repo ianphil/chamber --base master
+   git switch <child-branch>
+   git fetch origin master --quiet
+   git rebase origin/master
+   git push --force-with-lease origin <child-branch>
+   git push origin --delete <parent-branch>
+   ```
+
+   If `gh pr edit` hits the GitHub Projects classic GraphQL deprecation path, use REST instead:
+
+   ```powershell
+   gh api -X PATCH repos/ianphil/chamber/pulls/<child-pr-number> -f base=master
+   ```
 
 ## Phase 6 - Closeout
 

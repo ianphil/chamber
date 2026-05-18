@@ -4,11 +4,12 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeMessage, makeTextBlock } from '../../../test/helpers';
-import { AppStateProvider, useAppState } from './context';
+import { AppStateProvider, useAppDispatch, useAppState } from './context';
 import { CHAT_STATE_CHANNEL, createChatStateSyncMessage } from './chatStateSync';
 
 class FakeBroadcastChannel {
   static channels = new Map<string, Set<FakeBroadcastChannel>>();
+  static postMessageCalls = 0;
 
   onmessage: ((event: MessageEvent) => void) | null = null;
 
@@ -19,6 +20,7 @@ class FakeBroadcastChannel {
   }
 
   postMessage(data: unknown): void {
+    FakeBroadcastChannel.postMessageCalls += 1;
     for (const channel of FakeBroadcastChannel.channels.get(this.name) ?? []) {
       if (channel === this) continue;
       channel.onmessage?.({ data } as MessageEvent);
@@ -37,9 +39,31 @@ function ChatStateProbe() {
   return <div>{text}</div>;
 }
 
+function ChunkAppender() {
+  const dispatch = useAppDispatch();
+  return (
+    <button
+      data-testid="append-chunk"
+      onClick={() => {
+        dispatch({
+          type: 'CHAT_EVENT',
+          payload: {
+            mindId: 'mind-1',
+            messageId: 'streaming-msg',
+            event: { type: 'chunk', sdkMessageId: 'sdk-1', content: 'x' },
+          },
+        });
+      }}
+    >
+      append
+    </button>
+  );
+}
+
 describe('AppStateProvider chat sync', () => {
   beforeEach(() => {
     FakeBroadcastChannel.channels.clear();
+    FakeBroadcastChannel.postMessageCalls = 0;
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
   });
 
@@ -84,5 +108,86 @@ describe('AppStateProvider chat sync', () => {
     await waitFor(() => {
       expect(screen.getByText('returned conversation')).toBeTruthy();
     });
+  });
+
+  it('coalesces a burst of chat-event dispatches into a single BroadcastChannel postMessage per animation frame', async () => {
+    const rafCallbacks: FrameRequestCallback[] = [];
+    let nextRafId = 1;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      rafCallbacks.push(cb);
+      return nextRafId++;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+
+    render(
+      <AppStateProvider>
+        <ChunkAppender />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      const channels = FakeBroadcastChannel.channels.get(CHAT_STATE_CHANNEL);
+      expect(channels && channels.size).toBeGreaterThan(0);
+    });
+
+    FakeBroadcastChannel.postMessageCalls = 0;
+    rafCallbacks.length = 0;
+
+    const append = screen.getByTestId('append-chunk');
+    act(() => {
+      append.click();
+      append.click();
+      append.click();
+      append.click();
+      append.click();
+    });
+
+    expect(FakeBroadcastChannel.postMessageCalls).toBe(0);
+
+    act(() => {
+      const pending = rafCallbacks.splice(0);
+      for (const cb of pending) cb(performance.now());
+    });
+
+    expect(FakeBroadcastChannel.postMessageCalls).toBe(1);
+  });
+
+  it('flushes the pending state synchronously when the source window unmounts before the next animation frame', () => {
+    let pendingRaf: FrameRequestCallback | null = null;
+    let cancelled = false;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      pendingRaf = cb;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      cancelled = true;
+      pendingRaf = null;
+    });
+
+    const peer = new BroadcastChannel(CHAT_STATE_CHANNEL);
+    let received: unknown = null;
+    peer.onmessage = (event) => {
+      if (event.data?.type === 'state') received = event.data;
+    };
+
+    const { unmount } = render(
+      <AppStateProvider>
+        <ChunkAppender />
+      </AppStateProvider>,
+    );
+
+    act(() => {
+      screen.getByTestId('append-chunk').click();
+    });
+
+    expect(pendingRaf).not.toBeNull();
+    received = null;
+
+    act(() => {
+      unmount();
+    });
+
+    expect(cancelled).toBe(true);
+    expect(received).not.toBeNull();
   });
 });

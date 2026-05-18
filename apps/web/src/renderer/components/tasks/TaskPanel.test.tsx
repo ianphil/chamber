@@ -8,22 +8,22 @@ import type { Task } from '@chamber/shared/a2a-types';
 
 function makeTask(overrides: Partial<Task> & { id: string; contextId: string }): Task {
   return {
-    status: { state: 'working' },
+    status: { state: 'TASK_STATE_WORKING' },
     ...overrides,
   };
 }
 
-const workingTask = makeTask({ id: 'task-1', contextId: 'ctx-1', status: { state: 'working' } });
+const workingTask = makeTask({ id: 'task-1', contextId: 'ctx-1', status: { state: 'TASK_STATE_WORKING' } });
 const completedTask = makeTask({
   id: 'task-2',
   contextId: 'ctx-2',
-  status: { state: 'completed' },
+  status: { state: 'TASK_STATE_COMPLETED' },
   artifacts: [
     { artifactId: 'a1', name: 'Result', parts: [{ text: 'Hello from agent' }] },
   ],
 });
-const failedTask = makeTask({ id: 'task-3', contextId: 'ctx-3', status: { state: 'failed' } });
-const inputRequiredTask = makeTask({ id: 'task-4', contextId: 'ctx-4', status: { state: 'input-required' } });
+const failedTask = makeTask({ id: 'task-3', contextId: 'ctx-3', status: { state: 'TASK_STATE_FAILED' } });
+const inputRequiredTask = makeTask({ id: 'task-4', contextId: 'ctx-4', status: { state: 'TASK_STATE_INPUT_REQUIRED' } });
 
 describe('TaskPanel', () => {
   it('renders task list grouped by agent', () => {
@@ -52,7 +52,7 @@ describe('TaskPanel', () => {
 
     const workingBadge = screen.getByTestId('status-badge-task-1');
     expect(workingBadge.style.backgroundColor).toBe('rgb(59, 130, 246)'); // blue
-    expect(workingBadge.textContent).toBe('working');
+    expect(workingBadge.textContent).toBe('Working');
 
     const completedBadge = screen.getByTestId('status-badge-task-2');
     expect(completedBadge.style.backgroundColor).toBe('rgb(34, 197, 94)'); // green

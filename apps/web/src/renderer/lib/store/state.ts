@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatEvent, ConversationSummary, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '@chamber/shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@chamber/shared/a2a-types';
 import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '@chamber/shared/chatroom-types';
+import { DEFAULT_APP_FEATURE_FLAGS, type AppFeatureFlags } from '@chamber/shared/feature-flags';
 
 export type LensView = 'chat' | string;
 
@@ -45,6 +46,7 @@ export interface AppState {
   availableModels: ModelInfo[];
   selectedModel: string | null;
   activeView: LensView;
+  featureFlags: AppFeatureFlags;
   discoveredViews: LensViewManifest[];
   showLanding: boolean;
   mindsChecked: boolean;
@@ -83,6 +85,7 @@ export type AppAction =
   | { type: 'SET_AVAILABLE_MODELS'; payload: ModelInfo[] }
   | { type: 'SET_SELECTED_MODEL'; payload: string | null }
   | { type: 'SET_ACTIVE_VIEW'; payload: LensView }
+  | { type: 'SET_FEATURE_FLAGS'; payload: AppFeatureFlags }
   | { type: 'SET_DISCOVERED_VIEWS'; payload: LensViewManifest[] }
   | { type: 'SHOW_LANDING' }
   | { type: 'HIDE_LANDING' }
@@ -125,6 +128,7 @@ export const initialState: AppState = {
   availableModels: [],
   selectedModel: null,
   activeView: 'chat',
+  featureFlags: DEFAULT_APP_FEATURE_FLAGS,
   discoveredViews: [],
   showLanding: false,
   mindsChecked: false,

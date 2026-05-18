@@ -67,6 +67,24 @@ function prepareMsalRuntime(): void {
   }
 }
 
+// Issue #145 — the loopback server bundle ships as an Electron resource only
+// when CHAMBER_MVP_SERVER=1 is set at package time. The runtime gate in
+// apps/desktop/src/main.ts uses the same env variable to decide whether to
+// spawn the server, so the two ends stay aligned. Default off saves ~MB of
+// installer bytes for users who never exercise the MVP loopback path.
+const includeMvpServerResource = process.env.CHAMBER_MVP_SERVER === '1';
+const MVP_SERVER_RESOURCE = './apps/server/dist';
+
+const baseExtraResource = [
+  './resources/node',
+  './resources/copilot-runtime',
+  './resources/sharp-runtime',
+  './resources/acp-runtime',
+  './resources/msal-runtime',
+  './node_modules/keytar',
+  './apps/desktop/src/main/assets/lens-skill',
+];
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
@@ -80,16 +98,9 @@ const config: ForgeConfig = {
         schemes: ['chamber'],
       },
     ],
-    extraResource: [
-      './resources/node',
-      './resources/copilot-runtime',
-      './resources/sharp-runtime',
-      './resources/acp-runtime',
-      './resources/msal-runtime',
-      './apps/server/dist',
-      './node_modules/keytar',
-      './apps/desktop/src/main/assets/lens-skill',
-    ],
+    extraResource: includeMvpServerResource
+      ? [...baseExtraResource, MVP_SERVER_RESOURCE]
+      : baseExtraResource,
   },
   publishers: [
     {

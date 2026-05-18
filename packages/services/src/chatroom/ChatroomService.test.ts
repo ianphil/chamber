@@ -655,7 +655,7 @@ describe('ChatroomService', () => {
       });
 
       const supplied = 'renderer-round-12345';
-      await svc.broadcast('Hi', undefined, supplied);
+      await svc.broadcast('Hi', supplied);
 
       const persisted = svc.getHistory();
       const userMsg = persisted.find((m) => m.role === 'user');
@@ -688,8 +688,8 @@ describe('ChatroomService', () => {
       autoIdle(sess);
 
       const dup = 'renderer-dup-id';
-      await svc.broadcast('first', undefined, dup);
-      await svc.broadcast('second', undefined, dup);
+      await svc.broadcast('first', dup);
+      await svc.broadcast('second', dup);
 
       const userMsgs = svc.getHistory().filter((m) => m.role === 'user');
       expect(userMsgs).toHaveLength(2);

@@ -40,6 +40,18 @@ function unknownJob(scopedJobId: string): Error {
   return new Error(`Unknown job_id: ${scopedJobId}`);
 }
 
+// Thrown when the inner JobStore.delegate returns a rawJobId that violates
+// the encoding invariant. Distinct error shape (NOT UnknownJob) so callers
+// can tell "I asked for a job that does not exist" apart from "the inner
+// store handed us a malformed id". See `unscope` below for why the
+// invariant matters.
+class MindScopedJobsInvariantError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'MindScopedJobsInvariantError';
+  }
+}
+
 export class MindScopedJobs {
   private readonly ownedJobIds = new Set<string>();
 
@@ -54,6 +66,27 @@ export class MindScopedJobs {
     readonly permissionMode?: PermissionMode;
   }): Promise<{ readonly jobId: string; readonly sessionId: string }> {
     const result = await this.inner.delegate(params);
+    // INVARIANT (issue #261): the unscope split below uses
+    // `lastIndexOf(SCOPED_ID_SEPARATOR)`, which only recovers the
+    // (mindId, rawJobId) pair correctly if the rawJobId itself does not
+    // contain the separator. The default chamber-copilot JobStore uses
+    // `randomUUID()` (no colons) so this holds in production today, but
+    // `JobStoreOptions.idFactory` is a public extension point — a future
+    // custom factory that returns colon-containing ids would silently
+    // shift the unscope boundary. Reject at the boundary so the failure
+    // is loud and immediate, not a delayed "Unknown job_id" miles away.
+    if (result.jobId.includes(SCOPED_ID_SEPARATOR)) {
+      let cancelFailure: unknown;
+      try {
+        await this.inner.cancel(result.jobId);
+      } catch (error) {
+        cancelFailure = error;
+      }
+      throw new MindScopedJobsInvariantError(
+        `MindScopedJobs invariant violated: inner JobStore returned a rawJobId containing the scope separator '${SCOPED_ID_SEPARATOR}' (jobId=${JSON.stringify(result.jobId)}). The scope/unscope split assumes rawJobIds do not contain '${SCOPED_ID_SEPARATOR}'. Use a different JobStoreOptions.idFactory.`,
+        cancelFailure === undefined ? undefined : { cause: cancelFailure },
+      );
+    }
     this.ownedJobIds.add(result.jobId);
     return { jobId: this.scope(result.jobId), sessionId: result.sessionId };
   }
@@ -116,7 +149,20 @@ export class MindScopedJobs {
     if (typeof scopedJobId !== 'string' || scopedJobId.length === 0) {
       throw unknownJob(scopedJobId);
     }
-    const sep = scopedJobId.indexOf(SCOPED_ID_SEPARATOR);
+    // INVARIANT (issue #261): split on the LAST separator, not the first.
+    //
+    //   Real Chamber mindIds are derived from a directory basename plus a
+    //   4-char hex suffix (see generateMindId.ts). On Linux/macOS a
+    //   basename can legally contain ':', so a mindId like
+    //   'foo:bar-abcd' is realistic. `indexOf(':')` would split that at
+    //   position 3 and reject every legitimate scoped id as foreign.
+    //
+    //   `lastIndexOf(':')` correctly recovers the (mindId, rawJobId) pair
+    //   under the complementary invariant that rawJobIds do not contain
+    //   ':'. That invariant is enforced eagerly in `delegate()` above, so
+    //   if a future `JobStoreOptions.idFactory` violates it the failure
+    //   surfaces at write time with a distinct error, not silently here.
+    const sep = scopedJobId.lastIndexOf(SCOPED_ID_SEPARATOR);
     if (sep <= 0 || sep === scopedJobId.length - 1) {
       throw unknownJob(scopedJobId);
     }

@@ -37,7 +37,36 @@ export interface ImageBlock {
   dataUrl: string;
 }
 
-export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock | ImageBlock;
+// Permission request/outcome surfaced inline in the chat stream so users
+// can see what the agent asked the SDK to do and how it was resolved.
+// Issue #131 checklist 5 — wired from the SDK's `permission.requested` /
+// `permission.completed` session events via `mapSdkPermissionRequested`
+// and `mapSdkPermissionCompleted`. The block status starts `pending`
+// when the request arrives and updates to one of the SDK's
+// `PermissionCompletedKind` values when the completion event fires.
+export type PermissionRequestKind = 'shell' | 'write' | 'mcp' | 'read' | 'url' | 'custom-tool' | 'memory' | 'hook';
+
+export type PermissionOutcome =
+  | 'pending'
+  | 'approved'
+  | 'approved-for-session'
+  | 'approved-for-location'
+  | 'denied-by-rules'
+  | 'denied-no-approval-rule-and-could-not-request-from-user'
+  | 'denied-interactively-by-user'
+  | 'denied-by-content-exclusion-policy'
+  | 'denied-by-permission-request-hook';
+
+export interface PermissionBlock {
+  type: 'permission';
+  requestId: string;
+  kind: PermissionRequestKind;
+  summary: string;
+  outcome: PermissionOutcome;
+  toolCallId?: string;
+}
+
+export type ContentBlock = TextBlock | ToolCallBlock | ReasoningBlock | ImageBlock | PermissionBlock;
 
 // ---------------------------------------------------------------------------
 // Chat events — single sequenced IPC channel
@@ -51,6 +80,8 @@ export type ChatEvent =
   | { type: 'tool_done'; toolCallId: string; success: boolean; result?: string; error?: string }
   | { type: 'reasoning'; reasoningId: string; content: string }
   | { type: 'message_final'; sdkMessageId: string; content: string }
+  | { type: 'permission_request'; requestId: string; kind: PermissionRequestKind; summary: string; toolCallId?: string }
+  | { type: 'permission_outcome'; requestId: string; outcome: Exclude<PermissionOutcome, 'pending'> }
   | { type: 'reconnecting' }
   | { type: 'done' }
   | { type: 'timeout'; timeoutMs: number }
@@ -80,6 +111,13 @@ export interface MindIdentity {
 
 export type MindStatus = 'loading' | 'ready' | 'error' | 'unloading';
 
+export type ModelProvider = 'byo';
+
+export interface ModelSelection {
+  id: string;
+  provider?: ModelProvider;
+}
+
 /** Shared mind context — safe for renderer consumption */
 export interface MindContext {
   readonly mindId: string;
@@ -88,6 +126,7 @@ export interface MindContext {
   readonly status: MindStatus;
   readonly error?: string;
   selectedModel?: string;
+  selectedModelProvider?: ModelProvider;
   activeSessionId?: string;
   readonly windowed?: boolean;
 }
@@ -97,6 +136,7 @@ export interface MindRecord {
   id: string;
   path: string;
   selectedModel?: string;
+  selectedModelProvider?: ModelProvider;
   activeSessionId?: string;
   conversations?: ChamberConversationRecord[];
 }
@@ -240,6 +280,8 @@ export type MarketplaceRegistryActionResult =
 export interface ModelInfo {
   id: string;
   name: string;
+  /** Optional provider tag — set to 'byo' for models from a Bring-Your-Own LLM endpoint. Omitted for SDK/Copilot models. */
+  provider?: ModelProvider;
 }
 
 /** @deprecated Use AppConfigV2 — kept for migration */
@@ -257,13 +299,8 @@ export interface AppConfig {
   userProfile?: UserProfile;
   marketplaceRegistries?: MarketplaceRegistry[];
   installedTools?: InstalledTool[];
-  /**
-   * Opt-in: enable the chamber-copilot ACP extension. When true,
-   * `ChamberCopilotService` is wired into the mind tool providers and
-   * exposes the `cli_*` ACP tools so minds can delegate work to a child
-   * `copilot --acp` process. Default false.
-   */
-  chamberCopilotEnabled?: boolean;
+  a2aRelayBaseUrl?: string;
+  a2aRelayAuthMode?: 'static' | 'interactive';
 }
 
 interface InstalledToolBase {
@@ -419,6 +456,70 @@ export interface DesktopUpdateState {
 export interface DesktopUpdateActionResult {
   success: boolean;
   message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// BYO LLM (Bring Your Own LLM) — custom OpenAI-compatible endpoint config
+// Maps to GitHub Copilot CLI's COPILOT_PROVIDER_* environment variables.
+// ---------------------------------------------------------------------------
+
+export type ByoLlmProviderType = 'openai' | 'azure' | 'anthropic';
+export type ByoLlmWireApi = 'completions' | 'responses';
+
+export interface ByoLlmConfig {
+  enabled: boolean;
+  baseUrl: string;
+  providerType?: ByoLlmProviderType;
+  apiKey?: string;
+  bearerToken?: string;
+  model?: string;
+  modelId?: string;
+  wireModel?: string;
+  wireApi?: ByoLlmWireApi;
+  azureApiVersion?: string;
+  customHeaders?: Record<string, string>;
+  maxPromptTokens?: number;
+  maxOutputTokens?: number;
+}
+
+export interface ByoLlmProbeSuccess {
+  ok: true;
+  modelCount: number;
+  models: Array<{ id: string; name?: string }>;
+}
+
+export interface ByoLlmProbeFailure {
+  ok: false;
+  error: string;
+  status?: number;
+}
+
+export type ByoLlmProbeResult = ByoLlmProbeSuccess | ByoLlmProbeFailure;
+
+export interface ByoLlmSaveResult {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Per-step progress event broadcast from the main process to all renderer
+ * windows while the app boots. Drives the boot-screen activity log (#56) so
+ * the user sees real work happening instead of a passive spinner.
+ *
+ * `kind` summarizes the step; `detail` is human-readable text to display
+ * (e.g. mind name, error reason). Payload contents are display-safe — no
+ * secrets, no file contents, no SDK event bodies.
+ */
+export type StartupProgressEventKind =
+  | 'restore-start'
+  | 'mind-restoring'
+  | 'mind-restored'
+  | 'mind-failed'
+  | 'restore-complete';
+
+export interface StartupProgressEvent {
+  kind: StartupProgressEventKind;
+  detail: string;
 }
 
 // `ElectronAPI` and the `Window.electronAPI` global declaration live in

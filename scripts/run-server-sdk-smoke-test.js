@@ -5,6 +5,8 @@ const serverBin = path.join(process.cwd(), 'apps', 'server', 'dist', 'bin.mjs');
 const child = spawn(process.execPath, [serverBin], {
   env: {
     ...process.env,
+    CHAMBER_E2E: '1',
+    CHAMBER_E2E_FAKE_CHAT: '1',
     CHAMBER_SERVER_TOKEN: 'smoke-token',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -24,7 +26,12 @@ child.stdout.on('data', async (chunk) => {
   const lines = String(chunk).trim().split(/\r?\n/);
   for (const line of lines) {
     if (!line) continue;
-    const payload = JSON.parse(line);
+    let payload;
+    try {
+      payload = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (payload.type !== 'ready') continue;
     ready = true;
     clearTimeout(timer);

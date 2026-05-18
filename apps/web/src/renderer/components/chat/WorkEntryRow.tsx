@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight, Loader2, Check, X } from 'lucide-react';
+import { ChevronRight, Loader2, Check, X, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { iconForReasoning, iconForToolName } from './workEntryIcon';
+import { iconForPermissionKind, iconForReasoning, iconForToolName } from './workEntryIcon';
+import type { PermissionOutcome, PermissionRequestKind } from '@chamber/shared/types';
 import type { WorkEntry } from './WorkGroup.logic';
 
 interface Props {
@@ -59,6 +60,7 @@ export function WorkEntryRow({ entry, autoExpand = false }: Props) {
           </span>
         )}
         {entry.kind === 'tool' && <StatusGlyph status={entry.status} />}
+        {entry.kind === 'permission' && <PermissionGlyph outcome={entry.block.outcome} />}
       </button>
       {open && canToggle && (
         <div className="mt-0.5 ml-6 mb-1">
@@ -71,17 +73,41 @@ export function WorkEntryRow({ entry, autoExpand = false }: Props) {
 
 function hasDetail(entry: WorkEntry): boolean {
   if (entry.kind === 'reasoning') return entry.block.content.length > 0;
+  if (entry.kind === 'permission') return entry.block.outcome !== 'pending';
   return Boolean(entry.block.output || entry.block.error);
 }
 
 function headingFor(entry: WorkEntry): string {
   if (entry.kind === 'reasoning') return 'Thought';
+  if (entry.kind === 'permission') return permissionHeading(entry.block.kind);
   return entry.toolName;
+}
+
+function permissionHeading(kind: PermissionRequestKind): string {
+  switch (kind) {
+    case 'shell': return 'shell permission';
+    case 'write': return 'write permission';
+    case 'read': return 'read permission';
+    case 'url': return 'url permission';
+    case 'mcp': return 'mcp permission';
+    case 'custom-tool': return 'tool permission';
+    case 'memory': return 'memory permission';
+    case 'hook': return 'hook permission';
+    default: return 'permission';
+  }
 }
 
 function iconAndTone(entry: WorkEntry): { Icon: ReturnType<typeof iconForToolName>; iconClass: string } {
   if (entry.kind === 'reasoning') {
     return { Icon: iconForReasoning(), iconClass: 'text-muted-foreground/60' };
+  }
+  if (entry.kind === 'permission') {
+    const iconClass = isDeniedOutcome(entry.block.outcome)
+      ? 'text-destructive'
+      : entry.block.outcome === 'pending'
+        ? 'text-genesis'
+        : 'text-foreground/80';
+    return { Icon: iconForPermissionKind(entry.block.kind), iconClass };
   }
   const Icon = iconForToolName(entry.toolName);
   const iconClass =
@@ -105,12 +131,54 @@ function StatusGlyph({ status }: { status: 'running' | 'done' | 'error' }) {
   return <Check className="h-3 w-3 shrink-0 text-emerald-400/80" aria-label="done" />;
 }
 
+function isDeniedOutcome(outcome: PermissionOutcome): boolean {
+  return outcome.startsWith('denied-');
+}
+
+function PermissionGlyph({ outcome }: { outcome: PermissionOutcome }) {
+  if (outcome === 'pending') {
+    return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-genesis" aria-label="awaiting permission" />;
+  }
+  if (isDeniedOutcome(outcome)) {
+    return <ShieldAlert className="h-3 w-3 shrink-0 text-destructive" aria-label={outcome} />;
+  }
+  return <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-400/80" aria-label={outcome} />;
+}
+
+function permissionOutcomeLabel(outcome: PermissionOutcome): string {
+  switch (outcome) {
+    case 'pending': return 'Awaiting decision…';
+    case 'approved': return 'Approved (one-time)';
+    case 'approved-for-session': return 'Approved for this session';
+    case 'approved-for-location': return 'Approved for this location';
+    case 'denied-by-rules': return 'Denied by configured rules';
+    case 'denied-no-approval-rule-and-could-not-request-from-user': return 'Denied — no approval rule and user could not be asked';
+    case 'denied-interactively-by-user': return 'Denied by user';
+    case 'denied-by-content-exclusion-policy': return 'Denied by content exclusion policy';
+    case 'denied-by-permission-request-hook': return 'Denied by permission hook';
+    default: return outcome;
+  }
+}
+
 function EntryDetail({ entry }: { entry: WorkEntry }) {
   if (entry.kind === 'reasoning') {
     return (
       <pre className="whitespace-pre-wrap break-words border-l-2 border-border px-3 py-1.5 text-[11px] leading-relaxed font-mono text-muted-foreground/70">
         {entry.block.content}
       </pre>
+    );
+  }
+  if (entry.kind === 'permission') {
+    const denied = isDeniedOutcome(entry.block.outcome);
+    return (
+      <div className="overflow-hidden rounded-md border border-border/60 bg-card/40 px-3 py-2 text-[11px] font-mono leading-relaxed">
+        <div className="text-muted-foreground">
+          <span className="text-foreground/80">{entry.block.kind}</span>: {entry.block.summary}
+        </div>
+        <div className={cn('mt-1', denied ? 'text-destructive' : 'text-emerald-400/80')}>
+          {permissionOutcomeLabel(entry.block.outcome)}
+        </div>
+      </div>
     );
   }
   return (

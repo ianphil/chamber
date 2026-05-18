@@ -13,6 +13,23 @@ export function useAppSubscriptions() {
   const dispatch = useAppDispatch();
   const viewsLoaded = useRef(false);
 
+  // Feature flags are app-owned, not user-configurable renderer state.
+  useEffect(() => {
+    let cancelled = false;
+    const loadFeatureFlags = async () => {
+      try {
+        const featureFlags = await window.electronAPI.app.getFeatureFlags();
+        if (!cancelled) dispatch({ type: 'SET_FEATURE_FLAGS', payload: featureFlags });
+      } catch (err) {
+        log.error('Failed to load feature flags:', err);
+      }
+    };
+    loadFeatureFlags();
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch]);
+
   // Chat event listener — must stay alive regardless of active view
   useEffect(() => {
     const unsub = window.electronAPI.chat.onEvent((mindId, messageId, event) => {
@@ -35,7 +52,11 @@ export function useAppSubscriptions() {
     viewsLoaded.current = false;
   }, [activeMindId]);
 
-  // Fetch models whenever active mind changes (no cache — always fresh)
+  // Fetch models whenever active mind changes. The IPC call is uncached
+  // here, but the @github/copilot CLI server caches its `/models` response
+  // in-memory for 30 minutes per CLI subprocess — so this returns the same
+  // list across mind switches until either the CLI restarts or the TTL
+  // expires. See docs/model-cache-investigation.md (issue #90).
   useEffect(() => {
     const connected = minds.length > 0 || !!activeMindId;
     if (!connected) return;
@@ -49,6 +70,12 @@ export function useAppSubscriptions() {
       }
     };
     loadModels();
+
+    // Re-fetch the model list whenever the BYO LLM config changes so
+    // BYO models appear/disappear without forcing cloud-selected minds
+    // onto the custom provider.
+    const unsub = window.electronAPI.byoLlm.onChanged(() => { void loadModels(); });
+    return () => { unsub(); };
   }, [minds.length, activeMindId, dispatch]);
 
   // Fetch discovered Lens views

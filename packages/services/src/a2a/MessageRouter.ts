@@ -1,5 +1,5 @@
-import type { SendMessageRequest, SendMessageResponse, Message } from './types';
-import type { AgentCardRegistry } from './AgentCardRegistry';
+import type { AgentCard, SendMessageRequest, SendMessageResponse, Message } from './types';
+import type { A2AAgentResolver } from './ActiveA2AResolver';
 import type { ChatService } from '../chat/ChatService';
 import type { EventEmitter } from 'events';
 import { generateMessageId, generateContextId, serializeMessageToXml } from './helpers';
@@ -8,34 +8,34 @@ import { Logger } from '../logger';
 const log = Logger.create('MessageRouter');
 
 const MAX_HOPS = 5;
-
 export class MessageRouter {
-  private contextHops = new Map<string, number>();
-
   constructor(
     private readonly chatService: ChatService,
-    private readonly registry: AgentCardRegistry,
+    private readonly resolver: A2AAgentResolver,
     private readonly ipcEmitter: EventEmitter,
   ) {}
 
   async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
     // 1. Resolve recipient — try by mindId first, then by name
-    const card = this.registry.getCard(request.recipient) ?? this.registry.getCardByName(request.recipient);
-    if (!card?.mindId) {
+    const card = await this.resolver.getCard(request.recipient) ?? await this.resolver.getCardByName(request.recipient);
+    if (!card) {
+      const ambiguousMatches = await this.findAmbiguousNameMatches(request.recipient);
+      if (ambiguousMatches.length > 1) {
+        throw new Error(
+          `Ambiguous recipient: ${request.recipient} matches ${ambiguousMatches.map(formatAgentIdentifier).join(', ')}`,
+        );
+      }
       throw new Error(`Unknown recipient: ${request.recipient}`);
     }
-    const targetMindId = card.mindId;
-
     // 2. Assign/preserve contextId
     const contextId = request.message.contextId || generateContextId();
 
-    // 3. Resolve hop count from context tracking (not message metadata)
-    const currentHops = this.contextHops.get(contextId) ?? 0;
+    // 3. Resolve hop count from the forwarded message, not the whole context.
+    const currentHops = getMessageHopCount(request.message.metadata?.hopCount);
     if (currentHops >= MAX_HOPS) {
       throw new Error(`Message exceeded maximum hop count (${MAX_HOPS})`);
     }
     const nextHops = currentHops + 1;
-    this.contextHops.set(contextId, nextHops);
 
     // 4. Build the delivery message
     const deliveryMessage: Message = {
@@ -47,19 +47,56 @@ export class MessageRouter {
       },
     };
 
-    // 5. Serialize to XML for model injection
+    if (this.resolver.canSendMessage?.() === true && this.resolver.sendMessage) {
+      return this.resolver.sendMessage({
+        ...request,
+        message: deliveryMessage,
+      });
+    }
+
+    if (!card.mindId) {
+      throw new Error(`Unknown local recipient: ${request.recipient}`);
+    }
+    const targetMindId = card.mindId;
+
+    return this.deliverLocalMessage(targetMindId, deliveryMessage, request.configuration?.returnImmediately !== false);
+  }
+
+  async deliverToLocalMind(
+    targetMindId: string,
+    request: SendMessageRequest,
+  ): Promise<SendMessageResponse> {
+    const contextId = request.message.contextId || generateContextId();
+    const currentHops = getMessageHopCount(request.message.metadata?.hopCount);
+    if (currentHops >= MAX_HOPS) {
+      throw new Error(`Message exceeded maximum hop count (${MAX_HOPS})`);
+    }
+    const deliveryMessage: Message = {
+      ...request.message,
+      contextId,
+      metadata: {
+        ...request.message.metadata,
+        hopCount: currentHops + 1,
+      },
+    };
+    return this.deliverLocalMessage(targetMindId, deliveryMessage, request.configuration?.returnImmediately !== false);
+  }
+
+  private async deliverLocalMessage(
+    targetMindId: string,
+    deliveryMessage: Message,
+    returnImmediately: boolean,
+  ): Promise<SendMessageResponse> {
+    const contextId = deliveryMessage.contextId || generateContextId();
     const xmlPrompt = serializeMessageToXml(deliveryMessage);
     const replyMessageId = generateMessageId();
 
-    // 6. Emit a2a:incoming for renderer (before delivery)
     this.ipcEmitter.emit('a2a:incoming', {
       targetMindId,
-      message: deliveryMessage,
+      message: { ...deliveryMessage, contextId },
       replyMessageId,
     });
 
-    // 7. Deliver via ChatService — emit callback forwards events via IPC bus
-    const returnImmediately = request.configuration?.returnImmediately !== false;
     const deliveryPromise = this.chatService.sendMessage(
       targetMindId,
       xmlPrompt,
@@ -81,7 +118,6 @@ export class MessageRouter {
       });
     }
 
-    // 8. Return response
     return {
       message: {
         ...deliveryMessage,
@@ -89,4 +125,18 @@ export class MessageRouter {
       },
     };
   }
+
+  private async findAmbiguousNameMatches(name: string): Promise<AgentCard[]> {
+    const cards = await this.resolver.getCards();
+    return cards.filter((candidate) => candidate.name === name);
+  }
+
+}
+
+function formatAgentIdentifier(card: AgentCard): string {
+  return card.mindId ?? card.aliases?.[0] ?? `(no unique identifier for ${card.name})`;
+}
+
+function getMessageHopCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
 }

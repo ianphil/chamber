@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
+import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import type { ModelInfo, ChatImageAttachment } from '@chamber/shared/types';
 import {
   Select,
@@ -487,11 +488,15 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id} className="text-xs">
-                        {model.name}
-                      </SelectItem>
-                    ))}
+                    {availableModels.map((model) => {
+                      const key = modelSelectionKeyFromModel(model);
+                      return (
+                        <SelectItem key={key} value={key} className="text-xs">
+                          {model.name}
+                          {model.provider === 'byo' ? <span className="ml-2 rounded bg-emerald-700/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">Local</span> : null}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               ) : (

@@ -6,20 +6,23 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { PermissionHandler, ResumeSessionConfig, SessionConfig } from '@github/copilot-sdk';
+import { parseModelSelectionKey } from '@chamber/shared/model-selection';
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
-import type { AppConfig, ChamberConversationRecord, ChatMessage, ConversationResumeResult, ConversationSummary, MindContext, MindRecord } from '@chamber/shared/types';
+import type { AppConfig, ChamberConversationRecord, ChatMessage, ConversationResumeResult, ConversationSummary, MindContext, MindRecord, ModelProvider, ModelSelection } from '@chamber/shared/types';
 import { Logger } from '../logger';
 import type { InternalMindContext, CopilotClient, CopilotSession, Tool, UserInputHandler } from './types';
 import { generateMindId } from './generateMindId';
 import { loadMcpServersFromMindPath } from './mcpConfig';
+import { loadChamberMindConfig } from './chamberMindConfig';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
-import { approveAllCompat } from '../sdk/approveAllCompat';
+import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext, stripInjectedCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
 import { bootstrapMindCapabilities } from '../lens/MindBootstrap';
+import type { SdkProviderConfig } from '../byo-llm/buildProviderConfig';
 
 const log = Logger.create('MindManager');
 
@@ -27,6 +30,12 @@ export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
   private pathToId = new Map<string, string>();
   private loading = new Map<string, Promise<MindContext>>();
+  // Lowercased+NFC display names held by in-flight `loadMind({enforceUnique:true})`
+  // calls. Two concurrent uniqueness-enforcing loads with colliding identity
+  // names would otherwise both pass the `this.minds`-only check because neither
+  // is in `this.minds` until much later in `doLoadMind`. The reservation closes
+  // that race so exactly one of the concurrent loads succeeds.
+  private pendingNames = new Set<string>();
   private knownMindRecords = new Map<string, MindRecord>();
   private activeMindId: string | null = null;
   private persistedActiveMindId: string | null = null;
@@ -40,6 +49,27 @@ export class MindManager extends EventEmitter {
     private readonly identityLoader: IdentityLoader,
     private readonly configService: ConfigService,
     private readonly viewDiscovery: ViewDiscovery,
+    /**
+     * BYO LLM SDK provider config. Returns the config when BYO is enabled and
+     * configured, or null when the bundled GitHub Copilot model catalog should
+     * be used.
+     *
+     * This is the AUTHORITATIVE BYOK activation path for SDK-spawned CLI
+     * processes — `provider` MUST be passed into `client.createSession({...})`
+     * for the CLI to route inference to the BYO endpoint. The CLI's
+     * `COPILOT_PROVIDER_*` env vars only affect standalone CLI invocations,
+     * NOT the SDK's `createSession` server-mode path. See
+     *   node_modules/@github/copilot-sdk/dist/types.d.ts (ProviderConfig)
+     *   https://github.com/github/copilot-sdk/blob/main/nodejs/README.md#custom-providers
+     * for the contract.
+     */
+    private readonly byoProviderConfigProvider: () => SdkProviderConfig | null = () => null,
+    /**
+     * Default model fallback for BYO LLM. Returns the saved BYO config's model
+     * field, used when a mind has no per-mind selectedModel. Required because
+     * the SDK rejects createSession({provider}) without a model argument.
+     */
+    private readonly byoDefaultModelProvider: () => string | undefined = () => undefined,
   ) {
     super();
   }
@@ -48,7 +78,11 @@ export class MindManager extends EventEmitter {
     this.providers = [...providers];
   }
 
-  async loadMind(mindPath: string, mindId?: string): Promise<MindContext> {
+  async loadMind(
+    mindPath: string,
+    mindId?: string,
+    options?: { enforceUnique?: boolean },
+  ): Promise<MindContext> {
     const resolvedMindPath = this.resolveMindPath(mindPath);
     const mindPathKey = this.mindPathKey(resolvedMindPath);
 
@@ -64,7 +98,7 @@ export class MindManager extends EventEmitter {
     const inflight = this.loading.get(mindPathKey);
     if (inflight) return inflight;
 
-    const promise = this.doLoadMind(resolvedMindPath, mindId);
+    const promise = this.doLoadMind(resolvedMindPath, mindId, options);
     this.loading.set(mindPathKey, promise);
     try {
       return await promise;
@@ -73,7 +107,11 @@ export class MindManager extends EventEmitter {
     }
   }
 
-  private async doLoadMind(mindPath: string, mindId?: string): Promise<MindContext> {
+  private async doLoadMind(
+    mindPath: string,
+    mindId?: string,
+    options?: { enforceUnique?: boolean },
+  ): Promise<MindContext> {
     const resolvedMindPath = this.resolveMindPath(mindPath);
     const mindPathKey = this.mindPathKey(resolvedMindPath);
 
@@ -86,19 +124,63 @@ export class MindManager extends EventEmitter {
       throw new Error(`Failed to load identity from ${resolvedMindPath}`);
     }
 
+    // Issue #44 — display-name uniqueness check. Done after identity load
+    // and BEFORE clientFactory.createClient so a rejected load does not
+    // spawn an SDK subprocess that has to be torn down. Opt-in via
+    // `options.enforceUnique` so app-startup replay of persisted records
+    // (which may contain legitimate pre-existing duplicates) is unaffected.
+    //
+    // The `pendingNames` reservation closes the race where two concurrent
+    // enforce-unique loads each see an empty `this.minds` for the colliding
+    // name (the actual set+get into `this.minds` happens much later, after
+    // client/session setup). Without the reservation both would succeed.
+    let reservedName: string | undefined;
+    if (options?.enforceUnique) {
+      const collision = this.findByName(identity.name);
+      if (collision && this.mindPathKey(collision.mindPath) !== mindPathKey) {
+        throw new Error(
+          `An agent named "${identity.name}" already exists. Choose a different name.`,
+        );
+      }
+      const needle = MindManager.nameKey(identity.name);
+      if (needle && this.pendingNames.has(needle)) {
+        throw new Error(
+          `An agent named "${identity.name}" already exists. Choose a different name.`,
+        );
+      }
+      if (needle) {
+        this.pendingNames.add(needle);
+        reservedName = needle;
+      }
+    }
+
+    try {
+      return await this.doLoadMindInner(resolvedMindPath, mindPathKey, id, identity);
+    } finally {
+      if (reservedName) this.pendingNames.delete(reservedName);
+    }
+  }
+
+  private async doLoadMindInner(
+    resolvedMindPath: string,
+    mindPathKey: string,
+    id: string,
+    identity: NonNullable<ReturnType<IdentityLoader['load']>>,
+  ): Promise<MindContext> {
+
     try {
       bootstrapMindCapabilities(resolvedMindPath);
     } catch (err) {
       log.warn('Mind capability bootstrap failed (non-fatal):', err);
     }
 
-    // Create client
+    // Create client (no env-var BYOK plumbing — provider is passed via SessionConfig.provider on createSession)
     const client = await this.clientFactory.createClient(resolvedMindPath);
 
     const sessionTools = this.getSessionTools(id, resolvedMindPath);
 
     const knownRecord = this.knownMindRecords.get(id);
-    const selectedModel = knownRecord?.selectedModel;
+    const { selectedModel, selectedModelProvider } = this.getRestorableModelSelection(id, knownRecord);
     const activeSessionId = knownRecord?.activeSessionId ?? this.createConversationRecord(id).sessionId;
     const conversationRecord = this.ensureConversationRecord(id, activeSessionId, knownRecord?.conversations);
     const session = knownRecord?.activeSessionId
@@ -109,18 +191,17 @@ export class MindManager extends EventEmitter {
         sessionTools,
         conversationRecord.sessionId,
         selectedModel,
+        selectedModelProvider,
       )
-      : await this.createSessionForMind(
+      : await this.createSessionForMind({
         client,
-        resolvedMindPath,
-        identity.systemMessage,
-        sessionTools,
-        undefined,
-        approveAllCompat,
-        true,
-        selectedModel,
-        activeSessionId,
-      );
+        mindPath: resolvedMindPath,
+        systemMessage: identity.systemMessage,
+        tools: sessionTools,
+        model: selectedModel,
+        modelProvider: selectedModelProvider,
+        sessionId: activeSessionId,
+      });
 
     const context: InternalMindContext = {
       mindId: id,
@@ -128,6 +209,7 @@ export class MindManager extends EventEmitter {
       identity,
       status: 'ready',
       selectedModel,
+      selectedModelProvider,
       activeSessionId,
       client,
       session,
@@ -135,6 +217,10 @@ export class MindManager extends EventEmitter {
 
     this.minds.set(id, context);
     this.pathToId.set(mindPathKey, id);
+
+    // Capture pre-existing knownRecord so the rollback can restore it
+    // rather than wiping a real record on a late failure.
+    const previousKnownRecord = this.knownMindRecords.get(id);
 
     try {
       await Promise.all([
@@ -144,28 +230,33 @@ export class MindManager extends EventEmitter {
       this.viewDiscovery.startWatching(resolvedMindPath, () => {
         this.emit('lens:viewsChanged', this.viewDiscovery.getViews(resolvedMindPath), id);
       });
+
+      this.knownMindRecords.set(id, {
+        id,
+        path: resolvedMindPath,
+        ...(selectedModel ? { selectedModel } : {}),
+        ...(selectedModelProvider ? { selectedModelProvider } : {}),
+        activeSessionId,
+        conversations: [
+          conversationRecord,
+          ...(knownRecord?.conversations ?? []).filter((conversation) => conversation.sessionId !== activeSessionId),
+        ],
+      });
+
+      this.persistConfig();
     } catch (err) {
       this.minds.delete(id);
       this.pathToId.delete(mindPathKey);
       this.viewDiscovery.removeMind(resolvedMindPath);
+      if (previousKnownRecord) {
+        this.knownMindRecords.set(id, previousKnownRecord);
+      } else {
+        this.knownMindRecords.delete(id);
+      }
       await this.releaseProviders(id).catch(() => { /* noop */ });
       await this.clientFactory.destroyClient(client);
       throw err;
     }
-
-    this.knownMindRecords.set(id, {
-      id,
-      path: resolvedMindPath,
-      ...(selectedModel ? { selectedModel } : {}),
-      activeSessionId,
-      conversations: [
-        conversationRecord,
-        ...(knownRecord?.conversations ?? []).filter((conversation) => conversation.sessionId !== activeSessionId),
-      ],
-    });
-
-    // Persist
-    this.persistConfig();
 
     this.emit('mind:loaded', this.toExternalContext(context));
     return this.toExternalContext(context);
@@ -237,6 +328,31 @@ export class MindManager extends EventEmitter {
     return Array.from(this.minds.values()).map(m => this.toExternalContext(m));
   }
 
+  /**
+   * Case-insensitive lookup of a loaded mind by its display name. Used by
+   * IPC adapters to detect duplicate-name collisions during agent creation
+   * (issue #44) before the user commits to a new mind directory. Returns
+   * `undefined` if no loaded mind has a name matching `name`.
+   *
+   * Names are compared after NFC normalization, trim, and lowercase so that
+   * cross-platform paste differences (macOS NFD vs Windows NFC for accented
+   * names like "Café") don't slip a duplicate past the check.
+   */
+  findByName(name: string): MindContext | undefined {
+    const needle = MindManager.nameKey(name);
+    if (!needle) return undefined;
+    for (const internal of this.minds.values()) {
+      if (MindManager.nameKey(internal.identity.name) === needle) {
+        return this.toExternalContext(internal);
+      }
+    }
+    return undefined;
+  }
+
+  private static nameKey(name: string): string {
+    return name.normalize('NFC').trim().toLowerCase();
+  }
+
   getMind(mindId: string): Readonly<InternalMindContext> | undefined {
     return this.minds.get(mindId);
   }
@@ -286,6 +402,7 @@ export class MindManager extends EventEmitter {
       sessionTools,
       context.activeSessionId,
       context.selectedModel,
+      context.selectedModelProvider,
     );
     context.session = recoveredSession;
     await previousSession?.disconnect().catch(() => { /* session already disconnected */ });
@@ -351,17 +468,15 @@ export class MindManager extends EventEmitter {
     const conversation = this.createConversationRecord(mindId);
     const previousSession = context.session;
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
-    const nextSession = await this.createSessionForMind(
-      context.client,
-      context.mindPath,
-      context.identity.systemMessage,
-      sessionTools,
-      undefined,
-      approveAllCompat,
-      true,
-      context.selectedModel,
-      conversation.sessionId,
-    );
+    const nextSession = await this.createSessionForMind({
+      client: context.client,
+      mindPath: context.mindPath,
+      systemMessage: context.identity.systemMessage,
+      tools: sessionTools,
+      model: context.selectedModel,
+      modelProvider: context.selectedModelProvider,
+      sessionId: conversation.sessionId,
+    });
     context.session = nextSession;
     context.activeSessionId = conversation.sessionId;
     this.upsertConversationRecord(mindId, conversation, replaceSessionId);
@@ -399,6 +514,7 @@ export class MindManager extends EventEmitter {
       sessionTools,
       conversation.sessionId,
       context.selectedModel,
+      context.selectedModelProvider,
     );
     context.session = nextSession;
     context.activeSessionId = sessionId;
@@ -502,6 +618,7 @@ export class MindManager extends EventEmitter {
       sessionTools,
       nextConversation.sessionId,
       context.selectedModel,
+      context.selectedModelProvider,
     );
     context.session = nextSession;
     context.activeSessionId = nextConversation.sessionId;
@@ -539,7 +656,13 @@ export class MindManager extends EventEmitter {
 
   private async setMindModelUnlocked(mindId: string, model: string | null): Promise<MindContext | null> {
     const context = this.minds.get(mindId);
-    const selectedModel = model && model.trim().length > 0 ? model.trim() : undefined;
+    const selection = this.normalizeModelSelection(model);
+    const selectedModel = selection?.id;
+    const selectedModelProvider = selection?.provider;
+
+    if (selectedModelProvider === 'byo') {
+      this.resolveProviderForSelection(selectedModelProvider);
+    }
 
     if (!context) {
       const existingRecord = this.knownMindRecords.get(mindId);
@@ -548,6 +671,7 @@ export class MindManager extends EventEmitter {
         id: existingRecord.id,
         path: existingRecord.path,
         ...(selectedModel ? { selectedModel } : {}),
+        ...(selectedModelProvider ? { selectedModelProvider } : {}),
         ...(existingRecord.activeSessionId ? { activeSessionId: existingRecord.activeSessionId } : {}),
         ...(existingRecord.conversations ? { conversations: existingRecord.conversations } : {}),
       });
@@ -555,24 +679,44 @@ export class MindManager extends EventEmitter {
       return null;
     }
 
-    if (context.selectedModel === selectedModel) return this.toExternalContext(context);
+    if (context.selectedModel === selectedModel && context.selectedModelProvider === selectedModelProvider) {
+      return this.toExternalContext(context);
+    }
+
+    const previousModel = context.selectedModel;
+    const previousProvider = context.selectedModelProvider;
 
     // Persist intent before applying so stale-recovery on send uses the new model.
     context.selectedModel = selectedModel;
+    context.selectedModelProvider = selectedModelProvider;
+    this.upsertMindSelectionRecord(mindId, context);
+    this.persistConfig();
 
-    // SDK preserves conversation history across in-place model switches; no resume/recreate needed.
-    if (context.session && selectedModel) {
-      await context.session.setModel(selectedModel);
+    // SDK setModel can change model ids within the same provider, but it cannot
+    // swap a session between GitHub/Copilot and a custom BYO provider.
+    const providerChanged = previousProvider !== selectedModelProvider;
+    try {
+      if (context.session && selectedModel && !providerChanged) {
+        await context.session.setModel(selectedModel);
+      } else if (context.session) {
+        await this.createNewConversationSession(mindId, context);
+      }
+    } catch (err) {
+      // Stale-session errors trigger a recovery path that re-creates the
+      // session with the *new* model, so keep the persisted selection.
+      // For all other errors (e.g. unreachable BYO endpoint, bad config),
+      // roll back so the recorded selection matches the live session —
+      // otherwise the next send would use a model the SDK already rejected.
+      if (!isStaleSessionError(err)) {
+        context.selectedModel = previousModel;
+        context.selectedModelProvider = previousProvider;
+        this.upsertMindSelectionRecord(mindId, context);
+        this.persistConfig();
+      }
+      throw err;
     }
 
-    const existingRecord = this.knownMindRecords.get(mindId);
-    this.knownMindRecords.set(mindId, {
-      id: mindId,
-      path: context.mindPath,
-      ...(selectedModel ? { selectedModel } : {}),
-      ...(context.activeSessionId ? { activeSessionId: context.activeSessionId } : {}),
-      ...(existingRecord?.conversations ? { conversations: existingRecord.conversations } : {}),
-    });
+    this.upsertMindSelectionRecord(mindId, context);
     this.persistConfig();
 
     const external = this.toExternalContext(context);
@@ -613,6 +757,55 @@ export class MindManager extends EventEmitter {
     this.activeMindId = null;
     this.configService.save(configSnapshot);
     await this.restoreFromConfig();
+  }
+
+  /**
+   * Recreate only sessions that can be affected by a BYO provider change.
+   * Enabling/updating BYO does not force cloud-selected minds onto the custom
+   * endpoint; disabling BYO clears only BYO-selected minds before reload.
+   */
+  async restartAllMindsForByoChange(selectedModelOverride?: string | null): Promise<{ restartedCount: number }> {
+    await this.awaitRestore();
+    const mindIds = selectedModelOverride === null
+      ? this.clearByoSelectedModels()
+      : this.getLoadedByoMindIds();
+    for (const mindId of mindIds) {
+      if (this.minds.has(mindId)) {
+        await this.reloadMind(mindId);
+      }
+    }
+    return { restartedCount: mindIds.length };
+  }
+
+  private getLoadedByoMindIds(): string[] {
+    return Array.from(this.minds.values())
+      .filter((context) => context.selectedModelProvider === 'byo')
+      .map((context) => context.mindId);
+  }
+
+  private clearByoSelectedModels(): string[] {
+    const changedLoadedMindIds: string[] = [];
+    for (const context of this.minds.values()) {
+      if (context.selectedModelProvider !== 'byo') continue;
+      context.selectedModel = undefined;
+      context.selectedModelProvider = undefined;
+      changedLoadedMindIds.push(context.mindId);
+    }
+
+    let changedRecord = false;
+    for (const [mindId, record] of this.knownMindRecords.entries()) {
+      if (record.selectedModelProvider !== 'byo') continue;
+      const next: MindRecord = { ...record };
+      delete next.selectedModel;
+      delete next.selectedModelProvider;
+      this.knownMindRecords.set(mindId, next);
+      changedRecord = true;
+    }
+
+    if (changedLoadedMindIds.length > 0 || changedRecord) {
+      this.persistConfig();
+    }
+    return changedLoadedMindIds;
   }
 
   private async doRestore(): Promise<void> {
@@ -690,6 +883,7 @@ export class MindManager extends EventEmitter {
       status: ctx.status,
       error: ctx.error,
       selectedModel: ctx.selectedModel,
+      selectedModelProvider: ctx.selectedModelProvider,
       activeSessionId: ctx.activeSessionId,
       windowed: false,
     };
@@ -717,13 +911,15 @@ export class MindManager extends EventEmitter {
 
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
 
-    return this.createSessionForMind(
-      context.client,
-      context.mindPath,
-      context.identity.systemMessage,
-      sessionTools,
+    return this.createSessionForMind({
+      client: context.client,
+      mindPath: context.mindPath,
+      systemMessage: context.identity.systemMessage,
+      tools: sessionTools,
       onUserInputRequest,
-    );
+      model: context.selectedModel,
+      modelProvider: context.selectedModelProvider,
+    });
   }
 
   async createChatroomSession(mindId: string, onPermissionRequest?: PermissionHandler): Promise<CopilotSession> {
@@ -732,29 +928,112 @@ export class MindManager extends EventEmitter {
 
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
 
-    return this.createSessionForMind(
-      context.client,
-      context.mindPath,
-      context.identity.systemMessage,
-      sessionTools,
-      undefined,
+    return this.createSessionForMind({
+      client: context.client,
+      mindPath: context.mindPath,
+      systemMessage: context.identity.systemMessage,
+      tools: sessionTools,
       onPermissionRequest,
-      !onPermissionRequest,
-    );
+      model: context.selectedModel,
+      modelProvider: context.selectedModelProvider,
+    });
   }
 
-  private async createSessionForMind(
-    client: CopilotClient,
-    mindPath: string,
-    systemMessage: string,
-    tools: Tool[],
-    onUserInputRequest?: UserInputHandler,
-    onPermissionRequest: PermissionHandler = approveAllCompat,
-    approveAll = true,
-    model?: string,
-    sessionId?: string,
-  ): Promise<CopilotSession> {
+  private normalizeModelSelection(model: string | null | undefined): ModelSelection | null {
+    return parseModelSelectionKey(model);
+  }
+
+  private getRestorableModelSelection(
+    mindId: string,
+    record: MindRecord | undefined,
+  ): { selectedModel?: string; selectedModelProvider?: ModelProvider } {
+    const selectedModel = record?.selectedModel;
+    if (!selectedModel) return {};
+    const selectedModelProvider = record.selectedModelProvider;
+    if (selectedModelProvider !== 'byo') {
+      return { selectedModel, selectedModelProvider };
+    }
+    if (this.byoProviderConfigProvider()) {
+      return { selectedModel, selectedModelProvider };
+    }
+
+    log.warn(`Ignoring saved BYO LLM model selection for mind ${mindId} because BYO LLM is disabled or not configured.`);
+    if (record) {
+      const next = { ...record };
+      delete next.selectedModel;
+      delete next.selectedModelProvider;
+      this.knownMindRecords.set(mindId, next);
+    }
+    return {};
+  }
+
+  private resolveProviderForSelection(modelProvider: ModelProvider | undefined): SdkProviderConfig | null {
+    if (modelProvider !== 'byo') return null;
+    const provider = this.byoProviderConfigProvider();
+    if (!provider) {
+      throw new Error('BYO LLM model selected, but BYO LLM is not enabled or configured.');
+    }
+    return provider;
+  }
+
+  private upsertMindSelectionRecord(mindId: string, context: InternalMindContext): void {
+    const existingRecord = this.knownMindRecords.get(mindId);
+    this.knownMindRecords.set(mindId, {
+      id: mindId,
+      path: context.mindPath,
+      ...(context.selectedModel ? { selectedModel: context.selectedModel } : {}),
+      ...(context.selectedModelProvider ? { selectedModelProvider: context.selectedModelProvider } : {}),
+      ...(context.activeSessionId ? { activeSessionId: context.activeSessionId } : {}),
+      ...(existingRecord?.conversations ? { conversations: existingRecord.conversations } : {}),
+    });
+  }
+
+  /**
+   * Resolve the effective model for the SDK call.
+   *
+   * When a BYO model is explicitly selected, the SDK requires `model` on
+   * createSession/resumeSession and routes inference to the BYO endpoint via
+   * the ProviderConfig set on the session.
+   *
+   * Source: https://github.com/github/copilot-sdk/blob/main/nodejs/README.md#custom-providers
+   *   "When using a custom provider, the `model` parameter is **required**."
+   */
+  private resolveModelForSdk(model: string | undefined, provider: SdkProviderConfig | null): string | undefined {
+    if (model && model.trim().length > 0) return model;
+    if (!provider) return undefined;
+    const fallback = this.byoDefaultModelProvider();
+    if (fallback && fallback.trim().length > 0) return fallback;
+    return undefined;
+  }
+
+  private async createSessionForMind(req: {
+    client: CopilotClient;
+    mindPath: string;
+    systemMessage: string;
+    tools: Tool[];
+    onUserInputRequest?: UserInputHandler;
+    onPermissionRequest?: PermissionHandler;
+    useSetApproveAllShortcut?: boolean;
+    model?: string;
+    modelProvider?: ModelProvider;
+    sessionId?: string;
+  }): Promise<CopilotSession> {
+    const {
+      client,
+      mindPath,
+      systemMessage,
+      tools,
+      onUserInputRequest,
+      onPermissionRequest = approveForSessionCompat,
+      useSetApproveAllShortcut = false,
+      model,
+      modelProvider,
+      sessionId,
+    } = req;
     const mcpServers = loadMcpServersFromMindPath(mindPath);
+    const chamberMindConfig = loadChamberMindConfig(mindPath);
+    const provider = this.resolveProviderForSelection(modelProvider);
+    const effectiveModel = this.resolveModelForSdk(model, provider);
     const sessionConfig: SessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
@@ -768,13 +1047,23 @@ export class MindManager extends EventEmitter {
       },
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+      ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
+        ? { excludedTools: chamberMindConfig.excludedTools }
+        : {}),
       ...(sessionId ? { sessionId } : {}),
-      ...(model ? { model } : {}),
+      ...(effectiveModel ? { model: effectiveModel } : {}),
+      ...(provider ? { provider } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };
     const session = await client.createSession(sessionConfig);
 
-    if (approveAll) {
+    // Issue #131 checklist 4: stop short-circuiting per-session approval
+    // through `setApproveAll`. The handler-driven `approve-for-session`
+    // path now owns the auto-approval decision, which lets B5 surface
+    // requests in the chat UI without losing chamber's existing safe
+    // defaults. The shortcut remains opt-in for legacy callers that
+    // still want the server-side flag.
+    if (useSetApproveAllShortcut) {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
 
@@ -788,11 +1077,15 @@ export class MindManager extends EventEmitter {
     systemMessage: string,
     tools: Tool[],
     onUserInputRequest?: UserInputHandler,
-    onPermissionRequest: PermissionHandler = approveAllCompat,
-    approveAll = true,
+    onPermissionRequest: PermissionHandler = approveForSessionCompat,
+    useSetApproveAllShortcut = false,
     model?: string,
+    modelProvider?: ModelProvider,
   ): Promise<CopilotSession> {
     const mcpServers = loadMcpServersFromMindPath(mindPath);
+    const chamberMindConfig = loadChamberMindConfig(mindPath);
+    const provider = this.resolveProviderForSelection(modelProvider);
+    const effectiveModel = this.resolveModelForSdk(model, provider);
     const sessionConfig: ResumeSessionConfig = {
       workingDirectory: mindPath,
       enableConfigDiscovery: true,
@@ -806,11 +1099,15 @@ export class MindManager extends EventEmitter {
       },
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
-      ...(model ? { model } : {}),
+      ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
+        ? { excludedTools: chamberMindConfig.excludedTools }
+        : {}),
+      ...(effectiveModel ? { model: effectiveModel } : {}),
+      ...(provider ? { provider } : {}),
       ...(onUserInputRequest ? { onUserInputRequest } : {}),
     };
     const session = await client.resumeSession(sessionId, sessionConfig);
-    if (approveAll) {
+    if (useSetApproveAllShortcut) {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
     return session;
@@ -823,6 +1120,7 @@ export class MindManager extends EventEmitter {
     tools: Tool[],
     conversationSessionId: string,
     model?: string,
+    modelProvider?: ModelProvider,
   ): Promise<CopilotSession> {
     try {
       return await this.resumeSessionForMind(
@@ -832,24 +1130,23 @@ export class MindManager extends EventEmitter {
         systemMessage,
         tools,
         undefined,
-        approveAllCompat,
-        true,
+        approveForSessionCompat,
+        false,
         model,
+        modelProvider,
       );
     } catch (error) {
       if (!isStaleSessionError(error)) throw error;
       log.warn(`SDK session ${conversationSessionId} was not found; reattaching by recreating the session under the same id.`);
-      return this.createSessionForMind(
+      return this.createSessionForMind({
         client,
         mindPath,
         systemMessage,
         tools,
-        undefined,
-        approveAllCompat,
-        true,
         model,
-        conversationSessionId,
-      );
+        modelProvider,
+        sessionId: conversationSessionId,
+      });
     }
   }
 
@@ -920,10 +1217,16 @@ export class MindManager extends EventEmitter {
 
     await context.session.send({ prompt: injectCurrentDateTimeContext(prompt, getCurrentDateTimeContext()) });
     await new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 120_000);
-      const unsub = context.session?.on('session.idle', () => {
+      let unsub: (() => void) | undefined;
+      const timeout = setTimeout(() => {
+        unsub?.();
+        unsub = undefined;
+        resolve();
+      }, 120_000);
+      unsub = context.session?.on('session.idle', () => {
         clearTimeout(timeout);
         unsub?.();
+        unsub = undefined;
         resolve();
       });
     });
@@ -948,6 +1251,7 @@ export class MindManager extends EventEmitter {
         id: mind.mindId,
         path: mind.mindPath,
         ...(mind.selectedModel ? { selectedModel: mind.selectedModel } : {}),
+        ...(mind.selectedModelProvider ? { selectedModelProvider: mind.selectedModelProvider } : {}),
         ...(mind.activeSessionId ? { activeSessionId: mind.activeSessionId } : {}),
         ...(this.knownMindRecords.get(mind.mindId)?.conversations ? { conversations: this.knownMindRecords.get(mind.mindId)?.conversations } : {}),
       });

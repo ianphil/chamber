@@ -30,7 +30,7 @@ describe('bootstrapMindCapabilities', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('seeds default lenses and installs the managed Lens skill', () => {
-    vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes('assets\\lens-skill\\SKILL.md'));
+    vi.mocked(fs.existsSync).mockImplementation((p) => normalizedPath(p).includes('assets/lens-skill/SKILL.md'));
     vi.mocked(fs.readFileSync).mockReturnValue('---\nname: lens\nversion: 2.0.0\n---\n# Lens');
 
     bootstrapMindCapabilities('C:\\test\\mind');
@@ -50,7 +50,7 @@ describe('installLensSkill', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('installs the bundled Lens skill with managed metadata when missing', () => {
-    vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes('assets\\lens-skill\\SKILL.md'));
+    vi.mocked(fs.existsSync).mockImplementation((p) => normalizedPath(p).includes('assets/lens-skill/SKILL.md'));
     vi.mocked(fs.readFileSync).mockReturnValue('---\nname: lens\nversion: 2.0.0\n---\n# Lens');
 
     installLensSkill('C:\\test\\mind');
@@ -71,7 +71,7 @@ describe('installLensSkill', () => {
       configurable: true,
       value: 'C:\\packed\\resources',
     });
-    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === 'C:\\packed\\resources\\lens-skill\\SKILL.md');
+    vi.mocked(fs.existsSync).mockImplementation((p) => normalizedPath(p) === 'C:/packed/resources/lens-skill/SKILL.md');
     vi.mocked(fs.readFileSync).mockReturnValue('---\nname: lens\nversion: 2.0.0\n---\n# Packaged Lens');
 
     try {
@@ -194,3 +194,7 @@ describe('installLensSkill', () => {
     expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalled();
   });
 });
+
+function normalizedPath(value: unknown): string {
+  return String(value).replace(/\\/g, '/');
+}

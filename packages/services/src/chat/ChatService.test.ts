@@ -1,14 +1,72 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ChatService } from './ChatService';
 import { TurnQueue } from './TurnQueue';
+import { Logger } from '../logger';
 import type { MindManager } from '../mind';
+
+type AllEventsHandler = (event: unknown) => void;
+type TypedHandler = (event: unknown) => void;
+
+const allEventsHandlers: AllEventsHandler[] = [];
+const typedHandlers = new Map<string, Set<TypedHandler>>();
+
+function fireSdkEvent(event: { type: string; agentId?: string; data?: { toolCallId?: string; [k: string]: unknown } }): void {
+  const typed = typedHandlers.get(event.type);
+  if (typed) {
+    for (const handler of [...typed]) handler(event);
+  }
+  for (const handler of [...allEventsHandlers]) handler(event);
+}
+
+function resetSessionMockToDefault(): void {
+  allEventsHandlers.length = 0;
+  typedHandlers.clear();
+  mockSession.on.mockImplementation(
+    (
+      eventOrCb: string | ((...args: unknown[]) => void),
+      cb?: (...args: unknown[]) => void,
+    ): (() => void) => {
+      if (typeof eventOrCb === 'function') {
+        const handler = eventOrCb as AllEventsHandler;
+        allEventsHandlers.push(handler);
+        return () => {
+          const idx = allEventsHandlers.indexOf(handler);
+          if (idx >= 0) allEventsHandlers.splice(idx, 1);
+        };
+      }
+      if (cb) {
+        const handler = cb as TypedHandler;
+        let set = typedHandlers.get(eventOrCb);
+        if (!set) {
+          set = new Set();
+          typedHandlers.set(eventOrCb, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      }
+      return () => undefined;
+    },
+  );
+}
 
 const mockSession = {
   send: vi.fn().mockResolvedValue(undefined),
   abort: vi.fn().mockResolvedValue(undefined),
   destroy: vi.fn().mockResolvedValue(undefined),
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  on: vi.fn((_event: string, _cb?: (...args: unknown[]) => void) => vi.fn()),
+  on: vi.fn(
+    (
+      eventOrCb: string | ((...args: unknown[]) => void),
+      _cb?: (...args: unknown[]) => void,
+    ): (() => void) => {
+      // Default impl: legacy behavior (returns a no-op unsubscribe).
+      // Tests that need typed-event firing call resetSessionMockToDefault().
+      void _cb;
+      if (typeof eventOrCb === 'function') return () => undefined;
+      return vi.fn();
+    },
+  ),
 };
 
 const validModelClient = {
@@ -46,6 +104,8 @@ describe('ChatService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    allEventsHandlers.length = 0;
+    typedHandlers.clear();
     validModelClient.modelsCache = {};
     turnQueue = new TurnQueue();
     svc = new ChatService(mockMindManager as unknown as MindManager, turnQueue, () => ({
@@ -168,6 +228,35 @@ describe('ChatService', () => {
       await svc.cancelMessage('valid-mind', 'msg-1');
       expect(mockSession.abort).toHaveBeenCalled();
     });
+
+    it('clears the streaming guard immediately when the user stops a wedged send', async () => {
+      let resolveSend: (() => void) | undefined;
+      mockSession.on.mockReturnValue(vi.fn());
+      mockSession.send.mockImplementation(() => new Promise<void>((resolve) => {
+        resolveSend = resolve;
+      }));
+
+      const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+      try {
+        await vi.waitFor(() => {
+          expect(mockSession.send).toHaveBeenCalled();
+        });
+
+        await expect(svc.resumeConversation('valid-mind', 'session-1')).rejects.toThrow('Cannot switch conversations');
+
+        await svc.cancelMessage('valid-mind', 'msg-1');
+
+        await expect(svc.resumeConversation('valid-mind', 'session-1')).resolves.toEqual({
+          sessionId: 'session-1',
+          messages: [],
+          conversations: [],
+        });
+      } finally {
+        resolveSend?.();
+        mockSession.send.mockResolvedValue(undefined);
+        await pending;
+      }
+    });
   });
 
   describe('newConversation', () => {
@@ -240,6 +329,66 @@ describe('ChatService', () => {
       await expect(svc.listModels('drifted-models')).rejects.toThrow(
         'SDK contract mismatch for client.listModels',
       );
+    });
+
+    it('BVT-CL01: merges BYO models after SDK models when both present', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [{ id: 'gemma-4-26b', name: 'gemma-4-26b', provider: 'byo' as const }],
+      );
+      const models = await svcWithByo.listModels('valid-mind');
+      expect(models).toEqual([
+        { id: 'm1', name: 'Model 1' },
+        { id: 'gemma-4-26b', name: 'gemma-4-26b', provider: 'byo' },
+      ]);
+    });
+
+    it('BVT-CL02: keeps same-id SDK and BYO models distinct', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [{ id: 'm1', name: 'Different Name', provider: 'byo' as const }],
+      );
+      const models = await svcWithByo.listModels('valid-mind');
+      expect(models).toEqual([
+        { id: 'm1', name: 'Model 1' },
+        { id: 'm1', name: 'Different Name', provider: 'byo' },
+      ]);
+    });
+
+    it('BVT-CL03: returns BYO-only when SDK errors but BYO is present', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [{ id: 'gemma', name: 'gemma', provider: 'byo' as const }],
+      );
+      const models = await svcWithByo.listModels('broken-models');
+      expect(models).toEqual([{ id: 'gemma', name: 'gemma', provider: 'byo' }]);
+    });
+
+    it('BVT-CL04: still throws SDK error when no BYO fallback', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => [],
+      );
+      await expect(svcWithByo.listModels('broken-models')).rejects.toThrow('model discovery failed');
+    });
+
+    it('BVT-CL05: returns SDK models when BYO provider returns null', async () => {
+      const svcWithByo = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        async () => null,
+      );
+      const models = await svcWithByo.listModels('valid-mind');
+      expect(models).toEqual([{ id: 'm1', name: 'Model 1' }]);
     });
   });
 
@@ -472,5 +621,395 @@ describe('ChatService', () => {
       expect(emit1).toHaveBeenCalledWith({ type: 'done' });
       expect(emit2).toHaveBeenCalledWith({ type: 'done' });
     });
+  });
+
+  describe('lifecycle instrumentation (#299)', () => {
+    beforeEach(() => {
+      resetSessionMockToDefault();
+      Logger.setLevel('debug');
+    });
+
+    afterEach(() => {
+      Logger.resetLevel();
+    });
+
+    it('subscribes to the single-arg session.on handler to instrument every event', async () => {
+      mockSession.send.mockImplementation(async () => {
+        fireSdkEvent({ type: 'assistant.message_delta', data: { messageId: 'm1', deltaContent: 'hi' } });
+        fireSdkEvent({ type: 'assistant.message_delta', data: { messageId: 'm1', deltaContent: ' there' } });
+        fireSdkEvent({ type: 'session.idle' });
+      });
+
+      await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+      // Single-arg handler is registered alongside typed handlers.
+      const singleArgCalls = mockSession.on.mock.calls.filter((args) => typeof args[0] === 'function');
+      expect(singleArgCalls.length).toBeGreaterThanOrEqual(1);
+
+      // And it unsubscribes on cleanup so a later turn starts from zero handlers.
+      expect(allEventsHandlers).toHaveLength(0);
+    });
+
+    it('defensively completes after root assistant.turn_end when no tools or sub-agents remain', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.message', data: { messageId: 'm1', content: 'final output' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'message_final', sdkMessageId: 'm1', content: 'final output' });
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('waits for outstanding tools to finish after root assistant.turn_end before completing defensively', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'tool.execution_start', data: { toolCallId: 't1', toolName: 'shell' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({
+          type: 'tool.execution_complete',
+          data: { toolCallId: 't1', success: true, result: { content: 'tool output' } },
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('delays defensive completion when more output arrives during turn-end quiescence', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(500);
+
+        fireSdkEvent({ type: 'assistant.message', data: { messageId: 'm1', content: 'late final output' } });
+        await vi.advanceTimersByTimeAsync(999);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        await vi.advanceTimersByTimeAsync(1);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'message_final', sdkMessageId: 'm1', content: 'late final output' });
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not complete from root assistant.turn_end while a permission request is pending', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({
+            type: 'permission.requested',
+            data: {
+              requestId: 'perm-1',
+              permissionRequest: {
+                kind: 'shell',
+                fullCommandText: 'echo hello',
+              },
+            },
+          });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't-root' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({
+          type: 'permission.completed',
+          data: {
+            requestId: 'perm-1',
+            result: { kind: 'approved' },
+          },
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not complete from root assistant.turn_end while a sub-agent turn is active', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.turn_start', agentId: 'sub-1', data: { turnId: 't-sub' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't-root' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({ type: 'assistant.turn_end', agentId: 'sub-1', data: { turnId: 't-sub' } });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('logs at debug (not info) for a normally completed turn so successful turns are not noisy', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'session.idle' });
+        });
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const calls = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        // Exactly one summary log per turn.
+        expect(calls).toHaveLength(1);
+        // And the reason is "completed", not "aborted".
+        expect((calls[0][2] as { reason: string }).reason).toBe('completed');
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('lifecycle summary tracks outstanding tool count via tool.execution_start / _complete pairs', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'tool.execution_start', data: { toolCallId: 't1', toolName: 'shell' } });
+          fireSdkEvent({ type: 'tool.execution_start', data: { toolCallId: 't2', toolName: 'shell' } });
+          fireSdkEvent({ type: 'tool.execution_complete', data: { toolCallId: 't1', success: true } });
+          fireSdkEvent({ type: 'tool.execution_complete', data: { toolCallId: 't2', success: true } });
+          fireSdkEvent({ type: 'session.idle' });
+        });
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const summary = logSpy.mock.calls.find(([, label]) => label === 'chat.turn.lifecycle')?.[2] as {
+          outstandingToolCount: number;
+          entries: { type: string; outstandingToolCount: number }[];
+        } | undefined;
+        expect(summary).toBeDefined();
+        expect(summary!.outstandingToolCount).toBe(0);
+        const counts = summary!.entries.map((e) => e.outstandingToolCount);
+        // start, start, complete, complete, idle
+        expect(counts).toEqual([1, 2, 1, 0, 0]);
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('captures agentId in trace entries so sub-agent events are distinguishable from root events', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.turn_end', agentId: 'sub-1', data: { turnId: 't-sub' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't-root' } });
+          fireSdkEvent({ type: 'session.idle' });
+        });
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const summary = logSpy.mock.calls.find(([, label]) => label === 'chat.turn.lifecycle')?.[2] as {
+          entries: { type: string; agentId?: string }[];
+        } | undefined;
+        expect(summary).toBeDefined();
+        const subAgentTurnEnd = summary!.entries.find((e) => e.type === 'assistant.turn_end' && e.agentId === 'sub-1');
+        const rootTurnEnd = summary!.entries.find((e) => e.type === 'assistant.turn_end' && e.agentId === undefined);
+        expect(subAgentTurnEnd).toBeDefined();
+        expect(rootTurnEnd).toBeDefined();
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('sub-agent assistant.turn_end alone does NOT trip the info-level #299 fingerprint on user abort', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          // Only sub-agent turn_end fires. Sub-agent turn_end is common in
+          // multi-agent / delegated work and is NOT terminal — a user-pressed
+          // Stop here must not be classified as the #299 fingerprint.
+          fireSdkEvent({ type: 'assistant.turn_end', agentId: 'sub-1', data: { turnId: 't-sub' } });
+        });
+
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+        await new Promise((r) => setTimeout(r, 10));
+        await svc.cancelMessage('valid-mind', 'msg-1');
+        await pending;
+
+        const calls = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        expect(calls).toHaveLength(1);
+        const summary = calls[0][2] as { reason: string; sawTurnEnd: boolean; sawRootTurnEnd: boolean };
+        expect(summary.reason).toBe('aborted');
+        expect(summary.sawTurnEnd).toBe(true);
+        expect(summary.sawRootTurnEnd).toBe(false);
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('classifies terminal reason as "threw" when session.send rejects with a non-stale error (instrumentation must not lie)', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockRejectedValueOnce(new Error('Network down'));
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const calls = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        expect(calls).toHaveLength(1);
+        expect((calls[0][2] as { reason: string }).reason).toBe('threw');
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('classifies terminal reason as "sdk_error" when session.error fires', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'session.error', data: { message: 'SDK exploded' } });
+        });
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const calls = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        expect(calls).toHaveLength(1);
+        expect((calls[0][2] as { reason: string }).reason).toBe('sdk_error');
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('unsubscribes the trace listener before finally logs, so events fired after idle do not inflate the summary', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'session.idle' });
+        });
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const summaryBefore = logSpy.mock.calls.find(([, label]) => label === 'chat.turn.lifecycle')?.[2] as {
+          eventCount: number;
+        };
+        expect(summaryBefore.eventCount).toBe(1);
+
+        // After teardown, no all-events handlers should remain registered.
+        expect(allEventsHandlers).toHaveLength(0);
+        // Firing a stray event after the turn ends must not surface anywhere
+        // (no error, no additional log) because the trace is no longer alive.
+        fireSdkEvent({ type: 'session.idle' });
+        const callsAfter = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        expect(callsAfter).toHaveLength(1);
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('classifies terminal reason as "sdk_contract" when session.error payload fails Zod parsing', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          // Malformed session.error payload — `data.message` must be a string;
+          // a numeric here trips the Zod schema in `getSdkSessionErrorMessage`
+          // and routes us through `failSdkContract` → abort with
+          // `sdkContractFailed = true`. The abort listener must reclassify
+          // `terminalReason` from the default 'aborted' to 'sdk_contract'.
+          fireSdkEvent({ type: 'session.error', data: { message: 12345 } });
+        });
+
+        await svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+
+        const calls = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        expect(calls).toHaveLength(1);
+        expect((calls[0][2] as { reason: string }).reason).toBe('sdk_contract');
+      } finally {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+      }
+    });
+
+    it('captures outstandingToolCount > 0 at the #299 fingerprint moment (the disambiguator for "still working" vs "really stuck")', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        mockSession.send.mockImplementation(async () => {
+          // Tool started but never completes; root turn_end fires; no idle.
+          // User gives up → abort. The summary at the fingerprint moment must
+          // report outstandingToolCount = 1 so triagers can distinguish
+          // "user gave up while a tool was still working" from "SDK was
+          // truly wedged with nothing in flight".
+          fireSdkEvent({ type: 'tool.execution_start', data: { toolCallId: 't-slow', toolName: 'shell' } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+        });
+
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+        await new Promise((r) => setTimeout(r, 10));
+        await svc.cancelMessage('valid-mind', 'msg-1');
+        await pending;
+
+        const calls = logSpy.mock.calls.filter(([, label]) => label === 'chat.turn.lifecycle');
+        expect(calls).toHaveLength(1);
+        const summary = calls[0][2] as {
+          reason: string;
+          sawRootTurnEnd: boolean;
+          sawIdle: boolean;
+          outstandingToolCount: number;
+        };
+        expect(summary.reason).toBe('aborted');
+        expect(summary.sawRootTurnEnd).toBe(true);
+        expect(summary.sawIdle).toBe(false);
+        expect(summary.outstandingToolCount).toBe(1);
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+  });
+});
+
+describe('mapByoLlmError', () => {
+  it('BVT-CE01: rewrites llama.cpp n_keep / n_ctx errors with actionable hint', async () => {
+    const { mapByoLlmError } = await import('./ChatService');
+    const original = '400 "The number of tokens to keep from the initial prompt is greater than the context length (n_keep: 83159>= n_ctx: 4096). Try to load the model with a larger context length, or provide a shorter input."';
+    const out = mapByoLlmError(original);
+    expect(out).toContain('larger-context model');
+    expect(out).toContain('qwen3.5-9b');
+    expect(out).toContain(original);  // original error preserved at the end
+  });
+
+  it('BVT-CE02: passes through non-context errors unchanged', async () => {
+    const { mapByoLlmError } = await import('./ChatService');
+    const original = 'Connection refused: ECONNREFUSED 127.0.0.1:8080';
+    expect(mapByoLlmError(original)).toBe(original);
   });
 });

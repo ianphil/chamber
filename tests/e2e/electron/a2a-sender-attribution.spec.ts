@@ -71,7 +71,7 @@ test.describe('electron A2A sender attribution smoke', () => {
         replyMessageId: `reply-${Date.now()}`,
         message: {
           messageId: `msg-${Date.now()}`,
-          role: 'user',
+          role: 'ROLE_USER',
           parts: [{ text: messageText, mediaType: 'text/plain' }],
           metadata: { fromId: fromMindId, fromName, hopCount: 1 },
         },

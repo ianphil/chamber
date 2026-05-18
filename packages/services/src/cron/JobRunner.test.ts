@@ -140,7 +140,7 @@ describe('JobRunner', () => {
       const task: Task = {
         id: 'task-1',
         contextId: 'ctx-1',
-        status: { state: 'completed', timestamp: new Date().toISOString() },
+        status: { state: 'TASK_STATE_COMPLETED', timestamp: new Date().toISOString() },
         artifacts: [{ artifactId: 'a1', name: 'response', parts: [{ text: 'result', mediaType: 'text/plain' }] }],
         history: [],
       };
@@ -157,7 +157,7 @@ describe('JobRunner', () => {
           mockTaskManager.emit('task:status-update', event);
         }, 0);
 
-        return { ...task, status: { state: 'submitted', timestamp: new Date().toISOString() } };
+        return { ...task, status: { state: 'TASK_STATE_SUBMITTED', timestamp: new Date().toISOString() } };
       });
 
       const job = makeJob({
@@ -179,13 +179,13 @@ describe('JobRunner', () => {
           const event: TaskStatusUpdateEvent & { targetMindId: string } = {
             taskId: 'task-1',
             contextId: 'ctx-1',
-            status: { state: 'completed', timestamp: new Date().toISOString() },
+            status: { state: 'TASK_STATE_COMPLETED', timestamp: new Date().toISOString() },
             targetMindId: 'mind-1',
           };
           mockTaskManager.emit('task:status-update', event);
         }, 0);
 
-        return { id: 'task-1', contextId: 'ctx-1', status: { state: 'submitted', timestamp: new Date().toISOString() } };
+        return { id: 'task-1', contextId: 'ctx-1', status: { state: 'TASK_STATE_SUBMITTED', timestamp: new Date().toISOString() } };
       });
 
       const job = makeJob({

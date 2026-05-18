@@ -45,7 +45,34 @@ function validateRuntimeDir(rootDir) {
     throw new Error(`npm CLI not found in runtime: ${rootDir}`);
   }
 
+  if (process.platform !== 'win32') {
+    for (const command of ['corepack', 'npm', 'npx']) {
+      const binPath = path.join(rootDir, 'bin', command);
+      if (!fs.existsSync(binPath)) {
+        throw new Error(`Node runtime command not found: ${binPath}`);
+      }
+    }
+  }
+
   return { nodeBinary, npmCli };
+}
+
+function materializeRuntimeCommandSymlinks(rootDir) {
+  if (process.platform === 'win32') return;
+
+  const binDir = path.join(rootDir, 'bin');
+  for (const command of ['corepack', 'npm', 'npx']) {
+    const binPath = path.join(binDir, command);
+    if (!fs.existsSync(binPath) || !fs.lstatSync(binPath).isSymbolicLink()) {
+      continue;
+    }
+
+    const linkTarget = fs.readlinkSync(binPath);
+    const targetPath = path.resolve(binDir, linkTarget);
+    fs.rmSync(binPath);
+    fs.cpSync(targetPath, binPath);
+    fs.chmodSync(binPath, 0o755);
+  }
 }
 
 function quotePowerShell(value) {
@@ -121,7 +148,8 @@ function promoteRuntime(extractedDir, version) {
   fs.rmSync(stagingDir, { recursive: true, force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
 
-  fs.cpSync(extractedDir, stagingDir, { recursive: true });
+  fs.cpSync(extractedDir, stagingDir, { recursive: true, dereference: true });
+  materializeRuntimeCommandSymlinks(stagingDir);
   fs.writeFileSync(path.join(stagingDir, 'version.txt'), version, 'utf-8');
   validateRuntimeDir(stagingDir);
 
@@ -218,8 +246,13 @@ async function main() {
   if (fs.existsSync(markerPath) && fs.existsSync(nodeBinary)) {
     const existing = fs.readFileSync(markerPath, 'utf-8').trim();
     if (existing === version) {
-      console.log(`Bundled Node runtime already present (v${version}).`);
-      return;
+      try {
+        validateRuntimeDir(targetDir);
+        console.log(`Bundled Node runtime already present (v${version}).`);
+        return;
+      } catch (error) {
+        console.log(`Bundled Node runtime is incomplete; refreshing v${version}.`);
+      }
     }
   }
 
