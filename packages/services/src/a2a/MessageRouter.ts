@@ -1,4 +1,4 @@
-import type { SendMessageRequest, SendMessageResponse, Message } from './types';
+import type { AgentCard, SendMessageRequest, SendMessageResponse, Message } from './types';
 import type { A2AAgentResolver } from './ActiveA2AResolver';
 import type { ChatService } from '../chat/ChatService';
 import type { EventEmitter } from 'events';
@@ -19,6 +19,12 @@ export class MessageRouter {
     // 1. Resolve recipient — try by mindId first, then by name
     const card = await this.resolver.getCard(request.recipient) ?? await this.resolver.getCardByName(request.recipient);
     if (!card) {
+      const ambiguousMatches = await this.findAmbiguousNameMatches(request.recipient);
+      if (ambiguousMatches.length > 1) {
+        throw new Error(
+          `Ambiguous recipient: ${request.recipient} matches ${ambiguousMatches.map(formatAgentIdentifier).join(', ')}`,
+        );
+      }
       throw new Error(`Unknown recipient: ${request.recipient}`);
     }
     // 2. Assign/preserve contextId
@@ -120,6 +126,15 @@ export class MessageRouter {
     };
   }
 
+  private async findAmbiguousNameMatches(name: string): Promise<AgentCard[]> {
+    const cards = await this.resolver.getCards();
+    return cards.filter((candidate) => candidate.name === name);
+  }
+
+}
+
+function formatAgentIdentifier(card: AgentCard): string {
+  return card.mindId ?? card.aliases?.[0] ?? `(no unique identifier for ${card.name})`;
 }
 
 function getMessageHopCount(value: unknown): number {

@@ -49,6 +49,7 @@ describe('MessageRouter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRegistry.getCards.mockReturnValue([]);
     emitter = new EventEmitter();
     router = new MessageRouter(mockChatService as unknown as ChatService, mockRegistry as unknown as AgentCardRegistry, emitter);
   });
@@ -75,6 +76,24 @@ describe('MessageRouter', () => {
     mockRegistry.getCardByName.mockReturnValue(null);
     const req = makeRequest('nobody', 'hello');
     await expect(router.sendMessage(req)).rejects.toThrow('Unknown recipient: nobody');
+  });
+
+  it('sendMessage() surfaces ambiguous display-name recipients', async () => {
+    mockRegistry.getCard.mockReturnValue(null);
+    mockRegistry.getCardByName.mockReturnValue(null);
+    mockRegistry.getCards.mockReturnValue([
+      makeCard({ mindId: 'mary-a3f9', name: 'Mary' }),
+      makeCard({
+        mindId: undefined as never,
+        name: 'Mary',
+        aliases: ['participant-b/mary'],
+        supportedInterfaces: [{ url: 'https://relay.example.com/message:send', protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
+      }),
+    ]);
+
+    await expect(router.sendMessage(makeRequest('Mary', 'hello'))).rejects.toThrow(
+      'Ambiguous recipient: Mary matches mary-a3f9, participant-b/mary',
+    );
   });
 
   it('sendMessage() refuses cards that are not backed by a local mind', async () => {

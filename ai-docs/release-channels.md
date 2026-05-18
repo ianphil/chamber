@@ -298,7 +298,7 @@ the next stable should return to the normal Windows + macOS shape.
 
 - Single source of truth for parsing/writing `CHANGELOG.md` in the Keep
   a Changelog 1.1.0 format. `readUnreleasedSection` returns the headings
-  + raw text under `## [Unreleased]` (also tolerates the legacy
+  plus raw text under `## [Unreleased]` (also tolerates the legacy
   `## Unreleased` for back-compat). `recommendBumpFromChangelog` maps
   the highest-precedence heading to `patch`/`minor`/`major`/null.
   `appendEntry` writes a new bullet under the correct `### Heading`
