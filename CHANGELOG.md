@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking
 
 - **Move the A2A client extension out of Chamber** — The repo-scoped `.github/extensions/a2a-client` copy has moved to the standalone [`ipdelete/a2a-client`](https://github.com/ipdelete/a2a-client) extension, which installs to user or repo scope and exposes the `a2a_connection`, `a2a_list_remote_agents`, and `a2a_send_agent_message` tools.
+- **Remove the repo-scoped Canvas extension** — The `.github/extensions/canvas` copy has been removed from Chamber now that Canvas lives as a standalone extension.
 
 ### Fixed
 
