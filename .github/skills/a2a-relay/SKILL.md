@@ -70,4 +70,3 @@ traffic.
 
 Call `chamber_a2a_reply` with the inbound `message_id` and your response.
 This preserves the original sender and context when the relay supplied one.
-
