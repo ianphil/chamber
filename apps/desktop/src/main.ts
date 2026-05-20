@@ -297,7 +297,7 @@ async function initializeRuntime(): Promise<void> {
       log.warn(`BYO LLM models provider probe failed (baseUrl=${redactUrlCredentials(config.baseUrl)}):`, err);
     },
   });
-  chatService = new ChatService(mindManager, turnQueue, undefined, byoLlmModelsProvider);
+  chatService = new ChatService(mindManager, turnQueue, undefined, undefined, byoLlmModelsProvider);
   const messageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
   a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
   const chatroomApprovalGate = new ApprovalGate();

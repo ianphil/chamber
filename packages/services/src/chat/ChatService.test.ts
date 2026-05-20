@@ -77,13 +77,13 @@ const validModelClient = {
 const mockMindManager = {
   getMind: vi.fn((mindId: string) => {
     if (mindId === 'valid-mind') {
-      return { session: mockSession, client: validModelClient };
+      return { session: mockSession, client: validModelClient, mindPath: '/fake/mind' };
     }
     if (mindId === 'broken-models') {
-      return { session: mockSession, client: { listModels: vi.fn(async () => { throw new Error('model discovery failed'); }) } };
+      return { session: mockSession, client: { listModels: vi.fn(async () => { throw new Error('model discovery failed'); }) }, mindPath: '/fake/mind' };
     }
     if (mindId === 'drifted-models') {
-      return { session: mockSession, client: { listModels: vi.fn(async () => [{ modelId: 'm1', displayName: 'Model 1' }]) } };
+      return { session: mockSession, client: { listModels: vi.fn(async () => [{ modelId: 'm1', displayName: 'Model 1' }]) }, mindPath: '/fake/mind' };
     }
     return undefined;
   }),
@@ -155,6 +155,82 @@ describe('ChatService', () => {
       const emit = vi.fn();
       await svc.sendMessage('nonexistent', 'hello', 'msg-1', emit);
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+    });
+
+    it('prepends the team-memory block to the prompt when the provider returns one (#345)', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+
+      const teamMemoryProvider = vi.fn((mindPath: string) => {
+        expect(mindPath).toBe('/fake/mind');
+        return '<team_memory>\n<rules>\n- Always cite sources.\n</rules>\n</team_memory>';
+      });
+
+      const svcWithTeam = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-05T15:37:12.065Z', timezone: 'America/New_York' }),
+        teamMemoryProvider,
+      );
+
+      const emit = vi.fn();
+      await svcWithTeam.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(teamMemoryProvider).toHaveBeenCalledTimes(1);
+      expect(mockSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\n<team_memory>\n<rules>\n- Always cite sources.\n</rules>\n</team_memory>\n\nhello',
+      });
+    });
+
+    it('leaves the prompt untouched when the team-memory provider returns null (#345)', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+
+      const svcWithTeam = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-05T15:37:12.065Z', timezone: 'America/New_York' }),
+        () => null,
+      );
+
+      const emit = vi.fn();
+      await svcWithTeam.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(mockSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+      });
+    });
+
+    it('continues the turn when the team-memory provider throws (#345)', async () => {
+      mockSession.on.mockImplementation((eventOrCb: string | ((...args: unknown[]) => void), cb?: (...args: unknown[]) => void) => {
+        if (eventOrCb === 'session.idle' && cb) {
+          setTimeout(() => cb(), 0);
+        }
+        return vi.fn();
+      });
+
+      const svcWithTeam = new ChatService(
+        mockMindManager as unknown as MindManager,
+        turnQueue,
+        () => ({ currentDateTime: '2026-05-05T15:37:12.065Z', timezone: 'America/New_York' }),
+        () => { throw new Error('boom'); },
+      );
+
+      const emit = vi.fn();
+      await svcWithTeam.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+
+      expect(mockSession.send).toHaveBeenCalledWith({
+        prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+      });
+      expect(emit).toHaveBeenCalledWith({ type: 'done' });
     });
 
     it('does not arm a wall-clock fallback timer; long turns wait indefinitely for the SDK or user cancel (#222)', async () => {
@@ -336,6 +412,7 @@ describe('ChatService', () => {
         mockMindManager as unknown as MindManager,
         turnQueue,
         () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        undefined,
         async () => [{ id: 'gemma-4-26b', name: 'gemma-4-26b', provider: 'byo' as const }],
       );
       const models = await svcWithByo.listModels('valid-mind');
@@ -350,6 +427,7 @@ describe('ChatService', () => {
         mockMindManager as unknown as MindManager,
         turnQueue,
         () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        undefined,
         async () => [{ id: 'm1', name: 'Different Name', provider: 'byo' as const }],
       );
       const models = await svcWithByo.listModels('valid-mind');
@@ -364,6 +442,7 @@ describe('ChatService', () => {
         mockMindManager as unknown as MindManager,
         turnQueue,
         () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        undefined,
         async () => [{ id: 'gemma', name: 'gemma', provider: 'byo' as const }],
       );
       const models = await svcWithByo.listModels('broken-models');
@@ -375,6 +454,7 @@ describe('ChatService', () => {
         mockMindManager as unknown as MindManager,
         turnQueue,
         () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        undefined,
         async () => [],
       );
       await expect(svcWithByo.listModels('broken-models')).rejects.toThrow('model discovery failed');
@@ -385,6 +465,7 @@ describe('ChatService', () => {
         mockMindManager as unknown as MindManager,
         turnQueue,
         () => ({ currentDateTime: '2026-05-08T12:00:00Z', timezone: 'UTC' }),
+        undefined,
         async () => null,
       );
       const models = await svcWithByo.listModels('valid-mind');

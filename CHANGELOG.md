@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Inject team memory into chat turns** — `ChatService.streamTurn` now reads `<mindPath>/.chamber/team/rules.md` and the most-recent decisions from `<mindPath>/.chamber/team/decisions.md` at turn time via the new `packages/services/src/teamMemory/promptContext.ts` module, and prepends a single bounded `<team_memory>` block ahead of the date/time context. Defaults: 10 newest decisions, 4096-byte budget; oldest decisions dropped first when over budget; rules are never truncated mid-rule. Returns null and emits no block when `.chamber/team/` is absent so existing minds are unaffected. A defensive `safeTeamMemoryContext` wrapper guarantees a misbehaving provider can never block a turn. Closes #345.
+
 ### Breaking
 
 - **Move the A2A client extension out of Chamber** — The repo-scoped `.github/extensions/a2a-client` copy has moved to the standalone [`ipdelete/a2a-client`](https://github.com/ipdelete/a2a-client) extension, which installs to user or repo scope and exposes the `a2a_connection`, `a2a_list_remote_agents`, and `a2a_send_agent_message` tools.
