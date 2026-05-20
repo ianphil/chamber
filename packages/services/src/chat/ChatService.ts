@@ -25,8 +25,11 @@ import { mapSdkModelList } from '../sdk/sdkModelMapper';
 import { TurnQueue } from './TurnQueue';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext, type DateTimeContextProvider } from './currentDateTimeContext';
 import { TurnLifecycleTrace } from './turnLifecycleTrace';
+import { buildTeamMemoryContext } from '../teamMemory';
 
 const log = Logger.create('ChatService');
+
+export type TeamMemoryContextProvider = (mindPath: string) => string | null;
 
 // INVARIANT: this is a post-root-turn_end debounce, not a turn deadline.
 // It is never armed unless the SDK has already signalled the root turn ended.
@@ -39,6 +42,13 @@ export class ChatService {
     private readonly mindManager: MindManager,
     private readonly turnQueue: TurnQueue,
     private readonly dateTimeContextProvider: DateTimeContextProvider = getCurrentDateTimeContext,
+    /**
+     * Reads the mind's team memory (`.chamber/team/rules.md` and
+     * `.chamber/team/decisions.md`) at turn time and returns a block to
+     * prepend to the prompt, or null when there is nothing to inject.
+     * Default reads from disk. Tests inject a deterministic fake.
+     */
+    private readonly teamMemoryContextProvider: TeamMemoryContextProvider = buildTeamMemoryContext,
     /**
      * Optional provider injected by main.ts that returns BYO LLM models when
      * BYO is enabled. Returning null/undefined falls back to the bundled SDK's
@@ -68,11 +78,13 @@ export class ChatService {
           throw new Error(`Mind ${mindId} not found or has no session`);
         }
 
+        const mindPath = context.mindPath;
+
         try {
           const session = model ? await this.mindManager.setMindModel(mindId, model) : null;
           const currentSession = session ? this.mindManager.getMind(mindId)?.session : context.session;
           if (!currentSession) throw new Error(`Mind ${mindId} not found or has no session`);
-          await this.streamTurn(currentSession, prompt, abortController, emit, attachments, () => {
+          await this.streamTurn(currentSession, prompt, mindPath, abortController, emit, attachments, () => {
             this.mindManager.markActiveConversationHasMessages(mindId, prompt);
           });
         } catch (err) {
@@ -84,7 +96,7 @@ export class ChatService {
           emit({ type: 'reconnecting' });
           const recoveredSession = await this.mindManager.recoverActiveConversationSession(mindId);
           if (abortController.signal.aborted) return;
-          await this.streamTurn(recoveredSession, prompt, abortController, emit, attachments, () => {
+          await this.streamTurn(recoveredSession, prompt, mindPath, abortController, emit, attachments, () => {
             this.mindManager.markActiveConversationHasMessages(mindId, prompt);
           });
         }
@@ -101,6 +113,7 @@ export class ChatService {
   private async streamTurn(
     session: CopilotSession,
     prompt: string,
+    mindPath: string,
     abortController: AbortController,
     emit: (event: ChatEvent) => void,
     attachments?: ChatImageAttachment[],
@@ -347,7 +360,9 @@ export class ChatService {
           mimeType: a.mimeType,
           displayName: a.name,
         }));
-        const promptWithDateTime = injectCurrentDateTimeContext(prompt, this.dateTimeContextProvider());
+        const teamMemoryBlock = this.safeTeamMemoryContext(mindPath);
+        const promptWithTeamMemory = teamMemoryBlock ? `${teamMemoryBlock}\n\n${prompt}` : prompt;
+        const promptWithDateTime = injectCurrentDateTimeContext(promptWithTeamMemory, this.dateTimeContextProvider());
         await Promise.race([session.send(sdkAttachments ? { prompt: promptWithDateTime, attachments: sdkAttachments } : { prompt: promptWithDateTime }), sendTimeout]);
         guard(() => onSendAccepted?.());
       } finally {
@@ -363,6 +378,16 @@ export class ChatService {
       clearTurnEndQuiescence();
       for (const unsub of unsubs) unsub();
       logTraceSummary();
+    }
+  }
+
+  private safeTeamMemoryContext(mindPath: string): string | null {
+    try {
+      return this.teamMemoryContextProvider(mindPath);
+    } catch (err) {
+      // A misbehaving provider must never block a turn. Log and continue.
+      log.warn('teamMemory.context.failed', err);
+      return null;
     }
   }
 
