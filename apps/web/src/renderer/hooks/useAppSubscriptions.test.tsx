@@ -6,7 +6,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LensViewManifest, MindContext } from '@chamber/shared/types';
-import { installElectronAPI, mockElectronAPI } from '../../test/helpers';
+import { installElectronAPI, makeChatEvent, makeMessage, mockElectronAPI } from '../../test/helpers';
 import { AppStateProvider, useAppState } from '../lib/store';
 import type { AppState } from '../lib/store/state';
 import { useAppSubscriptions } from './useAppSubscriptions';
@@ -115,6 +115,100 @@ describe('useAppSubscriptions', () => {
 
     await waitFor(() => {
       expect(result.current.discoveredViews).toEqual([activeView]);
+    });
+  });
+
+  it('replays missed chat events when the window regains focus', async () => {
+    (api.chat.getEventSequence as ReturnType<typeof vi.fn>).mockResolvedValue(5);
+    (api.chat.replayEvents as ReturnType<typeof vi.fn>).mockResolvedValue([{
+      sequence: 6,
+      mindId: activeMind.mindId,
+      messageId: 'assistant-1',
+      event: makeChatEvent('done'),
+    }]);
+
+    const { result } = renderHook(() => {
+      useAppSubscriptions();
+      return useAppState();
+    }, {
+      wrapper: wrapper({
+        minds: [activeMind],
+        activeMindId: activeMind.mindId,
+        isStreaming: true,
+        streamingByMind: { [activeMind.mindId]: true },
+        messagesByMind: {
+          [activeMind.mindId]: [makeMessage([], { id: 'assistant-1', isStreaming: true })],
+        },
+      }),
+    });
+
+    await waitFor(() => {
+      expect(api.chat.getEventSequence).toHaveBeenCalled();
+    });
+
+    window.dispatchEvent(new Event('focus'));
+
+    await waitFor(() => {
+      expect(api.chat.replayEvents).toHaveBeenCalledWith(5);
+      expect(result.current.streamingByMind[activeMind.mindId]).toBe(false);
+      expect(result.current.isStreaming).toBe(false);
+    });
+  });
+
+  it('replays lower missed chat events when a higher live event arrives first', async () => {
+    (api.chat.getEventSequence as ReturnType<typeof vi.fn>).mockResolvedValue(5);
+    let onChatEvent: Parameters<typeof api.chat.onEvent>[0] | undefined;
+    let resolveReplay: (events: Awaited<ReturnType<typeof api.chat.replayEvents>>) => void = () => undefined;
+    (api.chat.onEvent as ReturnType<typeof vi.fn>).mockImplementation((callback) => {
+      onChatEvent = callback;
+      return vi.fn();
+    });
+    (api.chat.replayEvents as ReturnType<typeof vi.fn>).mockReturnValue(new Promise((resolve) => {
+      resolveReplay = resolve;
+    }));
+
+    const { result } = renderHook(() => {
+      useAppSubscriptions();
+      return useAppState();
+    }, {
+      wrapper: wrapper({
+        minds: [activeMind],
+        activeMindId: activeMind.mindId,
+        isStreaming: true,
+        streamingByMind: { [activeMind.mindId]: true },
+        messagesByMind: {
+          [activeMind.mindId]: [makeMessage([], { id: 'assistant-1', isStreaming: true })],
+        },
+      }),
+    });
+
+    await waitFor(() => {
+      expect(api.chat.getEventSequence).toHaveBeenCalled();
+      expect(onChatEvent).toBeDefined();
+    });
+
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => {
+      expect(api.chat.replayEvents).toHaveBeenCalledWith(5);
+    });
+
+    act(() => {
+      onChatEvent?.(activeMind.mindId, 'assistant-1', makeChatEvent('chunk', { content: 'late live chunk' }), 8);
+    });
+
+    await act(async () => {
+      resolveReplay([{
+        sequence: 6,
+        mindId: activeMind.mindId,
+        messageId: 'assistant-1',
+        event: makeChatEvent('done'),
+      }]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.streamingByMind[activeMind.mindId]).toBe(false);
+      expect(result.current.isStreaming).toBe(false);
     });
   });
 });

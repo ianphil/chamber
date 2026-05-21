@@ -36,6 +36,7 @@ export interface AppState {
   conversationViewByMind: Record<string, ConversationViewState>;
   isStreaming: boolean;
   streamingByMind: Record<string, boolean>;
+  a2aStreamingByMind: Record<string, boolean>;
   /**
    * Per-mind unsent compose draft text. Switching agents preserves and
    * restores each mind's in-progress message so users can stage thoughts
@@ -124,6 +125,7 @@ export const initialState: AppState = {
   conversationViewByMind: {},
   isStreaming: false,
   streamingByMind: {},
+  a2aStreamingByMind: {},
   composeDraftByMind: {},
   availableModels: [],
   selectedModel: null,

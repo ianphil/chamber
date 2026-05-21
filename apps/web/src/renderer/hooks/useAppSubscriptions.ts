@@ -12,6 +12,8 @@ export function useAppSubscriptions() {
   const { minds, activeMindId } = useAppState();
   const dispatch = useAppDispatch();
   const viewsLoaded = useRef(false);
+  const lastChatEventSequence = useRef(0);
+  const seenChatEventSequences = useRef(new Set<number>());
 
   // Feature flags are app-owned, not user-configurable renderer state.
   useEffect(() => {
@@ -32,10 +34,67 @@ export function useAppSubscriptions() {
 
   // Chat event listener — must stay alive regardless of active view
   useEffect(() => {
-    const unsub = window.electronAPI.chat.onEvent((mindId, messageId, event) => {
+    let cancelled = false;
+
+    const markChatEventSequenceSeen = (sequence: number) => {
+      seenChatEventSequences.current.add(sequence);
+      lastChatEventSequence.current = Math.max(lastChatEventSequence.current, sequence);
+      if (seenChatEventSequences.current.size > 1_000) {
+        const floor = lastChatEventSequence.current - 1_000;
+        for (const seen of seenChatEventSequences.current) {
+          if (seen < floor) seenChatEventSequences.current.delete(seen);
+        }
+      }
+    };
+
+    const applyMissedEvents = async () => {
+      try {
+        const missed = await window.electronAPI.chat.replayEvents(lastChatEventSequence.current);
+        if (cancelled) return;
+        for (const entry of missed) {
+          if (seenChatEventSequences.current.has(entry.sequence)) continue;
+          markChatEventSequenceSeen(entry.sequence);
+          dispatch({
+            type: 'CHAT_EVENT',
+            payload: { mindId: entry.mindId, messageId: entry.messageId, event: entry.event },
+          });
+        }
+      } catch (err) {
+        log.error('Failed to replay missed chat events:', err);
+      }
+    };
+
+    void window.electronAPI.chat.getEventSequence()
+      .then((sequence) => {
+        if (!cancelled) {
+          lastChatEventSequence.current = Math.max(lastChatEventSequence.current, sequence);
+        }
+      })
+      .catch((err) => {
+        log.error('Failed to initialize chat event replay cursor:', err);
+      });
+
+    const unsub = window.electronAPI.chat.onEvent((mindId, messageId, event, sequence) => {
+      if (typeof sequence === 'number') {
+        if (seenChatEventSequences.current.has(sequence)) return;
+        markChatEventSequenceSeen(sequence);
+      }
       dispatch({ type: 'CHAT_EVENT', payload: { mindId, messageId, event } });
     });
-    return () => { unsub(); };
+
+    const onFocus = () => { void applyMissedEvents(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void applyMissedEvents();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      unsub();
+    };
   }, [dispatch]);
 
   // Listen for view discovery changes (file watcher)

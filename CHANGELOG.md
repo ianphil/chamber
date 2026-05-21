@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Surface ambiguous A2A recipients** — A2A message routing now reports duplicate display-name matches with usable recipient identifiers instead of falling through to an unknown-recipient error. (#322) (#322)
 - **Complete turns after root turn end** — Chat streaming now finishes after a guarded root assistant.turn_end quiescence path when the SDK omits session.idle, while still waiting for outstanding tools and sub-agent turns so late output is preserved. (#297) (#297)
+- **Prevent false chat completion and missed UI updates** — Chat cancellation now requires an active turn, A2A and cron streaming state no longer contaminates chat input, and renderer chat events replay after window refocus so hidden-window work can catch up. Fixes #297. (#297)
 
 
 ## [0.63.0] - 2026-05-17

@@ -223,10 +223,32 @@ describe('ChatService', () => {
   });
 
   describe('cancelMessage', () => {
-    it('aborts the session for a mind', async () => {
+    it('does not abort the session when no message is streaming', async () => {
       mockSession.on.mockReturnValue(vi.fn());
-      await svc.cancelMessage('valid-mind', 'msg-1');
-      expect(mockSession.abort).toHaveBeenCalled();
+      await expect(svc.cancelMessage('valid-mind', 'msg-1')).resolves.toBe(false);
+      expect(mockSession.abort).not.toHaveBeenCalled();
+    });
+
+    it('aborts the session for a mind with an active message', async () => {
+      let resolveSend: (() => void) | undefined;
+      mockSession.on.mockReturnValue(vi.fn());
+      mockSession.send.mockImplementation(() => new Promise<void>((resolve) => {
+        resolveSend = resolve;
+      }));
+
+      const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', vi.fn());
+      try {
+        await vi.waitFor(() => {
+          expect(mockSession.send).toHaveBeenCalled();
+        });
+
+        await expect(svc.cancelMessage('valid-mind', 'msg-1')).resolves.toBe(true);
+        expect(mockSession.abort).toHaveBeenCalled();
+      } finally {
+        resolveSend?.();
+        mockSession.send.mockResolvedValue(undefined);
+        await pending;
+      }
     });
 
     it('clears the streaming guard immediately when the user stops a wedged send', async () => {
@@ -244,7 +266,7 @@ describe('ChatService', () => {
 
         await expect(svc.resumeConversation('valid-mind', 'session-1')).rejects.toThrow('Cannot switch conversations');
 
-        await svc.cancelMessage('valid-mind', 'msg-1');
+        await expect(svc.cancelMessage('valid-mind', 'msg-1')).resolves.toBe(true);
 
         await expect(svc.resumeConversation('valid-mind', 'session-1')).resolves.toEqual({
           sessionId: 'session-1',
@@ -690,6 +712,34 @@ describe('ChatService', () => {
         await vi.advanceTimersByTimeAsync(1_000);
         await pending;
 
+        expect(emit).toHaveBeenCalledWith({ type: 'done' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not complete when a new root turn starts after tool completion', async () => {
+      vi.useFakeTimers();
+      try {
+        mockSession.send.mockImplementation(async () => {
+          fireSdkEvent({ type: 'assistant.message', data: { messageId: 'm1', content: 'I will use the tool.' } });
+          fireSdkEvent({ type: 'tool.execution_start', data: { toolCallId: 't1', toolName: 'cron_create' } });
+          fireSdkEvent({ type: 'tool.execution_complete', data: { toolCallId: 't1', success: true } });
+          fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't1' } });
+          fireSdkEvent({ type: 'assistant.turn_start', data: { turnId: 't2' } });
+        });
+
+        const emit = vi.fn();
+        const pending = svc.sendMessage('valid-mind', 'hello', 'msg-1', emit);
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(emit).not.toHaveBeenCalledWith({ type: 'done' });
+
+        fireSdkEvent({ type: 'assistant.message', data: { messageId: 'm2', content: 'final output' } });
+        fireSdkEvent({ type: 'assistant.turn_end', data: { turnId: 't2' } });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await pending;
+
+        expect(emit).toHaveBeenCalledWith({ type: 'message_final', sdkMessageId: 'm2', content: 'final output' });
         expect(emit).toHaveBeenCalledWith({ type: 'done' });
       } finally {
         vi.useRealTimers();

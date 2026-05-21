@@ -213,8 +213,12 @@ export class ChatService {
       if (event.type === 'permission.completed' && typeof event.data?.requestId === 'string') {
         pendingPermissionIds.delete(event.data.requestId);
       }
-      if (event.type === 'assistant.turn_start' && typeof event.agentId === 'string') {
-        activeSubAgentIds.add(event.agentId);
+      if (event.type === 'assistant.turn_start') {
+        if (typeof event.agentId === 'string') {
+          activeSubAgentIds.add(event.agentId);
+        } else {
+          sawRootTurnEnd = false;
+        }
       }
       if (event.type === 'assistant.turn_end') {
         if (typeof event.agentId === 'string') {
@@ -366,17 +370,17 @@ export class ChatService {
     }
   }
 
-  async cancelMessage(mindId: string, _messageId: string): Promise<void> {
+  async cancelMessage(mindId: string, _messageId: string): Promise<boolean> {
     void _messageId;
     const controller = this.abortControllers.get(mindId);
-    if (controller) {
-      controller.abort();
-      this.abortControllers.delete(mindId);
-    }
+    if (!controller) return false;
+    controller.abort();
+    this.abortControllers.delete(mindId);
     const context = this.mindManager.getMind(mindId);
     if (context?.session) {
       await context.session.abort().catch(() => { /* noop */ });
     }
+    return true;
   }
 
   async setMindModel(mindId: string, model: string | null): Promise<Awaited<ReturnType<MindManager['setMindModel']>>> {

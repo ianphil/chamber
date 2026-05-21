@@ -140,6 +140,8 @@ export function installBrowserApi(): void {
         return { sessionId: '', messages: [], conversations: [] };
       },
       listModels: (): Promise<ModelInfo[]> => client.listModels(),
+      getEventSequence: async () => 0,
+      replayEvents: async () => [],
       onEvent: (callback) => {
         chatEventHandlers.add(callback);
         void openEventSocket();

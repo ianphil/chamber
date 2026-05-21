@@ -13,6 +13,8 @@ const electronAPI: ElectronAPI = {
     newConversation: (mindId) =>
       ipcRenderer.invoke(IPC.CHAT.NEW_CONVERSATION, mindId),
     listModels: (mindId?) => ipcRenderer.invoke(IPC.CHAT.LIST_MODELS, mindId),
+    getEventSequence: () => ipcRenderer.invoke(IPC.CHAT.GET_EVENT_SEQUENCE),
+    replayEvents: (afterSequence) => ipcRenderer.invoke(IPC.CHAT.REPLAY_EVENTS, afterSequence),
     onEvent: (callback) => createIpcListener(ipcRenderer, IPC.CHAT.EVENT, callback),
   },
   conversationHistory: {

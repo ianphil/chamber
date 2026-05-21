@@ -32,6 +32,7 @@ import type {
   ByoLlmSaveResult,
   ChatEvent,
   ChatImageAttachment,
+  ChatReplayEvent,
   ConversationResumeResult,
   ConversationSummary,
   DesktopUpdateActionResult,
@@ -56,7 +57,9 @@ export interface ElectronAPI {
     stop: (mindId: string, messageId: string) => Promise<void>;
     newConversation: (mindId: string) => Promise<ConversationResumeResult>;
     listModels: (mindId?: string) => Promise<ModelInfo[]>;
-    onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent) => void) => () => void;
+    getEventSequence: () => Promise<number>;
+    replayEvents: (afterSequence: number) => Promise<ChatReplayEvent[]>;
+    onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent, sequence?: number) => void) => () => void;
   };
   conversationHistory: {
     list: (mindId: string) => Promise<ConversationSummary[]>;

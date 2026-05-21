@@ -528,13 +528,22 @@ describe('appReducer', () => {
     expect(state.selectedModel).toBe('copilot:model-2');
   });
 
-  it('SET_ACTIVE_MIND preserves the selected mind streaming state', () => {
+  it('SET_ACTIVE_MIND preserves the selected mind chat streaming state', () => {
     const state = appReducer({
       ...withActiveMind,
       streamingByMind: { 'other-mind': true },
     }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
 
     expect(state.isStreaming).toBe(true);
+  });
+
+  it('SET_ACTIVE_MIND ignores selected mind A2A streaming state', () => {
+    const state = appReducer({
+      ...withActiveMind,
+      a2aStreamingByMind: { 'other-mind': true },
+    }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
+
+    expect(state.isStreaming).toBe(false);
   });
 
   it('ADD_MIND appends a new mind and sets it active if none active', () => {
@@ -760,14 +769,15 @@ describe('appReducer', () => {
       expect(msgs[1].isStreaming).toBe(true);
     });
 
-    it('sets streamingByMind for target mind', () => {
+    it('sets a2aStreamingByMind for target mind', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
-      expect(state.streamingByMind[mindId]).toBe(true);
+      expect(state.a2aStreamingByMind[mindId]).toBe(true);
+      expect(state.streamingByMind[mindId]).toBeUndefined();
     });
 
-    it('sets global isStreaming true when target is active mind', () => {
+    it('does not set global isStreaming when target is active mind', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
-      expect(state.isStreaming).toBe(true);
+      expect(state.isStreaming).toBe(false);
     });
 
     it('records inactive mind relay messages without stealing focus', () => {
@@ -778,7 +788,8 @@ describe('appReducer', () => {
       expect(state.activeMindId).toBe(mindId);
       expect(state.activeView).toBe(withActiveMind.activeView);
       expect(state.isStreaming).toBe(withActiveMind.isStreaming);
-      expect(state.streamingByMind['other-mind']).toBe(true);
+      expect(state.a2aStreamingByMind['other-mind']).toBe(true);
+      expect(state.streamingByMind['other-mind']).toBeUndefined();
       expect(state.messagesByMind['other-mind']).toHaveLength(2);
     });
 

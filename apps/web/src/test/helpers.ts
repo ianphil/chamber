@@ -117,6 +117,8 @@ export function mockElectronAPI(): ElectronAPI {
       stop: vi.fn().mockResolvedValue(undefined),
       newConversation: vi.fn().mockResolvedValue({ sessionId: '', messages: [], conversations: [] }),
       listModels: vi.fn().mockResolvedValue([]),
+      getEventSequence: vi.fn().mockResolvedValue(0),
+      replayEvents: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
     },
     conversationHistory: {
