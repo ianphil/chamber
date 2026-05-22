@@ -285,6 +285,42 @@ describe('MindScopedJobs', () => {
     });
   });
 
+  it('finalizes ACP child ledger rows when status observes natural completion', async () => {
+    const store = buildStore();
+    store.status.mockImplementation((jobId: string) => snap(jobId, { status: 'completed' }));
+    const ledger = new TaskLedger(new InMemoryLedgerStore(), {
+      createLedgerId: () => 'ledger-acp',
+      now: () => '2026-05-21T21:30:00.000Z',
+    });
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a', () => ledger);
+    const { jobId } = await scoped.delegate({ cwd: '/repo', prompt: 'build it' });
+
+    scoped.status(jobId);
+
+    expect(ledger.reader.getByLedgerId('ledger-acp')).toMatchObject({
+      status: 'succeeded',
+      terminalSummary: 'succeeded',
+    });
+  });
+
+  it('finalizes ACP child ledger rows when list observes failure', async () => {
+    const store = buildStore();
+    const ledger = new TaskLedger(new InMemoryLedgerStore(), {
+      createLedgerId: () => 'ledger-acp',
+      now: () => '2026-05-21T21:30:00.000Z',
+    });
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a', () => ledger);
+    await scoped.delegate({ cwd: '/repo', prompt: 'build it' });
+    store.list.mockReturnValue([snap('job-1', { status: 'failed' })]);
+
+    scoped.list();
+
+    expect(ledger.reader.getByLedgerId('ledger-acp')).toMatchObject({
+      status: 'failed',
+      terminalSummary: 'failed',
+    });
+  });
+
   it('forwards permissionMode through list filter to the inner store', async () => {
     const store = buildStore();
     const scoped = new MindScopedJobs(asJobStore(store), 'mind-a');

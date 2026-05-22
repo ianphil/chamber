@@ -33,11 +33,13 @@ import type {
   JobStore,
   PermissionMode,
 } from 'chamber-copilot';
+import type { LedgerStatus } from '@chamber/shared';
 import type { TaskLedger } from '../ledger';
 import { Logger } from '../logger';
 
 const SCOPED_ID_SEPARATOR = ':';
 const log = Logger.create('MindScopedJobs');
+type TerminalLedgerStatus = Extract<LedgerStatus, 'succeeded' | 'failed' | 'timed-out' | 'cancelled' | 'lost'>;
 
 function unknownJob(scopedJobId: string): Error {
   return new Error(`Unknown job_id: ${scopedJobId}`);
@@ -117,6 +119,7 @@ export class MindScopedJobs {
   status(scopedJobId: string): JobSnapshot {
     const raw = this.unscope(scopedJobId);
     const snap = this.inner.status(raw);
+    this.reconcileLedgerRow(raw, snap);
     return { ...snap, jobId: this.scope(snap.jobId) };
   }
 
@@ -124,7 +127,10 @@ export class MindScopedJobs {
     return this.inner
       .list(filter)
       .filter((snap) => this.ownedJobIds.has(snap.jobId))
-      .map((snap) => ({ ...snap, jobId: this.scope(snap.jobId) }));
+      .map((snap) => {
+        this.reconcileLedgerRow(snap.jobId, snap);
+        return { ...snap, jobId: this.scope(snap.jobId) };
+      });
   }
 
   /**
@@ -175,7 +181,7 @@ export class MindScopedJobs {
 
   private finalizeLedgerRow(
     rawJobId: string,
-    status: 'succeeded' | 'failed' | 'timed-out' | 'cancelled' | 'lost',
+    status: TerminalLedgerStatus,
   ): void {
     try {
       const ledger = this.getLedger();
@@ -184,6 +190,33 @@ export class MindScopedJobs {
       ledger?.writer.finalize(row.ledgerId, { status, terminalSummary: status });
     } catch (err) {
       log.warn(`Failed to finalize ledger row for ACP child job ${rawJobId}:`, err);
+    }
+  }
+
+  private reconcileLedgerRow(rawJobId: string, snap: JobSnapshot): void {
+    const status = this.mapSnapshotStatusToLedgerStatus(snap);
+    if (!status) return;
+    this.finalizeLedgerRow(rawJobId, status);
+  }
+
+  private mapSnapshotStatusToLedgerStatus(snap: JobSnapshot): TerminalLedgerStatus | undefined {
+    switch (snap.status) {
+      case 'completed':
+      case 'succeeded':
+      case 'success':
+        return 'succeeded';
+      case 'failed':
+      case 'error':
+        return 'failed';
+      case 'timed-out':
+      case 'timed_out':
+      case 'timeout':
+        return 'timed-out';
+      case 'cancelled':
+      case 'canceled':
+        return 'cancelled';
+      default:
+        return undefined;
     }
   }
 

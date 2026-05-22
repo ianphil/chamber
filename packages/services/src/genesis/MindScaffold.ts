@@ -18,7 +18,8 @@ const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
 const GENESIS_SOURCE = 'ianphil/genesis';
 const GENESIS_CHANNEL = 'main';
-const CHAMBER_GITIGNORE_CONTENT = 'runs/\n';
+const CHAMBER_GITIGNORE_ENTRIES = ['runs/', 'cron-runs.json', 'cron-runs.json.migrated-*'] as const;
+const CHAMBER_GITIGNORE_CONTENT = `${CHAMBER_GITIGNORE_ENTRIES.join('\n')}\n`;
 
 export interface GenesisConfig {
   name: string;
@@ -68,7 +69,7 @@ export class MindScaffold {
   }
 
   static ensureChamberGitignore(mindPath: string): boolean {
-    return MindScaffold.writeChamberGitignore(mindPath, { createChamberDirectory: false });
+    return MindScaffold.writeChamberGitignore(mindPath, { createChamberDirectory: true });
   }
 
   async create(config: GenesisConfig): Promise<string> {
@@ -219,10 +220,11 @@ export class MindScaffold {
     if (fs.existsSync(gitignorePath)) {
       const content = fs.readFileSync(gitignorePath, 'utf8');
       const entries = content.split(/\r?\n/).map((line) => line.trim());
-      if (entries.includes('runs/')) return false;
+      const missingEntries = CHAMBER_GITIGNORE_ENTRIES.filter((entry) => !entries.includes(entry));
+      if (missingEntries.length === 0) return false;
 
       const separator = content.length === 0 || content.endsWith('\n') ? '' : '\n';
-      fs.writeFileSync(gitignorePath, `${content}${separator}${CHAMBER_GITIGNORE_CONTENT}`);
+      fs.writeFileSync(gitignorePath, `${content}${separator}${missingEntries.join('\n')}\n`);
       return true;
     }
 

@@ -13,8 +13,10 @@ import { MindScaffold } from '../genesis/MindScaffold';
 
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
   readdirSync: vi.fn(() => []),
   readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
   realpathSync: Object.assign(vi.fn((candidate: string) => candidate), {
     native: vi.fn((candidate: string) => candidate),
   }),

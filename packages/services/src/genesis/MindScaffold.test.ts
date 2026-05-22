@@ -186,12 +186,14 @@ describe('MindScaffold chamber gitignore', () => {
     }
   }
 
-  it('commits .chamber/.gitignore with runs ignored during Genesis git init', () => {
+  it('commits .chamber/.gitignore with runtime history ignored during Genesis git init', () => {
     const mindPath = makeMindPath();
     try {
       fs.mkdirSync(path.join(mindPath, '.chamber', 'runs'), { recursive: true });
       fs.writeFileSync(path.join(mindPath, 'SOUL.md'), '# Soul\n');
       fs.writeFileSync(path.join(mindPath, '.chamber', 'runs', 'tasks.db'), 'db');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron-runs.json'), '[]\n');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron-runs.json.migrated-2026-05-21T000000000Z'), '[]\n');
 
       const scaffold = new MindScaffold(
         {} as unknown as GitHubRegistryClient,
@@ -200,10 +202,14 @@ describe('MindScaffold chamber gitignore', () => {
       initGit(scaffold, mindPath);
 
       const gitignorePath = path.join(mindPath, '.chamber', '.gitignore');
-      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe('runs/\n');
+      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
       const committedFiles = execSync('git ls-tree --name-only -r HEAD', { cwd: mindPath, encoding: 'utf8' });
       expect(committedFiles).toContain('.chamber/.gitignore');
       expect(committedFiles).not.toContain('.chamber/runs/tasks.db');
+      expect(committedFiles).not.toContain('.chamber/cron-runs.json');
+      expect(committedFiles).not.toContain('.chamber/cron-runs.json.migrated-2026-05-21T000000000Z');
     } finally {
       removeMindPath(mindPath);
     }
@@ -217,7 +223,24 @@ describe('MindScaffold chamber gitignore', () => {
 
       MindScaffold.ensureChamberGitignore(mindPath);
 
-      expect(fs.readFileSync(path.join(mindPath, '.chamber', '.gitignore'), 'utf8')).toBe('runs/\n');
+      expect(fs.readFileSync(path.join(mindPath, '.chamber', '.gitignore'), 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
+    } finally {
+      removeMindPath(mindPath);
+    }
+  });
+
+  it('creates .chamber/.gitignore for existing minds before runtime history exists', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(mindPath, { recursive: true });
+
+      MindScaffold.ensureChamberGitignore(mindPath);
+
+      expect(fs.readFileSync(path.join(mindPath, '.chamber', '.gitignore'), 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
     } finally {
       removeMindPath(mindPath);
     }
@@ -228,17 +251,19 @@ describe('MindScaffold chamber gitignore', () => {
     try {
       fs.mkdirSync(path.join(mindPath, '.chamber'), { recursive: true });
       const gitignorePath = path.join(mindPath, '.chamber', '.gitignore');
-      fs.writeFileSync(gitignorePath, 'runs/\ncustom/\n');
+      fs.writeFileSync(gitignorePath, 'runs/\ncron-runs.json\ncron-runs.json.migrated-*\ncustom/\n');
 
       MindScaffold.ensureChamberGitignore(mindPath);
 
-      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe('runs/\ncustom/\n');
+      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\ncustom/\n',
+      );
     } finally {
       removeMindPath(mindPath);
     }
   });
 
-  it('adds runs to an existing .chamber/.gitignore without dropping custom entries', () => {
+  it('adds runtime history ignores to an existing .chamber/.gitignore without dropping custom entries', () => {
     const mindPath = makeMindPath();
     try {
       fs.mkdirSync(path.join(mindPath, '.chamber'), { recursive: true });
@@ -247,7 +272,9 @@ describe('MindScaffold chamber gitignore', () => {
 
       MindScaffold.ensureChamberGitignore(mindPath);
 
-      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe('custom/\nruns/\n');
+      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe(
+        'custom/\nruns/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
     } finally {
       removeMindPath(mindPath);
     }
@@ -259,6 +286,7 @@ describe('MindScaffold chamber gitignore', () => {
       fs.mkdirSync(path.join(mindPath, '.chamber', 'runs'), { recursive: true });
       fs.writeFileSync(path.join(mindPath, 'SOUL.md'), '# Soul\n');
       fs.writeFileSync(path.join(mindPath, '.chamber', 'runs', 'tasks.db'), 'db');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron-runs.json'), '[]\n');
 
       const scaffold = new MindScaffold(
         {} as unknown as GitHubRegistryClient,
