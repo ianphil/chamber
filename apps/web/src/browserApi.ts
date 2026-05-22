@@ -293,6 +293,19 @@ export function installBrowserApi(): void {
       install: async () => ({ success: false, error: 'Tool install is desktop-only in browser mode.' }),
       uninstall: async () => ({ success: false, error: 'Tool uninstall is desktop-only in browser mode.' }),
     },
+    tasks: {
+      list: async () => [],
+      get: async (_mindId, ledgerId) => ({ error: `Task ledger is desktop-only in browser mode: ${ledgerId}` }),
+      cancel: async (_mindId, ledgerId) => ({
+        found: false,
+        cancelled: false,
+        reason: `Task cancellation is desktop-only in browser mode: ${ledgerId}`,
+      }),
+      audit: async () => ({
+        counts: { queued: 0, running: 0, succeeded: 0, failed: 0, 'timed-out': 0, cancelled: 0, lost: 0 },
+        findings: [],
+      }),
+    },
     chatroom: createBrowserChatroomApi(),
     updater: {
       getState: async () => ({

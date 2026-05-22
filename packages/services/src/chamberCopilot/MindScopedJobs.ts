@@ -33,8 +33,11 @@ import type {
   JobStore,
   PermissionMode,
 } from 'chamber-copilot';
+import type { TaskLedger } from '../ledger';
+import { Logger } from '../logger';
 
 const SCOPED_ID_SEPARATOR = ':';
+const log = Logger.create('MindScopedJobs');
 
 function unknownJob(scopedJobId: string): Error {
   return new Error(`Unknown job_id: ${scopedJobId}`);
@@ -58,6 +61,7 @@ export class MindScopedJobs {
   constructor(
     private readonly inner: JobStore,
     private readonly mindId: string,
+    private readonly getLedger: () => TaskLedger | undefined = () => undefined,
   ) {}
 
   async delegate(params: {
@@ -88,6 +92,7 @@ export class MindScopedJobs {
       );
     }
     this.ownedJobIds.add(result.jobId);
+    this.recordDelegatedJob(result.jobId, params);
     return { jobId: this.scope(result.jobId), sessionId: result.sessionId };
   }
 
@@ -104,7 +109,9 @@ export class MindScopedJobs {
   }
 
   async cancel(scopedJobId: string): Promise<void> {
-    await this.inner.cancel(this.unscope(scopedJobId));
+    const rawJobId = this.unscope(scopedJobId);
+    await this.inner.cancel(rawJobId);
+    this.finalizeLedgerRow(rawJobId, 'cancelled');
   }
 
   status(scopedJobId: string): JobSnapshot {
@@ -135,6 +142,7 @@ export class MindScopedJobs {
     for (const raw of jobs) {
       try {
         await this.inner.cancel(raw);
+        this.finalizeLedgerRow(raw, 'cancelled');
       } catch {
         // Already terminal, never started, or otherwise gone — by design.
       }
@@ -143,6 +151,44 @@ export class MindScopedJobs {
 
   private scope(rawJobId: string): string {
     return `${this.mindId}${SCOPED_ID_SEPARATOR}${rawJobId}`;
+  }
+
+  private recordDelegatedJob(
+    rawJobId: string,
+    params: { readonly cwd: string; readonly prompt: string; readonly permissionMode?: PermissionMode },
+  ): void {
+    try {
+      this.getLedger()?.writer.createRunning({
+        runtime: 'acp-child',
+        ownerMindId: this.mindId,
+        scopeKind: 'system',
+        task: params.prompt,
+        runKey: this.runKey(rawJobId),
+        sourceId: rawJobId,
+        label: params.permissionMode ?? 'safe',
+        payload: { runtime: 'acp-child', rawJobId, cwd: params.cwd },
+      });
+    } catch (err) {
+      log.warn(`Failed to create ledger row for ACP child job ${rawJobId}:`, err);
+    }
+  }
+
+  private finalizeLedgerRow(
+    rawJobId: string,
+    status: 'succeeded' | 'failed' | 'timed-out' | 'cancelled' | 'lost',
+  ): void {
+    try {
+      const ledger = this.getLedger();
+      const row = ledger?.reader.getByRunKey('acp-child', this.runKey(rawJobId));
+      if (!row) return;
+      ledger?.writer.finalize(row.ledgerId, { status, terminalSummary: status });
+    } catch (err) {
+      log.warn(`Failed to finalize ledger row for ACP child job ${rawJobId}:`, err);
+    }
+  }
+
+  private runKey(rawJobId: string): string {
+    return `acp-child-${rawJobId}`;
   }
 
   private unscope(scopedJobId: string): string {

@@ -82,6 +82,12 @@ export const IPC = {
     INSTALL: 'tools:install',
     UNINSTALL: 'tools:uninstall',
   },
+  TASKS: {
+    LIST: 'tasks:list',
+    GET: 'tasks:get',
+    CANCEL: 'tasks:cancel',
+    AUDIT: 'tasks:audit',
+  },
   BYO_LLM: {
     GET: 'byoLlm:get',
     SAVE: 'byoLlm:save',

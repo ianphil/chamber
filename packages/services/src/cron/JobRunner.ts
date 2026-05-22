@@ -67,6 +67,7 @@ export class JobRunner {
       recipient: job.payload.recipient ?? mindId,
       message: createTextMessage(mindId, job.payload.prompt),
       onUserInputRequest,
+      suppressLedgerWrite: true,
     });
 
     return this.waitForTask(taskManager, task.id, job.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS);

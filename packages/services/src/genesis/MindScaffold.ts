@@ -18,6 +18,7 @@ const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
 const GENESIS_SOURCE = 'ianphil/genesis';
 const GENESIS_CHANNEL = 'main';
+const CHAMBER_GITIGNORE_CONTENT = 'runs/\n';
 
 export interface GenesisConfig {
   name: string;
@@ -64,6 +65,10 @@ export class MindScaffold {
     // (macOS NAME_MAX is 255 bytes; APFS plus child paths like /inbox can still hit ENAMETOOLONG well before that).
     if (raw.length <= 40) return raw;
     return raw.slice(0, 40).replace(/-+$/, '');
+  }
+
+  static ensureChamberGitignore(mindPath: string): boolean {
+    return MindScaffold.writeChamberGitignore(mindPath, { createChamberDirectory: false });
   }
 
   async create(config: GenesisConfig): Promise<string> {
@@ -191,12 +196,38 @@ export class MindScaffold {
 
   private initGit(mindPath: string): void {
     try {
+      MindScaffold.writeChamberGitignore(mindPath, { createChamberDirectory: true });
       execSync('git init', { cwd: mindPath, stdio: 'ignore' });
       execSync('git add -A', { cwd: mindPath, stdio: 'ignore' });
       execSync('git commit -m "Genesis"', { cwd: mindPath, stdio: 'ignore' });
     } catch (err) {
       log.error('Git init failed:', err);
     }
+  }
+
+  private static writeChamberGitignore(
+    mindPath: string,
+    options: { createChamberDirectory: boolean },
+  ): boolean {
+    const chamberPath = path.join(mindPath, '.chamber');
+    if (!fs.existsSync(chamberPath)) {
+      if (!options.createChamberDirectory) return false;
+      fs.mkdirSync(chamberPath, { recursive: true });
+    }
+
+    const gitignorePath = path.join(chamberPath, '.gitignore');
+    if (fs.existsSync(gitignorePath)) {
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      const entries = content.split(/\r?\n/).map((line) => line.trim());
+      if (entries.includes('runs/')) return false;
+
+      const separator = content.length === 0 || content.endsWith('\n') ? '' : '\n';
+      fs.writeFileSync(gitignorePath, `${content}${separator}${CHAMBER_GITIGNORE_CONTENT}`);
+      return true;
+    }
+
+    fs.writeFileSync(gitignorePath, CHAMBER_GITIGNORE_CONTENT);
+    return true;
   }
 
   private async bootstrapCapabilities(mindPath: string): Promise<void> {

@@ -20,6 +20,7 @@ import type {
 } from './a2a-types';
 import type { ChatroomAPI } from './chatroom-types';
 import type { AppFeatureFlags } from './feature-flags';
+import type { CancelOutcome, LedgerRecord, LedgerStatus } from './ledger';
 import type {
   AgentProfile,
   AgentProfileActionResult,
@@ -129,6 +130,15 @@ export interface ElectronAPI {
     list: () => Promise<ToolCatalogEntry[]>;
     install: (toolId: string, marketplaceId?: string) => Promise<ToolActionResult>;
     uninstall: (toolId: string) => Promise<{ success: boolean; error?: string }>;
+  };
+  tasks: {
+    list: (mindId: string) => Promise<LedgerRecord[]>;
+    get: (mindId: string, ledgerId: string) => Promise<LedgerRecord | { error: string }>;
+    cancel: (mindId: string, ledgerId: string) => Promise<CancelOutcome>;
+    audit: (mindId: string) => Promise<{
+      counts: Record<LedgerStatus, number>;
+      findings: Array<{ type: 'stale-running' | 'missing-cleanup' | 'delivery-failed'; ledgerId: string }>;
+    }>;
   };
   chatroom: ChatroomAPI;
   updater: {

@@ -1,4 +1,5 @@
 import type { AcpConnection, JobStore, AcpTool, PermissionMode } from 'chamber-copilot';
+import type { TaskLedger } from '../ledger';
 
 /**
  * Port for constructing an underlying ACP connection.
@@ -68,6 +69,7 @@ export interface ChamberCopilotServiceOptions {
   readonly connectionsByMode?: ChamberCopilotConnectionFactories;
   readonly jobStoreFactory: JobStoreFactory;
   readonly toolFactory: AcpToolFactory;
+  readonly createTaskLedger?: (mindPath: string) => TaskLedger;
 }
 
 /** Re-exported for callers that want to type their `cli_delegate` wrappers. */

@@ -275,6 +275,15 @@ export function mockElectronAPI(): ElectronAPI {
       install: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       uninstall: vi.fn().mockResolvedValue({ success: true }),
     },
+    tasks: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue({ error: 'not stubbed' }),
+      cancel: vi.fn().mockResolvedValue({ found: false, cancelled: false, reason: 'not stubbed' }),
+      audit: vi.fn().mockResolvedValue({
+        counts: { queued: 0, running: 0, succeeded: 0, failed: 0, 'timed-out': 0, cancelled: 0, lost: 0 },
+        findings: [],
+      }),
+    },
     chatroom: {
       send: vi.fn().mockResolvedValue(undefined),
       history: vi.fn().mockResolvedValue([]),

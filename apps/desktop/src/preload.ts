@@ -94,6 +94,12 @@ const electronAPI: ElectronAPI = {
     install: (toolId, marketplaceId) => ipcRenderer.invoke(IPC.TOOLS.INSTALL, toolId, marketplaceId),
     uninstall: (toolId) => ipcRenderer.invoke(IPC.TOOLS.UNINSTALL, toolId),
   },
+  tasks: {
+    list: (mindId) => ipcRenderer.invoke(IPC.TASKS.LIST, mindId),
+    get: (mindId, ledgerId) => ipcRenderer.invoke(IPC.TASKS.GET, mindId, ledgerId),
+    cancel: (mindId, ledgerId) => ipcRenderer.invoke(IPC.TASKS.CANCEL, mindId, ledgerId),
+    audit: (mindId) => ipcRenderer.invoke(IPC.TASKS.AUDIT, mindId),
+  },
   chatroom: {
     send: (message: string, model?: string, roundId?: string) => ipcRenderer.invoke(IPC.CHATROOM.SEND, message, model, roundId),
     history: () => ipcRenderer.invoke(IPC.CHATROOM.HISTORY),

@@ -56,12 +56,14 @@ import {
   MindProfileService,
   MindScaffold,
   TaskManager,
+  TaskLedger,
   ChildProcessRunner,
   ToolInstaller,
   ToolsService,
   TurnQueue,
   UserProfileService,
   ViewDiscovery,
+  SQLiteLedgerStore,
   ByoLlmStore,
   buildProviderConfig,
   createByoLlmModelsProvider,
@@ -94,6 +96,7 @@ import { setupLensIPC } from './main/ipc/lens';
 import { setupGenesisIPC } from './main/ipc/genesis';
 import { setupMarketplaceIPC } from './main/ipc/marketplace';
 import { setupToolsIPC } from './main/ipc/tools';
+import { setupTasksIPC } from './main/ipc/tasks';
 import { setupAuthIPC } from './main/ipc/auth';
 import { setupByoLlmIPC } from './main/ipc/byoLlm';
 import { setupA2AIPC } from './main/ipc/a2a';
@@ -210,6 +213,17 @@ let cronService: CronService;
 let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
 let updaterService: UpdaterService;
+const taskLedgersByMindPath = new Map<string, TaskLedger>();
+
+const createTaskLedger = (mindPath: string): TaskLedger => {
+  const existing = taskLedgersByMindPath.get(mindPath);
+  if (existing) return existing;
+  const ledger = new TaskLedger(
+    new SQLiteLedgerStore(path.join(mindPath, '.chamber', 'runs', 'tasks.db')),
+  );
+  taskLedgersByMindPath.set(mindPath, ledger);
+  return ledger;
+};
 
 async function initializeRuntime(): Promise<void> {
   const userAgent = `Chamber/${app.getVersion()}`;
@@ -287,7 +301,12 @@ async function initializeRuntime(): Promise<void> {
       tenantId: process.env.CHAMBER_MICROSOFT_GRAPH_TENANT_ID,
     }),
   );
-  taskManager = new TaskManager(mindManager, agentCardRegistry);
+  taskManager = new TaskManager(mindManager, agentCardRegistry, {
+    getLedgerForMind: (mindId) => {
+      const mindPath = mindManager.getMind(mindId)?.mindPath;
+      return mindPath ? createTaskLedger(mindPath) : undefined;
+    },
+  });
   // The SDK model catalog does not include BYO endpoint models, so keep the
   // saved BYO model visible through this side-channel when the flag is enabled.
   const byoLlmModelsProvider = createByoLlmModelsProvider({
@@ -336,10 +355,11 @@ async function initializeRuntime(): Promise<void> {
       showMainWindow();
     },
     notifier,
+    createTaskLedger,
   });
   const a2aToolProvider = new A2aToolProvider(messageRouter, activeA2AResolver, taskManager);
   const mindToolProviders: ChamberToolProvider[] = [cronService, canvasService, a2aToolProvider];
-  chamberCopilotService = createChamberCopilotService(mindToolProviders);
+  chamberCopilotService = createChamberCopilotService(mindToolProviders, createTaskLedger);
   mindManager.setProviders(mindToolProviders);
   wireLifecycleEvents({ mindManager, agentCardRegistry, a2aRelayModeService, taskManager, a2aEventBus });
   viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
@@ -357,7 +377,10 @@ async function refreshCachedByoLlmConfig(): Promise<void> {
   cachedByoLlmConfig = appFeatureFlags.byoLlm ? await byoLlmStore.load() : null;
 }
 
-function createChamberCopilotService(mindToolProviders: ChamberToolProvider[]): ChamberCopilotService | null {
+function createChamberCopilotService(
+  mindToolProviders: ChamberToolProvider[],
+  createTaskLedger: (mindPath: string) => TaskLedger,
+): ChamberCopilotService | null {
   if (!appFeatureFlags.chamberCopilot) return null;
   const { defaultAcpConnectionFactory, AcpConnection, JobStore, createAcpTools } = loadChamberCopilot();
   // Reuse the same bundled Copilot CLI resolver as the SDK runtime so the ACP
@@ -376,6 +399,7 @@ function createChamberCopilotService(mindToolProviders: ChamberToolProvider[]): 
     // packaged builds must only require chamber-copilot after loadChamberCopilot().
     jobStoreFactory: (connections) => new JobStore({ connectionsByMode: connections }),
     toolFactory: (deps) => createAcpTools(deps),
+    createTaskLedger,
   });
   mindToolProviders.push(service);
   log.info('chamber-copilot ACP extension enabled (safe only)', { cliPath });
@@ -697,6 +721,12 @@ app.on('ready', async () => {
   );
   setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);
+  setupTasksIPC({
+    getLedgerForMind: (mindId) => {
+      const mindPath = mindManager.getMind(mindId)?.mindPath;
+      return mindPath ? createTaskLedger(mindPath) : undefined;
+    },
+  });
   setupAuthIPC(authService, mindManager);
   setupByoLlmIPC(byoLlmStore, mindManager, {
     featureEnabled: appFeatureFlags.byoLlm,

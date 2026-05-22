@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { JobSnapshot, JobStore } from 'chamber-copilot';
+import { InMemoryLedgerStore, TaskLedger } from '../ledger';
 import { MindScopedJobs } from './MindScopedJobs';
 
 function snap(jobId: string, overrides: Partial<JobSnapshot> = {}): JobSnapshot {
@@ -89,6 +90,20 @@ describe('MindScopedJobs', () => {
     const a = await mindA.delegate({ cwd: '/repo-a', prompt: 'a' });
 
     expect(() => mindB.status(a.jobId)).toThrow(/Unknown job_id/);
+  });
+
+  it('uses the same UnknownJob shape for missing, wrong-owner, and released jobs', async () => {
+    const store = buildStore();
+    const mindA = new MindScopedJobs(asJobStore(store), 'mind-a');
+    const mindB = new MindScopedJobs(asJobStore(store), 'mind-b');
+    const a = await mindA.delegate({ cwd: '/repo-a', prompt: 'a' });
+
+    expect(() => mindA.status('mind-a:missing')).toThrow('Unknown job_id: mind-a:missing');
+    expect(() => mindB.status(a.jobId)).toThrow(`Unknown job_id: ${a.jobId}`);
+
+    await mindA.releaseAll();
+
+    expect(() => mindA.status(a.jobId)).toThrow(`Unknown job_id: ${a.jobId}`);
   });
 
   it('rejects respond/approve/cancel from a different mind without leaking the real job_id', async () => {
@@ -240,6 +255,34 @@ describe('MindScopedJobs', () => {
     expect(store.delegate).toHaveBeenNthCalledWith(1, { cwd: '/repo', prompt: 'safe-default' });
     expect(store.delegate).toHaveBeenNthCalledWith(2, { cwd: '/repo', prompt: 'explicit-safe', permissionMode: 'safe' });
     expect(store.delegate).toHaveBeenNthCalledWith(3, { cwd: '/repo', prompt: 'yolo-job', permissionMode: 'yolo' });
+  });
+
+  it('records delegated ACP child jobs in the task ledger and finalizes them on cancel', async () => {
+    const store = buildStore();
+    const ledger = new TaskLedger(new InMemoryLedgerStore(), {
+      createLedgerId: () => 'ledger-acp',
+      now: () => '2026-05-21T21:30:00.000Z',
+    });
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a', () => ledger);
+
+    const { jobId } = await scoped.delegate({ cwd: '/repo', prompt: 'build it', permissionMode: 'yolo' });
+
+    expect(ledger.reader.getByLedgerId('ledger-acp')).toMatchObject({
+      runtime: 'acp-child',
+      ownerMindId: 'mind-a',
+      status: 'running',
+      task: 'build it',
+      sourceId: 'job-1',
+      label: 'yolo',
+      payload: { runtime: 'acp-child', rawJobId: 'job-1', cwd: '/repo' },
+    });
+
+    await scoped.cancel(jobId);
+
+    expect(ledger.reader.getByLedgerId('ledger-acp')).toMatchObject({
+      status: 'cancelled',
+      terminalSummary: 'cancelled',
+    });
   });
 
   it('forwards permissionMode through list filter to the inner store', async () => {

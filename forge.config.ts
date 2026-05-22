@@ -81,6 +81,7 @@ const baseExtraResource = [
   './resources/sharp-runtime',
   './resources/acp-runtime',
   './resources/msal-runtime',
+  './node_modules/better-sqlite3',
   './node_modules/keytar',
   './apps/desktop/src/main/assets/lens-skill',
 ];
