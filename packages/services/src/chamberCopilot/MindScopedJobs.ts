@@ -207,6 +207,7 @@ export class MindScopedJobs {
         return 'succeeded';
       case 'failed':
       case 'error':
+      case 'errored':
         return 'failed';
       case 'timed-out':
       case 'timed_out':

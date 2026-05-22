@@ -321,6 +321,24 @@ describe('MindScopedJobs', () => {
     });
   });
 
+  it('maps upstream errored ACP child status to a failed ledger row', async () => {
+    const store = buildStore();
+    store.status.mockImplementation((jobId: string) => snap(jobId, { status: 'errored' }));
+    const ledger = new TaskLedger(new InMemoryLedgerStore(), {
+      createLedgerId: () => 'ledger-acp',
+      now: () => '2026-05-21T21:30:00.000Z',
+    });
+    const scoped = new MindScopedJobs(asJobStore(store), 'mind-a', () => ledger);
+    const { jobId } = await scoped.delegate({ cwd: '/repo', prompt: 'build it' });
+
+    scoped.status(jobId);
+
+    expect(ledger.reader.getByLedgerId('ledger-acp')).toMatchObject({
+      status: 'failed',
+      terminalSummary: 'failed',
+    });
+  });
+
   it('forwards permissionMode through list filter to the inner store', async () => {
     const store = buildStore();
     const scoped = new MindScopedJobs(asJobStore(store), 'mind-a');
