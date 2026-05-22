@@ -3,7 +3,7 @@ export { LedgerCanceller } from './LedgerCanceller';
 export { OwnerScope } from './OwnerScope';
 export { LedgerPolicy } from './LedgerPolicy';
 export { InMemoryLedgerStore } from './InMemoryLedgerStore';
-export { SQLiteLedgerStore } from './SQLiteLedgerStore';
+export { SQLiteLedgerStore, setSqliteDatabase } from './SQLiteLedgerStore';
 export { LedgerReader } from './LedgerReader';
 export { LedgerPruner } from './LedgerPruner';
 export { LedgerSweeper } from './LedgerSweeper';

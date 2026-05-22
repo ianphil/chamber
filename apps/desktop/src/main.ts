@@ -64,6 +64,7 @@ import {
   UserProfileService,
   ViewDiscovery,
   SQLiteLedgerStore,
+  setSqliteDatabase,
   ByoLlmStore,
   buildProviderConfig,
   createByoLlmModelsProvider,
@@ -172,6 +173,18 @@ function loadChamberCopilot(): typeof import('chamber-copilot') {
     path.join(process.resourcesPath, 'acp-runtime', 'node_modules', 'chamber-copilot'),
   ) as typeof import('chamber-copilot');
 }
+
+function loadBetterSqlite3(): typeof import('better-sqlite3') {
+  if (!app.isPackaged) {
+    return runtimeRequire('better-sqlite3') as typeof import('better-sqlite3');
+  }
+
+  return runtimeRequire(
+    path.join(process.resourcesPath, 'sqlite-runtime', 'node_modules', 'better-sqlite3'),
+  ) as typeof import('better-sqlite3');
+}
+
+setSqliteDatabase(loadBetterSqlite3());
 
 const notifier: Notifier = {
   notify: (alert) => {

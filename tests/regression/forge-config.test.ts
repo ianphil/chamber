@@ -92,7 +92,7 @@ describe('forge config', () => {
       // These resources are always required for the packaged app.
       expect(extraResource).toContain('./resources/node');
       expect(extraResource).toContain('./resources/copilot-runtime');
-      expect(extraResource).toContain('./node_modules/better-sqlite3');
+      expect(extraResource).toContain('./resources/sqlite-runtime');
       expect(extraResource).toContain('./node_modules/keytar');
     });
   });

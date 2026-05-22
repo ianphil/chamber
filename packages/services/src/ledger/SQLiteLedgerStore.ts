@@ -1,21 +1,43 @@
 import * as fs from 'node:fs';
 import * as nodePath from 'node:path';
-import Database from 'better-sqlite3';
+import { createRequire } from 'node:module';
+import type DatabaseConstructor from 'better-sqlite3';
 import type { LedgerRecord, LedgerStatus, TaskRuntime } from '@chamber/shared';
 import { LedgerDataError } from './errors';
 import type { LedgerStore } from './LedgerStore';
 
 const SCHEMA_VERSION = 1;
 
+// Resolution strategy for the better-sqlite3 native binary differs by host:
+//   - Packaged Electron: the binary lives at resources/sqlite-runtime/, built
+//     against Electron's Node ABI. apps/desktop/src/main.ts loads it once and
+//     calls setSqliteDatabase() before any LedgerStore is constructed.
+//   - Dev / tests: better-sqlite3 is resolvable from node_modules, so we lazy-
+//     require it via createRequire to bypass the Vite externals indirection.
+// See PR #358 thread on packaging better-sqlite3 the same way as the other
+// chamber-*-runtime native modules (sharp, msal, copilot).
+let injectedDatabaseCtor: typeof DatabaseConstructor | null = null;
+
+export function setSqliteDatabase(ctor: typeof DatabaseConstructor): void {
+  injectedDatabaseCtor = ctor;
+}
+
+function resolveDatabaseCtor(): typeof DatabaseConstructor {
+  if (injectedDatabaseCtor) return injectedDatabaseCtor;
+  const requireFromHere = createRequire(__filename);
+  return requireFromHere('better-sqlite3') as typeof DatabaseConstructor;
+}
+
 interface LedgerRow {
   record_json: string;
 }
 
 export class SQLiteLedgerStore implements LedgerStore {
-  private readonly db: Database.Database;
+  private readonly db: DatabaseConstructor.Database;
 
   constructor(readonly path: string) {
     fs.mkdirSync(nodePath.dirname(path), { recursive: true });
+    const Database = resolveDatabaseCtor();
     this.db = new Database(path);
     this.db.pragma('busy_timeout = 5000');
     this.migrate();
