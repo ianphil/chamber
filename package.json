@@ -21,6 +21,7 @@
     "sandbox": "node scripts/sandbox-test.js",
     "publish": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && electron-forge publish",
     "lint": "tsc --noEmit && eslint . && npm run deps:check && npm run lint:yaml && npm run lint:md",
+    "preflight": "tsdown scripts/preflight.ts --no-config --format esm --platform node --out-dir .cache/chamber-preflight --clean --logLevel warn && node .cache/chamber-preflight/preflight.mjs",
     "lint:md": "markdownlint-cli2 \"**/*.md\" \"#**/node_modules/**\" \"#resources\" \"#chamber-*-runtime/**\" \"#dist\" \"#out\" \"#coverage\" \"#test-results\" \"#.vite\" \"#.cache\" \"#.working-memory\" \"#CHANGELOG.md\"",
     "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\" \"#**/node_modules/**\" \"#resources\" \"#chamber-*-runtime/**\" \"#dist\" \"#out\" \"#coverage\" \"#test-results\" \"#.vite\" \"#.cache\" \"#.working-memory\" \"#CHANGELOG.md\"",
     "lint:yaml": "node scripts/ensure-actionlint.js && actionlint -color -shellcheck=",
