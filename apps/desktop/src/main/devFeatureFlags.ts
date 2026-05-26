@@ -11,4 +11,5 @@ export const DEV_FEATURE_FLAGS: AppFeatureFlags = {
   switchboardRelay: true,
   byoLlm: true,
   chamberCopilot: true,
+  dreamDaemon: true,
 };

@@ -2,6 +2,7 @@ export interface AppFeatureFlags {
   readonly switchboardRelay: boolean;
   readonly byoLlm: boolean;
   readonly chamberCopilot: boolean;
+  readonly dreamDaemon: boolean;
 }
 
 export type FeatureFlagChannel = 'stable' | 'insiders';
@@ -16,6 +17,7 @@ export const DEFAULT_APP_FEATURE_FLAGS: AppFeatureFlags = {
   switchboardRelay: false,
   byoLlm: false,
   chamberCopilot: false,
+  dreamDaemon: false,
 };
 
 export function getAppFeatureFlags(options: {
@@ -29,6 +31,7 @@ export function getAppFeatureFlags(options: {
     switchboardRelay: insiders,
     byoLlm: insiders,
     chamberCopilot: insiders,
+    dreamDaemon: insiders,
   };
 }
 
@@ -60,6 +63,7 @@ export function parseFeatureFlags(value: unknown): AppFeatureFlags | null {
     switchboardRelay: value.switchboardRelay === true,
     byoLlm: value.byoLlm === true,
     chamberCopilot: value.chamberCopilot === true,
+    dreamDaemon: value.dreamDaemon === true,
   };
 }
 
@@ -68,7 +72,8 @@ export function parseCompleteFeatureFlags(value: unknown): AppFeatureFlags | nul
   if (
     typeof value.switchboardRelay !== 'boolean' ||
     typeof value.byoLlm !== 'boolean' ||
-    typeof value.chamberCopilot !== 'boolean'
+    typeof value.chamberCopilot !== 'boolean' ||
+    typeof value.dreamDaemon !== 'boolean'
   ) {
     return null;
   }
@@ -76,6 +81,7 @@ export function parseCompleteFeatureFlags(value: unknown): AppFeatureFlags | nul
     switchboardRelay: value.switchboardRelay,
     byoLlm: value.byoLlm,
     chamberCopilot: value.chamberCopilot,
+    dreamDaemon: value.dreamDaemon,
   };
 }
 
