@@ -4,6 +4,7 @@ import type { TaskSessionFactory } from './TaskManager';
 import type { UserInputHandler } from '../mind/types';
 import type { AgentCard, SendMessageRequest, TaskState, Message, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, Artifact } from './types';
 import type { AgentCardRegistry } from './AgentCardRegistry';
+import { InMemoryLedgerStore, TaskLedger } from '../ledger';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -149,6 +150,72 @@ describe('TaskManager', () => {
     if (!fetched) throw new Error('Expected task to exist');
     expect(fetched.status.state).toBe('TASK_STATE_COMPLETED');
     expect(events.some((e) => e.status.state === 'TASK_STATE_COMPLETED')).toBe(true);
+  });
+
+  it('sendTask() emits submitted → working → completed and stores the terminal task state', async () => {
+    const events: TaskStatusUpdateEvent[] = [];
+    tm.on('task:status-update', (e) => events.push(e));
+
+    const submitted = await tm.sendTask(makeRequest('target-1', 'hello'));
+    await flushPromises();
+
+    latestMockSession._emit('session.idle');
+    await flushPromises();
+
+    const terminal = tm.getTask(submitted.id);
+    if (!terminal) throw new Error('Expected task to exist');
+    expect(submitted.status.state).toBe('TASK_STATE_SUBMITTED');
+    expect(events.map((event) => event.status.state)).toEqual([
+      'TASK_STATE_SUBMITTED',
+      'TASK_STATE_WORKING',
+      'TASK_STATE_COMPLETED',
+    ]);
+    expect(terminal.status.state).toBe('TASK_STATE_COMPLETED');
+  });
+
+  it('sendTask() writes an audit-only ledger row and finalizes it on completion', async () => {
+    const ledger = new TaskLedger(new InMemoryLedgerStore(), {
+      createLedgerId: () => 'ledger-1',
+      now: () => '2026-05-21T21:45:00.000Z',
+    });
+    tm = new TaskManager(
+      mockMindManager as unknown as TaskSessionFactory,
+      mockRegistry as unknown as AgentCardRegistry,
+      { ledger },
+    );
+
+    const submitted = await tm.sendTask(makeRequest('target-1', 'hello'));
+    await flushPromises();
+    latestMockSession._emit('session.idle');
+    await flushPromises();
+
+    expect(ledger.reader.getByLedgerId('ledger-1')).toMatchObject({
+      runtime: 'a2a',
+      ownerMindId: 'target-1',
+      status: 'succeeded',
+      a2aTaskId: submitted.id,
+      contextId: submitted.contextId,
+      payload: { runtime: 'a2a', a2aTaskId: submitted.id, contextId: submitted.contextId },
+    });
+  });
+
+  it('sendTask() skips audit ledger writes when suppressLedgerWrite is set', async () => {
+    const ledger = new TaskLedger(new InMemoryLedgerStore(), {
+      createLedgerId: () => 'ledger-1',
+      now: () => '2026-05-21T21:45:00.000Z',
+    });
+    tm = new TaskManager(
+      mockMindManager as unknown as TaskSessionFactory,
+      mockRegistry as unknown as AgentCardRegistry,
+      { ledger },
+    );
+
+    await tm.sendTask({
+      ...makeRequest('target-1', 'hello'),
+      suppressLedgerWrite: true,
+    });
+
+    expect(ledger.reader.getByLedgerId('ledger-1')).toBeUndefined();
   });
 
 

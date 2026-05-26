@@ -7,6 +7,8 @@ describe('IPC channel constants', () => {
     expect(IPC.CHAT.STOP).toBe('chat:stop');
     expect(IPC.CHAT.NEW_CONVERSATION).toBe('chat:newConversation');
     expect(IPC.CHAT.LIST_MODELS).toBe('chat:listModels');
+    expect(IPC.CHAT.GET_EVENT_SEQUENCE).toBe('chat:getEventSequence');
+    expect(IPC.CHAT.REPLAY_EVENTS).toBe('chat:replayEvents');
     expect(IPC.CHAT.EVENT).toBe('chat:event');
 
     expect(IPC.CONVERSATION_HISTORY.LIST).toBe('conversationHistory:list');

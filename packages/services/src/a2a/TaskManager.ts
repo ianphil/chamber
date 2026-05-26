@@ -14,6 +14,7 @@ import type {
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import { getSdkSessionErrorMessage } from '../sdk';
+import type { TaskLedger } from '../ledger';
 
 const log = Logger.create('TaskManager');
 
@@ -43,6 +44,12 @@ const TERMINAL_STATES: Set<TaskState> = new Set([
 
 export interface SendTaskRequest extends SendMessageRequest {
   onUserInputRequest?: UserInputHandler;
+  suppressLedgerWrite?: boolean;
+}
+
+interface TaskManagerOptions {
+  ledger?: TaskLedger;
+  getLedgerForMind?: (mindId: string) => TaskLedger | undefined;
 }
 
 export class TaskManager extends EventEmitter {
@@ -56,6 +63,7 @@ export class TaskManager extends EventEmitter {
   constructor(
     private readonly sessionFactory: TaskSessionFactory,
     private readonly agentCardRegistry: AgentCardRegistry,
+    private readonly options: TaskManagerOptions = {},
   ) {
     super();
   }
@@ -86,6 +94,9 @@ export class TaskManager extends EventEmitter {
     // 5. Store
     this.tasks.set(taskId, task);
     this.taskTargets.set(taskId, targetMindId);
+    if (!request.suppressLedgerWrite) {
+      this.recordTaskLedgerSubmitted(task, targetMindId);
+    }
 
     // 6. Emit submitted
     this.emitStatusUpdate(task);
@@ -246,6 +257,65 @@ export class TaskManager extends EventEmitter {
     }
   }
 
+  private recordTaskLedgerSubmitted(task: Task, targetMindId: string): void {
+    try {
+      this.getLedgerForMind(targetMindId)?.writer.createRunning({
+        runtime: 'a2a',
+        ownerMindId: targetMindId,
+        scopeKind: 'system',
+        task: `A2A task ${task.id}`,
+        runKey: `a2a-${task.id}`,
+        sourceId: task.id,
+        a2aTaskId: task.id,
+        contextId: task.contextId,
+        payload: { runtime: 'a2a', a2aTaskId: task.id, contextId: task.contextId },
+      });
+    } catch (err) {
+      log.warn(`Failed to create ledger row for A2A task ${task.id}:`, err);
+    }
+  }
+
+  private finalizeTaskLedger(task: Task): void {
+    try {
+      const targetMindId = this.taskTargets.get(task.id);
+      if (!targetMindId) return;
+      const ledger = this.getLedgerForMind(targetMindId);
+      const ledgerRecord = ledger?.reader.getByRunKey('a2a', `a2a-${task.id}`);
+      if (!ledgerRecord) return;
+      ledger?.writer.finalize(ledgerRecord.ledgerId, {
+        status: this.toLedgerStatus(task.status.state),
+        terminalSummary: task.status.state,
+        error: task.status.message?.parts?.find((part) => part.text)?.text,
+      });
+    } catch (err) {
+      log.warn(`Failed to finalize ledger row for A2A task ${task.id}:`, err);
+    }
+  }
+
+  private getLedgerForMind(mindId: string): TaskLedger | undefined {
+    return this.options.getLedgerForMind?.(mindId) ?? this.options.ledger;
+  }
+
+  private toLedgerStatus(state: TaskState): 'succeeded' | 'failed' | 'timed-out' | 'cancelled' {
+    switch (state) {
+      case 'TASK_STATE_COMPLETED':
+        return 'succeeded';
+      case 'TASK_STATE_CANCELED':
+        return 'cancelled';
+      case 'TASK_STATE_FAILED':
+      case 'TASK_STATE_REJECTED':
+      case 'TASK_STATE_AUTH_REQUIRED':
+      case 'TASK_STATE_INPUT_REQUIRED':
+      case 'TASK_STATE_SUBMITTED':
+      case 'TASK_STATE_WORKING':
+        return 'failed';
+      default: {
+        const _exhaustive: never = state;
+        throw new Error(`Unknown A2A task state: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
   private bindTaskSessionListeners(session: CopilotSession, task: Task, targetMindId: string): void {
     void targetMindId;
     let responseText = '';
@@ -306,6 +376,7 @@ export class TaskManager extends EventEmitter {
     this.emitStatusUpdate(task);
 
     if (TERMINAL_STATES.has(state)) {
+      this.finalizeTaskLedger(task);
       this.evictOldTasks();
     }
   }

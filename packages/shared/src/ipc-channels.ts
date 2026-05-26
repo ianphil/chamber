@@ -17,6 +17,8 @@ export const IPC = {
     STOP: 'chat:stop',
     NEW_CONVERSATION: 'chat:newConversation',
     LIST_MODELS: 'chat:listModels',
+    GET_EVENT_SEQUENCE: 'chat:getEventSequence',
+    REPLAY_EVENTS: 'chat:replayEvents',
     EVENT: 'chat:event',
   },
   CONVERSATION_HISTORY: {
@@ -79,6 +81,12 @@ export const IPC = {
     LIST: 'tools:list',
     INSTALL: 'tools:install',
     UNINSTALL: 'tools:uninstall',
+  },
+  TASKS: {
+    LIST: 'tasks:list',
+    GET: 'tasks:get',
+    CANCEL: 'tasks:cancel',
+    AUDIT: 'tasks:audit',
   },
   BYO_LLM: {
     GET: 'byoLlm:get',

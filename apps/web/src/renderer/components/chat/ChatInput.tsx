@@ -255,7 +255,6 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
   const handleSubmit = useCallback(() => {
     if (isStreaming) {
-      onStop();
       return;
     }
     const hasText = input.trim().length > 0;
@@ -279,7 +278,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [input, attachments, isStreaming, disabled, onSend, onStop, closeShortcode, setInput]);
+  }, [input, attachments, isStreaming, disabled, onSend, closeShortcode, setInput]);
 
   const acceptShortcode = useCallback(
     (record: EmojiRecord) => {
@@ -373,6 +372,11 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         setShortcodeIndex((i) => Math.max(i - 1, 0));
         return;
       }
+    }
+    if (e.key === 'Escape' && isStreaming) {
+      e.preventDefault();
+      onStop();
+      return;
     }
     // 3) Default Enter submit / Shift+Enter newline.
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -507,9 +511,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
             </div>
 
             <button
-              onClick={handleSubmit}
+              onClick={isStreaming ? onStop : handleSubmit}
               disabled={disabled && !isStreaming}
-              aria-label={isStreaming ? 'Stop streaming' : 'Send message'}
+              aria-label={isStreaming ? 'Stop streaming (Escape)' : 'Send message'}
               className={cn(
                 'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
                 isStreaming

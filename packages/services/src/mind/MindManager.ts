@@ -23,6 +23,7 @@ import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
 import { bootstrapMindCapabilities } from '../lens/MindBootstrap';
 import type { SdkProviderConfig } from '../byo-llm/buildProviderConfig';
+import { MindScaffold } from '../genesis/MindScaffold';
 
 const log = Logger.create('MindManager');
 
@@ -167,6 +168,12 @@ export class MindManager extends EventEmitter {
     id: string,
     identity: NonNullable<ReturnType<IdentityLoader['load']>>,
   ): Promise<MindContext> {
+
+    try {
+      MindScaffold.ensureChamberGitignore(resolvedMindPath);
+    } catch (err) {
+      log.warn('Mind .chamber gitignore migration failed (non-fatal):', err);
+    }
 
     try {
       bootstrapMindCapabilities(resolvedMindPath);

@@ -12,6 +12,8 @@ describe('ElectronAPI contract', () => {
   it('exposes the major namespaces with the expected method shapes', () => {
     expectTypeOf<ElectronAPI['chat']['send']>().toBeFunction();
     expectTypeOf<ElectronAPI['chat']['stop']>().toBeFunction();
+    expectTypeOf<ElectronAPI['chat']['getEventSequence']>().toBeFunction();
+    expectTypeOf<ElectronAPI['chat']['replayEvents']>().toBeFunction();
     expectTypeOf<ElectronAPI['chat']['onEvent']>().toBeFunction();
 
     expectTypeOf<ElectronAPI['mind']['list']>().toBeFunction();

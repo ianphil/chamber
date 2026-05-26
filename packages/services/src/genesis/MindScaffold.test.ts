@@ -4,6 +4,7 @@ import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execSync } from 'child_process';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import type { GitHubRegistryClient } from './GitHubRegistryClient';
 
@@ -147,6 +148,156 @@ describe('MindScaffold.create', () => {
     const sessionConfig = createSession.mock.calls[0]?.[0] as { onPermissionRequest?: unknown } | undefined;
     expect(sessionConfig?.onPermissionRequest).toBe(approveForSessionCompat);
     expect(session.rpc.permissions.setApproveAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('MindScaffold chamber gitignore', () => {
+  function makeMindPath(): string {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-mindscaffold-gitignore-'));
+    return path.join(tmpDir, 'gitignore-mind');
+  }
+
+  function removeMindPath(mindPath: string): void {
+    fs.rmSync(path.dirname(mindPath), { recursive: true, force: true });
+  }
+
+  function initGit(scaffold: MindScaffold, mindPath: string): void {
+    const previousEnv = {
+      GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME,
+      GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL,
+      GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME,
+      GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL,
+    };
+    process.env.GIT_AUTHOR_NAME = 'Chamber Test';
+    process.env.GIT_AUTHOR_EMAIL = 'chamber-test@example.invalid';
+    process.env.GIT_COMMITTER_NAME = 'Chamber Test';
+    process.env.GIT_COMMITTER_EMAIL = 'chamber-test@example.invalid';
+    try {
+      const git = scaffold as unknown as { initGit(mindPath: string): void };
+      git.initGit(mindPath);
+    } finally {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+
+  it('commits .chamber/.gitignore with runtime history ignored during Genesis git init', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(path.join(mindPath, '.chamber', 'runs'), { recursive: true });
+      fs.writeFileSync(path.join(mindPath, 'SOUL.md'), '# Soul\n');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'runs', 'tasks.db'), 'db');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron-runs.json'), '[]\n');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron-runs.json.migrated-2026-05-21T000000000Z'), '[]\n');
+
+      const scaffold = new MindScaffold(
+        {} as unknown as GitHubRegistryClient,
+        {} as unknown as CopilotClientFactory,
+      );
+      initGit(scaffold, mindPath);
+
+      const gitignorePath = path.join(mindPath, '.chamber', '.gitignore');
+      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
+      const committedFiles = execSync('git ls-tree --name-only -r HEAD', { cwd: mindPath, encoding: 'utf8' });
+      expect(committedFiles).toContain('.chamber/.gitignore');
+      expect(committedFiles).not.toContain('.chamber/runs/tasks.db');
+      expect(committedFiles).not.toContain('.chamber/cron-runs.json');
+      expect(committedFiles).not.toContain('.chamber/cron-runs.json.migrated-2026-05-21T000000000Z');
+    } finally {
+      removeMindPath(mindPath);
+    }
+  });
+
+  it('adds .chamber/.gitignore to existing minds that already have .chamber state', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(path.join(mindPath, '.chamber'), { recursive: true });
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron.json'), '{"jobs":[]}\n');
+
+      MindScaffold.ensureChamberGitignore(mindPath);
+
+      expect(fs.readFileSync(path.join(mindPath, '.chamber', '.gitignore'), 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
+    } finally {
+      removeMindPath(mindPath);
+    }
+  });
+
+  it('creates .chamber/.gitignore for existing minds before runtime history exists', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(mindPath, { recursive: true });
+
+      MindScaffold.ensureChamberGitignore(mindPath);
+
+      expect(fs.readFileSync(path.join(mindPath, '.chamber', '.gitignore'), 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
+    } finally {
+      removeMindPath(mindPath);
+    }
+  });
+
+  it('does not rewrite an existing .chamber/.gitignore migration', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(path.join(mindPath, '.chamber'), { recursive: true });
+      const gitignorePath = path.join(mindPath, '.chamber', '.gitignore');
+      fs.writeFileSync(gitignorePath, 'runs/\ncron-runs.json\ncron-runs.json.migrated-*\ncustom/\n');
+
+      MindScaffold.ensureChamberGitignore(mindPath);
+
+      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe(
+        'runs/\ncron-runs.json\ncron-runs.json.migrated-*\ncustom/\n',
+      );
+    } finally {
+      removeMindPath(mindPath);
+    }
+  });
+
+  it('adds runtime history ignores to an existing .chamber/.gitignore without dropping custom entries', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(path.join(mindPath, '.chamber'), { recursive: true });
+      const gitignorePath = path.join(mindPath, '.chamber', '.gitignore');
+      fs.writeFileSync(gitignorePath, 'custom/\n');
+
+      MindScaffold.ensureChamberGitignore(mindPath);
+
+      expect(fs.readFileSync(gitignorePath, 'utf8')).toBe(
+        'custom/\nruns/\ncron-runs.json\ncron-runs.json.migrated-*\n',
+      );
+    } finally {
+      removeMindPath(mindPath);
+    }
+  });
+
+  it('keeps git status clean when runs artifacts exist under .chamber', () => {
+    const mindPath = makeMindPath();
+    try {
+      fs.mkdirSync(path.join(mindPath, '.chamber', 'runs'), { recursive: true });
+      fs.writeFileSync(path.join(mindPath, 'SOUL.md'), '# Soul\n');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'runs', 'tasks.db'), 'db');
+      fs.writeFileSync(path.join(mindPath, '.chamber', 'cron-runs.json'), '[]\n');
+
+      const scaffold = new MindScaffold(
+        {} as unknown as GitHubRegistryClient,
+        {} as unknown as CopilotClientFactory,
+      );
+      initGit(scaffold, mindPath);
+
+      expect(execSync('git status --porcelain', { cwd: mindPath, encoding: 'utf8' })).toBe('');
+    } finally {
+      removeMindPath(mindPath);
+    }
   });
 });
 

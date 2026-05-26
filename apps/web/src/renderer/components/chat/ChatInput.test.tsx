@@ -91,6 +91,24 @@ describe('ChatInput', () => {
     expect(onStop).toHaveBeenCalled();
   });
 
+  it('Enter while streaming does not stop or send', () => {
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    render(<ChatInput {...defaultProps} isStreaming={true} onSend={onSend} onStop={onStop} />);
+    const textarea = screen.getByRole('textbox');
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it('Escape while streaming calls onStop', () => {
+    const onStop = vi.fn();
+    render(<ChatInput {...defaultProps} isStreaming={true} onStop={onStop} />);
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(onStop).toHaveBeenCalledOnce();
+  });
+
   it('shows Loading models when no models available and not disabled', () => {
     render(<ChatInput {...defaultProps} />);
     expect(screen.getByText('Loading models…')).toBeTruthy();

@@ -68,7 +68,9 @@ export class ChamberCopilotService implements ChamberToolProvider {
   private readonly connectionFactories: ChamberCopilotConnectionFactories;
   private readonly jobStoreFactory: JobStoreFactory;
   private readonly toolFactory: AcpToolFactory;
+  private readonly createTaskLedger: ChamberCopilotServiceOptions['createTaskLedger'];
   private readonly activeMinds = new Set<string>();
+  private readonly mindPaths = new Map<string, string>();
   private readonly scopedStores = new Map<string, MindScopedJobs>();
   private readonly toolsByMind = new Map<string, AcpTool[]>();
   private connections: StartedConnections | null = null;
@@ -79,22 +81,21 @@ export class ChamberCopilotService implements ChamberToolProvider {
     this.connectionFactories = resolveFactories(options);
     this.jobStoreFactory = options.jobStoreFactory;
     this.toolFactory = options.toolFactory;
+    this.createTaskLedger = options.createTaskLedger;
   }
 
-  getToolsForMind(mindId: string, _mindPath: string): Tool[] {
-    void _mindPath;
+  getToolsForMind(mindId: string, mindPath: string): Tool[] {
     if (!this.store) return [];
     const cached = this.toolsByMind.get(mindId);
     if (cached) return cached as unknown as Tool[];
 
-    const scoped = this.getOrCreateScopedStore(mindId);
+    const scoped = this.getOrCreateScopedStore(mindId, mindPath);
     const tools = this.toolFactory({ store: scoped as unknown as JobStore });
     this.toolsByMind.set(mindId, tools);
     return tools as unknown as Tool[];
   }
 
-  async activateMind(mindId: string, _mindPath: string): Promise<void> {
-    void _mindPath;
+  async activateMind(mindId: string, mindPath: string): Promise<void> {
     try {
       await this.ensureStarted();
     } catch (error) {
@@ -109,10 +110,11 @@ export class ChamberCopilotService implements ChamberToolProvider {
       return;
     }
     this.activeMinds.add(mindId);
+    this.mindPaths.set(mindId, mindPath);
     // Eagerly create the per-mind scoped store so that a getToolsForMind
     // call before activation returns [], and after activation always
     // returns this mind's own scoped surface.
-    this.getOrCreateScopedStore(mindId);
+    this.getOrCreateScopedStore(mindId, mindPath);
   }
 
   // Eagerly start the AcpConnection so the cli_* tools are available to
@@ -141,6 +143,7 @@ export class ChamberCopilotService implements ChamberToolProvider {
     const scoped = this.scopedStores.get(mindId);
     this.scopedStores.delete(mindId);
     this.toolsByMind.delete(mindId);
+    this.mindPaths.delete(mindId);
     if (scoped) {
       await scoped.releaseAll();
     }
@@ -149,14 +152,18 @@ export class ChamberCopilotService implements ChamberToolProvider {
     }
   }
 
-  private getOrCreateScopedStore(mindId: string): MindScopedJobs {
+  private getOrCreateScopedStore(mindId: string, mindPath = this.mindPaths.get(mindId)): MindScopedJobs {
     let scoped = this.scopedStores.get(mindId);
     if (!scoped) {
       // INVARIANT: callers (getToolsForMind / activateMind) verify
       // `this.store` is non-null before reaching here. getToolsForMind
       // short-circuits when `this.store` is null; activateMind only
       // calls this after a successful `ensureStarted()`.
-      scoped = new MindScopedJobs(this.store!, mindId);
+      scoped = new MindScopedJobs(
+        this.store!,
+        mindId,
+        () => mindPath && this.createTaskLedger ? this.createTaskLedger(mindPath) : undefined,
+      );
       this.scopedStores.set(mindId, scoped);
     }
     return scoped;

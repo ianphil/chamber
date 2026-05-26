@@ -7,13 +7,16 @@ import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
 import type { AppConfig, LensViewManifest } from '@chamber/shared/types';
+import { MindScaffold } from '../genesis/MindScaffold';
 
 // --- Mocks ---
 
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
   readdirSync: vi.fn(() => []),
   readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
   realpathSync: Object.assign(vi.fn((candidate: string) => candidate), {
     native: vi.fn((candidate: string) => candidate),
   }),
@@ -177,6 +180,19 @@ describe('MindManager', () => {
   });
 
   describe('loadMind', () => {
+    it('runs the .chamber gitignore migration for existing minds on load', async () => {
+      const ensureChamberGitignore = vi
+        .spyOn(MindScaffold, 'ensureChamberGitignore')
+        .mockReturnValue(true);
+      try {
+        await manager.loadMind('/tmp/agents/q');
+
+        expect(ensureChamberGitignore).toHaveBeenCalledWith('/tmp/agents/q');
+      } finally {
+        ensureChamberGitignore.mockRestore();
+      }
+    });
+
     it('loads a mind from a valid directory', async () => {
       const mind = await manager.loadMind('/tmp/agents/q');
       expect(mind.mindPath).toBe('/tmp/agents/q');

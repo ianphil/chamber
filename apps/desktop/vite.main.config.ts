@@ -5,6 +5,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: [
+        'better-sqlite3',
         'keytar',
         'sharp',
         '@azure/msal-node-extensions',

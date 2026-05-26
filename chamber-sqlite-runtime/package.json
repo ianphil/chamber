@@ -1,0 +1,9 @@
+{
+  "name": "chamber-sqlite-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned packaged runtime for better-sqlite3, rebuilt against Electron's Node ABI.",
+  "dependencies": {
+    "better-sqlite3": "12.10.0"
+  }
+}

@@ -5,8 +5,11 @@ import * as os from 'os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { IPC } from '@chamber/shared';
 import type { ChatService, MindManager } from '@chamber/services';
+import { Logger } from '@chamber/services';
 import type { MindContext } from '@chamber/shared/types';
 import { installExternalNavigationGuard } from '../navigationGuard';
+
+const log = Logger.create('mind-ipc');
 
 export interface MindIPCConfig {
   preloadPath: string;
@@ -26,7 +29,12 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
   ipcMain.handle(IPC.MIND.ADD, async (event, mindPath: string) => {
     // Issue #44 — surface duplicate display-name collisions at add-time
     // instead of leaving two minds with the same UI label.
-    return mindManager.loadMind(mindPath, undefined, { enforceUnique: true });
+    try {
+      return await mindManager.loadMind(mindPath, undefined, { enforceUnique: true });
+    } catch (error) {
+      log.error(`mind:add failed for ${mindPath}:`, error);
+      throw error;
+    }
   });
 
   ipcMain.handle(IPC.MIND.REMOVE, async (_event, mindId: string) => {

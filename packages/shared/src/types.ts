@@ -83,9 +83,16 @@ export type ChatEvent =
   | { type: 'permission_request'; requestId: string; kind: PermissionRequestKind; summary: string; toolCallId?: string }
   | { type: 'permission_outcome'; requestId: string; outcome: Exclude<PermissionOutcome, 'pending'> }
   | { type: 'reconnecting' }
-  | { type: 'done' }
+  | { type: 'done'; cancelled?: boolean }
   | { type: 'timeout'; timeoutMs: number }
   | { type: 'error'; message: string };
+
+export interface ChatReplayEvent {
+  sequence: number;
+  mindId: string;
+  messageId: string;
+  event: ChatEvent;
+}
 
 // ---------------------------------------------------------------------------
 // Chat message

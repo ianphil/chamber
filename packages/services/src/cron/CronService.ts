@@ -1,8 +1,12 @@
 import { Cron } from 'croner';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { LedgerRecord, LedgerStatus } from '@chamber/shared';
 import type { ChamberToolProvider } from '../chamberTools';
 import type { Tool } from '../mind/types';
 import type { Notifier } from '../ports';
 import { Logger } from '../logger';
+import { LedgerDataError, safelyRecordRun, SQLiteLedgerStore, TaskLedger } from '../ledger';
 
 const log = Logger.create('cron');
 import type { TaskManager } from '../a2a/TaskManager';
@@ -10,12 +14,21 @@ import { JobStore } from './JobStore';
 import { JobRunner } from './JobRunner';
 import { Scheduler, validateSchedule } from './Scheduler';
 import { buildCronTools } from './tools';
-import type { CreateCronJobInput, CronJob, CronJobListEntry, CronJobPayload, CronJobRunRecord, CronJobType, RunSource } from './types';
+import type { CreateCronJobInput, CronJob, CronJobListEntry, CronJobPayload, CronJobRunRecord, CronJobType, CronRunStatus, RunSource } from './types';
 
 function requireString(payload: Record<string, unknown>, field: string, jobType: string): void {
   if (typeof payload[field] !== 'string' || (payload[field] as string).trim() === '') {
     throw new Error(`${jobType} job payload requires a non-empty "${field}" string`);
   }
+}
+
+function pathExists(filePath: string): boolean {
+  return fs.existsSync(filePath);
+}
+
+function fsRenameMigrated(filePath: string): void {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  fs.renameSync(filePath, `${filePath}.migrated-${stamp}`);
 }
 
 function requirePayload(type: CronJobType, payload: CronJobPayload): Record<string, unknown> {
@@ -48,6 +61,7 @@ interface CronServiceOptions {
   getTaskManager: () => TaskManager;
   showMind: (mindId: string) => void;
   notifier: Notifier;
+  createTaskLedger?: (mindPath: string) => TaskLedger;
 }
 
 // TODO: Consider extracting execution coordination (runJob, inFlightJobs,
@@ -56,6 +70,7 @@ interface CronServiceOptions {
 export class CronService implements ChamberToolProvider {
   private readonly stores = new Map<string, JobStore>();
   private readonly schedulers = new Map<string, Scheduler>();
+  private readonly ledgers = new Map<string, TaskLedger>();
   private readonly mindPaths = new Map<string, string>();
   private readonly inFlightJobs = new Set<string>();
   private readonly runner: JobRunner;
@@ -70,6 +85,10 @@ export class CronService implements ChamberToolProvider {
 
   async activateMind(mindId: string, mindPath: string): Promise<void> {
     const store = this.ensureStore(mindId, mindPath);
+    if (pathExists(this.getLegacyRunsPath(mindPath))) {
+      const ledger = this.ensureLedger(mindId, mindPath);
+      this.importLegacyRuns(mindId, mindPath, store, ledger);
+    }
     const scheduler = this.ensureScheduler(mindId);
 
     for (const job of store.listJobs()) {
@@ -83,6 +102,7 @@ export class CronService implements ChamberToolProvider {
   async releaseMind(mindId: string): Promise<void> {
     this.schedulers.get(mindId)?.stopAll();
     this.schedulers.delete(mindId);
+    this.ledgers.delete(mindId);
     this.stores.delete(mindId);
     this.mindPaths.delete(mindId);
 
@@ -133,7 +153,16 @@ export class CronService implements ChamberToolProvider {
   }
 
   listRuns(mindId: string, jobId?: string): CronJobRunRecord[] {
-    return this.requireStore(mindId).listRuns(jobId);
+    const store = this.requireStore(mindId);
+    const mindPath = this.mindPaths.get(mindId) ?? '';
+    const jobsById = new Map(store.listJobs().map((job) => [job.id, job]));
+    return this.ensureLedger(mindId, mindPath).reader.listByRuntime('cron')
+      .filter((record) => record.ownerMindId === mindId)
+      .filter((record) => !jobId || record.sourceId === jobId)
+      .filter((record) => record.payload.runtime === 'cron')
+      .map((record) => this.toCronRunRecord(record, jobsById))
+      .filter((record): record is CronJobRunRecord => record !== null)
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
 
   async handlePowerResume(): Promise<void> {
@@ -162,6 +191,16 @@ export class CronService implements ChamberToolProvider {
     return store;
   }
 
+  private ensureLedger(mindId: string, mindPath: string): TaskLedger {
+    const existing = this.ledgers.get(mindId);
+    if (existing) return existing;
+
+    const ledger = this.options.createTaskLedger?.(mindPath)
+      ?? new TaskLedger(new SQLiteLedgerStore(path.join(mindPath, '.chamber', 'runs', 'tasks.db')));
+    this.ledgers.set(mindId, ledger);
+    return ledger;
+  }
+
   private requireStore(mindId: string): JobStore {
     const mindPath = this.mindPaths.get(mindId);
     if (!mindPath) {
@@ -187,6 +226,8 @@ export class CronService implements ChamberToolProvider {
 
   private async runJob(mindId: string, jobId: string, source: RunSource): Promise<CronJobRunRecord> {
     const store = this.requireStore(mindId);
+    const mindPath = this.mindPaths.get(mindId) ?? '';
+    const ledger = this.ensureLedger(mindId, mindPath);
     const job = store.getJob(jobId);
     if (!job) {
       throw new Error(`Cron job ${jobId} not found`);
@@ -211,6 +252,21 @@ export class CronService implements ChamberToolProvider {
         lastRunAt: startedAt,
         lastRunStatus: skipped.status,
       }));
+      const ledgerRow = ledger.writer.createRunning({
+        runtime: 'cron',
+        ownerMindId: mindId,
+        scopeKind: 'system',
+        task: job.name,
+        runKey: `cron-${job.id}-${startedAt}`,
+        sourceId: job.id,
+        label: source,
+        payload: { runtime: 'cron', kind: job.type },
+      });
+      ledger.writer.finalize(ledgerRow.ledgerId, {
+        status: 'cancelled',
+        terminalSummary: 'skipped',
+        error: skipped.error,
+      });
       return skipped;
     }
 
@@ -221,7 +277,27 @@ export class CronService implements ChamberToolProvider {
     }));
 
     try {
-      const result = await this.runner.run(mindId, this.mindPaths.get(mindId) ?? '', job);
+      const result = await safelyRecordRun(
+        ledger.writer,
+        {
+          runtime: 'cron',
+          ownerMindId: mindId,
+          scopeKind: 'system',
+          task: job.name,
+          runKey: `cron-${job.id}-${startedAt}`,
+          sourceId: job.id,
+          label: source,
+          payload: { runtime: 'cron', kind: job.type },
+        },
+        async () => this.runner.run(mindId, mindPath, job),
+        {},
+        (result) => ({
+          status: this.toLedgerStatus(result.status),
+          terminalSummary: result.status,
+          progressSummary: result.output,
+          error: result.error,
+        }),
+      );
       const endedAt = new Date().toISOString();
       const record = store.appendRun({
         mindId,
@@ -250,10 +326,125 @@ export class CronService implements ChamberToolProvider {
 
   private toListEntry(mindId: string, job: CronJob): CronJobListEntry {
     const nextRun = this.schedulers.get(mindId)?.nextRun(job.id) ?? this.buildNextRun(job);
+    const latestRun = this.listRuns(mindId, job.id)[0];
     return {
       ...job,
+      lastRunAt: latestRun?.endedAt ?? job.lastRunAt,
+      lastRunStatus: latestRun?.status ?? job.lastRunStatus,
+      lastTaskId: latestRun?.taskId ?? job.lastTaskId,
       nextRun: nextRun?.toISOString() ?? null,
     };
+  }
+
+  private toCronRunRecord(
+    record: LedgerRecord,
+    jobsById: ReadonlyMap<string, CronJob>,
+  ): CronJobRunRecord | null {
+    if (record.payload.runtime !== 'cron' || !record.sourceId) return null;
+    const job = jobsById.get(record.sourceId);
+    return {
+      id: record.ledgerId,
+      jobId: record.sourceId,
+      mindId: record.ownerMindId,
+      type: job?.type ?? record.payload.kind,
+      status: this.toCronRunStatus(record.status, record.terminalSummary),
+      startedAt: record.startedAt ?? record.createdAt,
+      endedAt: record.endedAt ?? record.lastEventAt ?? record.startedAt ?? record.createdAt,
+      output: record.progressSummary,
+      error: record.error,
+      source: this.toRunSource(record.label),
+    };
+  }
+
+  private importLegacyRuns(
+    mindId: string,
+    mindPath: string,
+    store: JobStore,
+    ledger: TaskLedger,
+  ): void {
+    const runsPath = this.getLegacyRunsPath(mindPath);
+    if (!pathExists(runsPath)) return;
+
+    try {
+      for (const run of store.listRuns()) {
+        try {
+          if (ledger.reader.getByRunKey('cron', this.legacyRunKey(run))) continue;
+          const ledgerRow = ledger.writer.createRunning({
+            runtime: 'cron',
+            ownerMindId: mindId,
+            scopeKind: 'system',
+            task: `Cron job ${run.jobId}`,
+            runKey: this.legacyRunKey(run),
+            sourceId: run.jobId,
+            label: run.source,
+            payload: { runtime: 'cron', kind: run.type },
+          });
+          ledger.writer.finalize(ledgerRow.ledgerId, {
+            status: this.toLedgerStatus(run.status),
+            terminalSummary: run.status,
+            progressSummary: run.output,
+            error: run.error,
+          });
+        } catch (err) {
+          if (err instanceof LedgerDataError) continue;
+          log.warn(`Failed to import cron run ${run.id} for mind ${mindId}:`, err);
+        }
+      }
+      fsRenameMigrated(runsPath);
+    } catch (err) {
+      log.warn(`Failed to import legacy cron runs for mind ${mindId}:`, err);
+    }
+  }
+
+  private legacyRunKey(run: CronJobRunRecord): string {
+    return `cron-${run.jobId}-${Date.parse(run.startedAt)}`;
+  }
+
+  private getLegacyRunsPath(mindPath: string): string {
+    return path.join(mindPath, '.chamber', 'cron-runs.json');
+  }
+
+  private toRunSource(label: string | undefined): RunSource {
+    return label === 'manual' || label === 'resume' || label === 'scheduled' ? label : 'scheduled';
+  }
+
+  private toLedgerStatus(status: CronRunStatus): 'succeeded' | 'failed' | 'timed-out' | 'cancelled' {
+    switch (status) {
+      case 'completed':
+        return 'succeeded';
+      case 'failed':
+        return 'failed';
+      case 'timed-out':
+        return 'timed-out';
+      case 'skipped':
+        return 'cancelled';
+      default: {
+        const _exhaustive: never = status;
+        throw new Error(`Unknown cron run status: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
+  private toCronRunStatus(status: LedgerStatus, terminalSummary?: string): CronRunStatus {
+    if (terminalSummary === 'skipped') return 'skipped';
+    switch (status) {
+      case 'succeeded':
+        return 'completed';
+      case 'failed':
+      case 'lost':
+        return 'failed';
+      case 'timed-out':
+        return 'timed-out';
+      case 'cancelled':
+        return 'skipped';
+      case 'queued':
+      case 'running':
+        return 'failed';
+      default: {
+        const _exhaustive: never = status;
+        throw new Error(`Unknown ledger status: ${String(_exhaustive)}`);
+      }
+    }
   }
 
   private buildNextRun(job: CronJob): Date | null {

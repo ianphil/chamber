@@ -55,6 +55,18 @@ function prepareAcpRuntime(): void {
   }
 }
 
+function prepareSqliteRuntime(): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-sqlite-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error('Failed to prepare packaged better-sqlite3 runtime.');
+  }
+}
+
 function prepareMsalRuntime(): void {
   const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-msal-runtime.js');
   const result = spawnSync(process.execPath, [scriptPath], {
@@ -81,6 +93,7 @@ const baseExtraResource = [
   './resources/sharp-runtime',
   './resources/acp-runtime',
   './resources/msal-runtime',
+  './resources/sqlite-runtime',
   './node_modules/keytar',
   './apps/desktop/src/main/assets/lens-skill',
 ];
@@ -122,6 +135,7 @@ const config: ForgeConfig = {
       prepareSharpRuntime(platform, arch);
       prepareAcpRuntime();
       prepareMsalRuntime();
+      prepareSqliteRuntime();
     },
   },
   makers: [

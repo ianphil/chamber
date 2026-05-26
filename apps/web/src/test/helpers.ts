@@ -117,6 +117,8 @@ export function mockElectronAPI(): ElectronAPI {
       stop: vi.fn().mockResolvedValue(undefined),
       newConversation: vi.fn().mockResolvedValue({ sessionId: '', messages: [], conversations: [] }),
       listModels: vi.fn().mockResolvedValue([]),
+      getEventSequence: vi.fn().mockResolvedValue(0),
+      replayEvents: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
     },
     conversationHistory: {
@@ -272,6 +274,15 @@ export function mockElectronAPI(): ElectronAPI {
       list: vi.fn().mockResolvedValue([]),
       install: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       uninstall: vi.fn().mockResolvedValue({ success: true }),
+    },
+    tasks: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue({ error: 'not stubbed' }),
+      cancel: vi.fn().mockResolvedValue({ found: false, cancelled: false, reason: 'not stubbed' }),
+      audit: vi.fn().mockResolvedValue({
+        counts: { queued: 0, running: 0, succeeded: 0, failed: 0, 'timed-out': 0, cancelled: 0, lost: 0 },
+        findings: [],
+      }),
     },
     chatroom: {
       send: vi.fn().mockResolvedValue(undefined),

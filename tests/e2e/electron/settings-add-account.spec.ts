@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -44,14 +44,9 @@ test.describe('electron Settings Add Account device-code smoke (#214)', () => {
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#root')).not.toBeEmpty();
 
-    await page.evaluate(async (pathToMind) => {
-      const mind = await window.electronAPI.mind.add(pathToMind);
-      await window.electronAPI.mind.setActive(mind.mindId);
-    }, mindPath);
+    await loadMind(page, mindPath);
 
-    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
-    await page.getByRole('button', { name: 'Settings' }).click();
-    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await openSettings(page);
 
     // Open the account dropdown and choose + Add Account.
     await page.getByRole('combobox').click();
@@ -87,6 +82,7 @@ test.describe('electron Settings Add Account device-code smoke (#214)', () => {
   test('Cancel dismisses the modal and aborts the in-flight login', async () => {
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
     await page.waitForLoadState('domcontentloaded');
+    await loadMind(page, mindPath);
 
     // Ensure no leftover dialog from a prior test is in the DOM.
     const leftover = page.getByRole('dialog');
@@ -98,7 +94,7 @@ test.describe('electron Settings Add Account device-code smoke (#214)', () => {
       }
     }
 
-    await page.getByRole('button', { name: 'Settings' }).click();
+    await openSettings(page);
     await page.getByRole('combobox').click();
     await page.getByRole('option', { name: '+ Add Account' }).click();
 
@@ -109,6 +105,23 @@ test.describe('electron Settings Add Account device-code smoke (#214)', () => {
     await expect(dialog).toBeHidden();
   });
 });
+
+async function loadMind(page: Page, targetMindPath: string): Promise<void> {
+  await page.evaluate(async (pathToMind) => {
+    const loaded = await window.electronAPI.mind.list();
+    const existing = loaded.find((mind) => mind.mindPath === pathToMind);
+    const mind = existing ?? await window.electronAPI.mind.add(pathToMind);
+    await window.electronAPI.mind.setActive(mind.mindId);
+  }, targetMindPath);
+}
+
+async function openSettings(page: Page): Promise<void> {
+  const heading = page.getByRole('heading', { name: 'Settings' });
+  if (!await heading.isVisible()) {
+    await page.getByRole('button', { name: 'Settings' }).click();
+  }
+  await expect(heading).toBeVisible();
+}
 
 function seedMind(seedPath: string): void {
   fs.mkdirSync(path.join(seedPath, '.github', 'agents'), { recursive: true });
