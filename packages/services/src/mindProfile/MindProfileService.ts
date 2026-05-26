@@ -17,11 +17,23 @@ const AVATAR_RELATIVE_PATH = path.join('.chamber', 'avatar.png');
 const MAX_PROFILE_FILE_BYTES = 512_000;
 
 export class MindProfileService {
+  private readonly dreamDaemonFeatureEnabled: () => boolean;
+
   constructor(
     private readonly minds: MindProfileMindProvider,
     private readonly identityLoader: IdentityLoader,
     private readonly avatarNormalizer: AvatarNormalizer,
-  ) {}
+    /**
+     * Returns the current value of the app-level `dreamDaemon` feature flag.
+     * When false, `getProfile` reports `dreamDaemonEnabled: false` regardless
+     * of `.chamber.json workingMemory.consolidation.enabled`, so the renderer
+     * (and any conditional rendering keyed off this field) never observes a
+     * stale ON state from a mind opted-in under an insiders build.
+     */
+    dreamDaemonFeatureEnabled: () => boolean = () => true,
+  ) {
+    this.dreamDaemonFeatureEnabled = dreamDaemonFeatureEnabled;
+  }
 
   getProfile(mindId: string, needsRestart = false): AgentProfile {
     const mindPath = this.requireMindPath(mindId);
@@ -39,7 +51,8 @@ export class MindProfileService {
       soul: this.readProfileFile(mindPath, 'soul', 'SOUL.md'),
       agentFiles: this.listAgentFiles(mindPath),
       needsRestart,
-      dreamDaemonEnabled: chamberConfig.workingMemory.consolidation.enabled,
+      dreamDaemonEnabled:
+        this.dreamDaemonFeatureEnabled() && chamberConfig.workingMemory.consolidation.enabled,
     };
   }
 

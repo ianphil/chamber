@@ -201,6 +201,12 @@ const notifier: Notifier = {
 };
 
 let appFeatureFlags: AppFeatureFlags = DEFAULT_APP_FEATURE_FLAGS;
+// Module-level accessor over the live `appFeatureFlags` binding. Shared by
+// `initializeRuntime` (IdentityLoader, MindManager, MindProfileService) and
+// the `app.on('ready')` IPC setup (setupMindIPC, setupGenesisIPC). Reading
+// the property at call-time tracks future remote-policy reloads that
+// re-assign `appFeatureFlags`.
+const dreamDaemonFeatureEnabled = (): boolean => appFeatureFlags.dreamDaemon;
 let credentialStore: CredentialStore;
 let sharp: typeof sharpModule;
 let configService: ConfigService;
@@ -258,7 +264,11 @@ async function initializeRuntime(): Promise<void> {
   });
 
   configService = new ConfigService();
-  const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
+  const identityLoader = new IdentityLoader(
+    () => configService.load().installedTools ?? [],
+    undefined,
+    dreamDaemonFeatureEnabled,
+  );
   const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
     configService.load().marketplaceRegistries ?? [DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE];
   const saveActiveLogin = (login: string | null) => {
@@ -302,11 +312,12 @@ async function initializeRuntime(): Promise<void> {
     viewDiscovery,
     () => buildProviderConfig(cachedByoLlmConfig),
     () => cachedByoLlmConfig?.model,
+    dreamDaemonFeatureEnabled,
   );
   mindProfileService = new MindProfileService({
     getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
     restartMind: (mindId) => mindManager.reloadMind(mindId),
-  }, identityLoader, new SharpAvatarNormalizer(sharp));
+  }, identityLoader, new SharpAvatarNormalizer(sharp), dreamDaemonFeatureEnabled);
   userProfileService = new UserProfileService(configService);
   microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
     userProfileService,
@@ -382,35 +393,36 @@ async function initializeRuntime(): Promise<void> {
 
   // -------------------------------------------------------------------------
   // MindMemory (Dream Daemon) — per-mind background memory consolidation.
-  // Wires after providers so chatService observers + scheduler are ready
-  // before any mind:loaded event fires. The lifecycle hooks below own the
-  // per-mind activate/release dance; the composition root owns close()
-  // during quit. The better-sqlite3 ctor is injected from the shared
-  // `loadBetterSqlite3()` resolver so dev and packaged builds both go
-  // through the unified `chamber-sqlite-runtime`.
+  // Gated behind the `dreamDaemon` app feature flag. When the flag is off,
+  // `mindMemoryComposition` stays undefined and the lifecycle hooks below
+  // are never registered, so `mind:loaded` / `mind:unloaded` are no-ops
+  // for memory purposes. The composition root owns close() during quit —
+  // requestQuit() and before-quit both guard on `mindMemoryComposition?`.
   //
-  // NOTE (Phase 3 TODO): this will be wrapped in
-  // `if (appFeatureFlags.dreamDaemon) { ... }` once the `dreamDaemon` flag
-  // lands. Kept always-on for now so the post-merge regression baseline
-  // matches pre-merge behavior.
+  // Wires after providers so chatService observers + scheduler are ready
+  // before any mind:loaded event fires. The better-sqlite3 ctor is injected
+  // from the shared `loadBetterSqlite3()` resolver so dev and packaged
+  // builds both go through the unified `chamber-sqlite-runtime`.
   // -------------------------------------------------------------------------
-  mindMemoryComposition = buildMindMemoryService({
-    mindManager,
-    chatService,
-    Database: loadBetterSqlite3(),
-  });
-  mindMemoryService = mindMemoryComposition.service;
-  const memoryService = mindMemoryService;
-  mindManager.on('mind:loaded', (ctx: MindContext) => {
-    memoryService.activateMind(ctx.mindId, ctx.mindPath).catch((err) => {
-      log.warn('mindMemory: activateMind failed', { mindId: ctx.mindId, err: String(err) });
+  if (appFeatureFlags.dreamDaemon) {
+    mindMemoryComposition = buildMindMemoryService({
+      mindManager,
+      chatService,
+      Database: loadBetterSqlite3(),
     });
-  });
-  mindManager.on('mind:unloaded', (mindId: string) => {
-    memoryService.releaseMind(mindId).catch((err) => {
-      log.warn('mindMemory: releaseMind failed', { mindId, err: String(err) });
+    mindMemoryService = mindMemoryComposition.service;
+    const memoryService = mindMemoryService;
+    mindManager.on('mind:loaded', (ctx: MindContext) => {
+      memoryService.activateMind(ctx.mindId, ctx.mindPath).catch((err) => {
+        log.warn('mindMemory: activateMind failed', { mindId: ctx.mindId, err: String(err) });
+      });
     });
-  });
+    mindManager.on('mind:unloaded', (mindId: string) => {
+      memoryService.releaseMind(mindId).catch((err) => {
+        log.warn('mindMemory: releaseMind failed', { mindId, err: String(err) });
+      });
+    });
+  }
 
   updaterService = new UpdaterService({
     currentVersion: app.getVersion(),
@@ -762,6 +774,7 @@ app.on('ready', async () => {
     devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined,
     rendererPath: MAIN_WINDOW_VITE_DEV_SERVER_URL ? undefined : path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     windowIcon,
+    dreamDaemonEnabled: dreamDaemonFeatureEnabled,
   });
   setupMindProfileIPC(mindProfileService, mindManager, sharp);
   setupUserProfileIPC(userProfileService, microsoftGraphProfileImporter);
@@ -780,6 +793,7 @@ app.on('ready', async () => {
       return result.templates;
     }},
     genesisTemplateInstaller,
+    { dreamDaemonEnabled: dreamDaemonFeatureEnabled },
   );
   setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);

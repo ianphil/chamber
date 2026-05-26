@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useAppDispatch } from '../../lib/store';
+import { useAppDispatch, useAppState } from '../../lib/store';
 import { Logger } from '../../lib/logger';
 import { VoidScreen } from './VoidScreen';
 import { RoleScreen } from './RoleScreen';
@@ -28,6 +28,8 @@ export function GenesisFlow({ onComplete }: Props) {
   const [creationError, setCreationError] = useState<string | null>(null);
   const creationPromiseRef = useRef<Promise<GenesisCreateResult> | null>(null);
   const dispatch = useAppDispatch();
+  const { featureFlags } = useAppState();
+  const dreamDaemonFlag = featureFlags.dreamDaemon;
 
   const loadTemplates = useCallback(async () => {
     setTemplateError(null);
@@ -57,6 +59,13 @@ export function GenesisFlow({ onComplete }: Props) {
     setStage('boot');
     setCreationError(null);
 
+    // Defense-in-depth: RoleScreen already coerces its own state when the
+    // flag is off, but coerce again here so any future caller that
+    // bypasses the screen (deep-link, test harness) can't smuggle a
+    // `true` payload past the renderer boundary. The IPC layer also
+    // enforces this server-side.
+    const effectiveDreamDaemon = dreamDaemonFlag && enableDreamDaemon;
+
     const defaultPath = await window.electronAPI.genesis.getDefaultPath();
     const creationPromise = window.electronAPI.genesis.create({
       name: name,
@@ -64,7 +73,7 @@ export function GenesisFlow({ onComplete }: Props) {
       voice: name,
       voiceDescription: voiceDesc,
       basePath: defaultPath,
-      enableDreamDaemon,
+      enableDreamDaemon: effectiveDreamDaemon,
     }).catch((error: unknown) => ({
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -76,7 +85,7 @@ export function GenesisFlow({ onComplete }: Props) {
       setCreationError(result.error ?? 'Genesis failed.');
       log.error('Failed:', result.error);
     }
-  }, [name, voiceDesc]);
+  }, [name, voiceDesc, dreamDaemonFlag]);
 
   const handleVoiceWithDesc = useCallback((voiceName: string, desc: string) => {
     setName(voiceName);

@@ -79,6 +79,18 @@ export class MindManager extends EventEmitter {
      * the SDK rejects createSession({provider}) without a model argument.
      */
     private readonly byoDefaultModelProvider: () => string | undefined = () => undefined,
+    /**
+     * Returns the current value of the app-level `dreamDaemon` feature flag.
+     * Defense-in-depth gate for `enableDreamDaemon`: when this returns false,
+     * a call to `enableDreamDaemon(mindId)` throws "Dream Daemon is not
+     * available in this build" rather than patching `.chamber.json` and
+     * reloading the mind. `disableDreamDaemon` is intentionally NOT gated
+     * (a stable build must still be able to clean up the persisted opt-in
+     * for a mind that was opted-in under an insiders build). Defaults to
+     * always-on so the services package stays decoupled from app-shell types
+     * and existing test fixtures continue to work without modification.
+     */
+    private readonly dreamDaemonFeatureEnabled: () => boolean = () => true,
   ) {
     super();
   }
@@ -371,6 +383,15 @@ export class MindManager extends EventEmitter {
   }
 
   private async doToggleDreamDaemon(mindId: string, enabled: boolean): Promise<MindContext> {
+    // Defense-in-depth: the IPC layer already rejects `enable` calls when the
+    // app-level feature flag is off, but a future internal caller (data
+    // migration, test harness reaching past IPC) must not be able to flip the
+    // opt-in either. `disable` is intentionally permitted regardless so the
+    // service still has a path to clean up persisted opt-in state for minds
+    // that were enabled under an insiders build.
+    if (enabled && !this.dreamDaemonFeatureEnabled()) {
+      throw new Error('Dream Daemon is not available in this build');
+    }
     const context = this.minds.get(mindId);
     if (!context) throw new Error(`Mind ${mindId} not found`);
     const mindPath = context.mindPath;

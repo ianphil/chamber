@@ -1800,6 +1800,88 @@ describe('MindManager', () => {
         workingMemory: { consolidation: { enabled: false } },
       });
     });
+
+    describe('feature-flag gate (dreamDaemonFeatureEnabled)', () => {
+      // Defense-in-depth: the IPC layer is the first line of defense, but
+      // any internal caller (test harness, data migration, future helper)
+      // must also be gated. Constructing a manager with `() => false`
+      // exercises the gate inside `doToggleDreamDaemon` directly.
+      const buildGatedManager = () => {
+        const mgr = new MindManager(
+          mockClientFactory as unknown as CopilotClientFactory,
+          mockIdentityLoader as unknown as IdentityLoader,
+          mockConfigService as unknown as ConfigService,
+          mockViewDiscovery as unknown as ViewDiscovery,
+          undefined,
+          undefined,
+          () => false,
+        );
+        mgr.setProviders([mockProvider as unknown as ChamberToolProvider]);
+        return mgr;
+      };
+
+      it('enableDreamDaemon throws when the feature accessor returns false', async () => {
+        const mgr = buildGatedManager();
+        const mind = await mgr.loadMind('/tmp/agents/q');
+
+        await expect(mgr.enableDreamDaemon(mind.mindId)).rejects.toThrow(
+          /Dream Daemon is not available in this build/,
+        );
+        expect(patchChamberMindConfig).not.toHaveBeenCalled();
+      });
+
+      it('sequential enableDreamDaemon calls both reject when the feature is off', async () => {
+        // Regression guard for the daemonToggling in-flight map: if a stale
+        // allow ever leaked through, the SECOND call could silently resolve
+        // without going through doToggleDreamDaemon. We need both to throw.
+        const mgr = buildGatedManager();
+        const mind = await mgr.loadMind('/tmp/agents/q');
+
+        await expect(mgr.enableDreamDaemon(mind.mindId)).rejects.toThrow(
+          /Dream Daemon is not available in this build/,
+        );
+        await expect(mgr.enableDreamDaemon(mind.mindId)).rejects.toThrow(
+          /Dream Daemon is not available in this build/,
+        );
+        expect(patchChamberMindConfig).not.toHaveBeenCalled();
+      });
+
+      it('disableDreamDaemon is allowed even when the feature accessor returns false', async () => {
+        // A stable build that picks up a mind enabled under insiders must
+        // still be able to clean up the persisted opt-in. Only `enable` is
+        // gated; `disable` is always permitted.
+        const mgr = buildGatedManager();
+        const mind = await mgr.loadMind('/tmp/agents/q');
+
+        await mgr.disableDreamDaemon(mind.mindId);
+
+        expect(patchChamberMindConfig).toHaveBeenCalledWith('/tmp/agents/q', {
+          workingMemory: { consolidation: { enabled: false } },
+        });
+      });
+
+      it('enableDreamDaemon proceeds when the feature accessor returns true', async () => {
+        // Sanity check: explicit `() => true` matches the default-on
+        // behavior the rest of the test file relies on.
+        const mgr = new MindManager(
+          mockClientFactory as unknown as CopilotClientFactory,
+          mockIdentityLoader as unknown as IdentityLoader,
+          mockConfigService as unknown as ConfigService,
+          mockViewDiscovery as unknown as ViewDiscovery,
+          undefined,
+          undefined,
+          () => true,
+        );
+        mgr.setProviders([mockProvider as unknown as ChamberToolProvider]);
+        const mind = await mgr.loadMind('/tmp/agents/q');
+
+        await mgr.enableDreamDaemon(mind.mindId);
+
+        expect(patchChamberMindConfig).toHaveBeenCalledWith('/tmp/agents/q', {
+          workingMemory: { consolidation: { enabled: true } },
+        });
+      });
+    });
   });
 
   describe('BYO LLM provider config integration (SDK-native)', () => {

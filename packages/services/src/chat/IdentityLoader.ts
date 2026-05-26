@@ -24,6 +24,16 @@ export class IdentityLoader {
   constructor(
     private readonly getInstalledTools: InstalledToolsProvider = () => [],
     composer: WorkingMemoryComposer = createWorkingMemoryComposer(),
+    /**
+     * Returns the current value of the app-level `dreamDaemon` feature flag.
+     * When false, `resolveComposerConfig` forces `enabled: false` regardless
+     * of `.chamber.json workingMemory.consolidation.enabled` — so the system
+     * prompt never includes consolidated `log.md` content in a build where
+     * the feature is off, even if a mind was opted-in under an insiders run.
+     * Defaults to always-on so the services package stays decoupled from
+     * app-shell types and existing test fixtures keep working.
+     */
+    private readonly dreamDaemonFeatureEnabled: () => boolean = () => true,
   ) {
     this.composer = composer;
   }
@@ -87,10 +97,16 @@ export class IdentityLoader {
     // already returns DEFAULT_WORKING_MEMORY_CONSOLIDATION when the file is missing,
     // unparseable, or schema-invalid, so this never throws. Defaults are also
     // exported here so a composer-only failure path still has a fallback.
+    //
+    // App-level feature flag is authoritative over per-mind opt-in: when the
+    // `dreamDaemon` flag is off, force `enabled: false` regardless of what
+    // `.chamber.json` says. The caps (lastKTurns / perTurnMaxBytes /
+    // memoryMaxBytes) are kept faithfully so a future re-enable can resume
+    // with the user's previously-configured limits.
     try {
       const c = loadChamberMindConfig(mindPath).workingMemory.consolidation;
       return {
-        enabled: c.enabled,
+        enabled: this.dreamDaemonFeatureEnabled() ? c.enabled : false,
         lastKTurns: c.lastKTurns,
         perTurnMaxBytes: c.perTurnMaxBytes,
         memoryMaxBytes: c.memoryMaxBytes,

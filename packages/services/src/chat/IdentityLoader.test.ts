@@ -267,5 +267,91 @@ describe('IdentityLoader', () => {
       const result = loader2.load('/tmp/test');
       expect(result?.systemMessage).toContain('# Soul');
     });
+
+    describe('feature-flag gate (dreamDaemonFeatureEnabled)', () => {
+      // The app-level `dreamDaemon` flag must be authoritative over the
+      // per-mind `.chamber.json workingMemory.consolidation.enabled` field.
+      // A stable build that picks up a mind opted-in under insiders must
+      // still pass `enabled: false` to the composer so the system prompt
+      // never references consolidated structured-log content.
+      const mockChamberJsonWithDaemonEnabled = () => {
+        vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+          const normalized = String(candidate).replace(/\\/g, '/');
+          return normalized.endsWith('SOUL.md') || normalized.endsWith('.chamber.json');
+        });
+        vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+          const normalized = String(candidate).replace(/\\/g, '/');
+          if (normalized.endsWith('.chamber.json')) {
+            return JSON.stringify({
+              workingMemory: {
+                consolidation: {
+                  enabled: true,
+                  lastKTurns: 7,
+                  perTurnMaxBytes: 4096,
+                  memoryMaxBytes: 16384,
+                },
+              },
+            });
+          }
+          return '# Soul';
+        });
+        vi.mocked(fs.readdirSync).mockReturnValue([]);
+      };
+
+      it('forces enabled:false when the feature accessor returns false', () => {
+        mockChamberJsonWithDaemonEnabled();
+        const composer = { compose: vi.fn(() => '') };
+        const loader2 = new IdentityLoader(() => [], composer, () => false);
+
+        loader2.load('/tmp/agents/widget');
+
+        expect(composer.compose).toHaveBeenCalledWith(
+          '/tmp/agents/widget',
+          // Caps come from .chamber.json (faithful to user config) so a
+          // future re-enable resumes with the persisted limits. Only the
+          // `enabled` bit is overridden by the app-level flag.
+          {
+            enabled: false,
+            lastKTurns: 7,
+            perTurnMaxBytes: 4096,
+            memoryMaxBytes: 16384,
+          },
+        );
+      });
+
+      it('honors .chamber.json enabled:true when the feature accessor returns true', () => {
+        mockChamberJsonWithDaemonEnabled();
+        const composer = { compose: vi.fn(() => '') };
+        const loader2 = new IdentityLoader(() => [], composer, () => true);
+
+        loader2.load('/tmp/agents/widget');
+
+        expect(composer.compose).toHaveBeenCalledWith(
+          '/tmp/agents/widget',
+          {
+            enabled: true,
+            lastKTurns: 7,
+            perTurnMaxBytes: 4096,
+            memoryMaxBytes: 16384,
+          },
+        );
+      });
+
+      it('default-on accessor preserves existing behavior when omitted', () => {
+        // Backwards-compatibility guarantee: every existing IdentityLoader
+        // call site (server bin, tests, e2e harness) constructs without
+        // the third arg and must continue to honor .chamber.json verbatim.
+        mockChamberJsonWithDaemonEnabled();
+        const composer = { compose: vi.fn(() => '') };
+        const loader2 = new IdentityLoader(() => [], composer);
+
+        loader2.load('/tmp/agents/widget');
+
+        expect(composer.compose).toHaveBeenCalledWith(
+          '/tmp/agents/widget',
+          expect.objectContaining({ enabled: true }),
+        );
+      });
+    });
   });
 });

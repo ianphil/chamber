@@ -6,6 +6,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentProfileModal } from './AgentProfileModal';
 import { AppStateProvider } from '../../lib/store';
+import { DEFAULT_APP_FEATURE_FLAGS } from '@chamber/shared/feature-flags';
+import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 import type { AgentProfile, MindContext } from '@chamber/shared/types';
 
@@ -133,12 +135,39 @@ describe('AgentProfileModal', () => {
 
       await waitFor(() => expect(api.mind.setDreamDaemon).toHaveBeenCalledWith('mind-1', false));
     });
+
+    describe('feature-flag gate (dreamDaemon: false)', () => {
+      // When the app-level flag is off the toggle row is hidden entirely.
+      // MindProfileService also forces `dreamDaemonEnabled: false` server-side
+      // in the same case, so the renderer would never even see ON — but the
+      // hide-on-flag-off check protects against any stale value.
+      it('hides the dream-daemon switch row when the feature flag is off', async () => {
+        (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: false }));
+        renderProfileModal({ dreamDaemon: false });
+
+        // The profile load + first content render must complete so the
+        // `Display name` label is in the DOM before we assert absence.
+        await screen.findByText('Display name');
+        expect(screen.queryByRole('switch', { name: /dream daemon/i })).toBeNull();
+      });
+
+      it('hides the row even if the server payload still reports dreamDaemonEnabled=true', async () => {
+        // Defense-in-depth: renderer must not trust a stale ON state. The
+        // server should force false when the flag is off, but the renderer
+        // gates independently.
+        (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: true }));
+        renderProfileModal({ dreamDaemon: false });
+
+        await screen.findByText('Display name');
+        expect(screen.queryByRole('switch', { name: /dream daemon/i })).toBeNull();
+      });
+    });
   });
 });
 
-function renderProfileModal() {
+function renderProfileModal(flags: Partial<AppFeatureFlags> = { dreamDaemon: true }) {
   render(
-    <AppStateProvider>
+    <AppStateProvider testInitialState={{ featureFlags: { ...DEFAULT_APP_FEATURE_FLAGS, ...flags } }}>
       <AgentProfileModal mind={mind} open onOpenChange={vi.fn()} />
     </AppStateProvider>,
   );

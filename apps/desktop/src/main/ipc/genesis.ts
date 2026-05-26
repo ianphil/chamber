@@ -29,12 +29,25 @@ const createFromTemplateSchema = z
   })
   .strict();
 
+export interface GenesisIPCOptions {
+  // Returns the current value of the `dreamDaemon` app feature flag. When this
+  // returns false, `IPC.GENESIS.CREATE` server-side coerces the incoming
+  // `enableDreamDaemon` payload to false *before* calling `scaffold.create`,
+  // regardless of what the renderer claims. This guarantees that a stale or
+  // bypassed renderer cannot scaffold a mind with `.chamber.json
+  // workingMemory.consolidation.enabled: true` in a build where the feature
+  // is off. Defaults to always-on so tests that omit it keep current behavior.
+  dreamDaemonEnabled?: () => boolean;
+}
+
 export function setupGenesisIPC(
   mindManager: MindManager,
   scaffold: MindScaffold,
   templateCatalog: GenesisMindTemplateCatalogPort,
   templateInstaller: GenesisMindTemplateInstallerPort,
+  options: GenesisIPCOptions = {},
 ): void {
+  const dreamDaemonEnabled = options.dreamDaemonEnabled ?? (() => true);
 
   ipcMain.handle(IPC.GENESIS.GET_DEFAULT_PATH, async () => {
     return getDefaultGenesisBasePath();
@@ -61,13 +74,23 @@ export function setupGenesisIPC(
   ipcMain.handle(IPC.GENESIS.CREATE, async (event, config: GenesisConfig) => {
     const win = BrowserWindow.fromWebContents(event.sender);
 
+    // Server-side enforcement of the dreamDaemon feature flag. When the flag
+    // is off, coerce `enableDreamDaemon` to false regardless of the renderer
+    // payload — this is the authoritative gate for what gets written into
+    // `.chamber.json workingMemory.consolidation.enabled`. RoleScreen's UI
+    // gate (Phase 6) hides the toggle, but a bypassed or stale renderer
+    // must not be able to land an opted-in mind via this channel.
+    const sanitizedConfig: GenesisConfig = dreamDaemonEnabled()
+      ? config
+      : { ...config, enableDreamDaemon: false };
+
     // Issue #44 — detect name collision BEFORE scaffolding so we never
     // create a directory the user can't activate. The check is
     // case-insensitive against currently-loaded minds; persisted-but-not-
     // loaded minds are not considered.
-    const collision = mindManager.findByName(config.name);
+    const collision = mindManager.findByName(sanitizedConfig.name);
     if (collision) {
-      const message = `An agent named "${config.name}" already exists. Choose a different name.`;
+      const message = `An agent named "${sanitizedConfig.name}" already exists. Choose a different name.`;
       if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
       return { success: false, error: message };
     }
@@ -77,7 +100,7 @@ export function setupGenesisIPC(
     });
 
     try {
-      const mindPath = await scaffold.create(config);
+      const mindPath = await scaffold.create(sanitizedConfig);
       return await activateCreatedMind(mindManager, mindPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

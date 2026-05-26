@@ -129,6 +129,80 @@ describe('MindProfileService', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  describe('feature-flag gate (dreamDaemonFeatureEnabled)', () => {
+    // Mirrors IdentityLoader's gate: app-level flag is authoritative over
+    // per-mind .chamber.json opt-in. When the flag is off, the profile
+    // payload must report `dreamDaemonEnabled: false` so the (now-hidden)
+    // toggle UI never sees a stale ON state.
+    it('forces dreamDaemonEnabled=false even when .chamber.json says true and accessor returns false', () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-profile-'));
+      try {
+        fs.mkdirSync(path.join(root, '.github', 'agents'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'SOUL.md'), '# Moneypenny\n');
+        fs.writeFileSync(
+          path.join(root, '.chamber.json'),
+          JSON.stringify({ workingMemory: { consolidation: { enabled: true } } }),
+        );
+
+        const provider: MindProfileMindProvider = {
+          getMindPath: () => root,
+          restartMind: async () => ({}),
+        };
+        const normalizer: AvatarNormalizer = {
+          normalize: async ({ outputPath }) => {
+            fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+            fs.writeFileSync(outputPath, Buffer.from('avatar'));
+          },
+        };
+        const service = new MindProfileService(
+          provider,
+          new IdentityLoader(),
+          normalizer,
+          () => false,
+        );
+
+        const profile = service.getProfile('mind-1');
+        expect(profile.dreamDaemonEnabled).toBe(false);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('honors .chamber.json enabled:true when the accessor returns true', () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-profile-'));
+      try {
+        fs.mkdirSync(path.join(root, '.github', 'agents'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'SOUL.md'), '# Moneypenny\n');
+        fs.writeFileSync(
+          path.join(root, '.chamber.json'),
+          JSON.stringify({ workingMemory: { consolidation: { enabled: true } } }),
+        );
+
+        const provider: MindProfileMindProvider = {
+          getMindPath: () => root,
+          restartMind: async () => ({}),
+        };
+        const normalizer: AvatarNormalizer = {
+          normalize: async ({ outputPath }) => {
+            fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+            fs.writeFileSync(outputPath, Buffer.from('avatar'));
+          },
+        };
+        const service = new MindProfileService(
+          provider,
+          new IdentityLoader(),
+          normalizer,
+          () => true,
+        );
+
+        const profile = service.getProfile('mind-1');
+        expect(profile.dreamDaemonEnabled).toBe(true);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 function createProfileFixture() {

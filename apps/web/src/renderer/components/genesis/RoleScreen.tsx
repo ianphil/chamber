@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TypeWriter } from './TypeWriter';
 import { cn } from '../../lib/utils';
+import { useAppState } from '../../lib/store';
 
 interface Props {
   name: string;
@@ -23,6 +24,8 @@ const ROLES = [
 ];
 
 export function RoleScreen({ name, onSelect }: Props) {
+  const { featureFlags } = useAppState();
+  const dreamDaemonFlag = featureFlags.dreamDaemon;
   const [showCards, setShowCards] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [customRole, setCustomRole] = useState('');
@@ -39,6 +42,11 @@ export function RoleScreen({ name, onSelect }: Props) {
     return () => clearTimeout(t);
   }, [showCustomInput]);
 
+  // Defense-in-depth: even if a stale component state held `true` from
+  // before the flag flipped off, never forward an opt-in when the
+  // feature flag is disabled. The IPC layer also coerces this server-side.
+  const effectiveDreamDaemon = dreamDaemonFlag && enableDreamDaemon;
+
   const handleSelect = (roleId: string) => {
     if (roleId === 'custom') {
       setSelected('custom');
@@ -48,14 +56,14 @@ export function RoleScreen({ name, onSelect }: Props) {
     setSelected(roleId);
     setTimeout(() => {
       const role = ROLES.find(r => r.id === roleId);
-      onSelect(role?.label ?? roleId, enableDreamDaemon);
+      onSelect(role?.label ?? roleId, effectiveDreamDaemon);
     }, 300);
   };
 
   const handleCustomSubmit = () => {
     const role = customRole.trim();
     if (!role) return;
-    onSelect(role, enableDreamDaemon);
+    onSelect(role, effectiveDreamDaemon);
   };
 
   return (
@@ -121,35 +129,40 @@ export function RoleScreen({ name, onSelect }: Props) {
               decision. ARIA `switch` role + `aria-checked` is the WCAG-
               recommended shape for an on/off toggle (better than a raw
               checkbox here because the binary state is the whole UI).
+              Gated behind the app-level `dreamDaemon` feature flag: when
+              off, the Switch is hidden entirely so genesis creates a
+              quiet mind regardless of `.chamber.json` state.
             */}
-            <div className="pt-6 border-t border-border/50 flex items-center justify-between gap-4 text-left">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-foreground">Enable dream daemon</div>
-                <div className="text-xs text-muted-foreground">
-                  Background memory consolidation. Off by default — you can change this later.
+            {dreamDaemonFlag && (
+              <div className="pt-6 border-t border-border/50 flex items-center justify-between gap-4 text-left">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-foreground">Enable dream daemon</div>
+                  <div className="text-xs text-muted-foreground">
+                    Background memory consolidation. Off by default — you can change this later.
+                  </div>
                 </div>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={enableDreamDaemon}
-                aria-label="Enable dream daemon"
-                onClick={() => setEnableDreamDaemon((v) => !v)}
-                className={cn(
-                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                  enableDreamDaemon ? 'bg-primary' : 'bg-input',
-                )}
-              >
-                <span
-                  aria-hidden="true"
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enableDreamDaemon}
+                  aria-label="Enable dream daemon"
+                  onClick={() => setEnableDreamDaemon((v) => !v)}
                   className={cn(
-                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition',
-                    enableDreamDaemon ? 'translate-x-5' : 'translate-x-0',
+                    'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    enableDreamDaemon ? 'bg-primary' : 'bg-input',
                   )}
-                />
-              </button>
-            </div>
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition',
+                      enableDreamDaemon ? 'translate-x-5' : 'translate-x-0',
+                    )}
+                  />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

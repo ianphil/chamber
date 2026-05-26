@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { cn } from '../../lib/utils';
-import { useAppDispatch } from '../../lib/store';
+import { useAppDispatch, useAppState } from '../../lib/store';
 import type {
   AgentProfile,
   AgentProfileAvatarCrop,
@@ -31,6 +31,8 @@ const iconButtonClass = 'inline-flex items-center justify-center rounded-md bord
 
 export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }: AgentProfileModalProps) {
   const dispatch = useAppDispatch();
+  const { featureFlags } = useAppState();
+  const dreamDaemonFlag = featureFlags.dreamDaemon;
   const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -205,37 +207,43 @@ export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }
                     so the new opt-in state takes effect immediately —
                     composer reads the gate, DailyLogWriter migrates legacy
                     `log.md` if needed.
+                    Gated behind the app-level `dreamDaemon` feature flag:
+                    when off, the entire row is hidden. MindProfileService
+                    also forces `dreamDaemonEnabled: false` server-side in
+                    the same case, so the data and UI agree.
                   */}
-                  <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-slate-900/40 px-4 py-3">
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">Enable dream daemon</div>
-                      <div className="text-xs text-muted-foreground">
-                        Background memory consolidation. When enabled, this agent's chat history is structured and summarized over time.
+                  {dreamDaemonFlag && (
+                    <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-slate-900/40 px-4 py-3">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-foreground">Enable dream daemon</div>
+                        <div className="text-xs text-muted-foreground">
+                          Background memory consolidation. When enabled, this agent's chat history is structured and summarized over time.
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={profile.dreamDaemonEnabled}
-                      aria-label="Enable dream daemon"
-                      disabled={togglingDreamDaemon}
-                      onClick={handleToggleDreamDaemon}
-                      className={cn(
-                        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                        'disabled:opacity-50 disabled:cursor-not-allowed',
-                        profile.dreamDaemonEnabled ? 'bg-sky-500' : 'bg-slate-700',
-                      )}
-                    >
-                      <span
-                        aria-hidden="true"
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={profile.dreamDaemonEnabled}
+                        aria-label="Enable dream daemon"
+                        disabled={togglingDreamDaemon}
+                        onClick={handleToggleDreamDaemon}
                         className={cn(
-                          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition',
-                          profile.dreamDaemonEnabled ? 'translate-x-5' : 'translate-x-0',
+                          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          'disabled:opacity-50 disabled:cursor-not-allowed',
+                          profile.dreamDaemonEnabled ? 'bg-sky-500' : 'bg-slate-700',
                         )}
-                      />
-                    </button>
-                  </div>
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition',
+                            profile.dreamDaemonEnabled ? 'translate-x-5' : 'translate-x-0',
+                          )}
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>
