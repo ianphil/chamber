@@ -52,7 +52,7 @@ export interface ChamberCtx {
   logoutAuth: () => void | Promise<void>;
   listChamberTools: () => unknown;
   saveAttachment: (attachment: { name: string; body: ArrayBuffer }) => Promise<unknown>;
-  cancelChat: (mindId: string, messageId: string) => Promise<void> | void;
+  cancelChat: (mindId: string, messageId: string) => Promise<boolean | void> | boolean | void;
   sendChat: (request: SendChatRequest) => Promise<void> | void;
   newConversation: (mindId: string) => Promise<unknown> | unknown;
   listModels: (mindId?: string) => ModelDto[] | Promise<ModelDto[]>;

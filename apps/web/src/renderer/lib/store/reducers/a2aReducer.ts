@@ -33,14 +33,12 @@ function a2aIncoming(state: AppState, action: Extract<AppAction, { type: 'A2A_IN
     timestamp: Date.now(),
     isStreaming: true,
   };
-  const isActiveMind = targetMindId === state.activeMindId;
   return {
     messagesByMind: {
       ...state.messagesByMind,
       [targetMindId]: [...targetMsgs, senderMessage, replyPlaceholder],
     },
-    streamingByMind: { ...state.streamingByMind, [targetMindId]: true },
-    isStreaming: isActiveMind ? true : state.isStreaming,
+    a2aStreamingByMind: { ...state.a2aStreamingByMind, [targetMindId]: true },
   };
 }
 
@@ -62,8 +60,12 @@ function taskStatusUpdate(
     const newTask: Task = { id: taskId, contextId, status };
     updatedTasks = [...existingTasks, newTask];
   }
+  const isTerminal = TERMINAL_TASK_STATES.has(status.state);
   return {
     tasksByMind: { ...state.tasksByMind, [targetMindId]: updatedTasks },
+    ...(isTerminal
+      ? { a2aStreamingByMind: { ...state.a2aStreamingByMind, [targetMindId]: false } }
+      : {}),
   };
 }
 

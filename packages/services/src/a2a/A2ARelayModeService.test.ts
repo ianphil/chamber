@@ -40,7 +40,7 @@ describe('A2ARelayModeService', () => {
 
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
       publishedBaseUrl: 'http://127.0.0.1:4200',
       inboundAuth: { scheme: 'bearer', token: 'inbound-secret' },
     });
@@ -65,7 +65,7 @@ describe('A2ARelayModeService', () => {
 
     await expect(service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
       publishedBaseUrl: 'http://127.0.0.1:4200',
     })).rejects.toThrow('relay unavailable');
 
@@ -84,7 +84,7 @@ describe('A2ARelayModeService', () => {
 
     await expect(service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
       publishedBaseUrl: 'http://127.0.0.1:4200',
     })).rejects.toThrow('relay unavailable');
 
@@ -96,7 +96,7 @@ describe('A2ARelayModeService', () => {
     vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
       publishedBaseUrl: 'http://127.0.0.1:4200',
     });
 
@@ -112,7 +112,7 @@ describe('A2ARelayModeService', () => {
     vi.spyOn(localRegistry, 'getCard').mockReturnValue(makeCard('mind-b', 'Agent B'));
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
       publishedBaseUrl: 'http://127.0.0.1:4200',
     });
 
@@ -149,7 +149,7 @@ describe('A2ARelayModeService', () => {
     );
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
     });
 
     await service.pollOnce();
@@ -201,7 +201,7 @@ describe('A2ARelayModeService', () => {
     );
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
     });
 
     await expect(service.pollOnce()).rejects.toThrow('delivery failed');
@@ -235,7 +235,7 @@ describe('A2ARelayModeService', () => {
     );
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
     });
 
     await service.pollOnce();
@@ -249,12 +249,12 @@ describe('A2ARelayModeService', () => {
     vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
     await service.connect({
       baseUrl: 'http://127.0.0.1:4100',
-      token: 'relay-secret',
+      authProvider: makeAuthProvider(),
     });
 
     await service.connect({
       baseUrl: 'http://127.0.0.1:4101',
-      token: 'relay-secret-2',
+      authProvider: makeAuthProvider('Bearer relay-secret-2'),
     });
 
     expect(relayClient.unregisterAgent).toHaveBeenCalledWith('Agent A');
@@ -280,7 +280,7 @@ describe('A2ARelayModeService', () => {
 
       await service.connect({
         baseUrl: 'http://127.0.0.1:4100',
-        token: 'relay-secret',
+        authProvider: makeAuthProvider(),
       });
       await vi.runOnlyPendingTimersAsync();
 
@@ -304,4 +304,8 @@ function makeCard(mindId: string, name: string): AgentCard {
     defaultOutputModes: ['text/plain'],
     skills: [],
   };
+}
+
+function makeAuthProvider(header = 'Bearer relay-secret') {
+  return { getAuthorizationHeader: async () => header };
 }

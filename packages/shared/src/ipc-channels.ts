@@ -17,6 +17,8 @@ export const IPC = {
     STOP: 'chat:stop',
     NEW_CONVERSATION: 'chat:newConversation',
     LIST_MODELS: 'chat:listModels',
+    GET_EVENT_SEQUENCE: 'chat:getEventSequence',
+    REPLAY_EVENTS: 'chat:replayEvents',
     EVENT: 'chat:event',
   },
   CONVERSATION_HISTORY: {
@@ -81,6 +83,20 @@ export const IPC = {
     INSTALL: 'tools:install',
     UNINSTALL: 'tools:uninstall',
   },
+  TASKS: {
+    LIST: 'tasks:list',
+    GET: 'tasks:get',
+    CANCEL: 'tasks:cancel',
+    AUDIT: 'tasks:audit',
+  },
+  BYO_LLM: {
+    GET: 'byoLlm:get',
+    SAVE: 'byoLlm:save',
+    DISABLE: 'byoLlm:disable',
+    PROBE: 'byoLlm:probe',
+    RESTART_AGENTS: 'byoLlm:restartAgents',
+    CHANGED: 'byoLlm:changed',
+  },
   CHATROOM: {
     SEND: 'chatroom:send',
     HISTORY: 'chatroom:history',
@@ -128,6 +144,10 @@ export const IPC = {
     A2A_INCOMING: 'e2e:a2a:incoming',
     AUTH_EMIT_PROGRESS: 'e2e:auth:emit-progress',
     AUTH_COMPLETE_LOGIN: 'e2e:auth:complete-login',
+  },
+  APP: {
+    GET_FEATURE_FLAGS: 'app:getFeatureFlags',
+    STARTUP_PROGRESS: 'app:startupProgress',
   },
 } as const;
 

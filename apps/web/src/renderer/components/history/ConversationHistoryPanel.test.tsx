@@ -78,6 +78,38 @@ describe('ConversationHistoryPanel', () => {
     expect(await screen.findByText('No conversations yet')).toBeTruthy();
   });
 
+  it('does not retry a rejected automatic conversation resume for the same selected session', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const conversation = makeConversation({ title: 'Locked chat' });
+    (api.conversationHistory.resume as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Cannot switch conversations while a message is still streaming.'),
+    );
+
+    renderHistoryPanel({
+      activeMindId: mind.mindId,
+      minds: [mind],
+      conversationHistoryByMind: { [mind.mindId]: [conversation] },
+      activeConversationByMind: { [mind.mindId]: conversation.sessionId },
+      conversationViewByMind: {
+        [mind.mindId]: {
+          status: 'idle',
+          sessionId: conversation.sessionId,
+          streaming: false,
+          modelSwitching: false,
+        },
+      },
+    });
+
+    await waitFor(() => {
+      expect(api.conversationHistory.resume).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(api.conversationHistory.resume).toHaveBeenCalledTimes(1);
+    expect((await screen.findByRole('alert')).textContent).toBe('Cannot switch conversations while a message is still streaming.');
+    warn.mockRestore();
+  });
+
   it('keeps row actions visible for keyboard focus', () => {
     const conversation = makeConversation({ title: 'Planning thread' });
     renderHistoryPanel({

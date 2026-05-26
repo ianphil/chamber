@@ -186,7 +186,15 @@ function executableName(bin: string): string {
 
 function resolveInstallPath(toolsBinDir: string, bin: string): string {
   const toolsBinRoot = path.resolve(toolsBinDir);
-  const installedPath = path.resolve(toolsBinRoot, executableName(bin));
+  const executablePath = executableName(bin);
+  if (path.isAbsolute(executablePath) || /^[a-zA-Z]:[\\/]/.test(executablePath)) {
+    throw new Error(`Refusing to install tool ${bin} outside the tools bin directory`);
+  }
+  const segments = executablePath.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0 || segments.includes('..')) {
+    throw new Error(`Refusing to install tool ${bin} outside the tools bin directory`);
+  }
+  const installedPath = path.resolve(toolsBinRoot, ...segments);
   if (installedPath !== toolsBinRoot && installedPath.startsWith(`${toolsBinRoot}${path.sep}`)) {
     return installedPath;
   }

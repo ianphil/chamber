@@ -10,6 +10,7 @@ import type {
 } from './types';
 
 const CRON_DIR = '.chamber';
+const SCHEDULES_DIR = 'schedules';
 const JOBS_FILE = 'cron.json';
 const RUNS_FILE = 'cron-runs.json';
 const DEFAULT_RUN_LIMIT = 50;
@@ -21,7 +22,9 @@ export class JobStore {
   constructor(
     private readonly mindPath: string,
     private readonly runLimit = DEFAULT_RUN_LIMIT,
-  ) {}
+  ) {
+    this.relocateScheduleFile();
+  }
 
   listJobs(): CronJob[] {
     return this.readJobs().jobs;
@@ -108,11 +111,30 @@ export class JobStore {
   }
 
   private getJobsPath(): string {
-    return path.join(this.getCronDir(), JOBS_FILE);
+    const legacyPath = path.join(this.getCronDir(), JOBS_FILE);
+    if (fs.existsSync(legacyPath)) return legacyPath;
+    return path.join(this.getSchedulesDir(), JOBS_FILE);
   }
 
   private getRunsPath(): string {
     return path.join(this.getCronDir(), RUNS_FILE);
+  }
+
+  private getSchedulesDir(): string {
+    const schedulesDir = path.join(this.getCronDir(), SCHEDULES_DIR);
+    fs.mkdirSync(schedulesDir, { recursive: true });
+    return schedulesDir;
+  }
+
+  private relocateScheduleFile(): void {
+    const legacyPath = path.join(this.getCronDir(), JOBS_FILE);
+    const relocatedPath = path.join(this.getSchedulesDir(), JOBS_FILE);
+    if (!fs.existsSync(legacyPath) || fs.existsSync(relocatedPath)) return;
+    try {
+      fs.renameSync(legacyPath, relocatedPath);
+    } catch {
+      // Backward-compatible reads still use the legacy path if relocation fails.
+    }
   }
 
   private readJobs(): StoredCronJobs {

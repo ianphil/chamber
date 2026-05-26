@@ -7,7 +7,7 @@ import { SettingsView } from '../settings/SettingsView';
 import { A2ARelayView } from '../a2a/A2ARelayView';
 
 export function ViewRouter() {
-  const { activeView, discoveredViews } = useAppState();
+  const { activeView, discoveredViews, featureFlags } = useAppState();
 
   if (activeView === 'chat') {
     return <ChatPanel />;
@@ -21,7 +21,7 @@ export function ViewRouter() {
     return <SettingsView />;
   }
 
-  if (activeView === 'a2a-relay') {
+  if (activeView === 'a2a-relay' && featureFlags.switchboardRelay) {
     return <A2ARelayView />;
   }
 

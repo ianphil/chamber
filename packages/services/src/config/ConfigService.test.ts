@@ -86,6 +86,36 @@ describe('ConfigService', () => {
       });
     });
 
+    it('preserves saved A2A relay settings', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        a2aRelayBaseUrl: ' https://switchboard.example.com ',
+        a2aRelayAuthMode: 'static',
+      }));
+
+      expect(svc.load()).toEqual(expect.objectContaining({
+        a2aRelayBaseUrl: 'https://switchboard.example.com',
+        a2aRelayAuthMode: 'static',
+      }));
+    });
+
+    it('drops the legacy chamber-copilot user config flag', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        chamberCopilotEnabled: true,
+      }));
+
+      expect(svc.load()).toEqual(DEFAULT_CONFIG);
+    });
+
     it('preserves per-mind conversation history metadata without transcript text', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,
@@ -93,6 +123,7 @@ describe('ConfigService', () => {
           id: 'q-a1b2',
           path: '/tmp/agents/q',
           selectedModel: 'gpt-5.4',
+          selectedModelProvider: 'byo',
           activeSessionId: 'chamber-q-a1b2-conversation-1',
           conversations: [{
             sessionId: 'chamber-q-a1b2-conversation-1',
@@ -113,6 +144,7 @@ describe('ConfigService', () => {
         id: 'q-a1b2',
         path: '/tmp/agents/q',
         selectedModel: 'gpt-5.4',
+        selectedModelProvider: 'byo',
         activeSessionId: 'chamber-q-a1b2-conversation-1',
         conversations: [{
           sessionId: 'chamber-q-a1b2-conversation-1',

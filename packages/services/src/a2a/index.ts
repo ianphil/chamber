@@ -7,8 +7,10 @@ export type { A2ARelayModeConnectOptions, A2ARelayRegistryClientPort } from './A
 export { ActiveA2AResolver } from './ActiveA2AResolver';
 export type { A2AAgentResolver, A2AResolverMode, RelayA2AResolverClient } from './ActiveA2AResolver';
 export { AgentCardRegistry } from './AgentCardRegistry';
-export { RelayA2ARegistryClient } from './RelayA2ARegistryClient';
-export type { RelayA2ARegistryClientOptions, RelayAgentRegistration } from './RelayA2ARegistryClient';
+export { RelayA2ARegistryClient, StaticA2ARelayAuthProvider } from './RelayA2ARegistryClient';
+export type { A2ARelayAuthProvider, RelayA2ARegistryClientOptions, RelayAgentRegistration } from './RelayA2ARegistryClient';
+export { EntraA2AAuthProvider } from './EntraA2AAuthProvider';
+export type { EntraA2AAuthProviderOptions, EntraA2ATokenCache, EntraA2ATokenCacheEntry } from './EntraA2AAuthProvider';
 export { MessageRouter } from './MessageRouter';
 export { TaskManager } from './TaskManager';
 export { A2aToolProvider } from './A2aToolProvider';

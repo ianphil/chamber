@@ -1,3 +1,4 @@
+import { modelSelectionEqualsModel, modelSelectionKey, modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import type { ChatEvent, ChatMessage, ContentBlock, ConversationSummary } from '@chamber/shared/types';
 import type { AppState, ConversationViewState } from '../state';
 
@@ -18,12 +19,18 @@ export function selectedModelForActiveMind(
   minds = state.minds,
 ): string | null {
   if (!activeMindId) return null;
-  const selectedModel = minds.find((mind) => mind.mindId === activeMindId)?.selectedModel;
-  if (selectedModel && (state.availableModels.length === 0 || state.availableModels.some((model) => model.id === selectedModel))) {
-    return selectedModel;
+  const mind = minds.find((candidate) => candidate.mindId === activeMindId);
+  const selection = mind?.selectedModel
+    ? { id: mind.selectedModel, provider: mind.selectedModelProvider }
+    : null;
+  if (
+    selection
+    && (state.availableModels.length === 0 || state.availableModels.some((model) => modelSelectionEqualsModel(selection, model)))
+  ) {
+    return modelSelectionKey(selection);
   }
 
-  return state.availableModels[0]?.id ?? null;
+  return state.availableModels[0] ? modelSelectionKeyFromModel(state.availableModels[0]) : null;
 }
 
 export function defaultConversationView(): ConversationViewState {

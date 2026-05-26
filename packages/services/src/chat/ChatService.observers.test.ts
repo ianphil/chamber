@@ -88,8 +88,9 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
       mgr as unknown as MindManager,
       new TurnQueue(),
       dateTimeProvider,
-      [observerA, observerB],
     );
+    svc.addObserver(observerA);
+    svc.addObserver(observerB);
 
     await svc.sendMessage('mind-1', 'ping', 'msg-1', vi.fn());
 
@@ -123,8 +124,8 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
       mgr as unknown as MindManager,
       new TurnQueue(),
       dateTimeProvider,
-      [{ onTurnCompleted: (t) => { captured.push(t); } }],
     );
+    svc.addObserver({ onTurnCompleted: (t) => { captured.push(t); } });
 
     await svc.sendMessage('mind-1', 'hi', 'msg-1', vi.fn(), 'opus-4.7');
 
@@ -143,8 +144,8 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
       mgr as unknown as MindManager,
       new TurnQueue(),
       dateTimeProvider,
-      [observer],
     );
+    svc.addObserver(observer);
 
     const pending = svc.sendMessage('mind-1', 'long-running', 'msg-1', vi.fn());
     // Allow the queue/streamTurn to wire up listeners and call send.
@@ -169,8 +170,8 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
       mgr as unknown as MindManager,
       new TurnQueue(),
       dateTimeProvider,
-      [observer],
     );
+    svc.addObserver(observer);
 
     const emit = vi.fn();
     await svc.sendMessage('mind-1', 'hi', 'msg-1', emit);
@@ -188,8 +189,8 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
       mgr as unknown as MindManager,
       new TurnQueue(),
       dateTimeProvider,
-      [observer],
     );
+    svc.addObserver(observer);
 
     const emit = vi.fn();
     await svc.sendMessage('missing', 'hi', 'msg-1', emit);
@@ -223,8 +224,10 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
         mgr as unknown as MindManager,
         new TurnQueue(),
         dateTimeProvider,
-        [observerA, observerB, observerC],
       );
+      svc.addObserver(observerA);
+      svc.addObserver(observerB);
+      svc.addObserver(observerC);
 
       const emit = vi.fn();
       // Whole streaming path must still resolve cleanly.
@@ -257,8 +260,9 @@ describe('ChatService — TurnCompletionObserver wiring (Phase 6)', () => {
         mgr as unknown as MindManager,
         new TurnQueue(),
         dateTimeProvider,
-        [observerA, observerB],
       );
+      svc.addObserver(observerA);
+      svc.addObserver(observerB);
 
       const emit = vi.fn();
       await expect(svc.sendMessage('mind-1', 'ping', 'msg-1', emit)).resolves.toBeUndefined();

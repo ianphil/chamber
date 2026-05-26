@@ -19,6 +19,8 @@ import type {
   TaskStatusUpdateEvent,
 } from './a2a-types';
 import type { ChatroomAPI } from './chatroom-types';
+import type { AppFeatureFlags } from './feature-flags';
+import type { CancelOutcome, LedgerRecord, LedgerStatus } from './ledger';
 import type {
   AgentProfile,
   AgentProfileActionResult,
@@ -26,8 +28,12 @@ import type {
   AgentProfileAvatarSaveRequest,
   AgentProfileSaveRequest,
   AgentProfileSaveResult,
+  ByoLlmConfig,
+  ByoLlmProbeResult,
+  ByoLlmSaveResult,
   ChatEvent,
   ChatImageAttachment,
+  ChatReplayEvent,
   ConversationResumeResult,
   ConversationSummary,
   DesktopUpdateActionResult,
@@ -38,6 +44,7 @@ import type {
   MarketplaceRegistryActionResult,
   MindContext,
   ModelInfo,
+  StartupProgressEvent,
   ToolActionResult,
   ToolCatalogEntry,
   UserProfile,
@@ -51,7 +58,9 @@ export interface ElectronAPI {
     stop: (mindId: string, messageId: string) => Promise<void>;
     newConversation: (mindId: string) => Promise<ConversationResumeResult>;
     listModels: (mindId?: string) => Promise<ModelInfo[]>;
-    onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent) => void) => () => void;
+    getEventSequence: () => Promise<number>;
+    replayEvents: (afterSequence: number) => Promise<ChatReplayEvent[]>;
+    onEvent: (callback: (mindId: string, messageId: string, event: ChatEvent, sequence?: number) => void) => () => void;
   };
   conversationHistory: {
     list: (mindId: string) => Promise<ConversationSummary[]>;
@@ -123,6 +132,15 @@ export interface ElectronAPI {
     install: (toolId: string, marketplaceId?: string) => Promise<ToolActionResult>;
     uninstall: (toolId: string) => Promise<{ success: boolean; error?: string }>;
   };
+  tasks: {
+    list: (mindId: string) => Promise<LedgerRecord[]>;
+    get: (mindId: string, ledgerId: string) => Promise<LedgerRecord | { error: string }>;
+    cancel: (mindId: string, ledgerId: string) => Promise<CancelOutcome>;
+    audit: (mindId: string) => Promise<{
+      counts: Record<LedgerStatus, number>;
+      findings: Array<{ type: 'stale-running' | 'missing-cleanup' | 'delivery-failed'; ledgerId: string }>;
+    }>;
+  };
   chatroom: ChatroomAPI;
   updater: {
     getState: () => Promise<DesktopUpdateState>;
@@ -149,10 +167,27 @@ export interface ElectronAPI {
     emitAuthProgress: (payload: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => Promise<void>;
     completeLoginStub: (payload: { success?: boolean; login?: string }) => Promise<void>;
   };
+  byoLlm: {
+    get: () => Promise<ByoLlmConfig | null>;
+    save: (config: ByoLlmConfig) => Promise<ByoLlmSaveResult>;
+    disable: () => Promise<ByoLlmSaveResult>;
+    probe: (config: ByoLlmConfig) => Promise<ByoLlmProbeResult>;
+    restartAgents: () => Promise<{ success: boolean; restartedCount: number; error?: string }>;
+    onChanged: (callback: (config: ByoLlmConfig | null) => void) => () => void;
+  };
   window: {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
+  };
+  app: {
+    getFeatureFlags: () => Promise<AppFeatureFlags>;
+    /**
+     * Subscribe to per-step app-startup progress events while the main
+     * process restores minds from config. Drives the boot-screen activity
+     * log (#56). Returns an unsubscribe function — call it on unmount.
+     */
+    onStartupProgress: (callback: (event: StartupProgressEvent) => void) => () => void;
   };
 }
 

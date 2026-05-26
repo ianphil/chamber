@@ -117,6 +117,8 @@ export function mockElectronAPI(): ElectronAPI {
       stop: vi.fn().mockResolvedValue(undefined),
       newConversation: vi.fn().mockResolvedValue({ sessionId: '', messages: [], conversations: [] }),
       listModels: vi.fn().mockResolvedValue([]),
+      getEventSequence: vi.fn().mockResolvedValue(0),
+      replayEvents: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(vi.fn()),
     },
     conversationHistory: {
@@ -208,6 +210,14 @@ export function mockElectronAPI(): ElectronAPI {
       onAccountSwitched: vi.fn().mockReturnValue(vi.fn()),
       onLoggedOut: vi.fn().mockReturnValue(vi.fn()),
     },
+    byoLlm: {
+      get: vi.fn().mockResolvedValue(null),
+      save: vi.fn().mockResolvedValue({ success: true }),
+      disable: vi.fn().mockResolvedValue({ success: true }),
+      probe: vi.fn().mockResolvedValue({ ok: true, modelCount: 0, models: [] }),
+      restartAgents: vi.fn().mockResolvedValue({ success: true, restartedCount: 0 }),
+      onChanged: vi.fn().mockReturnValue(vi.fn()),
+    },
     genesis: {
       getDefaultPath: vi.fn().mockResolvedValue('C:\\Users\\test\\agents'),
       pickPath: vi.fn().mockResolvedValue(null),
@@ -267,6 +277,15 @@ export function mockElectronAPI(): ElectronAPI {
       list: vi.fn().mockResolvedValue([]),
       install: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       uninstall: vi.fn().mockResolvedValue({ success: true }),
+    },
+    tasks: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue({ error: 'not stubbed' }),
+      cancel: vi.fn().mockResolvedValue({ found: false, cancelled: false, reason: 'not stubbed' }),
+      audit: vi.fn().mockResolvedValue({
+        counts: { queued: 0, running: 0, succeeded: 0, failed: 0, 'timed-out': 0, cancelled: 0, lost: 0 },
+        findings: [],
+      }),
     },
     chatroom: {
       send: vi.fn().mockResolvedValue(undefined),
@@ -332,6 +351,10 @@ export function mockElectronAPI(): ElectronAPI {
       minimize: vi.fn(),
       maximize: vi.fn(),
       close: vi.fn(),
+    },
+    app: {
+      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false }),
+      onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     },
   };
 }

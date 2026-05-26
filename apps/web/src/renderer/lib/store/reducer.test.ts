@@ -506,7 +506,7 @@ describe('appReducer', () => {
       payload: [{ ...withActiveMind.minds[0], selectedModel: 'model-2' }],
     });
 
-    expect(state.selectedModel).toBe('model-2');
+    expect(state.selectedModel).toBe('copilot:model-2');
   });
 
   it('SET_ACTIVE_MIND switches active mind', () => {
@@ -525,16 +525,25 @@ describe('appReducer', () => {
       selectedModel: 'model-1',
     }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
 
-    expect(state.selectedModel).toBe('model-2');
+    expect(state.selectedModel).toBe('copilot:model-2');
   });
 
-  it('SET_ACTIVE_MIND preserves the selected mind streaming state', () => {
+  it('SET_ACTIVE_MIND preserves the selected mind chat streaming state', () => {
     const state = appReducer({
       ...withActiveMind,
       streamingByMind: { 'other-mind': true },
     }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
 
     expect(state.isStreaming).toBe(true);
+  });
+
+  it('SET_ACTIVE_MIND ignores selected mind A2A streaming state', () => {
+    const state = appReducer({
+      ...withActiveMind,
+      a2aStreamingByMind: { 'other-mind': true },
+    }, { type: 'SET_ACTIVE_MIND', payload: 'other-mind' });
+
+    expect(state.isStreaming).toBe(false);
   });
 
   it('ADD_MIND appends a new mind and sets it active if none active', () => {
@@ -584,13 +593,20 @@ describe('appReducer', () => {
       minds: [{ ...withActiveMind.minds[0], selectedModel: 'missing-model' }],
     }, { type: 'SET_AVAILABLE_MODELS', payload: models });
 
-    expect(state.selectedModel).toBe('model-1');
+    expect(state.selectedModel).toBe('copilot:model-1');
   });
 
   it('SET_SELECTED_MODEL updates selection for the active mind', () => {
     const state = appReducer(withActiveMind, { type: 'SET_SELECTED_MODEL', payload: 'model-1' });
     expect(state.selectedModel).toBe('model-1');
     expect(state.minds[0].selectedModel).toBe('model-1');
+  });
+
+  it('SET_SELECTED_MODEL preserves BYO provider metadata from composite keys', () => {
+    const state = appReducer(withActiveMind, { type: 'SET_SELECTED_MODEL', payload: 'byo:model-1' });
+    expect(state.selectedModel).toBe('byo:model-1');
+    expect(state.minds[0].selectedModel).toBe('model-1');
+    expect(state.minds[0].selectedModelProvider).toBe('byo');
   });
 
   it('SET_SELECTED_MODEL with null clears selection', () => {
@@ -605,6 +621,16 @@ describe('appReducer', () => {
   it('SET_ACTIVE_VIEW updates activeView', () => {
     const state = appReducer(initialState, { type: 'SET_ACTIVE_VIEW', payload: 'briefing-1' });
     expect(state.activeView).toBe('briefing-1');
+  });
+
+  it('SET_FEATURE_FLAGS updates feature flags', () => {
+    const state = appReducer(initialState, {
+      type: 'SET_FEATURE_FLAGS',
+      payload: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+    });
+    expect(state.featureFlags.switchboardRelay).toBe(true);
+    expect(state.featureFlags.byoLlm).toBe(true);
+    expect(state.featureFlags.chamberCopilot).toBe(true);
   });
 
   it('SET_DISCOVERED_VIEWS updates discoveredViews', () => {
@@ -743,23 +769,28 @@ describe('appReducer', () => {
       expect(msgs[1].isStreaming).toBe(true);
     });
 
-    it('sets streamingByMind for target mind', () => {
+    it('sets a2aStreamingByMind for target mind', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
-      expect(state.streamingByMind[mindId]).toBe(true);
+      expect(state.a2aStreamingByMind[mindId]).toBe(true);
+      expect(state.streamingByMind[mindId]).toBeUndefined();
     });
 
-    it('sets global isStreaming true when target is active mind', () => {
+    it('does not set global isStreaming when target is active mind', () => {
       const state = appReducer(withActiveMind, { type: 'A2A_INCOMING', payload: a2aPayload() });
-      expect(state.isStreaming).toBe(true);
+      expect(state.isStreaming).toBe(false);
     });
 
-    it('does not set global isStreaming when target is not active mind', () => {
+    it('records inactive mind relay messages without stealing focus', () => {
       const state = appReducer(withActiveMind, {
         type: 'A2A_INCOMING',
         payload: a2aPayload({ targetMindId: 'other-mind' }),
       });
-      expect(state.isStreaming).toBe(false);
-      expect(state.streamingByMind['other-mind']).toBe(true);
+      expect(state.activeMindId).toBe(mindId);
+      expect(state.activeView).toBe(withActiveMind.activeView);
+      expect(state.isStreaming).toBe(withActiveMind.isStreaming);
+      expect(state.a2aStreamingByMind['other-mind']).toBe(true);
+      expect(state.streamingByMind['other-mind']).toBeUndefined();
+      expect(state.messagesByMind['other-mind']).toHaveLength(2);
     });
 
     it('appends to existing messages in target mind', () => {
@@ -770,6 +801,7 @@ describe('appReducer', () => {
       const state = appReducer(stateWithMsgs, { type: 'A2A_INCOMING', payload: a2aPayload() });
       expect(state.messagesByMind[mindId]).toHaveLength(3);
     });
+
   });
 
   // -------------------------------------------------------------------------

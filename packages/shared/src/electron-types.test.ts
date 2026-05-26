@@ -12,6 +12,8 @@ describe('ElectronAPI contract', () => {
   it('exposes the major namespaces with the expected method shapes', () => {
     expectTypeOf<ElectronAPI['chat']['send']>().toBeFunction();
     expectTypeOf<ElectronAPI['chat']['stop']>().toBeFunction();
+    expectTypeOf<ElectronAPI['chat']['getEventSequence']>().toBeFunction();
+    expectTypeOf<ElectronAPI['chat']['replayEvents']>().toBeFunction();
     expectTypeOf<ElectronAPI['chat']['onEvent']>().toBeFunction();
 
     expectTypeOf<ElectronAPI['mind']['list']>().toBeFunction();
@@ -27,11 +29,13 @@ describe('ElectronAPI contract', () => {
     expectTypeOf<ElectronAPI['chatroom']['onEvent']>().toBeFunction();
 
     expectTypeOf<ElectronAPI['updater']['getState']>().toBeFunction();
+    expectTypeOf<ElectronAPI['a2a']['onIncoming']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['listAgents']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['relayStatus']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['relayConnect']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['relayDisconnect']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['onRelayStateChanged']>().toBeFunction();
+    expectTypeOf<ElectronAPI['app']['getFeatureFlags']>().toBeFunction();
   });
 
   it('declares window.electronAPI as ElectronAPI globally', () => {

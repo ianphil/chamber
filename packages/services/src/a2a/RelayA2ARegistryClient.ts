@@ -13,8 +13,22 @@ const MAX_RELAY_RESPONSE_BYTES = 1_000_000;
 
 export interface RelayA2ARegistryClientOptions {
   baseUrl: string;
-  token: string;
+  authProvider: A2ARelayAuthProvider;
   fetchImpl?: typeof fetch;
+}
+
+export interface A2ARelayAuthProvider {
+  getAuthorizationHeader(): Promise<string>;
+  invalidate?(): void | Promise<void>;
+}
+
+export class StaticA2ARelayAuthProvider implements A2ARelayAuthProvider {
+  constructor(private readonly token: string) {}
+
+  async getAuthorizationHeader(): Promise<string> {
+    if (!this.token.trim()) throw new Error('A2A relay token is not configured');
+    return `Bearer ${this.token}`;
+  }
 }
 
 export interface RelayAgentRegistration {
@@ -24,12 +38,12 @@ export interface RelayAgentRegistration {
 
 export class RelayA2ARegistryClient {
   private readonly baseUrl: URL;
-  private readonly token: string;
+  private readonly authProvider: A2ARelayAuthProvider;
   private readonly fetchImpl: typeof fetch;
 
-  constructor({ baseUrl, token, fetchImpl = fetch }: RelayA2ARegistryClientOptions) {
+  constructor({ baseUrl, authProvider, fetchImpl = fetch }: RelayA2ARegistryClientOptions) {
     this.baseUrl = normalizeRelayBaseUrl(baseUrl);
-    this.token = token;
+    this.authProvider = authProvider;
     this.fetchImpl = fetchImpl;
   }
 
@@ -97,27 +111,37 @@ export class RelayA2ARegistryClient {
     return body as T;
   }
 
-  private request(path: string, init: RequestInit = {}): Promise<Response> {
+  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+    const authorization = await this.authProvider.getAuthorizationHeader();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), RELAY_REQUEST_TIMEOUT_MS);
-    return this.fetchImpl(new URL(path, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path, this.baseUrl), {
       ...init,
       headers: {
-        authorization: `Bearer ${this.token}`,
+        authorization,
         'A2A-Version': '1.0',
         accept: 'application/a2a+json, application/json',
         'content-type': 'application/json',
+        origin: 'http://127.0.0.1',
         ...init.headers,
       },
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
+    if (response.status === 401 || response.status === 403) {
+      await this.authProvider.invalidate?.();
+    }
+    return response;
   }
 }
 
 function normalizeRelayBaseUrl(value: string): URL {
   const url = new URL(value);
-  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
-    throw new Error('A2A relay URL must be an HTTP loopback URL');
+  if (url.username || url.password) {
+    throw new Error('A2A relay URL must not include credentials');
+  }
+  const isLoopbackHttp = url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !isLoopbackHttp) {
+    throw new Error('A2A relay URL must be HTTPS or HTTP loopback');
   }
   return url;
 }

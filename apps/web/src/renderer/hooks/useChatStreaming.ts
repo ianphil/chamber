@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAppState, useAppDispatch } from '../lib/store';
 import { generateId } from '../lib/utils';
 import type { ChatImageAttachment, ImageBlock } from '@chamber/shared/types';
@@ -7,9 +7,9 @@ import { Logger } from '../lib/logger';
 const log = Logger.create('useChatStreaming');
 
 export function useChatStreaming() {
-  const { activeMindId, isStreaming, selectedModel } = useAppState();
+  const { activeMindId, isStreaming, selectedModel, streamingByMind } = useAppState();
   const dispatch = useAppDispatch();
-  const currentMessageId = useRef<string | null>(null);
+  const currentMessageIdByMind = useRef<Record<string, string>>({});
 
   const sendMessage = useCallback(async (content: string, attachments?: ChatImageAttachment[]) => {
     const hasText = content.trim().length > 0;
@@ -32,7 +32,7 @@ export function useChatStreaming() {
     dispatch({ type: 'ADD_USER_MESSAGE', payload: userMessage });
 
     const assistantId = generateId();
-    currentMessageId.current = assistantId;
+    currentMessageIdByMind.current[activeMindId] = assistantId;
     dispatch({
       type: 'ADD_ASSISTANT_MESSAGE',
       payload: { id: assistantId, timestamp: Date.now() },
@@ -49,10 +49,16 @@ export function useChatStreaming() {
   }, [activeMindId, isStreaming, selectedModel, dispatch]);
 
   const stopStreaming = useCallback(async () => {
-    if (currentMessageId.current && activeMindId) {
-      await window.electronAPI.chat.stop(activeMindId, currentMessageId.current);
+    if (activeMindId && currentMessageIdByMind.current[activeMindId]) {
+      await window.electronAPI.chat.stop(activeMindId, currentMessageIdByMind.current[activeMindId]);
     }
   }, [activeMindId]);
+
+  useEffect(() => {
+    if (activeMindId && !streamingByMind[activeMindId]) {
+      delete currentMessageIdByMind.current[activeMindId];
+    }
+  }, [activeMindId, streamingByMind]);
 
   return { sendMessage, stopStreaming, isStreaming };
 }

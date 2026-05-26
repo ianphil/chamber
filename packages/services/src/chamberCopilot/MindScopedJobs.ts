@@ -33,8 +33,13 @@ import type {
   JobStore,
   PermissionMode,
 } from 'chamber-copilot';
+import type { LedgerStatus } from '@chamber/shared';
+import type { TaskLedger } from '../ledger';
+import { Logger } from '../logger';
 
 const SCOPED_ID_SEPARATOR = ':';
+const log = Logger.create('MindScopedJobs');
+type TerminalLedgerStatus = Extract<LedgerStatus, 'succeeded' | 'failed' | 'timed-out' | 'cancelled' | 'lost'>;
 
 function unknownJob(scopedJobId: string): Error {
   return new Error(`Unknown job_id: ${scopedJobId}`);
@@ -58,6 +63,7 @@ export class MindScopedJobs {
   constructor(
     private readonly inner: JobStore,
     private readonly mindId: string,
+    private readonly getLedger: () => TaskLedger | undefined = () => undefined,
   ) {}
 
   async delegate(params: {
@@ -88,6 +94,7 @@ export class MindScopedJobs {
       );
     }
     this.ownedJobIds.add(result.jobId);
+    this.recordDelegatedJob(result.jobId, params);
     return { jobId: this.scope(result.jobId), sessionId: result.sessionId };
   }
 
@@ -104,12 +111,15 @@ export class MindScopedJobs {
   }
 
   async cancel(scopedJobId: string): Promise<void> {
-    await this.inner.cancel(this.unscope(scopedJobId));
+    const rawJobId = this.unscope(scopedJobId);
+    await this.inner.cancel(rawJobId);
+    this.finalizeLedgerRow(rawJobId, 'cancelled');
   }
 
   status(scopedJobId: string): JobSnapshot {
     const raw = this.unscope(scopedJobId);
     const snap = this.inner.status(raw);
+    this.reconcileLedgerRow(raw, snap);
     return { ...snap, jobId: this.scope(snap.jobId) };
   }
 
@@ -117,7 +127,10 @@ export class MindScopedJobs {
     return this.inner
       .list(filter)
       .filter((snap) => this.ownedJobIds.has(snap.jobId))
-      .map((snap) => ({ ...snap, jobId: this.scope(snap.jobId) }));
+      .map((snap) => {
+        this.reconcileLedgerRow(snap.jobId, snap);
+        return { ...snap, jobId: this.scope(snap.jobId) };
+      });
   }
 
   /**
@@ -135,6 +148,7 @@ export class MindScopedJobs {
     for (const raw of jobs) {
       try {
         await this.inner.cancel(raw);
+        this.finalizeLedgerRow(raw, 'cancelled');
       } catch {
         // Already terminal, never started, or otherwise gone — by design.
       }
@@ -143,6 +157,72 @@ export class MindScopedJobs {
 
   private scope(rawJobId: string): string {
     return `${this.mindId}${SCOPED_ID_SEPARATOR}${rawJobId}`;
+  }
+
+  private recordDelegatedJob(
+    rawJobId: string,
+    params: { readonly cwd: string; readonly prompt: string; readonly permissionMode?: PermissionMode },
+  ): void {
+    try {
+      this.getLedger()?.writer.createRunning({
+        runtime: 'acp-child',
+        ownerMindId: this.mindId,
+        scopeKind: 'system',
+        task: params.prompt,
+        runKey: this.runKey(rawJobId),
+        sourceId: rawJobId,
+        label: params.permissionMode ?? 'safe',
+        payload: { runtime: 'acp-child', rawJobId, cwd: params.cwd },
+      });
+    } catch (err) {
+      log.warn(`Failed to create ledger row for ACP child job ${rawJobId}:`, err);
+    }
+  }
+
+  private finalizeLedgerRow(
+    rawJobId: string,
+    status: TerminalLedgerStatus,
+  ): void {
+    try {
+      const ledger = this.getLedger();
+      const row = ledger?.reader.getByRunKey('acp-child', this.runKey(rawJobId));
+      if (!row) return;
+      ledger?.writer.finalize(row.ledgerId, { status, terminalSummary: status });
+    } catch (err) {
+      log.warn(`Failed to finalize ledger row for ACP child job ${rawJobId}:`, err);
+    }
+  }
+
+  private reconcileLedgerRow(rawJobId: string, snap: JobSnapshot): void {
+    const status = this.mapSnapshotStatusToLedgerStatus(snap);
+    if (!status) return;
+    this.finalizeLedgerRow(rawJobId, status);
+  }
+
+  private mapSnapshotStatusToLedgerStatus(snap: JobSnapshot): TerminalLedgerStatus | undefined {
+    switch (snap.status) {
+      case 'completed':
+      case 'succeeded':
+      case 'success':
+        return 'succeeded';
+      case 'failed':
+      case 'error':
+      case 'errored':
+        return 'failed';
+      case 'timed-out':
+      case 'timed_out':
+      case 'timeout':
+        return 'timed-out';
+      case 'cancelled':
+      case 'canceled':
+        return 'cancelled';
+      default:
+        return undefined;
+    }
+  }
+
+  private runKey(rawJobId: string): string {
+    return `acp-child-${rawJobId}`;
   }
 
   private unscope(scopedJobId: string): string {

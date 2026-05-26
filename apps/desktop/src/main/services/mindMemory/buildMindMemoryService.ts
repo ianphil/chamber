@@ -2,9 +2,9 @@
  * Phase 13 desktop wiring for the per-mind background memory engine
  * ("Dream Daemon"). This module is a *thin adapter*: it knows how to
  *
- *   - load better-sqlite3 from either dev `node_modules` or the packaged
- *     ASAR-unpacked tree,
- *   - open per-mind `dream.db` files at the canonical path,
+ *   - open per-mind `dream.db` files at the canonical path using a
+ *     better-sqlite3 constructor injected by the composition root (which
+ *     resolves the runtime via the shared `chamber-sqlite-runtime` path),
  *   - mint *one-shot* Copilot sessions with tools disabled and a refusing
  *     permission handler (defense-in-depth — tools=[] should already mean
  *     no permission requests reach the handler),
@@ -17,7 +17,6 @@
  */
 import path from 'node:path';
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import {
   buildOneShotSession,
   createMindMemoryService,
@@ -46,8 +45,14 @@ interface BuildMindMemoryServiceOptions {
     addObserver(o: TurnCompletionObserver): void;
     removeObserver(o: TurnCompletionObserver): void;
   };
-  readonly isPackaged: boolean;
-  readonly resourcesPath: string | undefined;
+  /**
+   * better-sqlite3 module already resolved by the composition root. Master
+   * resolves this once via `loadBetterSqlite3()` in `apps/desktop/src/main.ts`
+   * and feeds the same module into both the task ledger (`setSqliteDatabase`)
+   * and the dream daemon, so packaged builds use the unified
+   * `chamber-sqlite-runtime` rather than an ASAR-unpacked node_modules copy.
+   */
+  readonly Database: BetterSqlite3Module;
   readonly logger?: Logger;
 }
 
@@ -60,25 +65,6 @@ export interface MindMemoryComposition {
    * Idempotent.
    */
   close(): Promise<void>;
-}
-
-const runtimeRequire = createRequire(__filename);
-
-function loadBetterSqlite3(isPackaged: boolean, resourcesPath: string | undefined): BetterSqlite3Module {
-  if (!isPackaged) {
-    return runtimeRequire('better-sqlite3') as BetterSqlite3Module;
-  }
-  // forge.config.ts unpacks `**/node_modules/{...,better-sqlite3,bindings,file-uri-to-path}/**/*`
-  // out of the ASAR, so `app.asar.unpacked` becomes the canonical resolve root.
-  // Try the unpacked path first; fall back to a bare require so we still load
-  // when the packaging layout changes (e.g., hoisted to resources/).
-  const unpacked = resourcesPath
-    ? path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'better-sqlite3')
-    : null;
-  if (unpacked && fs.existsSync(unpacked)) {
-    return runtimeRequire(unpacked) as BetterSqlite3Module;
-  }
-  return runtimeRequire('better-sqlite3') as BetterSqlite3Module;
 }
 
 /**
@@ -124,7 +110,7 @@ const DEFAULT_MONTHLY_MIN_INTERVAL_MS = 30 * MS_PER_DAY;
 
 export function buildMindMemoryService(opts: BuildMindMemoryServiceOptions): MindMemoryComposition {
   const logger = opts.logger ?? Logger.create('mindMemory');
-  const Database = loadBetterSqlite3(opts.isPackaged, opts.resourcesPath);
+  const Database = opts.Database;
   const scheduler = createInternalScheduler({ logger });
   const createOneShotSession = makeCreateOneShotSession(opts.mindManager, logger);
 

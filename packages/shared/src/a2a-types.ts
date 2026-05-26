@@ -227,6 +227,8 @@ export interface A2ARelayStatus {
   state: A2ARelayConnectionState;
   mode: 'local' | 'relay';
   relayBaseUrl: string | null;
+  authMode?: 'static' | 'interactive';
+  hasStoredRelayToken?: boolean;
   publishedBaseUrl: string | null;
   publishedAgentCount: number;
   relayAgentCount: number;
@@ -234,20 +236,41 @@ export interface A2ARelayStatus {
   connectedAt: number | null;
 }
 
-export interface A2ARelayConnectRequest {
+export type A2ARelayAuthMode = 'auto' | 'static' | 'interactive';
+
+export interface A2ARelayConnectBaseRequest {
   relayBaseUrl: string;
-  relayToken: string;
   publishedBaseUrl?: string;
   inboundToken?: string;
 }
 
+export interface A2ARelayStaticConnectRequest extends A2ARelayConnectBaseRequest {
+  authMode?: 'static' | 'auto';
+  relayToken?: string;
+}
+
+export interface A2ARelayInteractiveConnectRequest extends A2ARelayConnectBaseRequest {
+  authMode: 'interactive' | 'auto';
+  clientId?: string;
+  tenantId?: string;
+  scope?: string;
+}
+
+export type A2ARelayConnectRequest =
+  | A2ARelayStaticConnectRequest
+  | A2ARelayInteractiveConnectRequest;
+
 export function isA2ARelayConnectRequest(value: unknown): value is A2ARelayConnectRequest {
   if (!isRecord(value)) return false;
+  const authMode = value.authMode === undefined ? 'static' : value.authMode;
+  const hasRelayToken = typeof value.relayToken === 'string' && value.relayToken.trim().length > 0;
+  if (authMode !== 'auto' && authMode !== 'static' && authMode !== 'interactive') return false;
+  if (authMode === 'static' && value.relayToken !== undefined && !hasRelayToken) return false;
+  if (authMode === 'interactive' && (hasRelayToken || !areOptionalStrings(value, ['clientId', 'tenantId', 'scope']))) return false;
+  if (authMode === 'auto' && hasRelayToken && !areOptionalStrings(value, ['clientId', 'tenantId', 'scope'])) return false;
   return (
     typeof value.relayBaseUrl === 'string' &&
     value.relayBaseUrl.trim().length > 0 &&
-    typeof value.relayToken === 'string' &&
-    value.relayToken.trim().length > 0 &&
     (value.publishedBaseUrl === undefined || typeof value.publishedBaseUrl === 'string') &&
     (value.inboundToken === undefined || typeof value.inboundToken === 'string')
   );
@@ -268,4 +291,8 @@ export function isA2AIncomingPayload(value: unknown): value is A2AIncomingPayloa
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function areOptionalStrings(value: Record<string, unknown>, keys: string[]): boolean {
+  return keys.every((key) => value[key] === undefined || typeof value[key] === 'string');
 }

@@ -9,6 +9,13 @@ function setActiveView(_state: AppState, action: Extract<AppAction, { type: 'SET
   return { activeView: action.payload };
 }
 
+function setFeatureFlags(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'SET_FEATURE_FLAGS' }>,
+): Partial<AppState> {
+  return { featureFlags: action.payload };
+}
+
 function setDiscoveredViews(
   _state: AppState,
   action: Extract<AppAction, { type: 'SET_DISCOVERED_VIEWS' }>,
@@ -51,6 +58,7 @@ function loggedOut(): Partial<AppState> {
 
 export const lifecycleHandlers: {
   SET_ACTIVE_VIEW: Handler<'SET_ACTIVE_VIEW'>;
+  SET_FEATURE_FLAGS: Handler<'SET_FEATURE_FLAGS'>;
   SET_DISCOVERED_VIEWS: Handler<'SET_DISCOVERED_VIEWS'>;
   SHOW_LANDING: Handler<'SHOW_LANDING'>;
   HIDE_LANDING: Handler<'HIDE_LANDING'>;
@@ -59,6 +67,7 @@ export const lifecycleHandlers: {
   LOGGED_OUT: Handler<'LOGGED_OUT'>;
 } = {
   SET_ACTIVE_VIEW: setActiveView,
+  SET_FEATURE_FLAGS: setFeatureFlags,
   SET_DISCOVERED_VIEWS: setDiscoveredViews,
   SHOW_LANDING: showLanding,
   HIDE_LANDING: hideLanding,

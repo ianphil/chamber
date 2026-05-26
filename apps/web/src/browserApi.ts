@@ -1,4 +1,5 @@
 import { ChamberClient } from '@chamber/client';
+import { DEFAULT_APP_FEATURE_FLAGS } from '@chamber/shared/feature-flags';
 import type { LensViewManifest, MindContext, ModelInfo } from '@chamber/shared/types';
 import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type { AgentCard, ListTasksResponse, Task } from '@chamber/shared/a2a-types';
@@ -139,6 +140,8 @@ export function installBrowserApi(): void {
         return { sessionId: '', messages: [], conversations: [] };
       },
       listModels: (): Promise<ModelInfo[]> => client.listModels(),
+      getEventSequence: async () => 0,
+      replayEvents: async () => [],
       onEvent: (callback) => {
         chatEventHandlers.add(callback);
         void openEventSocket();
@@ -237,6 +240,15 @@ export function installBrowserApi(): void {
           loggedOutHandlers.delete(callback);
         };
       },
+      cancelLogin: async () => undefined,
+    },
+    byoLlm: {
+      get: async () => null,
+      save: async () => ({ success: false, error: 'BYO LLM management is desktop-only in browser mode.' }),
+      disable: async () => ({ success: false, error: 'BYO LLM management is desktop-only in browser mode.' }),
+      probe: async () => ({ ok: false, error: 'BYO LLM probe is desktop-only in browser mode.' }),
+      restartAgents: async () => ({ success: false, restartedCount: 0, error: 'Agent restart is desktop-only in browser mode.' }),
+      onChanged: () => noopUnsubscribe,
     },
     genesis: {
       getDefaultPath: async () => '',
@@ -281,6 +293,19 @@ export function installBrowserApi(): void {
       list: async () => [],
       install: async () => ({ success: false, error: 'Tool install is desktop-only in browser mode.' }),
       uninstall: async () => ({ success: false, error: 'Tool uninstall is desktop-only in browser mode.' }),
+    },
+    tasks: {
+      list: async () => [],
+      get: async (_mindId, ledgerId) => ({ error: `Task ledger is desktop-only in browser mode: ${ledgerId}` }),
+      cancel: async (_mindId, ledgerId) => ({
+        found: false,
+        cancelled: false,
+        reason: `Task cancellation is desktop-only in browser mode: ${ledgerId}`,
+      }),
+      audit: async () => ({
+        counts: { queued: 0, running: 0, succeeded: 0, failed: 0, 'timed-out': 0, cancelled: 0, lost: 0 },
+        findings: [],
+      }),
     },
     chatroom: createBrowserChatroomApi(),
     updater: {
@@ -341,6 +366,13 @@ export function installBrowserApi(): void {
       minimize: () => unavailable('window minimize'),
       maximize: () => unavailable('window maximize'),
       close: () => window.close(),
+    },
+    app: {
+      getFeatureFlags: async () => DEFAULT_APP_FEATURE_FLAGS,
+      // Web browser host has no app-startup phase to report; the renderer
+      // only sees a loaded page. Return a noop unsubscribe so the subscriber
+      // can install/uninstall freely.
+      onStartupProgress: () => noopUnsubscribe,
     },
   };
   window.electronAPI = api;

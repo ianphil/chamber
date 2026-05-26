@@ -13,6 +13,8 @@ const electronAPI: ElectronAPI = {
     newConversation: (mindId) =>
       ipcRenderer.invoke(IPC.CHAT.NEW_CONVERSATION, mindId),
     listModels: (mindId?) => ipcRenderer.invoke(IPC.CHAT.LIST_MODELS, mindId),
+    getEventSequence: () => ipcRenderer.invoke(IPC.CHAT.GET_EVENT_SEQUENCE),
+    replayEvents: (afterSequence) => ipcRenderer.invoke(IPC.CHAT.REPLAY_EVENTS, afterSequence),
     onEvent: (callback) => createIpcListener(ipcRenderer, IPC.CHAT.EVENT, callback),
   },
   conversationHistory: {
@@ -60,6 +62,14 @@ const electronAPI: ElectronAPI = {
     onAccountSwitched: (callback) => createIpcListener(ipcRenderer, IPC.AUTH.ACCOUNT_SWITCHED, callback),
     onLoggedOut: (callback) => createIpcListener(ipcRenderer, IPC.AUTH.LOGGED_OUT, callback),
   },
+  byoLlm: {
+    get: () => ipcRenderer.invoke(IPC.BYO_LLM.GET),
+    save: (config) => ipcRenderer.invoke(IPC.BYO_LLM.SAVE, config),
+    disable: () => ipcRenderer.invoke(IPC.BYO_LLM.DISABLE),
+    probe: (config) => ipcRenderer.invoke(IPC.BYO_LLM.PROBE, config),
+    restartAgents: () => ipcRenderer.invoke(IPC.BYO_LLM.RESTART_AGENTS),
+    onChanged: (callback) => createIpcListener(ipcRenderer, IPC.BYO_LLM.CHANGED, callback),
+  },
   genesis: {
     getDefaultPath: () => ipcRenderer.invoke(IPC.GENESIS.GET_DEFAULT_PATH),
     pickPath: () => ipcRenderer.invoke(IPC.GENESIS.PICK_PATH),
@@ -84,6 +94,12 @@ const electronAPI: ElectronAPI = {
     list: () => ipcRenderer.invoke(IPC.TOOLS.LIST),
     install: (toolId, marketplaceId) => ipcRenderer.invoke(IPC.TOOLS.INSTALL, toolId, marketplaceId),
     uninstall: (toolId) => ipcRenderer.invoke(IPC.TOOLS.UNINSTALL, toolId),
+  },
+  tasks: {
+    list: (mindId) => ipcRenderer.invoke(IPC.TASKS.LIST, mindId),
+    get: (mindId, ledgerId) => ipcRenderer.invoke(IPC.TASKS.GET, mindId, ledgerId),
+    cancel: (mindId, ledgerId) => ipcRenderer.invoke(IPC.TASKS.CANCEL, mindId, ledgerId),
+    audit: (mindId) => ipcRenderer.invoke(IPC.TASKS.AUDIT, mindId),
   },
   chatroom: {
     send: (message: string, model?: string, roundId?: string) => ipcRenderer.invoke(IPC.CHATROOM.SEND, message, model, roundId),
@@ -122,6 +138,10 @@ const electronAPI: ElectronAPI = {
     minimize: () => ipcRenderer.send(IPC.WINDOW.MINIMIZE),
     maximize: () => ipcRenderer.send(IPC.WINDOW.MAXIMIZE),
     close: () => ipcRenderer.send(IPC.WINDOW.CLOSE),
+  },
+  app: {
+    getFeatureFlags: () => ipcRenderer.invoke(IPC.APP.GET_FEATURE_FLAGS),
+    onStartupProgress: (callback) => createIpcListener(ipcRenderer, IPC.APP.STARTUP_PROGRESS, callback),
   },
 };
 

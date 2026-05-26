@@ -1,4 +1,5 @@
 import type { AppState, AppAction } from '../state';
+import { parseModelSelectionKey } from '@chamber/shared/model-selection';
 import { selectedModelForActiveMind } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
@@ -51,12 +52,14 @@ function removeMind(state: AppState, action: Extract<AppAction, { type: 'REMOVE_
   const newActiveConversationByMind = { ...state.activeConversationByMind };
   const newConversationViewByMind = { ...state.conversationViewByMind };
   const newComposeDraftByMind = { ...state.composeDraftByMind };
+  const newA2aStreamingByMind = { ...state.a2aStreamingByMind };
   const newAgentProfileByMindId = { ...state.agentProfileByMindId };
   delete newMsgsByMind[action.payload];
   delete newConversationHistoryByMind[action.payload];
   delete newActiveConversationByMind[action.payload];
   delete newConversationViewByMind[action.payload];
   delete newComposeDraftByMind[action.payload];
+  delete newA2aStreamingByMind[action.payload];
   delete newAgentProfileByMindId[action.payload];
   const newActive = state.activeMindId === action.payload
     ? (newMinds.length > 0 ? newMinds[0].mindId : null)
@@ -69,6 +72,7 @@ function removeMind(state: AppState, action: Extract<AppAction, { type: 'REMOVE_
     activeConversationByMind: newActiveConversationByMind,
     conversationViewByMind: newConversationViewByMind,
     composeDraftByMind: newComposeDraftByMind,
+    a2aStreamingByMind: newA2aStreamingByMind,
     agentProfileByMindId: newAgentProfileByMindId,
     showLanding: newMinds.length === 0,
   };
@@ -89,20 +93,31 @@ function setSelectedModel(
   state: AppState,
   action: Extract<AppAction, { type: 'SET_SELECTED_MODEL' }>,
 ): Partial<AppState> | AppState {
+  const selection = parseModelSelectionKey(action.payload);
+  const activeMind = state.activeMindId
+    ? state.minds.find((mind) => mind.mindId === state.activeMindId)
+    : undefined;
   if (
     state.selectedModel === action.payload &&
-    (!state.activeMindId || state.minds.find((mind) => mind.mindId === state.activeMindId)?.selectedModel === (action.payload ?? undefined))
+    (!activeMind || (
+      activeMind.selectedModel === selection?.id
+      && activeMind.selectedModelProvider === selection?.provider
+    ))
   ) {
     return state;
   }
   return {
     selectedModel: action.payload,
     minds: state.activeMindId
-      ? state.minds.map((mind) =>
-          mind.mindId === state.activeMindId
-            ? { ...mind, selectedModel: action.payload ?? undefined }
-            : mind,
-        )
+        ? state.minds.map((mind) =>
+            mind.mindId === state.activeMindId
+              ? {
+                  ...mind,
+                  selectedModel: selection?.id,
+                  selectedModelProvider: selection?.provider,
+                }
+              : mind,
+          )
       : state.minds,
   };
 }

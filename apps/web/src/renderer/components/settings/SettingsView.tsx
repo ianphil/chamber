@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Camera, LogOut, UserRound } from 'lucide-react';
 import type { MarketplaceRegistry, UserProfile } from '@chamber/shared/types';
 import { APP_VERSION } from '@/renderer/lib/appVersion';
+import { useAppState } from '../../lib/store';
 import {
   Select,
   SelectContent,
@@ -11,10 +12,12 @@ import {
   SelectValue,
 } from '../ui/select';
 import { AddAccountModal } from './AddAccountModal';
+import { LocalLlmSettingsSection } from './LocalLlmSettingsSection';
 
 const ADD_ACCOUNT_VALUE = '__add-account__';
 
 export function SettingsView() {
+  const { featureFlags } = useAppState();
   const [login, setLogin] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Array<{ login: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -323,7 +326,7 @@ export function SettingsView() {
               <div>
                 <p className="text-sm text-muted-foreground">Signed in as</p>
                 <Select value={login ?? undefined} onValueChange={(value) => { void handleAccountChange(value); }}>
-                  <SelectTrigger className="mt-2 min-w-56">
+                  <SelectTrigger className="mt-2 min-w-56" aria-label="Select account">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -402,6 +405,8 @@ export function SettingsView() {
           </div>
         </div>
       </section>
+
+      {featureFlags.byoLlm ? <LocalLlmSettingsSection /> : null}
 
       <AddAccountModal
         open={addAccountOpen}

@@ -1,12 +1,11 @@
 // Desktop end-to-end smoke for the chamber-copilot ACP extension.
 //
-// Pre-seeds ~/.chamber/config.json with `chamberCopilotEnabled: true`,
-// launches the Chamber desktop app via `npm start`, loads a mind through
-// the renderer's IPC API, and verifies that ChamberCopilotService
-// actually spawned a child `copilot --acp` worker by looking for the
-// "chamber-copilot AcpConnection(s) started" log line. The exact suffix
-// depends on which permission-mode connections were wired (safe + yolo,
-// or safe-only after a yolo failure).
+// Launches the Chamber desktop app via `npm start` with preview features
+// enabled, loads a mind through the renderer's IPC API, and verifies that
+// ChamberCopilotService actually spawned a child `copilot --acp` worker by
+// looking for the "chamber-copilot AcpConnection(s) started" log line. The
+// exact suffix depends on which permission-mode connections were wired
+// (safe + yolo, or safe-only after a yolo failure).
 //
 // Bypasses the Playwright harness (and its webServer prerequisite)
 // because this smoke only exercises Electron, not the browser app.
@@ -36,7 +35,7 @@ async function main() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-acp-desktop-smoke-'));
   const userDataPath = path.join(root, 'user-data');
   const mindPath = path.join(root, 'acp-mind');
-  seedConfig(userDataPath, { chamberCopilotEnabled: true });
+  seedConfig(userDataPath);
   seedMind(mindPath, 'AcpSmoke', 'ACP desktop smoke probe');
 
   const logs = [];
@@ -82,6 +81,7 @@ function spawnDesktop({ userDataPath, cdpPort, logs }) {
     CHAMBER_E2E: '1',
     CHAMBER_E2E_USER_DATA: userDataPath,
     CHAMBER_E2E_CDP_PORT: String(cdpPort),
+    CHAMBER_E2E_PREVIEW_FEATURES: '1',
     CHAMBER_DISABLE_SINGLE_INSTANCE_LOCK: '1',
   };
   const command = 'npm start';
@@ -239,7 +239,7 @@ function runtimeEvaluateOnce(wsUrl, expression, awaitPromise = false) {
   });
 }
 
-function seedConfig(userDataPath, partial) {
+function seedConfig(userDataPath, partial = {}) {
   fs.mkdirSync(userDataPath, { recursive: true });
   fs.writeFileSync(
     path.join(userDataPath, 'config.json'),

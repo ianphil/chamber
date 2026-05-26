@@ -96,13 +96,13 @@ npm test               # Unit, integration, regression, and component tests
 npm run smoke:web      # Browser app Playwright smoke test
 npm run smoke:desktop  # Electron Playwright smoke test
 npm run smoke:sdk      # Real-CLI smoke against the bundled @github/copilot SDK runtime
-npm run smoke:acp      # Real-CLI smoke against the chamber-copilot ACP extension (opt-in)
+npm run smoke:acp      # Real-CLI smoke against the chamber-copilot ACP extension
 npm run smoke:acp-desktop # End-to-end: launch desktop, activate a mind, verify a child copilot --acp worker spawns
 npm run capture:hero   # Refresh docs/assets/chamber-hero.png
 npm run make           # Build the Windows NSIS installer and updater metadata
 ```
 
-The chamber-copilot ACP extension is opt-in. Set `chamberCopilotEnabled: true` in `~/.chamber/config.json` to wire `ChamberCopilotService` into the mind tool providers; this exposes the `cli_*` tools (`cli_delegate`, `cli_status`, `cli_respond`, `cli_approve`, `cli_cancel`, `cli_list`) so minds can drive child `copilot --acp` workers. The flag defaults to `false`; the SDK runtime path is unaffected. Validate end-to-end with `COPILOT_REAL_CLI=1 npm run smoke:acp` (ACP protocol cycle against the bundled CLI) and `COPILOT_REAL_CLI=1 npm run smoke:acp-desktop` (full desktop boot → mind activation → spawned child).
+The chamber-copilot ACP extension is channel-gated: insiders builds wire `ChamberCopilotService` into the mind tool providers, while stable builds leave it off and ignore the legacy `chamberCopilotEnabled` config key. When enabled, it exposes the `cli_*` tools (`cli_delegate`, `cli_status`, `cli_respond`, `cli_approve`, `cli_cancel`, `cli_list`) so minds can drive child `copilot --acp` workers. The SDK runtime path is unaffected. Validate end-to-end with `COPILOT_REAL_CLI=1 npm run smoke:acp` (ACP protocol cycle against the bundled CLI) and `COPILOT_REAL_CLI=1 npm run smoke:acp-desktop` (full desktop boot → mind activation → spawned child).
 
 **Trust model when enabled.** Each mind gets its own isolated `cli_*` tool surface backed by a `MindScopedJobs` adapter — every `cli_delegate` returns a job id namespaced as `${mindId}:${realJobId}`, and every `cli_status` / `cli_respond` / `cli_approve` / `cli_cancel` / `cli_list` call is rejected (with the same `Unknown job_id` shape a non-existent id would produce) unless the calling mind owns that job. Releasing a mind cancels every still-running job that mind owned. Two caveats remain that operators should accept before enabling: (1) `cli_approve` lets a mind autonomously authorize a tool execution in its own delegated child worker — Chamber's `ApprovalGate` does **not** interpose on those child-worker tool calls, so you are trusting the mind's judgment for everything its delegated worker does; (2) the child worker inherits whatever cwd policy `chamber-copilot` enforces (`validateCwd`: must descend from `$HOME`), not a per-mind directory restriction. Any change to this surface requires running `COPILOT_REAL_CLI=1 npm run smoke:acp-desktop` before merge.
 

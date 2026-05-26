@@ -12,19 +12,51 @@ describe('A2A contract predicates', () => {
     expect(narrowTaskState('bogus-status')).toBeUndefined();
   });
 
-  it('narrows valid relay connect requests', () => {
+  it('narrows valid static relay connect requests', () => {
     expect(isA2ARelayConnectRequest({
       relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
       relayToken: 'secret',
       publishedBaseUrl: 'http://127.0.0.1:4488',
       inboundToken: 'inbound',
     })).toBe(true);
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      authMode: 'static',
+    })).toBe(true);
   });
 
-  it('rejects relay connect requests without a relay URL or token', () => {
-    expect(isA2ARelayConnectRequest({ relayBaseUrl: '', relayToken: 'secret' })).toBe(false);
-    expect(isA2ARelayConnectRequest({ relayBaseUrl: 'http://127.0.0.1:4317', relayToken: '' })).toBe(false);
-    expect(isA2ARelayConnectRequest({ relayBaseUrl: 'http://127.0.0.1:4317' })).toBe(false);
+  it('narrows valid interactive and auto relay connect requests without static tokens', () => {
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'interactive',
+      clientId: 'client-id',
+      tenantId: 'common',
+      scope: 'api://client-id/user_impersonation',
+    })).toBe(true);
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'auto',
+      clientId: 'client-id',
+    })).toBe(true);
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'https://switchboard.example.com',
+      authMode: 'auto',
+    })).toBe(true);
+  });
+
+  it('defaults legacy relay connect requests with a token to static auth', () => {
+    expect(isA2ARelayConnectRequest({
+      relayBaseUrl: 'http://127.0.0.1:4317',
+      relayToken: 'secret',
+    })).toBe(true);
+  });
+
+  it('rejects invalid relay connect auth shapes', () => {
+    expect(isA2ARelayConnectRequest({ relayBaseUrl: '', authMode: 'static', relayToken: 'secret' })).toBe(false);
+    expect(isA2ARelayConnectRequest({ relayBaseUrl: 'http://127.0.0.1:4317', authMode: 'static', relayToken: '' })).toBe(false);
+    expect(isA2ARelayConnectRequest({ relayBaseUrl: 'https://switchboard.example.com', authMode: 'interactive', relayToken: 'secret' })).toBe(false);
+    expect(isA2ARelayConnectRequest({ relayBaseUrl: 'https://switchboard.example.com', authMode: 'bogus' })).toBe(false);
   });
 
   it('accepts incoming payloads with a valid user or agent message', () => {

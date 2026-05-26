@@ -1,0 +1,12 @@
+{
+  // Workaround for github/vscode-github-actions#433 — the GitHub Actions
+  // extension surfaces "Unable to resolve action" errors for valid refs
+  // (including SHA-pinned `azure/login@<sha>`). Disabling the enterprise
+  // lookup path silences the false positives in this workspace.
+  "github-actions.use-enterprise": false,
+
+  // Markdown: project rules live in .markdownlint.json; ignores live in
+  // .markdownlintignore. The VS Code extension does not honor the ignore
+  // file, so opt the historical CHANGELOG out explicitly to match CI.
+  "markdownlint.ignore": ["CHANGELOG.md"]
+}

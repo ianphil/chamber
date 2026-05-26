@@ -100,22 +100,34 @@ Include the version bump in your PR commit — don't merge without bumping.
 
 ## Changelog
 
-Every released version gets an entry in `CHANGELOG.md`. Follow the existing format:
+`CHANGELOG.md` follows
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Every
+released version gets an entry written by the post-release bump PR
+opened by the `release` skill. Follow the existing format:
 
 ```markdown
-## vX.Y.Z (YYYY-MM-DD)
+## [X.Y.Z] - YYYY-MM-DD
 
-### Section Name
+### Added
 
 - **Short summary** — longer explanation of what changed and why. (#issue)
 ```
+
+Sub-headings follow the Keep a Changelog canonical vocabulary
+(**Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**,
+**Security**), plus a Chamber-specific **Breaking** heading and a few
+area-tag extensions (**Performance**, **Docs**, **Tests**, **CI**,
+**Build**, **Packaging**, **Release**, **Chore**) that all default to a
+patch bump.
 
 Guidelines:
 
 - **Bold the lead phrase** — scan-friendly one-liner, then the detail after the dash.
 - **Reference the issue** — append `(#N)` so readers can find the discussion.
-- **Group by area** — use subsections like `### Chat`, `### SDK`, `### Fixes`.
-- **Move unreleased items** — if there's an `## Unreleased` section, fold those entries into the new version header when you bump.
+- **Use `ship`, not hand edits** — `npm run ship` invokes
+  `scripts/append-changelog-entry.js`, which keeps the file consistent.
+- **Don't promote `## [Unreleased]` by hand** — that's the release
+  skill's post-release bump PR.
 
 ## Issues & Labels
 

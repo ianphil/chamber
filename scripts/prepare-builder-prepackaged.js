@@ -20,12 +20,13 @@ const targetPlatform = cliArgs.get('platform') ?? process.platform;
 const targetArch = cliArgs.get('arch') ?? process.arch;
 
 function resolvePrepackagedLayout(platform, arch) {
-  const baseDir = path.join(repoRoot, 'out', `Chamber-${platform}-${arch}`);
+  const outputDir = path.join(repoRoot, 'out', `Chamber-${platform}-${arch}`);
   if (platform === 'darwin') {
-    const resourcesDir = path.join(baseDir, 'Chamber.app', 'Contents', 'Resources');
+    const baseDir = path.join(outputDir, 'Chamber.app');
+    const resourcesDir = path.join(baseDir, 'Contents', 'Resources');
     return { baseDir, resourcesDir };
   }
-  return { baseDir, resourcesDir: path.join(baseDir, 'resources') };
+  return { baseDir: outputDir, resourcesDir: path.join(outputDir, 'resources') };
 }
 
 const { baseDir: prepackagedDir, resourcesDir } = resolvePrepackagedLayout(targetPlatform, targetArch);
@@ -61,24 +62,38 @@ function appendPublisherName(lines) {
   return lines;
 }
 
+function resolveChannel() {
+  const channel = process.env.CHAMBER_RELEASE_CHANNEL?.trim();
+  return channel || null;
+}
+
+function appendChannel(lines) {
+  const channel = resolveChannel();
+  if (channel) {
+    const insertIndex = lines.at(-1) === '' ? lines.length - 1 : lines.length;
+    lines.splice(insertIndex, 0, `channel: ${yamlString(channel)}`);
+  }
+  return lines;
+}
+
 function resolveAppUpdateConfig() {
   const genericUrl = process.env.CHAMBER_BUILDER_UPDATE_URL?.trim();
   if (genericUrl) {
-    return appendPublisherName([
+    return appendPublisherName(appendChannel([
       'provider: generic',
       `url: ${genericUrl}`,
       'updaterCacheDirName: chamber-updater',
       '',
-    ]).join('\n');
+    ])).join('\n');
   }
 
-  return appendPublisherName([
+  return appendPublisherName(appendChannel([
     'provider: github',
     'owner: ianphil',
     'repo: chamber',
     'updaterCacheDirName: chamber-updater',
     '',
-  ]).join('\n');
+  ])).join('\n');
 }
 
 requireDir(prepackagedDir);

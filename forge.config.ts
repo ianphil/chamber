@@ -55,6 +55,18 @@ function prepareAcpRuntime(): void {
   }
 }
 
+function prepareSqliteRuntime(): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-sqlite-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error('Failed to prepare packaged better-sqlite3 runtime.');
+  }
+}
+
 function prepareMsalRuntime(): void {
   const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-msal-runtime.js');
   const result = spawnSync(process.execPath, [scriptPath], {
@@ -67,10 +79,29 @@ function prepareMsalRuntime(): void {
   }
 }
 
+// Issue #145 — the loopback server bundle ships as an Electron resource only
+// when CHAMBER_MVP_SERVER=1 is set at package time. The runtime gate in
+// apps/desktop/src/main.ts uses the same env variable to decide whether to
+// spawn the server, so the two ends stay aligned. Default off saves ~MB of
+// installer bytes for users who never exercise the MVP loopback path.
+const includeMvpServerResource = process.env.CHAMBER_MVP_SERVER === '1';
+const MVP_SERVER_RESOURCE = './apps/server/dist';
+
+const baseExtraResource = [
+  './resources/node',
+  './resources/copilot-runtime',
+  './resources/sharp-runtime',
+  './resources/acp-runtime',
+  './resources/msal-runtime',
+  './resources/sqlite-runtime',
+  './node_modules/keytar',
+  './apps/desktop/src/main/assets/lens-skill',
+];
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime,better-sqlite3,bindings,file-uri-to-path}/**/*',
+      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime}/**/*',
     },
     executableName: 'chamber',
     icon: APP_ICON_PATH,
@@ -80,16 +111,9 @@ const config: ForgeConfig = {
         schemes: ['chamber'],
       },
     ],
-    extraResource: [
-      './resources/node',
-      './resources/copilot-runtime',
-      './resources/sharp-runtime',
-      './resources/acp-runtime',
-      './resources/msal-runtime',
-      './apps/server/dist',
-      './node_modules/keytar',
-      './apps/desktop/src/main/assets/lens-skill',
-    ],
+    extraResource: includeMvpServerResource
+      ? [...baseExtraResource, MVP_SERVER_RESOURCE]
+      : baseExtraResource,
   },
   publishers: [
     {
@@ -111,6 +135,7 @@ const config: ForgeConfig = {
       prepareSharpRuntime(platform, arch);
       prepareAcpRuntime();
       prepareMsalRuntime();
+      prepareSqliteRuntime();
     },
   },
   makers: [

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
+import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import type { ModelInfo, ChatImageAttachment } from '@chamber/shared/types';
 import {
   Select,
@@ -254,7 +255,6 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
   const handleSubmit = useCallback(() => {
     if (isStreaming) {
-      onStop();
       return;
     }
     const hasText = input.trim().length > 0;
@@ -278,7 +278,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [input, attachments, isStreaming, disabled, onSend, onStop, closeShortcode, setInput]);
+  }, [input, attachments, isStreaming, disabled, onSend, closeShortcode, setInput]);
 
   const acceptShortcode = useCallback(
     (record: EmojiRecord) => {
@@ -372,6 +372,11 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         setShortcodeIndex((i) => Math.max(i - 1, 0));
         return;
       }
+    }
+    if (e.key === 'Escape' && isStreaming) {
+      e.preventDefault();
+      onStop();
+      return;
     }
     // 3) Default Enter submit / Shift+Enter newline.
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -487,11 +492,15 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id} className="text-xs">
-                        {model.name}
-                      </SelectItem>
-                    ))}
+                    {availableModels.map((model) => {
+                      const key = modelSelectionKeyFromModel(model);
+                      return (
+                        <SelectItem key={key} value={key} className="text-xs">
+                          {model.name}
+                          {model.provider === 'byo' ? <span className="ml-2 rounded bg-emerald-700/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">Local</span> : null}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               ) : (
@@ -502,9 +511,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
             </div>
 
             <button
-              onClick={handleSubmit}
+              onClick={isStreaming ? onStop : handleSubmit}
               disabled={disabled && !isStreaming}
-              aria-label={isStreaming ? 'Stop streaming' : 'Send message'}
+              aria-label={isStreaming ? 'Stop streaming (Escape)' : 'Send message'}
               className={cn(
                 'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
                 isStreaming
