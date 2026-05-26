@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Persist cron run history in ttasks** — Cron history now reads and writes run records through the per-mind ttasks store while keeping recurring job definitions in cron JSON for now. (#359)
 
+### Packaging
+
+- **Refresh packaged Copilot runtime** — Updated the pinned packaged Copilot CLI runtime to match the version required by package smoke.
+
+
 
 
 
