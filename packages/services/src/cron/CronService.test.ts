@@ -179,6 +179,55 @@ describe('CronService', () => {
     });
   });
 
+  it('persists failed cron runs when job execution throws', async () => {
+    const taskManager = new MockTaskManager();
+    const mindPath = makeMindPath();
+    const runStore = createRunStore();
+    const throwingNotifier = {
+      notify: vi.fn(() => {
+        throw new Error('notification unavailable');
+      }),
+    };
+    const service = new CronService({
+      getTaskManager: () => taskManager as unknown as TaskManager,
+      showMind: vi.fn(),
+      notifier: throwingNotifier,
+      createCronRunStore: () => runStore,
+    });
+
+    await service.activateMind('mind-1', mindPath);
+    const job = service.createJob('mind-1', mindPath, {
+      name: 'Throwing notification',
+      schedule: '0 9 * * *',
+      type: 'notification',
+      payload: { title: 'Ready', body: 'Done' },
+    });
+
+    await expect(service.runNow('mind-1', job.id)).rejects.toThrow('notification unavailable');
+
+    expect(runStore.listRuns('mind-1', job.id)[0]).toMatchObject({
+      mindId: 'mind-1',
+      jobId: job.id,
+      status: 'failed',
+      type: 'notification',
+      error: 'notification unavailable',
+    });
+    expect(service.listJobs('mind-1', mindPath)[0].lastRunStatus).toBe('failed');
+  });
+
+  it('rejects run history requests for inactive minds without creating a run store', () => {
+    const createCronRunStore = vi.fn(createRunStore);
+    const service = new CronService({
+      getTaskManager: () => new MockTaskManager() as unknown as TaskManager,
+      showMind: vi.fn(),
+      notifier,
+      createCronRunStore,
+    });
+
+    expect(() => service.listRuns('inactive-mind')).toThrow('Mind inactive-mind is not active for cron operations');
+    expect(createCronRunStore).not.toHaveBeenCalled();
+  });
+
   it('reads cron history from ttasks rows instead of cron-runs.json', async () => {
     const taskManager = new MockTaskManager();
     const mindPath = makeMindPath();

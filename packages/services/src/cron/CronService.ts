@@ -158,7 +158,7 @@ export class CronService implements ChamberToolProvider {
   }
 
   listRuns(mindId: string, jobId?: string): CronJobRunRecord[] {
-    const mindPath = this.mindPaths.get(mindId) ?? '';
+    const mindPath = this.requireMindPath(mindId);
     return this.ensureRunStore(mindId, mindPath).listRuns(mindId, jobId);
   }
 
@@ -215,11 +215,16 @@ export class CronService implements ChamberToolProvider {
   }
 
   private requireStore(mindId: string): JobStore {
+    const mindPath = this.requireMindPath(mindId);
+    return this.ensureStore(mindId, mindPath);
+  }
+
+  private requireMindPath(mindId: string): string {
     const mindPath = this.mindPaths.get(mindId);
     if (!mindPath) {
       throw new Error(`Mind ${mindId} is not active for cron operations`);
     }
-    return this.ensureStore(mindId, mindPath);
+    return mindPath;
   }
 
   private ensureScheduler(mindId: string): Scheduler {
@@ -297,6 +302,29 @@ export class CronService implements ChamberToolProvider {
         lastTaskId: result.taskId,
       }));
       return record;
+    } catch (err) {
+      const endedAt = new Date().toISOString();
+      const error = err instanceof Error ? err.message : String(err);
+      try {
+        runStore.recordRun({
+          mindId,
+          jobId,
+          type: job.type,
+          status: 'failed',
+          startedAt,
+          endedAt,
+          error,
+          source,
+        }, job);
+        store.updateJob(jobId, (existing) => ({
+          ...existing,
+          lastRunAt: endedAt,
+          lastRunStatus: 'failed',
+        }));
+      } catch (recordErr) {
+        log.warn(`Failed to persist failed cron run ${jobId} for mind ${mindId}:`, recordErr);
+      }
+      throw err;
     } finally {
       this.inFlightJobs.delete(runKey);
     }
