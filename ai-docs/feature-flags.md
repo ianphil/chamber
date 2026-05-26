@@ -50,12 +50,14 @@ Expected shape:
     "stable": {
       "switchboardRelay": false,
       "byoLlm": false,
-      "chamberCopilot": false
+      "chamberCopilot": false,
+      "dreamDaemon": false
     },
     "insiders": {
       "switchboardRelay": true,
       "byoLlm": true,
-      "chamberCopilot": true
+      "chamberCopilot": true,
+      "dreamDaemon": false
     }
   }
 }
@@ -108,6 +110,7 @@ normal app runs or release builds.
 | `switchboardRelay` | remote | remote | Hides the activity-bar relay entry point and route. |
 | `byoLlm` | remote | remote | Hides BYO model settings and disables desktop BYO runtime/IPC usage. |
 | `chamberCopilot` | remote | remote | Wires the chamber-copilot ACP provider and `cli_*` tools. |
+| `dreamDaemon` | remote `false` | remote `false` | Dev-only. Gates the working-memory consolidation daemon, the per-mind opt-in toggle, and the prompt-path use of consolidated memory. |
 
 ## Local development flags
 
@@ -126,6 +129,7 @@ export const DEV_FEATURE_FLAGS = {
   switchboardRelay: true,
   byoLlm: true,
   chamberCopilot: true,
+  dreamDaemon: true,
 };
 ```
 
@@ -155,6 +159,45 @@ are simply ignored until the user runs an insiders build again.
 to mind tool providers. Stable builds also ignore the legacy
 `chamberCopilotEnabled` key in `~/.chamber/config.json`; users cannot turn this
 surface on locally.
+
+## Dream Daemon
+
+`dreamDaemon` gates Chamber's working-memory consolidation surface (the
+"dream daemon") and the prompt-time use of the consolidated memory it produces.
+The flag rolls out as **dev-only**: both `channels.stable` and
+`channels.insiders` are `false` in `docs/flags/v1/flags.json` so external
+testers do not see the surface yet; `DEV_FEATURE_FLAGS.dreamDaemon = true`
+keeps local development behavior unchanged.
+
+When disabled:
+
+- `apps/desktop/src/main.ts` does not call `buildMindMemoryService`, so the
+  daemon, scheduler, and SQLite-backed memory store are never constructed.
+  The `__chamberMindMemoryService` E2E global is also not exposed.
+- `IPC.MIND.SET_DREAM_DAEMON` rejects with `"Dream Daemon is not available in
+  this build"` when the renderer asks to enable. Disable requests still pass
+  through so a stable build can clean up persisted opt-in state from an
+  insiders run.
+- `genesis.create` coerces `enableDreamDaemon: false` server-side before
+  calling `MindScaffold.create`, regardless of the renderer payload. The
+  newly written `.chamber.json` always has
+  `workingMemory.consolidation.enabled: false`.
+- `MindManager.enableDreamDaemon` throws before any mind lookup as a
+  defense-in-depth gate behind IPC.
+- `IdentityLoader.resolveComposerConfig` forces `enabled: false` in the
+  composer config it returns, regardless of the per-mind `.chamber.json`.
+  Persisted caps (`lastKTurns`, `perTurnMaxBytes`, `memoryMaxBytes`) are kept
+  faithful so a future flip-on does not lose the user's settings.
+- `MindProfileService.getProfile` reports `dreamDaemonEnabled: false` even
+  when `.chamber.json` says `true`, so the (now-hidden) UI never sees a stale
+  ON state.
+- `RoleScreen`, `GenesisFlow`, and `AgentProfileModal` hide the
+  dream-daemon Switch / toggle row and coerce `enableDreamDaemon: false` at
+  every emit boundary in the renderer.
+
+The asymmetry on the IPC and `MindManager` gates is deliberate: enable is
+gated, disable is always allowed. A stable build must be able to clean up
+opt-in state for minds that were enabled under an insiders build.
 
 ## Adding a new feature flag
 
