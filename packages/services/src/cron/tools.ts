@@ -52,7 +52,7 @@ export function buildCronTools(
     },
     {
       name: 'cron_remove',
-      description: 'Delete a cron job and its stored run history.',
+      description: 'Delete a cron job. Existing run history remains available through cron_history.',
       parameters: {
         type: 'object',
         properties: {

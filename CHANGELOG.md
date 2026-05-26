@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Add persistent task ledger** — Adds per-mind SQLite task ledger storage, cron/A2A/ACP audit rows, task IPC, maintenance sweeps, and native packaging support. Closes #356. (#356)
 
+### Changed
+
+- **Persist cron run history in ttasks** — Cron history now reads and writes run records through the per-mind ttasks store while keeping recurring job definitions in cron JSON for now. (#359)
+
+
 
 
 ## [0.63.0] - 2026-05-17
