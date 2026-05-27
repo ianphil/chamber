@@ -81,17 +81,37 @@ function findCopilotSeaBinaries(rootDir) {
 }
 
 function resolveCodesignIdentity() {
-  // codesign --sign expects either a SHA-1 hash or a substring of a
-  // keychain identity's common name. The CHAMBER_MACOS_IDENTITY env
-  // var carries the full "Developer ID Application: <name> (<team>)"
-  // form. resolveMacIdentity() strips the prefix for electron-osx-sign,
-  // but codesign's substring matcher can latch onto the wrong cert in
-  // a CI keychain that holds multiple identities for the same team
-  // (e.g. an Apple Development cert alongside Developer ID). Always
-  // pass the full unstripped identity to codesign so the match is
-  // unambiguous and the resulting signature is recognizably a
-  // Developer ID one (required for notarization).
-  return process.env.CHAMBER_MACOS_IDENTITY?.trim() || undefined;
+  // codesign --sign needs to refer to a real Developer ID identity in
+  // the keychain — falling back to ad-hoc signing ('--sign -') would
+  // strip both the Developer ID assertion and the secure timestamp,
+  // and Apple's notary service rejects the bundle.
+  //
+  // Prefer an explicit CHAMBER_MACOS_IDENTITY (used by some local
+  // flows). When unset — the default in CI, where electron-osx-sign
+  // auto-discovers from a freshly-imported temp keychain — discover
+  // the Developer ID Application identity ourselves by parsing
+  // `security find-identity` and return its SHA-1 hash. The hash is
+  // an unambiguous identity selector for codesign.
+  const explicit = process.env.CHAMBER_MACOS_IDENTITY?.trim();
+  if (explicit) return explicit;
+
+  const args = ['find-identity', '-v', '-p', 'codesigning'];
+  const keychain = process.env.CHAMBER_NOTARY_KEYCHAIN?.trim();
+  if (keychain) args.push(keychain);
+  const result = spawnSync('security', args, { encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(
+      `security find-identity failed (exit ${result.status}): ${result.stderr || result.stdout}`,
+    );
+  }
+  // Lines look like:  1) <SHA1> "Developer ID Application: Name (TEAMID)"
+  const match = result.stdout.match(/^\s*\d+\)\s+([0-9A-Fa-f]{40})\s+"Developer ID Application:[^"]+"/m);
+  if (!match?.[1]) {
+    throw new Error(
+      `No "Developer ID Application" identity found in keychain. find-identity output:\n${result.stdout}`,
+    );
+  }
+  return match[1];
 }
 
 function resignCopilotSeaBinaries(bundlePath) {
@@ -114,7 +134,13 @@ function resignCopilotSeaBinaries(bundlePath) {
     return;
   }
   const codeSignIdentity = resolveCodesignIdentity();
-  const identityArgs = codeSignIdentity ? ['--sign', codeSignIdentity] : ['--sign', '-'];
+  if (!codeSignIdentity) {
+    throw new Error('No codesign identity available for re-signing copilot SEA binaries.');
+  }
+  const identityArgs = ['--sign', codeSignIdentity];
+  const keychainArgs = process.env.CHAMBER_NOTARY_KEYCHAIN?.trim()
+    ? ['--keychain', process.env.CHAMBER_NOTARY_KEYCHAIN.trim()]
+    : [];
   for (const binary of binaries) {
     runCommand('codesign', [
       '--force',
@@ -122,6 +148,7 @@ function resignCopilotSeaBinaries(bundlePath) {
       '--options', 'runtime',
       '--entitlements', entitlements,
       ...identityArgs,
+      ...keychainArgs,
       binary,
     ]);
     console.log(`Re-signed SEA binary ${path.relative(repoRoot, binary)}`);
@@ -140,6 +167,7 @@ function resignCopilotSeaBinaries(bundlePath) {
     '--options', 'runtime',
     '--preserve-metadata=entitlements,identifier,flags,runtime',
     ...identityArgs,
+    ...keychainArgs,
     bundlePath,
   ]);
   console.log(`Re-sealed ${path.relative(repoRoot, bundlePath)} outer signature`);
