@@ -122,6 +122,7 @@
       "@electron/fuses": "$@electron/fuses"
     },
     "@electron/rebuild": "^4.0.4",
-    "tmp": "^0.2.5"
+    "tmp": "^0.2.5",
+    "yauzl": "^3.3.1"
   }
 }
