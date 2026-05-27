@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fix black-screen launch on packaged macOS builds** — `app.on('ready')` no longer awaits `chamberCopilotService.prewarm()`. When the bundled Copilot CLI hangs during ACP handshake (observed in re-signed darwin-arm64 packages), awaiting prewarm blocked `createWindow()` and the app booted with no visible window. prewarm() is best-effort by design, so it now runs fire-and-forget.
+- **Fix silent `electron-forge package` exit on Node 24** — Added an npm override pinning `yauzl@^3.3.1`. The transitive `yauzl@2.10.0` used by `extract-zip` returns a readable stream that emits no events on Node 24, causing electron-packager's Electron template extraction to abandon mid-extract and the process to exit with no output and no `Chamber-darwin-arm64/` artifact.
 - **Surface ambiguous A2A recipients** — A2A message routing now reports duplicate display-name matches with usable recipient identifiers instead of falling through to an unknown-recipient error. (#322) (#322)
 - **Complete turns after root turn end** — Chat streaming now finishes after a guarded root assistant.turn_end quiescence path when the SDK omits session.idle, while still waiting for outstanding tools and sub-agent turns so late output is preserved. (#297) (#297)
 - **Prevent false chat completion and missed UI updates** — Chat cancellation now requires an active turn, A2A and cron streaming state no longer contaminates chat input, and renderer chat events replay after window refocus so hidden-window work can catch up. Fixes #297. (#297)
