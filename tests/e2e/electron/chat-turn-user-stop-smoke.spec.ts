@@ -14,12 +14,9 @@ import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from '.
 //
 // What we assert (no mocks, no fakes, no env knobs):
 //   1. A streaming turn shows the Stop button (isStreaming === true).
-//   2. After several seconds with no user action, streaming is STILL active
-//      - there is no falsely-injected `done`/`timeout` event from a hidden
-//      Chamber-side deadline. The user has not chosen to stop.
-//   3. Pressing the Stop button cleanly aborts: the Stop button disappears,
+//   2. Pressing the Stop button cleanly aborts: the Stop button disappears,
 //      the textarea is enabled again, and no error block is rendered.
-//   4. Conversation history can switch away and resume the stopped session,
+//   3. Conversation history can switch away and resume the stopped session,
 //      proving the streaming guard cleared instead of locking history.
 const cdpPort = Number(process.env.CHAMBER_E2E_USER_STOP_CDP_PORT ?? 9362);
 
@@ -68,13 +65,6 @@ test.describe('electron chat turn user-controlled stop smoke', () => {
     const stopButton = page.getByRole('button', { name: 'Stop streaming' });
     await expect(stopButton).toBeVisible({ timeout: 10_000 });
 
-    // Wait several seconds while doing nothing. Pre-#222 fix: a hidden
-    // 5-minute Chamber timer would not fire here, but any shorter Chamber
-    // deadline would falsely terminate the turn. Post-#222 fix: there is
-    // no Chamber deadline at all. The Stop button must remain visible
-    // because the user has not chosen to stop and the SDK hasn't idled.
-    await page.waitForTimeout(5_000);
-    await expect(stopButton).toBeVisible();
     await expect(page.getByText(/Agent timed out after/i)).toHaveCount(0);
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
 

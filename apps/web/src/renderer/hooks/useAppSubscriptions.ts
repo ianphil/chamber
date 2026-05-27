@@ -51,6 +51,7 @@ export function useAppSubscriptions() {
       try {
         const missed = await window.electronAPI.chat.replayEvents(lastChatEventSequence.current);
         if (cancelled) return;
+        const terminalMindIds = new Set<string>();
         for (const entry of missed) {
           if (seenChatEventSequences.current.has(entry.sequence)) continue;
           markChatEventSequenceSeen(entry.sequence);
@@ -58,9 +59,26 @@ export function useAppSubscriptions() {
             type: 'CHAT_EVENT',
             payload: { mindId: entry.mindId, messageId: entry.messageId, event: entry.event },
           });
+          if (isTerminalChatEvent(entry.event.type)) {
+            terminalMindIds.add(entry.mindId);
+          }
+        }
+        for (const mindId of terminalMindIds) {
+          void refreshConversationHistory(mindId);
         }
       } catch (err) {
         log.error('Failed to replay missed chat events:', err);
+      }
+    };
+
+    const refreshConversationHistory = async (mindId: string) => {
+      try {
+        const conversations = await window.electronAPI.conversationHistory.list(mindId);
+        if (!cancelled) {
+          dispatch({ type: 'SET_CONVERSATION_HISTORY', payload: { mindId, conversations } });
+        }
+      } catch (err) {
+        log.warn('Failed to refresh conversation history after chat event:', err);
       }
     };
 
@@ -80,6 +98,9 @@ export function useAppSubscriptions() {
         markChatEventSequenceSeen(sequence);
       }
       dispatch({ type: 'CHAT_EVENT', payload: { mindId, messageId, event } });
+      if (isTerminalChatEvent(event.type)) {
+        void refreshConversationHistory(mindId);
+      }
     });
 
     const onFocus = () => { void applyMissedEvents(); };
@@ -186,4 +207,8 @@ export function useAppSubscriptions() {
     });
     return () => { unsub(); };
   }, [dispatch]);
+}
+
+function isTerminalChatEvent(type: string): boolean {
+  return type === 'done' || type === 'error' || type === 'timeout';
 }

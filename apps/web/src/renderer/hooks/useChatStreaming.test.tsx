@@ -59,6 +59,10 @@ describe('useChatStreaming', () => {
   });
 
   it('stops the original streaming mind after switching away and back', async () => {
+    let resolveSend: () => void = () => undefined;
+    (api.chat.send as ReturnType<typeof vi.fn>).mockReturnValue(new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    }));
     const firstMind = {
       mindId: 'monica-1234',
       mindPath: 'C:\\agents\\monica',
@@ -78,8 +82,10 @@ describe('useChatStreaming', () => {
       wrapper: wrapper({ minds: [firstMind, secondMind], activeMindId: firstMind.mindId }),
     });
 
+    let sendPromise: Promise<void> | undefined;
     await act(async () => {
-      await result.current.chat.sendMessage('Hello');
+      sendPromise = result.current.chat.sendMessage('Hello');
+      await Promise.resolve();
     });
     const messageId = (api.chat.send as ReturnType<typeof vi.fn>).mock.calls[0][2] as string;
 
@@ -94,5 +100,9 @@ describe('useChatStreaming', () => {
     });
 
     expect(api.chat.stop).toHaveBeenCalledWith(firstMind.mindId, messageId);
+    await act(async () => {
+      resolveSend();
+      await sendPromise;
+    });
   });
 });

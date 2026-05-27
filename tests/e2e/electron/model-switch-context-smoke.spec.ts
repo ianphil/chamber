@@ -34,11 +34,10 @@ test.describe('electron model switch conversation context smoke', () => {
     const mind = await loadMind(page, mindPath, 'Heinz Doofenshmirtz');
     const models = await page.evaluate((mindId) => window.electronAPI.chat.listModels(mindId), mind.mindId);
     test.skip(models.length < 2, 'Model-switch context smoke requires at least two SDK models.');
-    await installChatSendProbe(page);
 
     const sentinelToken = `purplezebra${Date.now().toString(36)}`;
     const firstPrompt = `Remember the secret token "${sentinelToken}". Reply with just the word OK.`;
-    await sendAndWait(page, firstPrompt);
+    await sendAndWait(page, mind.mindId, firstPrompt);
     await expect(page.getByText(firstPrompt).first()).toBeVisible();
     await expectNoSessionError(page);
 
@@ -51,7 +50,7 @@ test.describe('electron model switch conversation context smoke', () => {
     await expect.poll(() => history.getByLabel(/Rename /).count(), { timeout: 30_000 }).toBe(rowsAfterFirstTurn);
 
     const secondPrompt = 'Repeat the secret token I gave you a moment ago, exactly.';
-    await sendAndWait(page, secondPrompt);
+    await sendAndWait(page, mind.mindId, secondPrompt);
 
     await expect(page.getByText(secondPrompt).first()).toBeVisible();
     await expectNoSessionError(page);
@@ -87,24 +86,39 @@ async function loadMind(page: Page, mindPath: string, name: string) {
   return mind;
 }
 
-async function installChatSendProbe(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const runtimeWindow = window as typeof window & { __chamberLastChatSend?: Promise<void> };
-    const originalSend = window.electronAPI.chat.send.bind(window.electronAPI.chat);
-    window.electronAPI.chat.send = (...args: Parameters<typeof window.electronAPI.chat.send>) => {
-      const send = originalSend(...args);
-      runtimeWindow.__chamberLastChatSend = send.then(() => undefined);
-      return send;
-    };
-  });
-}
-
-async function sendAndWait(page: Page, prompt: string): Promise<void> {
+async function sendAndWait(page: Page, mindId: string, prompt: string): Promise<void> {
+  await prepareNextTerminalChatEvent(page, mindId);
   const input = page.getByPlaceholder('Message your agent… (paste an image to attach)');
   await expect(input).toBeEnabled();
   await input.fill(prompt);
   await input.press('Enter');
-  await page.evaluate(() => (window as typeof window & { __chamberLastChatSend?: Promise<void> }).__chamberLastChatSend);
+  await waitForNextTerminalChatEvent(page);
+}
+
+async function prepareNextTerminalChatEvent(page: Page, mindId: string): Promise<void> {
+  await page.evaluate(({ mindId }) => {
+    const runtimeWindow = window as typeof window & { __chamberNextTerminalChatEvent?: Promise<void> };
+    runtimeWindow.__chamberNextTerminalChatEvent = new Promise<void>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        unsubscribe();
+        reject(new Error(`Timed out waiting for terminal chat event for ${mindId}`));
+      }, 120_000);
+      const unsubscribe = window.electronAPI.chat.onEvent((receivedMindId, _messageId, event) => {
+        if (receivedMindId !== mindId) return;
+        if (event.type === 'done' || event.type === 'error' || event.type === 'timeout') {
+          window.clearTimeout(timeoutId);
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+  }, { mindId });
+}
+
+async function waitForNextTerminalChatEvent(page: Page): Promise<void> {
+  await page.evaluate(() => (window as typeof window & {
+    __chamberNextTerminalChatEvent?: Promise<void>;
+  }).__chamberNextTerminalChatEvent);
 }
 
 async function findNextModel(page: Page, models: ModelInfo[]): Promise<ModelInfo> {

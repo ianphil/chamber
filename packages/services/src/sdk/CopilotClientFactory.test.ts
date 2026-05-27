@@ -23,6 +23,10 @@ vi.mock('./SdkBootstrap', () => ({
 const mockStart = vi.fn();
 const mockStop = vi.fn();
 const mockForceStop = vi.fn();
+const mockForStdio = vi.fn((opts: { path?: string; args?: readonly string[] }) => ({
+  kind: 'stdio',
+  ...opts,
+}));
 
 class FakeCopilotClient {
   options: Record<string, unknown>;
@@ -36,7 +40,10 @@ class FakeCopilotClient {
 }
 
 vi.mock('./sdkImport', () => ({
-  loadSdkModule: vi.fn(async () => ({ CopilotClient: FakeCopilotClient })),
+  loadSdkModule: vi.fn(async () => ({
+    CopilotClient: FakeCopilotClient,
+    RuntimeConnection: { forStdio: mockForStdio },
+  })),
 }));
 
 import { CopilotClientFactory } from './CopilotClientFactory';
@@ -58,24 +65,24 @@ describe('CopilotClientFactory', () => {
       expect(client.start).toBeDefined();
     });
 
-    it('passes mindPath as cwd so the CLI discovers .mcp.json from the mind folder', async () => {
+    it('passes mindPath as workingDirectory so the CLI discovers .mcp.json from the mind folder', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
-      expect(client.options.cwd).toBe('C:\\agents\\q');
+      expect(client.options.workingDirectory).toBe('C:\\agents\\q');
     });
 
-    it('uses the native platform Copilot binary as cliPath', async () => {
+    it('uses the native platform Copilot binary as the stdio runtime path', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
 
       expect(mockResolveNodeModulesDir).toHaveBeenCalledTimes(1);
       expect(mockGetPlatformCopilotBinaryPath).toHaveBeenCalledWith('C:\\src\\chamber\\node_modules');
-      expect(client.options.cliPath).toBe(
+      expect((client.options.connection as { path: string }).path).toBe(
         'C:\\src\\chamber\\node_modules\\@github\\copilot-win32-x64\\copilot.exe'
       );
     });
 
     it('declares an explicit --allow-tool list instead of --allow-all-tools (issue #131)', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
-      const cliArgs = client.options.cliArgs as string[];
+      const cliArgs = (client.options.connection as { args: string[] }).args;
 
       expect(cliArgs).not.toContain('--allow-all-tools');
 
@@ -93,7 +100,7 @@ describe('CopilotClientFactory', () => {
 
     it('declares an explicit --allow-url list instead of --allow-all-urls (issue #131)', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
-      const cliArgs = client.options.cliArgs as string[];
+      const cliArgs = (client.options.connection as { args: string[] }).args;
 
       expect(cliArgs).not.toContain('--allow-all-urls');
 
@@ -111,14 +118,14 @@ describe('CopilotClientFactory', () => {
 
     it('keeps --allow-all-paths until a later checklist item drops it', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
-      const cliArgs = client.options.cliArgs as string[];
+      const cliArgs = (client.options.connection as { args: string[] }).args;
 
       expect(cliArgs).toContain('--allow-all-paths');
     });
 
     it('declares the mind cwd and the Chamber config root as --add-dir entries (issue #131)', async () => {
       const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
-      const cliArgs = client.options.cliArgs as string[];
+      const cliArgs = (client.options.connection as { args: string[] }).args;
 
       // Per-session mind cwd. cwd already scopes today, but listing it
       // explicitly under --add-dir keeps the allowed-paths source of

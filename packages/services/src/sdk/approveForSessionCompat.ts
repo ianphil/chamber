@@ -1,9 +1,7 @@
 import type { PermissionHandler, PermissionRequest, PermissionRequestResult } from '@github/copilot-sdk';
 
-// SDK 0.3.0 PermissionRequest carries only `{ kind, toolCallId? }` on the
-// handler side. Decisions of kind `approve-for-session` are available for
-// every kind in the SDK protocol, but several variants require detail
-// fields the handler-side request does not expose:
+// Some `approve-for-session` decisions require detail fields that should not be
+// guessed if the handler-side request does not expose enough context:
 //
 //   - `shell` requires `commandIdentifiers: string[]`
 //   - `mcp` requires `serverName`
@@ -34,6 +32,8 @@ export const approveForSessionCompat: PermissionHandler = (
     case 'custom-tool':
     case 'url':
     case 'hook':
+    case 'extension-management':
+    case 'extension-permission-access':
     default:
       return { kind: 'approve-once' };
   }

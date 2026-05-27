@@ -15,6 +15,11 @@ const localRelayCdpPort = Number(process.env.CHAMBER_E2E_BYO_LLM_LOCAL_CDP_PORT 
 const localRelayModel = 'local-e2e-gemma';
 const localRelaySentinel = 'BYO_LOCAL_RELAY_SENTINEL';
 
+test.skip(
+  process.env.CHAMBER_E2E_BYO_LLM !== '1',
+  'BYO LLM smoke is opt-in; set CHAMBER_E2E_BYO_LLM=1 to run it.',
+);
+
 /**
  * Real BYO LLM endpoint used by the FVT.
  *
