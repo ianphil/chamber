@@ -37,6 +37,10 @@ export class ConfigService {
     this.configPath = configDir === CONFIG_DIR ? CONFIG_PATH : path.join(configDir, 'config.json');
   }
 
+  getConfigDir(): string {
+    return this.configDir;
+  }
+
   load(): AppConfig {
     try {
       const data = fs.readFileSync(this.configPath, 'utf-8');

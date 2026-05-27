@@ -38,7 +38,7 @@ function createMockSession() {
   return {
     send: vi.fn().mockResolvedValue(undefined),
     abort: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
       if (!listeners.has(event)) listeners.set(event, []);
       const list = listeners.get(event);
@@ -530,7 +530,7 @@ describe('ChatroomService', () => {
       (factory as EventEmitter).emit('mind:unloaded', 'dude');
 
       expect(sess.abort).toHaveBeenCalled();
-      expect(sess.destroy).toHaveBeenCalled();
+      expect(sess.disconnect).toHaveBeenCalled();
 
       // Broadcast should resolve
       await broadcastPromise;
@@ -600,7 +600,7 @@ describe('ChatroomService', () => {
       await svc.clearHistory();
 
       expect(svc.getHistory()).toHaveLength(0);
-      expect(sess.destroy).toHaveBeenCalled();
+      expect(sess.disconnect).toHaveBeenCalled();
     });
   });
 
@@ -725,7 +725,7 @@ describe('ChatroomService', () => {
 
       const permissionHandler = (factory.createChatroomSession as Mock).mock.calls[0][1] as PermissionHandler;
       const decision = await permissionHandler(
-        { kind: 'write', toolCallId: 'tool-1' },
+        { kind: 'write', toolCallId: 'tool-1', fileName: 'README.md', diff: '', intention: 'write', canOfferSessionApproval: true },
         { sessionId: 'session-1' },
       );
 

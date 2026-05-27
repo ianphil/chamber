@@ -11,8 +11,8 @@ import type { CopilotSession } from '../mind';
 function fakeSession() {
   return {
     abort: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-  } as unknown as CopilotSession & { abort: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };
+    disconnect: vi.fn().mockResolvedValue(undefined),
+  } as unknown as CopilotSession & { abort: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
 }
 
 function fakeFactory(): SessionGroupSessionFactory & {
@@ -87,7 +87,7 @@ describe('SessionGroup', () => {
 
       expect(group.has('dude')).toBe(false);
       expect(session.abort).not.toHaveBeenCalled();
-      expect(session.destroy).not.toHaveBeenCalled();
+      expect(session.disconnect).not.toHaveBeenCalled();
     });
 
     it('forces the next getOrCreateSession to build a fresh session', async () => {
@@ -144,8 +144,8 @@ describe('SessionGroup', () => {
 
       await group.destroyAll();
 
-      expect(dude.destroy).toHaveBeenCalledTimes(1);
-      expect(jarvis.destroy).toHaveBeenCalledTimes(1);
+      expect(dude.disconnect).toHaveBeenCalledTimes(1);
+      expect(jarvis.disconnect).toHaveBeenCalledTimes(1);
       expect(group.size).toBe(0);
     });
 
@@ -155,7 +155,7 @@ describe('SessionGroup', () => {
       await group.getOrCreateSession('dude');
       const dude = factory.sessions.get('dude');
       if (!dude) throw new Error('expected session');
-      dude.destroy.mockRejectedValueOnce(new Error('boom'));
+      dude.disconnect.mockRejectedValueOnce(new Error('boom'));
 
       await expect(group.destroyAll()).resolves.toBeUndefined();
       expect(group.size).toBe(0);
@@ -175,11 +175,11 @@ describe('SessionGroup', () => {
       group.destroySession('dude');
 
       expect(dude.abort).toHaveBeenCalledTimes(1);
-      expect(dude.destroy).toHaveBeenCalledTimes(1);
+      expect(dude.disconnect).toHaveBeenCalledTimes(1);
       expect(group.has('dude')).toBe(false);
       expect(group.has('jarvis')).toBe(true);
       expect(jarvis.abort).not.toHaveBeenCalled();
-      expect(jarvis.destroy).not.toHaveBeenCalled();
+      expect(jarvis.disconnect).not.toHaveBeenCalled();
     });
 
     it('is a no-op when the mind has no cached session', () => {

@@ -37,7 +37,7 @@ function createSessionStub(sessionId = `sdk-session-${sessionCounter += 1}`) {
   sessionId,
   send: vi.fn(),
   sendAndWait: vi.fn(),
-  getMessages: vi.fn(async (): Promise<unknown[]> => []),
+  getEvents: vi.fn(async (): Promise<unknown[]> => []),
   on: vi.fn(),
   off: vi.fn(),
   disconnect: vi.fn(async () => undefined),
@@ -99,6 +99,7 @@ let currentConfig: AppConfig = {
 };
 
 const mockConfigService = {
+  getConfigDir: vi.fn(() => 'C:\\tmp\\chamber-config'),
   load: vi.fn(() => currentConfig),
   save: vi.fn((config) => {
     currentConfig = config;
@@ -137,6 +138,8 @@ describe('MindManager', () => {
     mockProvider.releaseMind.mockImplementation(async () => { /* noop */ });
     mockConfigService.load.mockReset();
     mockConfigService.save.mockReset();
+    mockConfigService.getConfigDir.mockReset();
+    mockConfigService.getConfigDir.mockReturnValue('C:\\tmp\\chamber-config');
     mockConfigService.load.mockImplementation(() => currentConfig);
     mockConfigService.save.mockImplementation((config) => {
       currentConfig = config;
@@ -222,6 +225,15 @@ describe('MindManager', () => {
       });
     });
 
+    it('isolates SDK runtime config and disables implicit discovery for mind sessions', async () => {
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({
+        configDir: 'C:\\tmp\\chamber-config\\copilot-runtime',
+        enableConfigDiscovery: false,
+      }));
+    });
+
     it('resumes a persisted active conversation when restoring a mind', async () => {
       currentConfig = {
         version: 2,
@@ -246,7 +258,11 @@ describe('MindManager', () => {
 
       expect(mockResumeSession).toHaveBeenCalledWith(
         'chamber-q-a1b2-existing',
-        expect.objectContaining({ workingDirectory: '/tmp/agents/q' }),
+        expect.objectContaining({
+          workingDirectory: '/tmp/agents/q',
+          configDir: 'C:\\tmp\\chamber-config\\copilot-runtime',
+          enableConfigDiscovery: false,
+        }),
       );
       expect(manager.listMinds()[0].activeSessionId).toBe('chamber-q-a1b2-existing');
     });
@@ -877,7 +893,7 @@ describe('MindManager', () => {
   describe('conversation history', () => {
     it('resumes a selected conversation and hydrates messages from the SDK session', async () => {
       const resumedSession = createSessionStub();
-      resumedSession.getMessages.mockResolvedValue([
+      resumedSession.getEvents.mockResolvedValue([
         {
           type: 'user.message',
           timestamp: '2026-05-05T22:00:00.000Z',
@@ -925,7 +941,7 @@ describe('MindManager', () => {
 
     it('wires approveForSessionCompat on resumed sessions and does not short-circuit via setApproveAll (issue #131)', async () => {
       const resumedSession = createSessionStub();
-      resumedSession.getMessages.mockResolvedValue([]);
+      resumedSession.getEvents.mockResolvedValue([]);
       mockResumeSession.mockResolvedValueOnce(resumedSession);
       const mind = await manager.loadMind('/tmp/agents/q');
       manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');
@@ -941,7 +957,7 @@ describe('MindManager', () => {
 
     it('hydrates the already-active conversation without resuming the SDK session again', async () => {
       const activeSession = createSessionStub();
-      activeSession.getMessages.mockResolvedValue([
+      activeSession.getEvents.mockResolvedValue([
         {
           type: 'user.message',
           timestamp: '2026-05-05T22:00:00.000Z',
@@ -993,7 +1009,7 @@ describe('MindManager', () => {
 
     it('deletes the active conversation and hydrates the next most recent conversation', async () => {
       const resumedSession = createSessionStub();
-      resumedSession.getMessages.mockResolvedValue([
+      resumedSession.getEvents.mockResolvedValue([
         {
           type: 'user.message',
           timestamp: '2026-05-05T22:00:00.000Z',
@@ -1047,7 +1063,7 @@ describe('MindManager', () => {
 
     it('strips Chamber-injected datetime context from hydrated user messages', async () => {
       const resumedSession = createSessionStub();
-      resumedSession.getMessages.mockResolvedValue([
+      resumedSession.getEvents.mockResolvedValue([
         {
           type: 'user.message',
           timestamp: '2026-05-05T22:00:00.000Z',
@@ -1485,7 +1501,7 @@ describe('MindManager', () => {
           : '# TestAgent\nSome content';
       });
       const resumedSession = createSessionStub();
-      resumedSession.getMessages.mockResolvedValue([]);
+      resumedSession.getEvents.mockResolvedValue([]);
       mockResumeSession.mockResolvedValueOnce(resumedSession);
       const mind = await manager.loadMind('/tmp/agents/q');
       manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');

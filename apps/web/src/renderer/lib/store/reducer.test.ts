@@ -419,6 +419,30 @@ describe('appReducer', () => {
     expect(stale.conversationHistoryByMind[mindId][0].title).toBe('Fresh title');
   });
 
+  it('SET_CONVERSATION_HISTORY replaces placeholder titles even when local timestamps are newer', () => {
+    const placeholder = appReducer(withActiveMind, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'New chat · 1/1/2026, 12:00:00 AM', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', kind: 'chat', active: true },
+        ],
+      },
+    });
+
+    const titled = appReducer(placeholder, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'First prompt', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', kind: 'chat', active: true },
+        ],
+      },
+    });
+
+    expect(titled.conversationHistoryByMind[mindId][0].title).toBe('First prompt');
+  });
+
   it('CONVERSATION_HYDRATING records the selected session before messages arrive', () => {
     const state = appReducer(withActiveMind, {
       type: 'CONVERSATION_HYDRATING',

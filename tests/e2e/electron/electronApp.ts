@@ -1,5 +1,5 @@
 import { chromium, type Browser, type Page } from '@playwright/test';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -58,16 +58,8 @@ export async function launchElectronApp(options: {
       } catch {
         // Browser may already be gone; continue with process cleanup.
       }
-      if (child && !child.killed && typeof child.pid === 'number') {
-        // The npm parent spawned Electron as a grandchild. SIGTERM on the
-        // parent alone leaks Electron windows that keep the CDP port bound.
-        // The child was started as a detached process group so we can SIGKILL
-        // the whole tree at once via the negative pgid.
-        try {
-          process.kill(-child.pid, 'SIGKILL');
-        } catch {
-          try { child.kill('SIGKILL'); } catch { /* already gone */ }
-        }
+      if (child && typeof child.pid === 'number') {
+        await killProcessTree(child);
       }
     },
   };
@@ -93,11 +85,44 @@ function spawnNpmStart(options: {
 }): ChildProcessWithoutNullStreams {
   const command = 'npm start';
   if (process.platform === 'win32') {
-    return spawn('cmd.exe', ['/d', '/s', '/c', command], options);
+    return spawn('cmd.exe', ['/d', '/s', '/c', command], { ...options, detached: true });
   }
   // detached:true puts the child in its own process group so we can SIGKILL
   // the whole tree (Electron + Vite + Forge) on cleanup via -pid.
   return spawn('sh', ['-lc', command], { ...options, detached: true });
+}
+
+async function killProcessTree(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (typeof child.pid !== 'number') return;
+  if (process.platform === 'win32') {
+    try {
+      await execFileAsync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F']);
+      return;
+    } catch {
+      try { child.kill('SIGKILL'); } catch { /* already gone */ }
+      return;
+    }
+  }
+
+  // The child starts as a detached process group so negative pgid terminates
+  // Electron, Vite, Forge, and npm together instead of leaking descendants.
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    try { child.kill('SIGKILL'); } catch { /* already gone */ }
+  }
+}
+
+function execFileAsync(file: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 async function waitForCdp(url: string, logs: string[]): Promise<void> {

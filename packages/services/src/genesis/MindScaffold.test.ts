@@ -78,7 +78,7 @@ describe('MindScaffold.create', () => {
   it('injects current datetime context into the genesis prompt', async () => {
     const session = {
       send: vi.fn<(_: { prompt: string }) => Promise<void>>(async () => undefined),
-      destroy: vi.fn(async () => undefined),
+      disconnect: vi.fn(async () => undefined),
       on: vi.fn((event: string, callback: () => void) => {
         if (event === 'session.idle') setTimeout(callback, 0);
         return vi.fn();
@@ -116,7 +116,7 @@ describe('MindScaffold.create', () => {
   it('wires approveForSessionCompat for genesis sessions and does not short-circuit via setApproveAll (issue #131)', async () => {
     const session = {
       send: vi.fn<(_: { prompt: string }) => Promise<void>>(async () => undefined),
-      destroy: vi.fn(async () => undefined),
+      disconnect: vi.fn(async () => undefined),
       on: vi.fn((event: string, callback: () => void) => {
         if (event === 'session.idle') setTimeout(callback, 0);
         return vi.fn();

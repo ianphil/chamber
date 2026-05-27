@@ -48,6 +48,7 @@ test.describe('electron Genesis landing Add Marketplace smoke', () => {
 
   test('adds the internal marketplace from first-run Genesis and refreshes template choices', async () => {
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForLoadState('domcontentloaded');
 
     await page.getByRole('button', { name: /New Agent/i }).click();
