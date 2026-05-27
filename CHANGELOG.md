@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Refresh packaged Copilot runtime** — Updated the pinned packaged Copilot CLI runtime to match the version required by package smoke.
 
+### CI
+
+- **Build macOS insiders artifacts** — The insiders release workflow now builds signed and notarized Apple Silicon macOS artifacts, publishes them to the insiders feed only after Windows and macOS both succeed, and leaves stable macOS releases behind the existing STABLE_RELEASE_BUILD_MACOS gate.
+
+
 
 
 
