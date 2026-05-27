@@ -52,7 +52,7 @@ if (identity) {
 runCommand(path.join(repoRoot, 'node_modules', '.bin', 'electron-osx-sign'), signArgs);
 console.log(`Signed ${path.relative(repoRoot, appPath)}`);
 
-resignCopilotSeaBinaries(appPath, identity);
+resignCopilotSeaBinaries(appPath);
 
 function findCopilotSeaBinaries(rootDir) {
   const matches = [];
@@ -80,14 +80,30 @@ function findCopilotSeaBinaries(rootDir) {
   return matches;
 }
 
-function resignCopilotSeaBinaries(bundlePath, codeSignIdentity) {
+function resolveCodesignIdentity() {
+  // codesign --sign expects either a SHA-1 hash or a substring of a
+  // keychain identity's common name. The CHAMBER_MACOS_IDENTITY env
+  // var carries the full "Developer ID Application: <name> (<team>)"
+  // form. resolveMacIdentity() strips the prefix for electron-osx-sign,
+  // but codesign's substring matcher can latch onto the wrong cert in
+  // a CI keychain that holds multiple identities for the same team
+  // (e.g. an Apple Development cert alongside Developer ID). Always
+  // pass the full unstripped identity to codesign so the match is
+  // unambiguous and the resulting signature is recognizably a
+  // Developer ID one (required for notarization).
+  return process.env.CHAMBER_MACOS_IDENTITY?.trim() || undefined;
+}
+
+function resignCopilotSeaBinaries(bundlePath) {
   // The bundled @github/copilot CLI is a Node.js Single Executable
   // Application. electron-osx-sign re-signs every nested executable
   // with its default entitlements (audio, bluetooth, camera, etc.)
   // which lack the JIT/library entitlements V8 needs under hardened
   // runtime. Without them the kernel kills the process immediately
   // and Chamber surfaces "CLI server exited unexpectedly with code 1".
-  // Re-sign just those binaries with the Node SEA-friendly plist.
+  // Re-sign just those binaries with the Node SEA-friendly plist,
+  // then re-seal the .app's outer signature so the bundle's
+  // CodeResources hash list reflects the new inner-binary hashes.
   const entitlements = path.join(repoRoot, 'assets', 'entitlements.copilot-cli.mac.plist');
   if (!fs.existsSync(entitlements)) {
     throw new Error(`Missing copilot CLI entitlements: ${entitlements}`);
@@ -97,6 +113,7 @@ function resignCopilotSeaBinaries(bundlePath, codeSignIdentity) {
     console.warn('No bundled @github/copilot SEA binaries found to re-sign.');
     return;
   }
+  const codeSignIdentity = resolveCodesignIdentity();
   const identityArgs = codeSignIdentity ? ['--sign', codeSignIdentity] : ['--sign', '-'];
   for (const binary of binaries) {
     runCommand('codesign', [
@@ -109,4 +126,21 @@ function resignCopilotSeaBinaries(bundlePath, codeSignIdentity) {
     ]);
     console.log(`Re-signed SEA binary ${path.relative(repoRoot, binary)}`);
   }
+
+  // Re-seal the .app at the top level (not --deep) to regenerate
+  // _CodeSignature/CodeResources with hashes of the newly-signed
+  // copilot binaries. Without this, notarization rejects the bundle
+  // with "The signature of the binary is invalid" on the main
+  // Chamber executable because the seal references stale hashes.
+  // --preserve-metadata keeps the existing entitlements/identifier
+  // that electron-osx-sign applied to the main executable.
+  runCommand('codesign', [
+    '--force',
+    '--timestamp',
+    '--options', 'runtime',
+    '--preserve-metadata=entitlements,identifier,flags,runtime',
+    ...identityArgs,
+    bundlePath,
+  ]);
+  console.log(`Re-sealed ${path.relative(repoRoot, bundlePath)} outer signature`);
 }
