@@ -105,7 +105,7 @@ function makeFakeClientFactory(seedFiles: (paths: SoulPaths) => void): CopilotCl
         send: vi.fn(async () => {
           seedFiles(paths);
         }),
-        destroy: vi.fn(async () => undefined),
+        disconnect: vi.fn(async () => undefined),
         on: vi.fn((event: string, callback: () => void) => {
           if (event === 'session.idle') setTimeout(callback, 0);
           return vi.fn();

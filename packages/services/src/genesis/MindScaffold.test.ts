@@ -597,7 +597,7 @@ describe('MindScaffold.generateSoul — genesis prompt no longer references log.
   it('does not pass log.md as a write target to buildGenesisPrompt', async () => {
     const session = {
       send: vi.fn<(_: { prompt: string }) => Promise<void>>(async () => undefined),
-      destroy: vi.fn(async () => undefined),
+      disconnect: vi.fn(async () => undefined),
       on: vi.fn((event: string, callback: () => void) => {
         if (event === 'session.idle') setTimeout(callback, 0);
         return vi.fn();
