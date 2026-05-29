@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { IdentityLoader } from '@chamber/services';
+import { IdentityLoader } from '../../../packages/services/src/chat/IdentityLoader';
 import type { AppConfig, InstalledTool } from '@chamber/shared/types';
 import { findRendererPage, launchElectronApp, type LaunchedElectronApp } from './electronApp';
 

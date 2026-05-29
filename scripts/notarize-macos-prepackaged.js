@@ -34,6 +34,10 @@ function runCommand(command, args, options = {}) {
   }
 }
 
+function runCaptured(command, args, options = {}) {
+  return spawnSync(command, args, { encoding: 'utf8', ...options });
+}
+
 function notarytoolAuthArgs() {
   const profile = env('CHAMBER_NOTARY_KEYCHAIN_PROFILE');
   const keychain = env('CHAMBER_NOTARY_KEYCHAIN');
@@ -51,9 +55,26 @@ function notarytoolAuthArgs() {
   ];
 }
 
+function dumpNotaryLog(submissionId) {
+  if (!submissionId) {
+    console.error('Cannot fetch notary log: missing submission id.');
+    return;
+  }
+  console.error(`\n--- Apple notary log for submission ${submissionId} ---`);
+  const result = runCaptured('xcrun', [
+    'notarytool',
+    'log',
+    submissionId,
+    ...notarytoolAuthArgs(),
+  ]);
+  if (result.stdout) process.stderr.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  console.error('--- end notary log ---\n');
+}
+
 function notarize(zipPath) {
   console.log(`Submitting ${path.basename(zipPath)} for Apple notarization...`);
-  runCommand('xcrun', [
+  const submit = runCaptured('xcrun', [
     'notarytool',
     'submit',
     zipPath,
@@ -61,7 +82,29 @@ function notarize(zipPath) {
     '--wait',
     '--timeout',
     NOTARIZATION_TIMEOUT,
+    '--output-format',
+    'json',
   ]);
+  if (submit.stdout) process.stdout.write(submit.stdout);
+  if (submit.stderr) process.stderr.write(submit.stderr);
+
+  let submissionId;
+  let status;
+  try {
+    const parsed = JSON.parse(submit.stdout);
+    submissionId = parsed.id;
+    status = parsed.status;
+  } catch {
+    // notarytool occasionally prints non-JSON progress to stdout in JSON mode;
+    // fall back to a regex over stderr to recover the id for log fetching.
+    const idMatch = (submit.stdout + submit.stderr).match(/id:\s*([0-9a-f-]{36})/i);
+    submissionId = idMatch?.[1];
+  }
+
+  if (submit.status !== 0 || (status && status !== 'Accepted')) {
+    dumpNotaryLog(submissionId);
+    throw new Error(`Notarization failed (status=${status ?? 'unknown'}).`);
+  }
 }
 
 const cliArgs = parseArgs(process.argv.slice(2));

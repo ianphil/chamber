@@ -41,6 +41,7 @@ test.describe('electron agent profile editor smoke', () => {
 
   test('edits SOUL.md through the profile modal and prompts for restart', async () => {
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForFunction(() => Boolean(window.electronAPI?.mind?.add));
 

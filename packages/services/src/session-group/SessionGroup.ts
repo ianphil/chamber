@@ -71,7 +71,7 @@ export class SessionGroup {
    */
   async destroyAll(): Promise<void> {
     for (const [, session] of this.sessionCache) {
-      await session.destroy().catch(() => { /* noop */ });
+      await session.disconnect().catch(() => { /* noop */ });
     }
     this.sessionCache.clear();
   }
@@ -85,7 +85,7 @@ export class SessionGroup {
     const session = this.sessionCache.get(mindId);
     if (!session) return;
     session.abort().catch(() => { /* noop */ });
-    session.destroy().catch(() => { /* noop */ });
+    session.disconnect().catch(() => { /* noop */ });
     this.sessionCache.delete(mindId);
   }
 

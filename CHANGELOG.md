@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fix "CLI server exited unexpectedly with code 1" on packaged macOS builds** — The bundled `@github/copilot` CLI is a Node.js Single Executable Application. `electron-osx-sign` was re-signing it with default Electron entitlements (audio, bluetooth, camera, etc.) which lack `com.apple.security.cs.allow-unsigned-executable-memory` and `com.apple.security.cs.disable-library-validation`. Under hardened runtime, V8's JIT could not allocate executable memory and the kernel SIGKILLed the process immediately, producing no stdout/stderr. `scripts/sign-macos-prepackaged.js` now re-signs the SEA binary with a dedicated entitlements plist (`assets/entitlements.copilot-cli.mac.plist`) after the main `electron-osx-sign` pass.
+- **Fix black-screen launch on packaged macOS builds** — `app.on('ready')` no longer awaits `chamberCopilotService.prewarm()`. When the bundled Copilot CLI hangs during ACP handshake (observed in re-signed darwin-arm64 packages), awaiting prewarm blocked `createWindow()` and the app booted with no visible window. prewarm() is best-effort by design, so it now runs fire-and-forget.
+- **Fix silent `electron-forge package` exit on Node 24** — Added an npm override pinning `yauzl@^3.3.1`. The transitive `yauzl@2.10.0` used by `extract-zip` returns a readable stream that emits no events on Node 24, causing electron-packager's Electron template extraction to abandon mid-extract and the process to exit with no output and no `Chamber-darwin-arm64/` artifact.
 - **Surface ambiguous A2A recipients** — A2A message routing now reports duplicate display-name matches with usable recipient identifiers instead of falling through to an unknown-recipient error. (#322) (#322)
 - **Complete turns after root turn end** — Chat streaming now finishes after a guarded root assistant.turn_end quiescence path when the SDK omits session.idle, while still waiting for outstanding tools and sub-agent turns so late output is preserved. (#297) (#297)
 - **Prevent false chat completion and missed UI updates** — Chat cancellation now requires an active turn, A2A and cron streaming state no longer contaminates chat input, and renderer chat events replay after window refocus so hidden-window work can catch up. Fixes #297. (#297)
@@ -25,6 +28,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Add persistent task ledger** — Adds per-mind SQLite task ledger storage, cron/A2A/ACP audit rows, task IPC, maintenance sweeps, and native packaging support. Closes #356. (#356)
+
+### Changed
+
+- **Persist cron run history in ttasks** — Cron history now reads and writes run records through the per-mind ttasks store while keeping recurring job definitions in cron JSON for now. (#359)
+
+### Packaging
+
+- **Refresh packaged Copilot runtime** — Updated the pinned packaged Copilot CLI runtime to match the version required by package smoke.
+
+### CI
+
+- **Build macOS insiders artifacts** — The insiders release workflow now builds signed and notarized Apple Silicon macOS artifacts, publishes them to the insiders feed only after Windows and macOS both succeed, and leaves stable macOS releases behind the existing STABLE_RELEASE_BUILD_MACOS gate.
+
+
+
 
 
 

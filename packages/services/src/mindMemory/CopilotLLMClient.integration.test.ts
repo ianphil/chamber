@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CopilotClient } from '@github/copilot-sdk';
+import { CopilotClient, RuntimeConnection } from '@github/copilot-sdk';
 
 import { createCopilotLLMClient } from './CopilotLLMClient';
 import { buildOneShotSession } from './oneShotSession';
@@ -48,15 +48,17 @@ describe.skipIf(!liveSdk)('CopilotLLMClient — live SDK', () => {
     fs.mkdirSync(logDir, { recursive: true });
 
     client = new CopilotClient({
-      cliPath,
-      cwd: mindPath,
+      connection: RuntimeConnection.forStdio({
+        path: cliPath,
+        args: [
+          '--log-dir', logDir,
+          '--allow-all-tools',
+          '--allow-all-paths',
+          '--allow-all-urls',
+        ],
+      }),
+      workingDirectory: mindPath,
       logLevel: 'all',
-      cliArgs: [
-        '--log-dir', logDir,
-        '--allow-all-tools',
-        '--allow-all-paths',
-        '--allow-all-urls',
-      ],
     });
     await client.start();
   }, 60_000);

@@ -94,7 +94,10 @@ describe('packaging scripts', () => {
     expect(insidersWorkflow).toContain('Chamber-Setup-latest-insiders.exe');
     expect(insidersWorkflow).toContain('--channel=insiders');
     expect(insidersWorkflow).toContain('insiders.yml');
-    expect(insidersWorkflow).toContain('git push origin "${{ steps.bump.outputs.tag }}"');
+    expect(insidersWorkflow).toContain('build-macos:');
+    expect(insidersWorkflow).toContain('runs-on: macos-latest');
+    expect(insidersWorkflow).toContain('tag: ${{ steps.bump.outputs.tag }}');
+    expect(insidersWorkflow).toContain('git push origin "${{ needs.prepare.outputs.tag }}"');
     expect(insidersWorkflow).not.toContain('git push origin HEAD');
     expect(insidersWorkflow).not.toContain('softprops/action-gh-release');
     // Model B: the tag points at master's SHA, not a synthetic

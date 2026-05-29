@@ -80,13 +80,9 @@ test.describe('electron conversation history smoke', () => {
     const paths = await launchWithMinds(9354, ['Monica']);
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
     const mind = await addMind(page, paths.Monica);
-    await installChatSendProbe(page);
 
     const prompt = 'History smoke first prompt title';
-    const input = page.getByPlaceholder('Message your agent… (paste an image to attach)');
-    await input.fill(prompt);
-    await input.press('Enter');
-    await page.evaluate(() => (window as typeof window & { __chamberLastChatSend?: Promise<void> }).__chamberLastChatSend);
+    await sendAndWaitForTerminalEvent(page, mind.mindId, prompt);
 
     await expect.poll(
       () => page.evaluate(
@@ -121,13 +117,9 @@ test.describe('electron conversation history smoke', () => {
     const paths = await launchWithMinds(9356, ['Monica']);
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
     const mind = await addMind(page, paths.Monica);
-    await installChatSendProbe(page);
 
     const prompt = 'History smoke keep this chat';
-    const input = page.getByPlaceholder('Message your agent… (paste an image to attach)');
-    await input.fill(prompt);
-    await input.press('Enter');
-    await page.evaluate(() => (window as typeof window & { __chamberLastChatSend?: Promise<void> }).__chamberLastChatSend);
+    await sendAndWaitForTerminalEvent(page, mind.mindId, prompt);
     await expect.poll(
       () => page.evaluate(
         async ({ mindId }) => {
@@ -213,16 +205,38 @@ async function renameFirstHistoryItem(page: Page, title: string): Promise<void> 
   await expect(history.getByText(title)).toBeVisible();
 }
 
-async function installChatSendProbe(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const runtimeWindow = window as typeof window & { __chamberLastChatSend?: Promise<void> };
-    const originalSend = window.electronAPI.chat.send.bind(window.electronAPI.chat);
-    window.electronAPI.chat.send = (...args: Parameters<typeof window.electronAPI.chat.send>) => {
-      const send = originalSend(...args);
-      runtimeWindow.__chamberLastChatSend = send.then(() => undefined);
-      return send;
-    };
-  });
+async function sendAndWaitForTerminalEvent(page: Page, mindId: string, prompt: string): Promise<void> {
+  await prepareNextTerminalChatEvent(page, mindId);
+  const input = page.getByPlaceholder('Message your agent… (paste an image to attach)');
+  await input.fill(prompt);
+  await input.press('Enter');
+  await waitForNextTerminalChatEvent(page);
+}
+
+async function prepareNextTerminalChatEvent(page: Page, mindId: string): Promise<void> {
+  await page.evaluate(({ mindId }) => {
+    const runtimeWindow = window as typeof window & { __chamberNextTerminalChatEvent?: Promise<void> };
+    runtimeWindow.__chamberNextTerminalChatEvent = new Promise<void>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        unsubscribe();
+        reject(new Error(`Timed out waiting for terminal chat event for ${mindId}`));
+      }, 120_000);
+      const unsubscribe = window.electronAPI.chat.onEvent((receivedMindId, _messageId, event) => {
+        if (receivedMindId !== mindId) return;
+        if (event.type === 'done' || event.type === 'error' || event.type === 'timeout') {
+          window.clearTimeout(timeoutId);
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+  }, { mindId });
+}
+
+async function waitForNextTerminalChatEvent(page: Page): Promise<void> {
+  await page.evaluate(() => (window as typeof window & {
+    __chamberNextTerminalChatEvent?: Promise<void>;
+  }).__chamberNextTerminalChatEvent);
 }
 
 async function measureLayout(page: Page): Promise<{ mainWidth: number; historyWidth: number }> {

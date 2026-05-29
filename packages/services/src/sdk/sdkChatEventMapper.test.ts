@@ -202,6 +202,32 @@ describe('sdkChatEventMapper', () => {
       expect(mapped.summary).toBe('bash');
     });
 
+    it('maps extension permission requests from newer SDK runtimes', () => {
+      expect(mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-7',
+          permissionRequest: { kind: 'extension-management', operation: 'reload', extensionName: 'tools' },
+        },
+      })).toMatchObject({
+        type: 'permission_request',
+        requestId: 'req-7',
+        kind: 'extension-management',
+        summary: 'reload',
+      });
+
+      expect(mapSdkPermissionRequested({
+        data: {
+          requestId: 'req-8',
+          permissionRequest: { kind: 'extension-permission-access', extensionName: 'tools', capabilities: ['tools'] },
+        },
+      })).toMatchObject({
+        type: 'permission_request',
+        requestId: 'req-8',
+        kind: 'extension-permission-access',
+        summary: 'tools',
+      });
+    });
+
     it('maps a permission.completed approved event to a permission_outcome event', () => {
       const mapped = mapSdkPermissionCompleted({
         data: {
@@ -225,6 +251,16 @@ describe('sdkChatEventMapper', () => {
         },
       });
       expect(mapped.outcome).toBe('denied-by-content-exclusion-policy');
+    });
+
+    it('maps a permission.completed cancelled event', () => {
+      const mapped = mapSdkPermissionCompleted({
+        data: {
+          requestId: 'req-3',
+          result: { kind: 'cancelled' },
+        },
+      });
+      expect(mapped.outcome).toBe('cancelled');
     });
 
     it('rejects permission events with unexpected kinds so contract drift surfaces fast', () => {

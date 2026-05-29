@@ -21,6 +21,8 @@ const PERMISSION_REQUEST_KINDS = [
   'custom-tool',
   'memory',
   'hook',
+  'extension-management',
+  'extension-permission-access',
 ] as const satisfies readonly SdkPermissionRequestKind[] & readonly PermissionRequestKind[];
 
 const PERMISSION_COMPLETED_KINDS = [
@@ -32,6 +34,7 @@ const PERMISSION_COMPLETED_KINDS = [
   'denied-interactively-by-user',
   'denied-by-content-exclusion-policy',
   'denied-by-permission-request-hook',
+  'cancelled',
 ] as const satisfies readonly SdkPermissionCompletedKind[];
 
 // Compile-time exhaustiveness — if the SDK adds a kind, the assignment
@@ -123,6 +126,8 @@ const sdkPermissionRequestedEvent = sdkEvent({
     toolName: z.string().optional(),            // mcp, custom-tool, hook
     fact: z.string().optional(),                // memory
     hookMessage: z.string().optional(),         // hook
+    operation: z.string().optional(),           // extension-management
+    extensionName: z.string().optional(),       // extension-management, extension-permission-access
   }).passthrough(),
 });
 
@@ -244,7 +249,7 @@ function preview(value: string | undefined): string {
 }
 
 function summarizePermissionRequest(req: {
-  kind: 'shell' | 'write' | 'mcp' | 'read' | 'url' | 'custom-tool' | 'memory' | 'hook';
+  kind: PermissionRequestKind;
   fullCommandText?: string;
   intention?: string;
   path?: string;
@@ -255,6 +260,8 @@ function summarizePermissionRequest(req: {
   toolName?: string;
   fact?: string;
   hookMessage?: string;
+  operation?: string;
+  extensionName?: string;
 }): string {
   switch (req.kind) {
     case 'shell':
@@ -273,6 +280,10 @@ function summarizePermissionRequest(req: {
       return preview(req.fact) || 'memory';
     case 'hook':
       return preview(req.hookMessage) || preview(req.toolName) || 'hook confirmation';
+    case 'extension-management':
+      return preview(req.operation) || preview(req.extensionName) || 'extension management';
+    case 'extension-permission-access':
+      return preview(req.extensionName) || 'extension permission access';
     default:
       return req.kind;
   }

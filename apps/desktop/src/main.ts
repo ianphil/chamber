@@ -762,8 +762,15 @@ app.on('ready', async () => {
   // MindManager.doLoadMind calls getSessionTools BEFORE activateProviders;
   // without prewarm the first mind in a fresh process boots without the
   // cli_* tools. prewarm() swallows failures and logs.
+  //
+  // INVARIANT: Do NOT await prewarm here. The child Copilot CLI can hang
+  // during ACP handshake (observed in packaged macOS builds where the
+  // re-signed CLI exits 1 with no output), and awaiting would block
+  // createWindow() below — producing a no-window "black screen" boot.
+  // prewarm() is best-effort by design (swallows errors); the first mind
+  // load racing prewarm is the acceptable tradeoff for guaranteed UI.
   if (chamberCopilotService) {
-    await chamberCopilotService.prewarm();
+    void chamberCopilotService.prewarm();
   }
 
   // --- IPC adapters (thin, parameter-injected) ---

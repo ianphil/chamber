@@ -27,6 +27,7 @@ import type { SdkProviderConfig } from '../byo-llm/buildProviderConfig';
 import { MindScaffold } from '../genesis/MindScaffold';
 
 const log = Logger.create('MindManager');
+const COPILOT_RUNTIME_CONFIG_DIR = 'copilot-runtime';
 
 export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
@@ -1130,7 +1131,8 @@ export class MindManager extends EventEmitter {
     const effectiveModel = this.resolveModelForSdk(model, provider);
     const sessionConfig: SessionConfig = {
       workingDirectory: mindPath,
-      enableConfigDiscovery: true,
+      configDir: this.getCopilotRuntimeConfigDir(),
+      enableConfigDiscovery: false,
       tools,
       systemMessage: {
         mode: 'customize',
@@ -1182,7 +1184,8 @@ export class MindManager extends EventEmitter {
     const effectiveModel = this.resolveModelForSdk(model, provider);
     const sessionConfig: ResumeSessionConfig = {
       workingDirectory: mindPath,
-      enableConfigDiscovery: true,
+      configDir: this.getCopilotRuntimeConfigDir(),
+      enableConfigDiscovery: false,
       tools,
       systemMessage: {
         mode: 'customize',
@@ -1205,6 +1208,10 @@ export class MindManager extends EventEmitter {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
     return session;
+  }
+
+  private getCopilotRuntimeConfigDir(): string {
+    return path.join(this.configService.getConfigDir(), COPILOT_RUNTIME_CONFIG_DIR);
   }
 
   private async loadConversationSession(
@@ -1254,7 +1261,7 @@ export class MindManager extends EventEmitter {
   }
 
   private async getMessagesForSession(session: CopilotSession): Promise<ChatMessage[]> {
-    const events = await session.getMessages();
+    const events = await session.getEvents();
     return events.flatMap((event, index) => this.mapSessionEventToChatMessage(event, index));
   }
 
