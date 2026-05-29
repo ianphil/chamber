@@ -19,6 +19,22 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
+function getNpmCommand() {
+  return process.platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+function spawnCommand(command, args, options = {}) {
+  if (process.platform === 'win32' && command.toLowerCase().endsWith('.cmd')) {
+    return spawnSync(process.env.ComSpec || 'cmd.exe', [
+      '/d',
+      '/s',
+      '/c',
+      `${command} ${args.join(' ')}`,
+    ], { ...options, windowsHide: true });
+  }
+  return spawnSync(command, args, { ...options, windowsHide: true });
+}
+
 const repoRoot = path.resolve(__dirname, '..');
 const manifestDir = path.join(repoRoot, 'chamber-automation-runtime');
 const sourcePkgDir = path.join(repoRoot, 'packages', 'automation-runtime');
@@ -51,10 +67,11 @@ function ensureManifestInstalled() {
     if (Number.isFinite(stampMs) && stampMs >= pkgStat.mtimeMs) return;
   }
   console.log('[automation-runtime] installing pinned dependencies in', manifestDir);
-  const result = spawnSync('npm', ['install', '--no-audit', '--no-fund'], {
+  const result = spawnCommand(getNpmCommand(), ['install', '--no-audit', '--no-fund'], {
     cwd: manifestDir,
     stdio: 'inherit',
   });
+  if (result.error) throw result.error;
   if (result.status !== 0) throw new Error('npm install in chamber-automation-runtime failed');
   fs.writeFileSync(stamp, String(pkgStat.mtimeMs));
 }
