@@ -1,6 +1,5 @@
 import React from 'react';
-
-const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Macintosh');
+import { isMac } from '../../lib/platform';
 
 export function MacTitlebarDrag() {
   if (!isMac) return null;
