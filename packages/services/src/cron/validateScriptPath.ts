@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const AUTOMATION_DIR = path.join('.chamber', 'automation');
+const AUTOMATION_DIR = '.chamber/automation';
 
 export class ScriptPathValidationError extends Error {
   constructor(public readonly reason: string, message: string) {
@@ -38,9 +38,9 @@ export function validateScriptPath(mindPath: string, scriptPath: string): string
   if (!scriptPath.endsWith('.ts')) {
     throw new ScriptPathValidationError('extension', `Script path must end with .ts: ${scriptPath}`);
   }
-  const normalized = path.normalize(scriptPath);
-  // Ensure it starts with `.chamber/automation/` (cross-platform separator).
-  const expectedPrefix = AUTOMATION_DIR + path.sep;
+  // Normalize to POSIX separators so the check is identical on every platform.
+  const normalized = path.normalize(scriptPath).split(path.sep).join('/');
+  const expectedPrefix = AUTOMATION_DIR + '/';
   if (!normalized.startsWith(expectedPrefix) && normalized !== AUTOMATION_DIR) {
     throw new ScriptPathValidationError(
       'outside-automation',

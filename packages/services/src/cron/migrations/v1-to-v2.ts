@@ -8,7 +8,6 @@ const log = Logger.create('cron-migration');
 
 const CRON_DIR = '.chamber';
 const SCHEDULES_DIR = 'schedules';
-const AUTOMATION_DIR = path.join('.chamber', 'automation');
 const MIGRATED_DIR = path.join('.chamber', 'automation', '_migrated');
 const JOBS_FILE = 'cron.json';
 const BACKUP_FILE = 'cron.v1.backup.json';
@@ -62,7 +61,8 @@ export function runMigrations(mindPath: string): void {
     try {
       const contents = translateJob(legacy);
       const fileName = writeMigratedScript(migratedDir, slugify(legacy.id), contents, usedNames);
-      newJobs.push(toV2Job(legacy, path.join(AUTOMATION_DIR, '_migrated', fileName)));
+      // Store scriptPath POSIX-style so cron.json stays portable across platforms.
+      newJobs.push(toV2Job(legacy, path.posix.join('.chamber', 'automation', '_migrated', fileName)));
     } catch (err) {
       errors.push({
         legacyId: legacy.id,
