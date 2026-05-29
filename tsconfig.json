@@ -9,7 +9,9 @@
       "@chamber/services": ["./packages/services/src/index.ts"],
       "@chamber/shared": ["./packages/shared/src/index.ts"],
       "@chamber/shared/*": ["./packages/shared/src/*"],
-      "@chamber/wire-contracts": ["./packages/wire-contracts/src/index.ts"]
+      "@chamber/wire-contracts": ["./packages/wire-contracts/src/index.ts"],
+      "@chamber/automation-runtime": ["./packages/automation-runtime/src/index.ts"],
+      "@chamber/automation-runtime/task-helpers": ["./packages/automation-runtime/src/task-helpers.ts"]
     }
   },
   "include": ["apps/**/*", "packages/**/*", "tests/**/*", "forge.env.d.ts"]

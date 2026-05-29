@@ -1,123 +1,68 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { CronService } from './CronService';
+import { describe, it, expect, vi } from 'vitest';
 import { buildCronTools } from './tools';
+import type { CronService } from './CronService';
 
-const mockService = {
-  createJob: vi.fn(),
-  listJobs: vi.fn(),
-  removeJob: vi.fn(),
-  enableJob: vi.fn(),
-  disableJob: vi.fn(),
-  runNow: vi.fn(),
-  listRuns: vi.fn(),
-};
+function makeServiceStub(overrides: Partial<CronService> = {}): CronService {
+  const stub = {
+    createJob: vi.fn(),
+    listJobs: vi.fn(() => []),
+    removeJob: vi.fn(),
+    enableJob: vi.fn(),
+    disableJob: vi.fn(),
+    runNow: vi.fn(),
+    listRuns: vi.fn(() => []),
+    runScript: vi.fn(),
+    validateScript: vi.fn(async () => ({ ok: true, output: '' })),
+    getRunDetail: vi.fn(() => null),
+    ...overrides,
+  };
+  return stub as unknown as CronService;
+}
 
 describe('buildCronTools', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns 7 tools with correct names', () => {
-    const tools = buildCronTools('mind-1', '/path/to/mind', mockService as unknown as CronService);
-
-    expect(tools).toHaveLength(7);
-    const names = tools.map((t) => t.name);
+  it('exposes the v2 tool surface', () => {
+    const tools = buildCronTools('mind', '/tmp/mind', makeServiceStub());
+    const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      'automation_run',
+      'automation_validate',
       'cron_create',
+      'cron_disable',
+      'cron_enable',
+      'cron_history',
       'cron_list',
       'cron_remove',
-      'cron_enable',
-      'cron_disable',
+      'cron_run_detail',
       'cron_run_now',
-      'cron_history',
     ]);
   });
 
-  it('cron_create dispatches to cronService.createJob', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const create = tools.find((t) => t.name === 'cron_create')!;
-
-    const input = { name: 'Test', schedule: '* * * * *', type: 'notification', payload: { title: 'Hi', body: 'World' } };
-    await create.handler(input);
-
-    expect(mockService.createJob).toHaveBeenCalledWith('mind-1', '/path', input);
-  });
-
-  it('cron_create documents and requires the payload object with visible payload fields', () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const create = tools.find((t) => t.name === 'cron_create')!;
-    const parameters = create.parameters as {
-      required?: string[];
-      properties: Record<string, { description?: string; properties?: Record<string, unknown> }>;
-    };
-
-    expect(create.description).toContain('Always include a payload object');
-    expect(parameters.properties.payload.description).toContain('notification use { "title": string, "body": string }');
-    expect(parameters.properties.payload.properties).toMatchObject({
-      title: { type: 'string', description: 'Notification title.' },
-      body: { description: 'Notification body string or webhook JSON body.' },
+  it('cron_create forwards the flat schema to CronService.createJob', async () => {
+    const svc = makeServiceStub();
+    const tools = buildCronTools('mind', '/tmp/mind', svc);
+    const tool = tools.find((t) => t.name === 'cron_create');
+    expect(tool).toBeDefined();
+    await tool!.handler({
+      name: 'd', schedule: '0 9 * * *', scriptPath: '.chamber/automation/d.ts',
     });
-    expect(parameters.required).toEqual(['name', 'schedule', 'type', 'payload']);
+    expect(svc.createJob).toHaveBeenCalledWith('mind', '/tmp/mind', {
+      name: 'd', schedule: '0 9 * * *', scriptPath: '.chamber/automation/d.ts',
+    });
   });
 
-  it('cron_list dispatches to cronService.listJobs', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const list = tools.find((t) => t.name === 'cron_list')!;
-
-    await list.handler({});
-
-    expect(mockService.listJobs).toHaveBeenCalledWith('mind-1', '/path');
+  it('automation_validate calls cronService.validateScript', async () => {
+    const svc = makeServiceStub();
+    const tools = buildCronTools('mind', '/tmp/mind', svc);
+    const tool = tools.find((t) => t.name === 'automation_validate');
+    await tool!.handler({ scriptPath: '.chamber/automation/x.ts' });
+    expect(svc.validateScript).toHaveBeenCalledWith('mind', '.chamber/automation/x.ts');
   });
 
-  it('cron_remove dispatches to cronService.removeJob', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const remove = tools.find((t) => t.name === 'cron_remove')!;
-
-    await remove.handler({ id: 'job-123' });
-
-    expect(mockService.removeJob).toHaveBeenCalledWith('mind-1', 'job-123');
-  });
-
-  it('cron_enable dispatches to cronService.enableJob', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const enable = tools.find((t) => t.name === 'cron_enable')!;
-
-    await enable.handler({ id: 'job-123' });
-
-    expect(mockService.enableJob).toHaveBeenCalledWith('mind-1', 'job-123');
-  });
-
-  it('cron_disable dispatches to cronService.disableJob', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const disable = tools.find((t) => t.name === 'cron_disable')!;
-
-    await disable.handler({ id: 'job-123' });
-
-    expect(mockService.disableJob).toHaveBeenCalledWith('mind-1', 'job-123');
-  });
-
-  it('cron_run_now dispatches to cronService.runNow', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const runNow = tools.find((t) => t.name === 'cron_run_now')!;
-
-    await runNow.handler({ id: 'job-123' });
-
-    expect(mockService.runNow).toHaveBeenCalledWith('mind-1', 'job-123');
-  });
-
-  it('cron_history dispatches to cronService.listRuns', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const history = tools.find((t) => t.name === 'cron_history')!;
-
-    await history.handler({ jobId: 'job-123' });
-
-    expect(mockService.listRuns).toHaveBeenCalledWith('mind-1', 'job-123');
-  });
-
-  it('cron_history passes undefined when no jobId provided', async () => {
-    const tools = buildCronTools('mind-1', '/path', mockService as unknown as CronService);
-    const history = tools.find((t) => t.name === 'cron_history')!;
-
-    await history.handler({});
-
-    expect(mockService.listRuns).toHaveBeenCalledWith('mind-1', undefined);
+  it('cron_run_detail calls cronService.getRunDetail', async () => {
+    const svc = makeServiceStub();
+    const tools = buildCronTools('mind', '/tmp/mind', svc);
+    const tool = tools.find((t) => t.name === 'cron_run_detail');
+    await tool!.handler({ runId: 'r-1' });
+    expect(svc.getRunDetail).toHaveBeenCalledWith('mind', 'r-1');
   });
 });

@@ -10,7 +10,7 @@ const cdpPort = Number(process.env.CHAMBER_E2E_CRON_CDP_PORT ?? 9340);
 const expectedReply = 'CRON_SMOKE_OK';
 const cronInstruction = [
   'When asked to run the cron lifecycle smoke, use Chamber cron tools to:',
-  '1. create a disabled notification cron job with the exact requested name, schedule, title, and body;',
+  '1. create a disabled cron job with the exact requested name, schedule, and scriptPath;',
   '2. list cron jobs and confirm the job exists;',
   '3. run the job immediately;',
   '4. inspect cron history for the job;',
@@ -97,8 +97,7 @@ test.describe('electron Monica cron tools smoke', () => {
           mindId,
           [
             'Run the cron lifecycle smoke now using your cron tools.',
-            `Create a disabled notification job named "${name}" with schedule "0 9 * * *".`,
-            `The cron_create call must include payload: {"title":"${name}","body":"Cron scheduler smoke test fired."}.`,
+            `Create a disabled cron job named "${name}" with schedule "0 9 * * *" and scriptPath ".chamber/automation/smoke.ts".`,
             'List jobs to confirm it exists, run it now, inspect its history, remove it, and list again to verify it is gone.',
             `After verifying removal, reply exactly ${expected} and no other text.`,
           ].join(' '),
@@ -129,6 +128,18 @@ test.describe('electron Monica cron tools smoke', () => {
 function seedMonicaMind(targetMindPath: string): void {
   fs.mkdirSync(path.join(targetMindPath, '.github', 'agents'), { recursive: true });
   fs.mkdirSync(path.join(targetMindPath, '.working-memory'), { recursive: true });
+  fs.mkdirSync(path.join(targetMindPath, '.chamber', 'automation'), { recursive: true });
+  fs.writeFileSync(
+    path.join(targetMindPath, '.chamber', 'automation', 'smoke.ts'),
+    [
+      "import { TaskGraph } from '@ianphil/ttasks-ts';",
+      "import { runGraph } from '@chamber/automation-runtime';",
+      'const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });',
+      'await runGraph(graph);',
+      'console.log("cron smoke ran");',
+      '',
+    ].join('\n'),
+  );
   fs.writeFileSync(
     path.join(targetMindPath, 'SOUL.md'),
     [
@@ -162,10 +173,16 @@ function seedMonicaMind(targetMindPath: string): void {
 }
 
 function readCronJobs(targetMindPath: string): Array<{ name?: string }> {
-  const jobsPath = path.join(targetMindPath, '.chamber', 'cron.json');
-  if (!fs.existsSync(jobsPath)) return [];
-  const parsed = JSON.parse(fs.readFileSync(jobsPath, 'utf-8')) as { jobs?: Array<{ name?: string }> };
-  return parsed.jobs ?? [];
+  const candidates = [
+    path.join(targetMindPath, '.chamber', 'schedules', 'cron.json'),
+    path.join(targetMindPath, '.chamber', 'cron.json'),
+  ];
+  for (const jobsPath of candidates) {
+    if (!fs.existsSync(jobsPath)) continue;
+    const parsed = JSON.parse(fs.readFileSync(jobsPath, 'utf-8')) as { jobs?: Array<{ name?: string }> };
+    return parsed.jobs ?? [];
+  }
+  return [];
 }
 
 async function removeTempRoot(root: string): Promise<void> {

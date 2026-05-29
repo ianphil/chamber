@@ -1,28 +1,23 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { randomUUID } from 'crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type {
   CreateCronJobInput,
   CronJob,
-  CronJobRunRecord,
   StoredCronJobs,
-  StoredCronRuns,
 } from './types';
+import { STORED_CRON_SCHEMA_VERSION } from './types';
+import { runMigrations } from './migrations';
 
 const CRON_DIR = '.chamber';
 const SCHEDULES_DIR = 'schedules';
 const JOBS_FILE = 'cron.json';
-const RUNS_FILE = 'cron-runs.json';
-const DEFAULT_RUN_LIMIT = 50;
 
 export class JobStore {
   private jobsCache: StoredCronJobs | null = null;
-  private runsCache: StoredCronRuns | null = null;
+  private migrationAttempted = false;
 
-  constructor(
-    private readonly mindPath: string,
-    private readonly runLimit = DEFAULT_RUN_LIMIT,
-  ) {
+  constructor(private readonly mindPath: string) {
     this.relocateScheduleFile();
   }
 
@@ -36,16 +31,16 @@ export class JobStore {
 
   createJob(input: CreateCronJobInput): CronJob {
     const now = new Date().toISOString();
-    // CreateCronJobInput is a discriminated union that correlates type + payload,
-    // so spreading preserves the discriminant and makes the assertion safe.
-    const job = {
+    const job: CronJob = {
       id: `cron-${randomUUID()}`,
-      ...input,
+      name: input.name,
+      schedule: input.schedule,
+      scriptPath: input.scriptPath,
       enabled: input.enabled ?? true,
+      ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
       createdAt: now,
       updatedAt: now,
-    } as CronJob;
-
+    };
     const state = this.readJobs();
     state.jobs.push(job);
     this.writeJobs(state);
@@ -55,10 +50,7 @@ export class JobStore {
   updateJob(jobId: string, updater: (job: CronJob) => CronJob): CronJob {
     const state = this.readJobs();
     const index = state.jobs.findIndex((job) => job.id === jobId);
-    if (index === -1) {
-      throw new Error(`Cron job ${jobId} not found`);
-    }
-
+    if (index === -1) throw new Error(`Cron job ${jobId} not found`);
     const updated = {
       ...updater(state.jobs[index]),
       updatedAt: new Date().toISOString(),
@@ -72,101 +64,70 @@ export class JobStore {
     const state = this.readJobs();
     const index = state.jobs.findIndex((job) => job.id === jobId);
     if (index === -1) return null;
-
     const [removed] = state.jobs.splice(index, 1);
     this.writeJobs(state);
-
-    const runs = this.readRuns();
-    delete runs.runs[jobId];
-    this.writeRuns(runs);
-
     return removed;
   }
 
-  listRuns(jobId?: string): CronJobRunRecord[] {
-    const state = this.readRuns();
-    const runs = jobId ? (state.runs[jobId] ?? []) : Object.values(state.runs).flat();
-    return [...runs].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-  }
-
-  appendRun(
-    run: Omit<CronJobRunRecord, 'id'>,
-  ): CronJobRunRecord {
-    const state = this.readRuns();
-    const existing = state.runs[run.jobId] ?? [];
-    const record: CronJobRunRecord = {
-      id: `cron-run-${randomUUID()}`,
-      ...run,
-    };
-
-    state.runs[run.jobId] = [...existing, record].slice(-this.runLimit);
-    this.writeRuns(state);
-    return record;
-  }
-
   private getCronDir(): string {
-    const cronDir = path.join(this.mindPath, CRON_DIR);
-    fs.mkdirSync(cronDir, { recursive: true });
-    return cronDir;
-  }
-
-  private getJobsPath(): string {
-    const legacyPath = path.join(this.getCronDir(), JOBS_FILE);
-    if (fs.existsSync(legacyPath)) return legacyPath;
-    return path.join(this.getSchedulesDir(), JOBS_FILE);
-  }
-
-  private getRunsPath(): string {
-    return path.join(this.getCronDir(), RUNS_FILE);
+    const dir = path.join(this.mindPath, CRON_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
   }
 
   private getSchedulesDir(): string {
-    const schedulesDir = path.join(this.getCronDir(), SCHEDULES_DIR);
-    fs.mkdirSync(schedulesDir, { recursive: true });
-    return schedulesDir;
+    const dir = path.join(this.getCronDir(), SCHEDULES_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  private getJobsPath(): string {
+    const legacy = path.join(this.getCronDir(), JOBS_FILE);
+    if (fs.existsSync(legacy)) return legacy;
+    return path.join(this.getSchedulesDir(), JOBS_FILE);
   }
 
   private relocateScheduleFile(): void {
-    const legacyPath = path.join(this.getCronDir(), JOBS_FILE);
-    const relocatedPath = path.join(this.getSchedulesDir(), JOBS_FILE);
-    if (!fs.existsSync(legacyPath) || fs.existsSync(relocatedPath)) return;
+    const legacy = path.join(this.getCronDir(), JOBS_FILE);
+    const relocated = path.join(this.getSchedulesDir(), JOBS_FILE);
+    if (!fs.existsSync(legacy) || fs.existsSync(relocated)) return;
     try {
-      fs.renameSync(legacyPath, relocatedPath);
+      fs.renameSync(legacy, relocated);
     } catch {
-      // Backward-compatible reads still use the legacy path if relocation fails.
+      // best-effort
     }
   }
 
   private readJobs(): StoredCronJobs {
     if (this.jobsCache) return this.jobsCache;
-    this.jobsCache = this.readJson(this.getJobsPath(), { jobs: [] });
+    const filePath = this.getJobsPath();
+    const raw = fs.existsSync(filePath)
+      ? (JSON.parse(fs.readFileSync(filePath, 'utf8')) as StoredCronJobs)
+      : { jobs: [] };
+    if (raw.schemaVersion !== STORED_CRON_SCHEMA_VERSION && !this.migrationAttempted) {
+      this.migrationAttempted = true;
+      runMigrations(this.mindPath);
+      const reread = fs.existsSync(filePath)
+        ? (JSON.parse(fs.readFileSync(filePath, 'utf8')) as StoredCronJobs)
+        : { jobs: [], schemaVersion: STORED_CRON_SCHEMA_VERSION };
+      this.jobsCache = ensureVersion(reread);
+      return this.jobsCache;
+    }
+    this.jobsCache = ensureVersion(raw);
     return this.jobsCache;
   }
 
   private writeJobs(state: StoredCronJobs): void {
+    state.schemaVersion = STORED_CRON_SCHEMA_VERSION;
     this.jobsCache = state;
-    this.writeJson(this.getJobsPath(), state);
+    const filePath = this.getJobsPath();
+    const temp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(state, null, 2) + '\n');
+    fs.renameSync(temp, filePath);
   }
+}
 
-  private readRuns(): StoredCronRuns {
-    if (this.runsCache) return this.runsCache;
-    this.runsCache = this.readJson(this.getRunsPath(), { runs: {} });
-    return this.runsCache;
-  }
-
-  private writeRuns(state: StoredCronRuns): void {
-    this.runsCache = state;
-    this.writeJson(this.getRunsPath(), state);
-  }
-
-  private readJson<T>(filePath: string, fallback: T): T {
-    if (!fs.existsSync(filePath)) return fallback;
-    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
-  }
-
-  private writeJson(filePath: string, value: unknown): void {
-    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(value, null, 2) + '\n');
-    fs.renameSync(tempPath, filePath);
-  }
+function ensureVersion(state: StoredCronJobs): StoredCronJobs {
+  if (state.schemaVersion === STORED_CRON_SCHEMA_VERSION) return state;
+  return { ...state, schemaVersion: STORED_CRON_SCHEMA_VERSION };
 }

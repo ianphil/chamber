@@ -13,7 +13,7 @@ Chamber is a desktop application where AI agents ("minds") operate as a Chief of
 - **Lens views**: Minds can create `view.json` files in `.github/lens/` to extend the UI with 7 view types (form, table, briefing, detail, status-board, timeline, editor)
 - **Write-back**: Minds can modify data through the action bar on any Lens view
 - **Canvas**: Minds can render HTML dashboards, reports, and forms in a browser with live reload
-- **Cron**: Minds can schedule prompt, process, webhook, and notification jobs
+- **Cron**: Minds can schedule TypeScript automation scripts under `.chamber/automation/*.ts` authored with `@chamber/automation-runtime` + `@ianphil/ttasks-ts`
 
 ### Chatroom (Multi-Agent)
 
@@ -36,6 +36,14 @@ Chamber is a desktop application where AI agents ("minds") operate as a Chief of
 - Approval gate (`approval-gate.ts`) provides tool execution review
 - Observability layer (`observability.ts`) emits structured events with redaction
 
+### Automation Scripts (Cron)
+
+- Cron schedules execute TypeScript files under `<mind>/.chamber/automation/*.ts` via a bundled Node + tsx + typescript runtime (`resources/automation-runtime/`).
+- Script paths are validated by `validateScriptPath` — must be relative, inside `.chamber/automation/`, end in `.ts`, and resolve (with symlinks) to a real file under that directory. Path traversal and symlink-escape are rejected.
+- `ScriptRunner` spawns each script in a child Node process with `CHAMBER_BRIDGE_URL` + a per-spawn `CHAMBER_BRIDGE_TOKEN` minted by `TokenRegistry`. Tokens are revoked on script exit and on registry shutdown.
+- `AutomationBridge` is a loopback HTTP server (127.0.0.1) requiring `Authorization: Bearer <token>`. It exposes `/prompt` (delegates to the calling mind's chat) and `/notify` (UI surface). All requests are bound to the mind that owns the token.
+- `automation_validate` runs `tsc --noEmit` against the script before execution, surfacing type errors to the mind.
+
 ### Desktop Considerations
 
 - Close-to-tray means agents may run unattended
@@ -50,6 +58,6 @@ When contributing to Chamber:
 - Do not modify `.working-memory/` files in PRs (agent-managed)
 - Validate all `view.json` files against the Lens schema before rendering
 - Canvas HTML rendering must be sandboxed (no access to Electron main process APIs)
-- Cron job definitions must not allow arbitrary shell execution
+- Cron schedules must reference TypeScript automation scripts; do not introduce arbitrary shell execution paths
 - Tool call responses must be sanitized before display in chat UI
 - Multi-agent chatroom changes require review of orchestration safety (delegation limits, approval gates)

@@ -9,6 +9,7 @@ export * from './chat';
 export * from './chatroom';
 export * from './config';
 export * from './cron';
+export * from './automation';
 export * from './genesis';
 export * from './lens';
 export * from './ledger';
