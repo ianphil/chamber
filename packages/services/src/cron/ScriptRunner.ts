@@ -195,6 +195,7 @@ export class ScriptRunner {
       '--skipLibCheck',
       '--isolatedModules',
       '--types', 'node',
+      ...buildTypeRootsArgs(runtime.nodePath),
       resolvedScript,
     ];
     const env: NodeJS.ProcessEnv = {
@@ -283,6 +284,23 @@ function defaultResolveRuntime(): ResolvedRuntime {
     tsxCli,
     nodePath,
   };
+}
+
+/**
+ * tsc resolves `--types node` against `node_modules/@types` dirs found via
+ * `typeRoots`. The spawned validator's cwd is the mind directory, which has no
+ * node_modules, so we point tsc at the `@types` dir inside each NODE_PATH entry
+ * (the vendored runtime + repo node_modules in dev, the staged runtime when
+ * packaged). Without this, validation fails with TS2688 "Cannot find type
+ * definition file for 'node'".
+ */
+function buildTypeRootsArgs(nodePath: string): string[] {
+  const roots = nodePath
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) => path.join(dir, '@types'))
+    .filter((dir) => fs.existsSync(dir));
+  return roots.length > 0 ? ['--typeRoots', roots.join(',')] : [];
 }
 
 function findRepoRoot(): string {

@@ -5,6 +5,7 @@
   "description": "Pinned packaged runtime for Chamber automation scripts (tsx + typescript + ttasks)",
   "dependencies": {
     "@ianphil/ttasks-ts": "git+https://github.com/ianphil/ttasks-ts.git#v0.3.0",
+    "@types/node": "24.12.4",
     "tsx": "4.22.3",
     "typescript": "6.0.3"
   }
