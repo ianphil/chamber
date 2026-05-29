@@ -365,7 +365,15 @@ async function initializeRuntime(): Promise<void> {
     openExternal: { open: (url) => shell.openExternal(url) },
   });
   const automationBridge = new AutomationBridge({
-    onPrompt: async ({ mindId, prompt }) => {
+    onPrompt: async ({ mindId, prompt, recipient }) => {
+      if (recipient && recipient !== mindId) {
+        // Cross-mind prompt routing is intentionally unsupported in v2 (see
+        // AGENTS.md orchestration-safety boundary). Fail loudly rather than
+        // silently delivering to the wrong mind.
+        throw new Error(
+          `cross-mind prompt routing to "${recipient}" is not supported; prompts run against the script's owning mind`,
+        );
+      }
       const mindPath = mindManager.getMind(mindId)?.mindPath;
       if (!mindPath) {
         throw new Error(`mind ${mindId} not active`);

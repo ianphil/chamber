@@ -66,6 +66,9 @@ export class ScriptRunner {
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      // When nodeBinary is the Electron binary (dev), this makes it behave as
+      // plain Node. Standalone Node (packaged) and the test runner ignore it.
+      ELECTRON_RUN_AS_NODE: '1',
       CHAMBER_MIND_ID: params.mindId,
       CHAMBER_MIND_PATH: params.mindPath,
       CHAMBER_TTASKS_DB: ttasksDb,
@@ -196,6 +199,7 @@ export class ScriptRunner {
     ];
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
       NODE_PATH: runtime.nodePath,
     };
     return await new Promise((resolve) => {

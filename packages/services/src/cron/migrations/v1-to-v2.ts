@@ -56,15 +56,13 @@ export function runMigrations(mindPath: string): void {
 
   const newJobs: CronJob[] = [];
   const errors: CronMigrationError[] = [];
+  const usedNames = new Set<string>();
 
   for (const legacy of (raw.jobs ?? []) as LegacyJob[]) {
     try {
-      const { scriptPath, contents } = translateJob(legacy);
-      const fileName = `${slugify(legacy.id)}.ts`;
-      const targetAbs = path.join(migratedDir, fileName);
-      writeScriptIdempotent(targetAbs, contents);
+      const contents = translateJob(legacy);
+      const fileName = writeMigratedScript(migratedDir, slugify(legacy.id), contents, usedNames);
       newJobs.push(toV2Job(legacy, path.join(AUTOMATION_DIR, '_migrated', fileName)));
-      void scriptPath;
     } catch (err) {
       errors.push({
         legacyId: legacy.id,
@@ -90,7 +88,7 @@ export function runMigrations(mindPath: string): void {
   }
 }
 
-function translateJob(legacy: LegacyJob): { scriptPath: string; contents: string } {
+function translateJob(legacy: LegacyJob): string {
   switch (legacy.type) {
     case 'prompt': {
       const prompt = legacy.payload?.prompt;
@@ -98,10 +96,7 @@ function translateJob(legacy: LegacyJob): { scriptPath: string; contents: string
         throw new Error('prompt job missing payload.prompt');
       }
       const recipient = legacy.payload?.recipient;
-      return {
-        scriptPath: legacy.id,
-        contents: promptScript(prompt, recipient),
-      };
+      return promptScript(prompt, recipient);
     }
     case 'shell': {
       const command = legacy.payload?.command;
@@ -109,25 +104,19 @@ function translateJob(legacy: LegacyJob): { scriptPath: string; contents: string
         throw new Error('shell job missing payload.command');
       }
       const args = Array.isArray(legacy.payload?.args) ? legacy.payload.args : [];
-      return {
-        scriptPath: legacy.id,
-        contents: shellScript(command, args, legacy.timeoutMs),
-      };
+      return shellScript(command, args, legacy.timeoutMs);
     }
     case 'webhook': {
       const url = legacy.payload?.url;
       if (typeof url !== 'string' || url.trim() === '') {
         throw new Error('webhook job missing payload.url');
       }
-      return {
-        scriptPath: legacy.id,
-        contents: webhookScript(
-          url,
-          legacy.payload.method ?? 'POST',
-          legacy.payload.headers ?? {},
-          legacy.payload.body,
-        ),
-      };
+      return webhookScript(
+        url,
+        legacy.payload.method ?? 'POST',
+        legacy.payload.headers ?? {},
+        legacy.payload.body,
+      );
     }
     case 'notification': {
       const title = legacy.payload?.title;
@@ -135,10 +124,7 @@ function translateJob(legacy: LegacyJob): { scriptPath: string; contents: string
       if (typeof title !== 'string' || typeof body !== 'string') {
         throw new Error('notification job missing payload.title or payload.body');
       }
-      return {
-        scriptPath: legacy.id,
-        contents: notificationScript(title, body),
-      };
+      return notificationScript(title, body);
     }
     default: {
       const t = (legacy as { type?: string }).type ?? 'unknown';
@@ -166,15 +152,24 @@ function toV2Job(legacy: LegacyJob, scriptRelPath: string): CronJob {
 // --- Script templates (codegen) ---
 
 function promptScript(prompt: string, recipient?: string): string {
-  const recipientLine = recipient ? `  recipient: ${JSON.stringify(recipient)},\n` : '';
-  return `${header()}
+  // v1 prompt jobs could target another mind via `recipient`. v2 runs prompts
+  // against the script's owning mind only (cross-mind routing intentionally
+  // dropped — see AGENTS.md orchestration-safety boundary). Surface the
+  // original recipient as a comment so the author can re-route deliberately
+  // rather than silently losing it.
+  const recipientNote = recipient
+    ? `// NOTE: the original cron job targeted recipient ${JSON.stringify(recipient)}.\n`
+      + `// Cross-mind prompt routing is not supported in v2; this prompt now runs\n`
+      + `// against the mind that owns this script. Edit if you need different behavior.\n`
+    : '';
+  return `${header()}${recipientNote}
 import { TaskGraph } from '@ianphil/ttasks-ts';
 import { chamberPrompt, runGraph } from '@chamber/automation-runtime';
 
 const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
 graph.add(chamberPrompt({
   prompt: ${JSON.stringify(prompt)},
-${recipientLine}}));
+}));
 await runGraph(graph);
 `;
 }
@@ -278,18 +273,38 @@ function writeJsonAtomic(filePath: string, value: unknown): void {
   fs.renameSync(temp, filePath);
 }
 
-function writeScriptIdempotent(targetAbs: string, contents: string): void {
-  if (fs.existsSync(targetAbs)) {
-    const existing = fs.readFileSync(targetAbs, 'utf8');
-    if (existing === contents) return;
-    // Different content under the same slug — preserve user edits by leaving
-    // the existing file alone and writing a sibling with a suffix.
-    let n = 1;
-    while (fs.existsSync(`${targetAbs}.${n}.ts`)) n += 1;
-    fs.writeFileSync(`${targetAbs}.${n}.ts`, contents);
-    return;
+/**
+ * Writes a migrated script into `dir`, choosing a filename derived from
+ * `baseName` that is unique within this migration run (tracked via `used`) and
+ * does not clobber a different existing file. Returns the chosen filename.
+ *
+ * Distinct legacy jobs whose ids slugify identically therefore each get their
+ * own file (`slug.ts`, `slug-2.ts`, …) instead of silently sharing one — and
+ * the returned name is what the v2 job points at, keeping job ↔ file in sync.
+ * A re-run that finds an identical file reuses it (idempotent).
+ */
+function writeMigratedScript(
+  dir: string,
+  baseName: string,
+  contents: string,
+  used: Set<string>,
+): string {
+  for (let n = 1; ; n += 1) {
+    const candidate = n === 1 ? `${baseName}.ts` : `${baseName}-${n}.ts`;
+    if (used.has(candidate)) continue;
+    const abs = path.join(dir, candidate);
+    if (!fs.existsSync(abs)) {
+      used.add(candidate);
+      fs.writeFileSync(abs, contents, { flag: 'wx' });
+      return candidate;
+    }
+    // Exists on disk: reuse if identical (idempotent re-run), else try the
+    // next candidate so a user's edited file is never overwritten.
+    if (fs.readFileSync(abs, 'utf8') === contents) {
+      used.add(candidate);
+      return candidate;
+    }
   }
-  fs.writeFileSync(targetAbs, contents, { flag: 'wx' });
 }
 
 function slugify(id: string): string {

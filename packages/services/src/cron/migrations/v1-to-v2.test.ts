@@ -116,6 +116,22 @@ describe('v1 → v2 cron migration', () => {
     expect(fs.existsSync(path.join(mindPath, '.chamber', 'cron.v1.backup.json'))).toBe(false);
   });
 
+  it('gives slug-colliding job ids distinct script files pointing at their own content', () => {
+    writeV1([
+      { id: 'Daily Report!', name: 'a', schedule: '* * * * *', type: 'prompt', payload: { prompt: 'first' } },
+      { id: 'daily/report', name: 'b', schedule: '* * * * *', type: 'shell', payload: { command: 'echo', args: ['second'] } },
+    ]);
+    runMigrations(mindPath);
+    const state = readJobs();
+    expect(state.jobs).toHaveLength(2);
+    const byId = Object.fromEntries(state.jobs.map((j) => [j.id, j]));
+    const pathA = byId['Daily Report!'].scriptPath;
+    const pathB = byId['daily/report'].scriptPath;
+    expect(pathA).not.toBe(pathB);
+    expect(fs.readFileSync(path.join(mindPath, pathA), 'utf8')).toContain('first');
+    expect(fs.readFileSync(path.join(mindPath, pathB), 'utf8')).toContain('echo');
+  });
+
   it('does nothing if no cron file exists', () => {
     expect(() => runMigrations(mindPath)).not.toThrow();
     expect(fs.existsSync(path.join(mindPath, '.chamber'))).toBe(false);
