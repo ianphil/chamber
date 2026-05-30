@@ -154,7 +154,7 @@ function toV2Job(legacy: LegacyJob, scriptRelPath: string): CronJob {
 function promptScript(prompt: string, recipient?: string): string {
   // v1 prompt jobs could target another mind via `recipient`. v2 runs prompts
   // against the script's owning mind only (cross-mind routing intentionally
-  // dropped — see AGENTS.md orchestration-safety boundary). Surface the
+  // dropped - see AGENTS.md orchestration-safety boundary). Surface the
   // original recipient as a comment so the author can re-route deliberately
   // rather than silently losing it.
   const recipientNote = recipient
@@ -163,14 +163,28 @@ function promptScript(prompt: string, recipient?: string): string {
       + `// against the mind that owns this script. Edit if you need different behavior.\n`
     : '';
   return `${header()}${recipientNote}
-import { TaskGraph } from '@ianphil/ttasks-ts';
-import { chamberPrompt, runGraph } from '@chamber/automation-runtime';
+import { TaskGraph, TaskExecutor, SqliteStore, type Store } from '@ianphil/ttasks-ts';
+import { chamberPrompt, promptHandler } from '@chamber/automation-runtime';
 
-const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
+const graphId = process.env.CHAMBER_GRAPH_ID;
+const dbPath = process.env.CHAMBER_TTASKS_DB;
+if (!graphId) throw new Error('CHAMBER_GRAPH_ID is required');
+if (!dbPath) throw new Error('CHAMBER_TTASKS_DB is required');
+
+const graph = new TaskGraph({ id: graphId });
 graph.add(chamberPrompt({
   prompt: ${JSON.stringify(prompt)},
 }));
-await runGraph(graph);
+
+const store: Store = new SqliteStore({ path: dbPath });
+const executor = new TaskExecutor({ store });
+executor.register('chamber:prompt', promptHandler);
+
+try {
+  await graph.run(executor);
+} finally {
+  await executor.shutdown();
+}
 `;
 }
 
@@ -178,13 +192,33 @@ function shellScript(command: string, args: string[], timeoutMs?: number): strin
   const tokens = [command, ...args].map((token) => JSON.stringify(token)).join(', ');
   const timeoutLine = typeof timeoutMs === 'number' ? `, { timeout: ${timeoutMs} }` : '';
   return `${header()}
-import { Task, TaskGraph } from '@ianphil/ttasks-ts';
-import { runGraph } from '@chamber/automation-runtime';
+import {
+  Task,
+  TaskGraph,
+  TaskExecutor,
+  SqliteStore,
+  createBashHandler,
+  type Store,
+} from '@ianphil/ttasks-ts';
 
 const cmd = [${tokens}].join(' ');
-const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
+const graphId = process.env.CHAMBER_GRAPH_ID;
+const dbPath = process.env.CHAMBER_TTASKS_DB;
+if (!graphId) throw new Error('CHAMBER_GRAPH_ID is required');
+if (!dbPath) throw new Error('CHAMBER_TTASKS_DB is required');
+
+const graph = new TaskGraph({ id: graphId });
 graph.add(Task.bash(cmd${timeoutLine}));
-await runGraph(graph);
+
+const store: Store = new SqliteStore({ path: dbPath });
+const executor = new TaskExecutor({ store });
+executor.register('bash', createBashHandler());
+
+try {
+  await graph.run(executor);
+} finally {
+  await executor.shutdown();
+}
 `;
 }
 
@@ -195,37 +229,64 @@ function webhookScript(
   body: unknown,
 ): string {
   return `${header()}
-import { TaskGraph } from '@ianphil/ttasks-ts';
-import { runGraph } from '@chamber/automation-runtime';
-import { httpTask } from '@chamber/automation-runtime/task-helpers';
+import { TaskGraph, TaskExecutor, SqliteStore, type Store } from '@ianphil/ttasks-ts';
+import { httpHandler, httpTask } from '@chamber/automation-runtime';
 
-const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
+const graphId = process.env.CHAMBER_GRAPH_ID;
+const dbPath = process.env.CHAMBER_TTASKS_DB;
+if (!graphId) throw new Error('CHAMBER_GRAPH_ID is required');
+if (!dbPath) throw new Error('CHAMBER_TTASKS_DB is required');
+
+const graph = new TaskGraph({ id: graphId });
 graph.add(httpTask({
   url: ${JSON.stringify(url)},
   method: ${JSON.stringify(method)},
   headers: ${JSON.stringify(headers)},
   body: ${JSON.stringify(body ?? null)},
 }));
-await runGraph(graph);
+
+const store: Store = new SqliteStore({ path: dbPath });
+const executor = new TaskExecutor({ store });
+executor.register('http', httpHandler);
+
+try {
+  await graph.run(executor);
+} finally {
+  await executor.shutdown();
+}
 `;
 }
 
 function notificationScript(title: string, body: string): string {
   return `${header()}
-import { TaskGraph } from '@ianphil/ttasks-ts';
-import { chamberNotify, runGraph } from '@chamber/automation-runtime';
+import { TaskGraph, TaskExecutor, SqliteStore, type Store } from '@ianphil/ttasks-ts';
+import { chamberNotify, notifyHandler } from '@chamber/automation-runtime';
 
-const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
+const graphId = process.env.CHAMBER_GRAPH_ID;
+const dbPath = process.env.CHAMBER_TTASKS_DB;
+if (!graphId) throw new Error('CHAMBER_GRAPH_ID is required');
+if (!dbPath) throw new Error('CHAMBER_TTASKS_DB is required');
+
+const graph = new TaskGraph({ id: graphId });
 graph.add(chamberNotify({
   title: ${JSON.stringify(title)},
   body: ${JSON.stringify(body)},
 }));
-await runGraph(graph);
+
+const store: Store = new SqliteStore({ path: dbPath });
+const executor = new TaskExecutor({ store });
+executor.register('chamber:notify', notifyHandler);
+
+try {
+  await graph.run(executor);
+} finally {
+  await executor.shutdown();
+}
 `;
 }
 
 function header(): string {
-  return `// Auto-generated by Chamber v1 → v2 cron migration.
+  return `// Auto-generated by Chamber v1 -> v2 cron migration.
 // You can edit this file freely; the migration will not overwrite it.
 `;
 }

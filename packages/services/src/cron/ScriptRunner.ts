@@ -72,7 +72,7 @@ export class ScriptRunner {
     const ttasksDb = path.join(params.mindPath, '.chamber', 'runs', 'ttasks.db');
     fs.mkdirSync(path.dirname(ttasksDb), { recursive: true });
 
-    // Automation scripts use top-level `await runGraph(graph)`, which requires
+    // Automation scripts use top-level `await graph.run(executor)`, which requires
     // ESM. tsx emits ESM only when the script's package scope is type:module,
     // and the ESM loader ignores NODE_PATH - so we also generate a tsconfig with
     // `paths` for the runtime packages and point tsx at it.
@@ -308,7 +308,7 @@ function defaultResolveRuntime(): ResolvedRuntime {
 
 /**
  * Ensure the automation script's package scope is ESM so tsx emits ESM (needed
- * for top-level `await runGraph(graph)`). tsx/Node decide module format from the
+ * for top-level `await graph.run(executor)`). tsx/Node decide module format from the
  * nearest package.json `type`; the mind dir has none by default. We own
  * `.chamber/automation/package.json` and merge `type:module` in idempotently,
  * preserving any other fields a user may have added.

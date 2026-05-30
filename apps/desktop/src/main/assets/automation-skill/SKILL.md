@@ -56,7 +56,7 @@ import {
 - `@ianphil/ttasks-ts` is the runtime. Import `Task`, `TaskGraph`, `TaskExecutor`, `SqliteStore`, `RetryPolicy`, `createBashHandler`, `createPowershellHandler`, and the types from here.
 - `@chamber/automation-runtime` is **only** the Chamber bridge: `promptHandler`/`notifyHandler`/`httpHandler` (the handler functions) and `chamberPrompt`/`chamberNotify`/`httpTask` (helpers that build the matching task nodes). Use it for those, not as a general ttasks re-export.
 
-> Note: `@chamber/automation-runtime` also re-exports some ttasks names and a `runGraph()` convenience. Prefer importing ttasks primitives from `@ianphil/ttasks-ts` and running the graph with your own executor as shown below - it keeps the "this is just a ttasks app" model explicit and lets you control the executor (e.g. default retry).
+Do not import ttasks primitives through `@chamber/automation-runtime`. Import them directly from `@ianphil/ttasks-ts` and run the graph with your own executor as shown below - it keeps the "this is just a ttasks app" model explicit and lets you control the executor (e.g. default retry).
 
 ## Canonical program shape
 

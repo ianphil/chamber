@@ -13,7 +13,7 @@ Chamber is a desktop application where AI agents ("minds") operate as a Chief of
 - **Lens views**: Minds can create `view.json` files in `.github/lens/` to extend the UI with 7 view types (form, table, briefing, detail, status-board, timeline, editor)
 - **Write-back**: Minds can modify data through the action bar on any Lens view
 - **Canvas**: Minds can render HTML dashboards, reports, and forms in a browser with live reload
-- **Cron**: Minds can schedule TypeScript automation scripts under `.chamber/automation/*.ts` authored with `@chamber/automation-runtime` + `@ianphil/ttasks-ts`
+- **Cron**: Minds can schedule TypeScript automation scripts under `.chamber/automation/*.ts` authored as direct ttasks programs with `@ianphil/ttasks-ts`; `@chamber/automation-runtime` supplies only Chamber bridge helpers/handlers
 
 ### Chatroom (Multi-Agent)
 

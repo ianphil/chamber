@@ -16,12 +16,34 @@ const os = require('node:os');
 const path = require('node:path');
 
 const FIXTURE_SCRIPT = `
-import { Task, TaskGraph, runGraph } from '@chamber/automation-runtime';
+import {
+  Task,
+  TaskGraph,
+  TaskExecutor,
+  SqliteStore,
+  createBashHandler,
+  type Store,
+} from '@ianphil/ttasks-ts';
+import { httpHandler } from '@chamber/automation-runtime';
 
-const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
+const graphId = process.env.CHAMBER_GRAPH_ID;
+const dbPath = process.env.CHAMBER_TTASKS_DB;
+if (!graphId) throw new Error('CHAMBER_GRAPH_ID is required');
+if (!dbPath) throw new Error('CHAMBER_TTASKS_DB is required');
+
+const graph = new TaskGraph({ id: graphId });
 graph.add(Task.bash('echo from-bash-task'));
 
-await runGraph(graph);
+const store: Store = new SqliteStore({ path: dbPath });
+const executor = new TaskExecutor({ store });
+executor.register('bash', createBashHandler());
+executor.register('http', httpHandler);
+
+try {
+  await graph.run(executor);
+} finally {
+  await executor.shutdown();
+}
 console.log('automation-smoke-ok');
 `;
 
@@ -77,7 +99,7 @@ async function main() {
       paths: {
         '@chamber/automation-runtime': [rel(path.join(arDir, 'src', 'index.ts'))],
         '@chamber/automation-runtime/*': [rel(path.join(arDir, 'src')) + '/*'],
-        '@ianphil/ttasks-ts': [rel(ttDir)],
+        '@ianphil/ttasks-ts': [rel(path.join(ttDir, 'dist', 'index'))],
         '@ianphil/ttasks-ts/*': [rel(ttDir) + '/*'],
       },
     },
