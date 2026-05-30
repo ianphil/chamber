@@ -94,6 +94,9 @@ describe('forge config', () => {
       expect(extraResource).toContain('./resources/copilot-runtime');
       expect(extraResource).toContain('./resources/sqlite-runtime');
       expect(extraResource).toContain('./node_modules/keytar');
+      expect(extraResource).toContain('./apps/desktop/src/main/assets/lens-skill');
+      expect(extraResource).toContain('./apps/desktop/src/main/assets/ttasks-skill');
+      expect(extraResource).toContain('./apps/desktop/src/main/assets/automation-skill');
     });
   });
 });

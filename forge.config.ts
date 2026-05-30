@@ -109,6 +109,8 @@ const baseExtraResource = [
   './resources/automation-runtime',
   './node_modules/keytar',
   './apps/desktop/src/main/assets/lens-skill',
+  './apps/desktop/src/main/assets/ttasks-skill',
+  './apps/desktop/src/main/assets/automation-skill',
 ];
 
 const config: ForgeConfig = {

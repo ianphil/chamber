@@ -374,15 +374,11 @@ async function initializeRuntime(): Promise<void> {
           `cross-mind prompt routing to "${recipient}" is not supported; prompts run against the script's owning mind`,
         );
       }
-      const mindPath = mindManager.getMind(mindId)?.mindPath;
-      if (!mindPath) {
+      if (!mindManager.getMind(mindId)) {
         throw new Error(`mind ${mindId} not active`);
       }
-      // Background prompt: unattended path through MindManager. Returns void;
-      // we acknowledge to the script. Scripts that need a response value should
-      // use a downstream tool/lens, not the prompt return value.
-      await mindManager.sendBackgroundPrompt(mindPath, prompt);
-      return { text: 'queued' };
+      const text = await mindManager.runIsolatedPrompt(mindId, prompt);
+      return { text };
     },
     onNotify: async ({ title, body }) => {
       notifier.notify({ kind: 'info', title, body });

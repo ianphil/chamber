@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as path from 'path';
 import { MindManager } from './MindManager';
 import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
@@ -115,6 +116,8 @@ const mockViewDiscovery = {
   setRefreshHandler: vi.fn(),
 };
 
+const COPILOT_RUNTIME_CONFIG_DIR = path.join('C:\\tmp\\chamber-config', 'copilot-runtime');
+
 function lastSavedConfig(): AppConfig {
   const config = mockConfigService.save.mock.calls.at(-1)?.[0] as AppConfig | undefined;
   if (!config) throw new Error('Expected config to be saved');
@@ -229,7 +232,7 @@ describe('MindManager', () => {
       await manager.loadMind('/tmp/agents/q');
 
       expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({
-        configDir: 'C:\\tmp\\chamber-config\\copilot-runtime',
+        configDir: COPILOT_RUNTIME_CONFIG_DIR,
         enableConfigDiscovery: false,
       }));
     });
@@ -260,7 +263,7 @@ describe('MindManager', () => {
         'chamber-q-a1b2-existing',
         expect.objectContaining({
           workingDirectory: '/tmp/agents/q',
-          configDir: 'C:\\tmp\\chamber-config\\copilot-runtime',
+          configDir: COPILOT_RUNTIME_CONFIG_DIR,
           enableConfigDiscovery: false,
         }),
       );
@@ -280,6 +283,41 @@ describe('MindManager', () => {
       expect(sentPrompt).toEqual(expect.stringContaining('<current_datetime>'));
       expect(sentPrompt).toEqual(expect.stringContaining('<timezone>'));
       expect(sentPrompt).toEqual(expect.stringContaining('do background work'));
+    });
+
+    it('runs automation prompts in an isolated session without touching the active conversation', async () => {
+      const mind = await manager.loadMind('/tmp/agents/q');
+      const activeSession = manager.getMind(mind.mindId)?.session as unknown as ReturnType<typeof createSessionStub>;
+      const activeSessionId = manager.getMind(mind.mindId)?.activeSessionId;
+      mockConfigService.save.mockClear();
+
+      const answer = 'isolated answer';
+      mockCreateSession.mockImplementationOnce((config: Record<string, unknown>) => {
+        const session = createSessionStub(typeof config.sessionId === 'string' ? config.sessionId : undefined);
+        session.sendAndWait.mockResolvedValueOnce({
+          type: 'assistant.message',
+          data: { content: answer, messageId: 'assistant-1' },
+        });
+        return session;
+      });
+
+      const result = await manager.runIsolatedPrompt(mind.mindId, 'summarize current state');
+
+      const isolatedSession = mockCreateSession.mock.results.at(-1)?.value;
+      expect(result).toBe(answer);
+      expect(isolatedSession).not.toBe(activeSession);
+      expect(isolatedSession.sendAndWait).toHaveBeenCalledWith(
+        { prompt: expect.stringContaining('summarize current state') },
+        120_000,
+      );
+      expect(isolatedSession.sendAndWait.mock.calls[0]?.[0].prompt).toEqual(expect.stringContaining('<current_datetime>'));
+      expect(isolatedSession.disconnect).toHaveBeenCalled();
+      expect(activeSession.send).not.toHaveBeenCalled();
+      expect(activeSession.sendAndWait).not.toHaveBeenCalled();
+      expect(activeSession.disconnect).not.toHaveBeenCalled();
+      expect(manager.getMind(mind.mindId)?.session).toBe(activeSession);
+      expect(manager.getMind(mind.mindId)?.activeSessionId).toBe(activeSessionId);
+      expect(mockConfigService.save).not.toHaveBeenCalled();
     });
 
     it('uses a persisted per-mind model when creating the session', async () => {

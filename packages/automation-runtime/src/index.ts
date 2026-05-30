@@ -13,6 +13,16 @@ export { notifyHandler, chamberNotify } from './handlers/notify';
 export { httpHandler } from './handlers/http';
 export { httpTask } from './task-helpers';
 export { runGraph } from './run';
+export {
+  Task,
+  TaskExecutor,
+  TaskGraph,
+  SqliteStore,
+  createBashHandler,
+  type Store,
+  type TaskInit,
+  type TaskHandler,
+} from '@ianphil/ttasks-ts';
 export type { ChamberPromptInput, ChamberPromptOutput } from './handlers/prompt';
 export type { ChamberNotifyInput, ChamberNotifyOutput } from './handlers/notify';
 export type { HttpTaskInput } from './handlers/http';

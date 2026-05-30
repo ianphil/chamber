@@ -27,6 +27,57 @@ import { MindScaffold } from '../genesis/MindScaffold';
 
 const log = Logger.create('MindManager');
 const COPILOT_RUNTIME_CONFIG_DIR = 'copilot-runtime';
+const ISOLATED_PROMPT_TIMEOUT_MS = 120_000;
+
+type MindSessionKind = 'conversation' | 'task' | 'chatroom' | 'isolated-prompt';
+
+interface MindSessionPolicy {
+  persistsConversation: boolean;
+  ownsActiveSession: boolean;
+  disconnectsAfterUse: boolean;
+  purpose: string;
+}
+
+interface CreateMindSessionRequest {
+  kind: MindSessionKind;
+  client: CopilotClient;
+  mindPath: string;
+  systemMessage: string;
+  tools: Tool[];
+  onUserInputRequest?: UserInputHandler;
+  onPermissionRequest?: PermissionHandler;
+  useSetApproveAllShortcut?: boolean;
+  model?: string;
+  modelProvider?: ModelProvider;
+  sessionId?: string;
+}
+
+const MIND_SESSION_POLICIES: Record<MindSessionKind, MindSessionPolicy> = {
+  conversation: {
+    persistsConversation: true,
+    ownsActiveSession: true,
+    disconnectsAfterUse: false,
+    purpose: 'Interactive mind chat persisted in Chamber conversation history.',
+  },
+  task: {
+    persistsConversation: false,
+    ownsActiveSession: false,
+    disconnectsAfterUse: false,
+    purpose: 'Ephemeral task session for SDK task execution surfaces.',
+  },
+  chatroom: {
+    persistsConversation: false,
+    ownsActiveSession: false,
+    disconnectsAfterUse: false,
+    purpose: 'Ephemeral multi-agent chatroom participant session.',
+  },
+  'isolated-prompt': {
+    persistsConversation: false,
+    ownsActiveSession: false,
+    disconnectsAfterUse: true,
+    purpose: 'Ephemeral automation request/response session isolated from active chat.',
+  },
+};
 
 export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
@@ -194,6 +245,7 @@ export class MindManager extends EventEmitter {
     const session = knownRecord?.activeSessionId
       ? await this.loadConversationSession(
         client,
+        'conversation',
         resolvedMindPath,
         identity.systemMessage,
         sessionTools,
@@ -202,6 +254,7 @@ export class MindManager extends EventEmitter {
         selectedModelProvider,
       )
       : await this.createSessionForMind({
+        kind: 'conversation',
         client,
         mindPath: resolvedMindPath,
         systemMessage: identity.systemMessage,
@@ -405,6 +458,7 @@ export class MindManager extends EventEmitter {
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
     const recoveredSession = await this.loadConversationSession(
       context.client,
+      'conversation',
       context.mindPath,
       context.identity.systemMessage,
       sessionTools,
@@ -477,6 +531,7 @@ export class MindManager extends EventEmitter {
     const previousSession = context.session;
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
     const nextSession = await this.createSessionForMind({
+      kind: 'conversation',
       client: context.client,
       mindPath: context.mindPath,
       systemMessage: context.identity.systemMessage,
@@ -517,6 +572,7 @@ export class MindManager extends EventEmitter {
     if (!conversation) throw new Error(`Conversation ${sessionId} not found for mind ${mindId}`);
     const nextSession = await this.loadConversationSession(
       context.client,
+      'conversation',
       context.mindPath,
       context.identity.systemMessage,
       sessionTools,
@@ -621,6 +677,7 @@ export class MindManager extends EventEmitter {
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
     const nextSession = await this.loadConversationSession(
       context.client,
+      'conversation',
       context.mindPath,
       context.identity.systemMessage,
       sessionTools,
@@ -920,6 +977,7 @@ export class MindManager extends EventEmitter {
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
 
     return this.createSessionForMind({
+      kind: 'task',
       client: context.client,
       mindPath: context.mindPath,
       systemMessage: context.identity.systemMessage,
@@ -937,6 +995,7 @@ export class MindManager extends EventEmitter {
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
 
     return this.createSessionForMind({
+      kind: 'chatroom',
       client: context.client,
       mindPath: context.mindPath,
       systemMessage: context.identity.systemMessage,
@@ -945,6 +1004,42 @@ export class MindManager extends EventEmitter {
       model: context.selectedModel,
       modelProvider: context.selectedModelProvider,
     });
+  }
+
+  async runIsolatedPrompt(mindId: string, prompt: string): Promise<string> {
+    const context = this.minds.get(mindId);
+    if (!context) throw new Error(`Mind ${mindId} not found`);
+
+    const refreshedIdentity = this.identityLoader.load(context.mindPath);
+    if (refreshedIdentity) {
+      context.identity = refreshedIdentity;
+    }
+
+    const session = await this.createSessionForMind({
+      kind: 'isolated-prompt',
+      client: context.client,
+      mindPath: context.mindPath,
+      systemMessage: context.identity.systemMessage,
+      tools: this.getSessionTools(mindId, context.mindPath),
+      model: context.selectedModel,
+      modelProvider: context.selectedModelProvider,
+    });
+
+    try {
+      const response = await session.sendAndWait(
+        { prompt: injectCurrentDateTimeContext(prompt, getCurrentDateTimeContext()) },
+        ISOLATED_PROMPT_TIMEOUT_MS,
+      );
+      const text = response?.data.content;
+      if (typeof text !== 'string') {
+        throw new Error('Isolated prompt did not produce an assistant response');
+      }
+      return text;
+    } finally {
+      await session.disconnect().catch((error: unknown) => {
+        log.warn('Failed to disconnect isolated prompt session:', error);
+      });
+    }
   }
 
   private normalizeModelSelection(model: string | null | undefined): ModelSelection | null {
@@ -1014,19 +1109,9 @@ export class MindManager extends EventEmitter {
     return undefined;
   }
 
-  private async createSessionForMind(req: {
-    client: CopilotClient;
-    mindPath: string;
-    systemMessage: string;
-    tools: Tool[];
-    onUserInputRequest?: UserInputHandler;
-    onPermissionRequest?: PermissionHandler;
-    useSetApproveAllShortcut?: boolean;
-    model?: string;
-    modelProvider?: ModelProvider;
-    sessionId?: string;
-  }): Promise<CopilotSession> {
+  private async createSessionForMind(req: CreateMindSessionRequest): Promise<CopilotSession> {
     const {
+      kind,
       client,
       mindPath,
       systemMessage,
@@ -1038,6 +1123,7 @@ export class MindManager extends EventEmitter {
       modelProvider,
       sessionId,
     } = req;
+    this.assertCreateSessionPolicy(kind, sessionId);
     const mcpServers = loadMcpServersFromMindPath(mindPath);
     const chamberMindConfig = loadChamberMindConfig(mindPath);
     const provider = this.resolveProviderForSelection(modelProvider);
@@ -1081,6 +1167,7 @@ export class MindManager extends EventEmitter {
 
   private async resumeSessionForMind(
     client: CopilotClient,
+    kind: MindSessionKind,
     sessionId: string,
     mindPath: string,
     systemMessage: string,
@@ -1091,6 +1178,7 @@ export class MindManager extends EventEmitter {
     model?: string,
     modelProvider?: ModelProvider,
   ): Promise<CopilotSession> {
+    this.assertResumeSessionPolicy(kind);
     const mcpServers = loadMcpServersFromMindPath(mindPath);
     const chamberMindConfig = loadChamberMindConfig(mindPath);
     const provider = this.resolveProviderForSelection(modelProvider);
@@ -1123,12 +1211,30 @@ export class MindManager extends EventEmitter {
     return session;
   }
 
+  private assertCreateSessionPolicy(kind: MindSessionKind, sessionId: string | undefined): void {
+    const policy = MIND_SESSION_POLICIES[kind];
+    if (policy.ownsActiveSession && !sessionId) {
+      throw new Error(`${kind} sessions must be created with a Chamber session id`);
+    }
+    if (!policy.ownsActiveSession && sessionId) {
+      throw new Error(`${kind} sessions must not reuse Chamber conversation session ids`);
+    }
+  }
+
+  private assertResumeSessionPolicy(kind: MindSessionKind): void {
+    const policy = MIND_SESSION_POLICIES[kind];
+    if (!policy.persistsConversation) {
+      throw new Error(`${kind} sessions are ephemeral and cannot be resumed`);
+    }
+  }
+
   private getCopilotRuntimeConfigDir(): string {
     return path.join(this.configService.getConfigDir(), COPILOT_RUNTIME_CONFIG_DIR);
   }
 
   private async loadConversationSession(
     client: CopilotClient,
+    kind: MindSessionKind,
     mindPath: string,
     systemMessage: string,
     tools: Tool[],
@@ -1139,6 +1245,7 @@ export class MindManager extends EventEmitter {
     try {
       return await this.resumeSessionForMind(
         client,
+        kind,
         conversationSessionId,
         mindPath,
         systemMessage,
@@ -1153,6 +1260,7 @@ export class MindManager extends EventEmitter {
       if (!isStaleSessionError(error)) throw error;
       log.warn(`SDK session ${conversationSessionId} was not found; reattaching by recreating the session under the same id.`);
       return this.createSessionForMind({
+        kind,
         client,
         mindPath,
         systemMessage,
