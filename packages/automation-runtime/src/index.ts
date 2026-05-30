@@ -12,13 +12,14 @@ export { promptHandler, chamberPrompt } from './handlers/prompt';
 export { notifyHandler, chamberNotify } from './handlers/notify';
 export { httpHandler } from './handlers/http';
 export { httpTask } from './task-helpers';
-export { runGraph } from './run';
+export { runGraph, createDefaultExecutor } from './run';
 export {
   Task,
   TaskExecutor,
   TaskGraph,
   SqliteStore,
   createBashHandler,
+  createPowershellHandler,
   type Store,
   type TaskInit,
   type TaskHandler,

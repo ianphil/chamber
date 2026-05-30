@@ -3,6 +3,7 @@ import {
   TaskResult,
   TaskStatus,
   type Store,
+  type TaskGraph,
   type TaskMetadata,
 } from '@ianphil/ttasks-ts';
 import type {
@@ -17,8 +18,8 @@ import type {
 /**
  * v2 cron run store. Each `CronJobRunRecord` is persisted as a ttasks
  * `Task` row in the mind's `.chamber/runs/ttasks.db`. The script's per-graph
- * task rows live in the same DB; `cron_run_detail(runId)` joins on
- * `graphId` to produce the per-task tree view.
+ * task rows live in the same DB; `cron_run_detail(runId)` looks up the script
+ * graph by its `graphId` and renders that graph's member tasks.
  */
 
 const CRON_TASK_TYPE = 'cron:script';
@@ -79,8 +80,12 @@ export class TTasksCronRunStore implements CronRunStore {
   }
 
   /**
-   * Return a cron run plus all ttasks rows that share its graphId. Allows
-   * `cron_run_detail` to render the per-task tree the script produced.
+   * Return a cron run plus the member tasks of the script graph it launched.
+   * Allows `cron_run_detail` to render the per-task tree the script produced.
+   *
+   * ttasks records graph membership in its `graph_members` table, not in each
+   * task's metadata, so we resolve the graph by id and enumerate its members
+   * rather than scanning every task row for a `graphId` it does not carry.
    */
   getRunDetail(runId: string): CronRunDetail | null {
     const runTask = this.store.tasks.get(runId);
@@ -90,15 +95,23 @@ export class TTasksCronRunStore implements CronRunStore {
     const graphId = run.graphId;
     const graph: CronRunDetailNode[] = [];
     if (graphId) {
-      for (const task of this.store.tasks.values()) {
-        const md = task.metadata as Record<string, unknown>;
-        if (md.runtime === 'cron') continue;
-        if (md.graphId !== graphId) continue;
-        graph.push(toDetailNode(task));
+      const scriptGraph = this.safeGetGraph(graphId);
+      if (scriptGraph) {
+        for (const task of scriptGraph.tasks) {
+          graph.push(toDetailNode(task));
+        }
+        graph.sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? ''));
       }
-      graph.sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? ''));
     }
     return { run, graph };
+  }
+
+  private safeGetGraph(graphId: string): TaskGraph | undefined {
+    try {
+      return this.store.graphs.get(graphId);
+    } catch {
+      return undefined;
+    }
   }
 
   private buildTask(run: Omit<CronJobRunRecord, 'id'>, job?: CronJob): Task {

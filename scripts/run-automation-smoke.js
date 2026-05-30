@@ -16,19 +16,13 @@ const os = require('node:os');
 const path = require('node:path');
 
 const FIXTURE_SCRIPT = `
-import { TaskGraph, Task } from '@ianphil/ttasks-ts';
-import { runGraph } from '@chamber/automation-runtime';
+import { Task, TaskGraph, runGraph } from '@chamber/automation-runtime';
 
 const graph = new TaskGraph({ id: process.env.CHAMBER_GRAPH_ID });
 graph.add(Task.bash('echo from-bash-task'));
 
-runGraph(graph).then(() => {
-  console.log('automation-smoke-ok');
-  process.exit(0);
-}).catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+await runGraph(graph);
+console.log('automation-smoke-ok');
 `;
 
 main().catch((err) => {
@@ -40,7 +34,7 @@ async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const runtimeRoot = path.join(repoRoot, 'resources', 'automation-runtime');
   if (!fs.existsSync(runtimeRoot)) {
-    console.log('[smoke:automation] staging runtime first…');
+    console.log('[smoke:automation] staging runtime first...');
     require('node:child_process').spawnSync(process.execPath, [
       path.join(repoRoot, 'scripts', 'prepare-automation-runtime.js'),
     ], { stdio: 'inherit' });
@@ -51,12 +45,44 @@ async function main() {
   if (!fs.existsSync(tsxCli)) throw new Error(`missing tsx cli at ${tsxCli}`);
 
   // Spawn tsx directly against a fixture script, mirroring what ScriptRunner
-  // would do at runtime — without pulling TypeScript source through require().
+  // would do at runtime - without pulling TypeScript source through require().
   const mindPath = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-automation-smoke-'));
-  fs.mkdirSync(path.join(mindPath, '.chamber', 'automation'), { recursive: true });
-  fs.mkdirSync(path.join(mindPath, '.chamber', 'runs'), { recursive: true });
-  const scriptPath = path.join(mindPath, '.chamber', 'automation', 'smoke.ts');
+  const automationDir = path.join(mindPath, '.chamber', 'automation');
+  const runsDir = path.join(mindPath, '.chamber', 'runs');
+  fs.mkdirSync(automationDir, { recursive: true });
+  fs.mkdirSync(runsDir, { recursive: true });
+  const scriptPath = path.join(automationDir, 'smoke.ts');
   fs.writeFileSync(scriptPath, FIXTURE_SCRIPT);
+
+  // Mirror ScriptRunner: the script uses top-level await (ESM), so mark the
+  // package scope as ESM and generate a tsconfig with `paths` for the runtime
+  // packages (the ESM loader ignores NODE_PATH).
+  fs.writeFileSync(path.join(automationDir, 'package.json'), JSON.stringify({ type: 'module' }, null, 2));
+  const arDir = path.join(nodePath, '@chamber', 'automation-runtime');
+  const ttDir = path.join(nodePath, '@ianphil', 'ttasks-ts');
+  const rel = (target) => {
+    const r = path.relative(runsDir, target).split(path.sep).join('/');
+    return r.length > 0 ? r : '.';
+  };
+  const tsconfigPath = path.join(runsDir, 'automation.tsconfig.json');
+  fs.writeFileSync(tsconfigPath, JSON.stringify({
+    compilerOptions: {
+      target: 'ES2023',
+      module: 'esnext',
+      moduleResolution: 'bundler',
+      allowImportingTsExtensions: true,
+      noEmit: true,
+      ignoreDeprecations: '6.0',
+      baseUrl: '.',
+      paths: {
+        '@chamber/automation-runtime': [rel(path.join(arDir, 'src', 'index.ts'))],
+        '@chamber/automation-runtime/*': [rel(path.join(arDir, 'src')) + '/*'],
+        '@ianphil/ttasks-ts': [rel(ttDir)],
+        '@ianphil/ttasks-ts/*': [rel(ttDir) + '/*'],
+      },
+    },
+    files: [rel(scriptPath)],
+  }, null, 2));
 
   const { spawn } = require('node:child_process');
   const child = spawn(process.execPath, [tsxCli, scriptPath], {
@@ -64,6 +90,7 @@ async function main() {
     env: {
       ...process.env,
       NODE_PATH: nodePath,
+      TSX_TSCONFIG_PATH: tsconfigPath,
       CHAMBER_MIND_ID: 'smoke-mind',
       CHAMBER_MIND_PATH: mindPath,
       CHAMBER_GRAPH_ID: 'smoke-graph',
