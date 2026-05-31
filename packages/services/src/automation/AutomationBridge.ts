@@ -21,9 +21,12 @@ export interface BridgeNotifyRequest {
 
 export interface BridgeHandlers {
   /**
-   * Invoked when an automation script posts /prompt. Implementations MUST
-   * run in unattended mode (no user approval prompts; auto-deny side-effect
-   * tools that would require approval).
+   * Invoked when an automation script posts /prompt. Runs unattended (no
+   * interactive user approval prompts). The prompt executes against the
+   * mind's standard isolated session, which inherits the mind's normal
+   * session permission posture — tool calls are auto-approved, not gated by
+   * a human, since cron fires have no operator present. Because automation
+   * scripts are user-authored, the script author is the trust boundary.
    */
   onPrompt: (req: BridgePromptRequest) => Promise<{ text: string }>;
   onNotify: (req: BridgeNotifyRequest) => Promise<void>;
