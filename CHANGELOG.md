@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Packaging
 
+- **Halve the installer by de-duplicating the bundled Copilot runtime** — The packaged `resources/copilot-runtime` shrank from 858 MB to 338 MB and the Windows installer from ~441 MB to ~271 MB (−38%). Two sources of waste were removed with zero behavior change: (1) a second, never-executed `@github/copilot` CLI copy that npm nested under `@github/copilot-sdk` because our prerelease pin doesn't satisfy the SDK's `^1.0.55-1` range — an npm `overrides` entry (`$@github/copilot`) in both `package.json` and `chamber-copilot-runtime/package.json` now dedupes to a single hoisted copy; and (2) foreign-platform prebuilt native addons (`@github/copilot/prebuilds/<triple>`) for all 8 platform triples — `scripts/prepare-copilot-runtime.js` now prunes every triple except the host (Linux keeps both glibc and musl). `validateRuntimeDir` enforces both invariants so a stale runtime is rebuilt rather than silently reused.
 - **Refresh packaged Copilot runtime** — Updated the pinned packaged Copilot CLI runtime to match the version required by package smoke.
 - **Fix packaged build on Windows** — prepare-automation-runtime.js spawned npm directly, which fails on Windows (ENOENT for npm, EINVAL for npm.cmd under Node 24); npm is now resolved to npm.cmd and routed through cmd.exe like the other runtime prep scripts, and spawn errors are surfaced instead of misreported as a failed install
 

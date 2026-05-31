@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Copilot Runtime Version Pin &amp; the make:sandbox Mismatch</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f141b;
+      --panel: #151c25;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --accent: #58a6ff;
+      --good: #56d364;
+      --warn: #f2cc60;
+      --bad: #ff7b72;
+      --border: #30363d;
+      --code: #0b1118;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0 0 12px;
+    }
+
+    h1 {
+      font-size: 34px;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin-top: 36px;
+      font-size: 22px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    h3 {
+      margin-top: 24px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin: 14px 0 20px;
+    }
+
+    pre code {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      font-size: 13px;
+    }
+
+    ul, ol {
+      margin-top: 0;
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .summary {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin: 22px 0;
+    }
+
+    .pill {
+      display: inline-block;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px 10px;
+      color: var(--muted);
+      margin: 0 6px 8px 0;
+      font-size: 13px;
+    }
+
+    .status-good { color: var(--good); font-weight: 600; }
+    .status-warn { color: var(--warn); font-weight: 600; }
+    .status-bad { color: var(--bad); font-weight: 600; }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: #111821;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--panel);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+
+    .warn-box {
+      border-left: 4px solid var(--warn);
+      background: var(--panel);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Copilot Runtime Version Pin &amp; the <code>make:sandbox</code> Mismatch</h1>
+    <p>
+      This is the failure we hit <strong>almost every day</strong>: <code>npm run make:sandbox</code>
+      (or any packaging path) aborts in the <code>prePackage</code> Copilot-runtime prep hook with a
+      version-mismatch error, even though the SDK smoke test passes and the dev server runs fine.
+      This doc explains why, and exactly which two files to edit to fix it.
+    </p>
+
+    <div class="summary">
+      <p><strong>Symptom:</strong> <span class="status-bad">make:sandbox fails at prePackage</span></p>
+      <pre><code>Copilot CLI smoke test output did not include 1.0.55.
+Output: GitHub Copilot CLI 1.0.57-2</code></pre>
+      <p style="margin-bottom:0">
+        <strong>Fix:</strong> bump the pin in <strong>both</strong> manifests to the version the
+        launcher actually resolves to, then full <code>npm install</code> in each. See
+        <a href="#fix">The fix</a>.
+      </p>
+    </div>
+
+    <h2>Where the versions live</h2>
+    <p>The <code>@github/copilot</code> CLI pin is declared in <strong>two</strong> places. They must match:</p>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Role</th><th>Read by</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>chamber-copilot-runtime/package.json</code></td>
+          <td>Packaged runtime manifest. The pinned CLI + SDK pair that ships inside the app.</td>
+          <td><code>readRequiredVersions()</code> in <code>scripts/prepare-copilot-runtime.js</code></td>
+        </tr>
+        <tr>
+          <td><code>package.json</code> (root)</td>
+          <td>Dev/CI dependency pin so <code>node_modules</code> matches the packaged runtime.</td>
+          <td>npm / the dev server &amp; <code>smoke:sdk</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The companion <code>@github/copilot-sdk</code> pin lives in the same two files and usually does
+      <em>not</em> change when only the CLI build moves. Leave it alone unless the SDK itself is bumped.
+    </p>
+    <div class="warn-box">
+      <strong>Do not touch</strong> the unrelated <code>chamber-copilot</code> entry in the root
+      <code>package.json</code> — that is a different package (Chamber's own, e.g. <code>0.5.11</code>),
+      not the GitHub Copilot CLI.
+    </div>
+
+    <h2>Why it happens</h2>
+    <p>The npm pin does <strong>not</strong> control the runtime binary version on a developer machine. The chain:</p>
+    <ol>
+      <li>The <code>@github/copilot</code> npm package ships <code>npm-loader.js</code>, which spawns the
+        platform binary <code>@github/copilot-win32-x64/copilot.exe</code>.</li>
+      <li>That <code>copilot.exe</code> is a <strong>bootstrap launcher</strong>. It self-resolves to the
+        <strong>newest build present in the global cache</strong> at
+        <code>~/.copilot/pkg/win32-x64/</code> — ignoring the pinned npm version entirely.</li>
+      <li>Every time you run <code>copilot update</code> (or the CLI auto-updates), a new build lands in
+        that global cache (e.g. <code>1.0.55-1</code>, <code>1.0.56-1</code>, <code>1.0.57-2</code> all
+        side-by-side).</li>
+      <li>The prep hook's <code>smokeTestRuntime()</code> runs <code>copilot.exe --version</code>, gets the
+        <em>newest cached</em> build, and compares it against the manifest pin. Mismatch &rarr; abort.</li>
+    </ol>
+    <div class="note">
+      <strong>Why CI doesn't hit this:</strong> CI starts with a clean global cache, so the launcher
+      resolves to exactly the pinned/installed build. Only developer machines with a populated
+      <code>~/.copilot/pkg/</code> cache see the drift. That's why it bites locally "every day" but the
+      pipeline stays green.
+    </div>
+
+    <h2 id="fix">The fix</h2>
+    <p>Align the pin with whatever the launcher resolves to. Find the resolved build:</p>
+    <pre><code># what the launcher actually runs:
+copilot --version
+# or inspect the cache:
+Get-ChildItem $HOME\.copilot\pkg\win32-x64\</code></pre>
+    <p>Then set <strong>both</strong> manifests to that exact version (e.g. <code>1.0.57-2</code>):</p>
+    <ul>
+      <li><code>chamber-copilot-runtime/package.json</code> &rarr; <code>"@github/copilot"</code></li>
+      <li><code>package.json</code> (root) &rarr; <code>"@github/copilot"</code></li>
+    </ul>
+    <p>Refresh the lockfiles with a <strong>full</strong> <code>npm install</code> in each location:</p>
+    <pre><code>npm install                       # root
+cd chamber-copilot-runtime && npm install</code></pre>
+    <div class="warn-box">
+      Use full <code>npm install</code>, <strong>not</strong> <code>npm install --package-lock-only</code>.
+      On some npm versions the lock-only flow strips optional cross-platform entries
+      (e.g. <code>@emnapi/core</code>, <code>@emnapi/runtime</code>) that CI later requires, producing a
+      <em>different</em> failure downstream.
+    </div>
+    <p>Validate, in order:</p>
+    <pre><code>npm run smoke:sdk      # SDK/CLI compatibility on the new pin
+npm run make:sandbox   # expected version now == launcher-resolved version</code></pre>
+
+    <h2>Governance note</h2>
+    <p>
+      Bumping the <code>@github/copilot</code> / <code>@github/copilot-sdk</code> pair is a change to the
+      committed runtime contract. Per <code>copilot-instructions</code> / <code>AGENTS.md</code>, a real
+      bump warrants a coordinated <code>CHANGELOG.md</code> entry and validation via
+      <code>npm run smoke:sdk</code> + <code>npm run make:sandbox</code>. A purely local re-alignment to
+      stop the daily packaging abort can be done in isolation, but if you commit the pin change, treat it
+      as a runtime-contract bump.
+    </p>
+
+    <p style="margin-top:32px">
+      <span class="pill">scripts/prepare-copilot-runtime.js</span>
+      <span class="pill">chamber-copilot-runtime/package.json</span>
+      <span class="pill">package.json (root)</span>
+      <span class="pill">~/.copilot/pkg/win32-x64/</span>
+    </p>
+  </main>
+</body>
+</html>
