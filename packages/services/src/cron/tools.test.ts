@@ -58,6 +58,40 @@ describe('buildCronTools', () => {
     expect(svc.validateScript).toHaveBeenCalledWith('mind', '.chamber/automation/x.ts');
   });
 
+  it('automation_validate returns an explicit VALIDATED status on success', async () => {
+    const svc = makeServiceStub({ validateScript: vi.fn(async () => ({ ok: true, output: '' })) });
+    const tools = buildCronTools('mind', '/tmp/mind', svc);
+    const tool = tools.find((t) => t.name === 'automation_validate');
+    const result = await tool!.handler({ scriptPath: '.chamber/automation/x.ts' });
+    expect(result).toMatchObject({ ok: true, status: 'VALIDATED', output: '' });
+    expect((result as { message: string }).message).toContain('VALIDATED');
+    expect((result as { message: string }).message).toContain('.chamber/automation/x.ts');
+  });
+
+  it('automation_validate returns NOT_VALIDATED with the tsc errors on failure', async () => {
+    const svc = makeServiceStub({
+      validateScript: vi.fn(async () => ({ ok: false, output: 'x.ts(3,1): error TS2304: Cannot find name foo.' })),
+    });
+    const tools = buildCronTools('mind', '/tmp/mind', svc);
+    const tool = tools.find((t) => t.name === 'automation_validate');
+    const result = await tool!.handler({ scriptPath: '.chamber/automation/x.ts' });
+    expect(result).toMatchObject({ ok: false, status: 'NOT_VALIDATED' });
+    expect((result as { message: string }).message).toContain('type errors');
+    expect((result as { output: string }).output).toContain('error TS2304');
+  });
+
+  it('automation_validate flags toolchain-unavailable distinctly from type errors', async () => {
+    const svc = makeServiceStub({
+      validateScript: vi.fn(async () => ({ ok: false, output: 'automation_validate unavailable: typescript not found at ...' })),
+    });
+    const tools = buildCronTools('mind', '/tmp/mind', svc);
+    const tool = tools.find((t) => t.name === 'automation_validate');
+    const result = await tool!.handler({ scriptPath: '.chamber/automation/x.ts' });
+    expect(result).toMatchObject({ ok: false, status: 'NOT_VALIDATED' });
+    expect((result as { message: string }).message).toContain('toolchain was unavailable');
+    expect((result as { message: string }).message).not.toContain('type errors');
+  });
+
   it('cron_run_detail calls cronService.getRunDetail', async () => {
     const svc = makeServiceStub();
     const tools = buildCronTools('mind', '/tmp/mind', svc);
