@@ -1135,6 +1135,7 @@ export class MindManager extends EventEmitter {
     } = req;
     this.assertCreateSessionPolicy(kind, sessionId);
     const mcpServers = loadMcpServersFromMindPath(mindPath);
+    const skillDirectories = this.getMindSkillDirectories(mindPath);
     const chamberMindConfig = loadChamberMindConfig(mindPath);
     const provider = this.resolveProviderForSelection(modelProvider);
     const effectiveModel = this.resolveModelForSdk(model, provider);
@@ -1152,6 +1153,7 @@ export class MindManager extends EventEmitter {
       },
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+      ...(skillDirectories.length > 0 ? { skillDirectories } : {}),
       ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
         ? { excludedTools: chamberMindConfig.excludedTools }
         : {}),
@@ -1190,6 +1192,7 @@ export class MindManager extends EventEmitter {
   ): Promise<CopilotSession> {
     this.assertResumeSessionPolicy(kind);
     const mcpServers = loadMcpServersFromMindPath(mindPath);
+    const skillDirectories = this.getMindSkillDirectories(mindPath);
     const chamberMindConfig = loadChamberMindConfig(mindPath);
     const provider = this.resolveProviderForSelection(modelProvider);
     const effectiveModel = this.resolveModelForSdk(model, provider);
@@ -1207,6 +1210,7 @@ export class MindManager extends EventEmitter {
       },
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+      ...(skillDirectories.length > 0 ? { skillDirectories } : {}),
       ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
         ? { excludedTools: chamberMindConfig.excludedTools }
         : {}),
@@ -1219,6 +1223,11 @@ export class MindManager extends EventEmitter {
       await session.rpc.permissions.setApproveAll({ enabled: true });
     }
     return session;
+  }
+
+  private getMindSkillDirectories(mindPath: string): string[] {
+    const skillsDirectory = path.join(mindPath, '.github', 'skills');
+    return fs.existsSync(skillsDirectory) ? [skillsDirectory] : [];
   }
 
   private assertCreateSessionPolicy(kind: MindSessionKind, sessionId: string | undefined): void {

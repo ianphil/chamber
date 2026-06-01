@@ -1509,6 +1509,37 @@ describe('MindManager', () => {
     });
   });
 
+  describe('managed skill discovery', () => {
+    it('passes the mind skill parent directory to createSession', async () => {
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillDirectories: [path.join('/tmp/agents/q', '.github', 'skills')],
+        }),
+      );
+    });
+
+    it('passes the mind skill parent directory to resumeSession', async () => {
+      const resumedSession = createSessionStub();
+      resumedSession.getEvents.mockResolvedValue([]);
+      mockResumeSession.mockResolvedValueOnce(resumedSession);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Prior chat');
+      await manager.recreateSession(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+
+      await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      expect(mockResumeSession).toHaveBeenCalledWith(
+        target.sessionId,
+        expect.objectContaining({
+          skillDirectories: [path.join('/tmp/agents/q', '.github', 'skills')],
+        }),
+      );
+    });
+  });
+
   describe('chamber mind config (#131 — per-mind excludedTools)', () => {
     it('passes excludedTools through to createSession when .chamber.json declares them', async () => {
       const chamberJson = JSON.stringify({ excludedTools: ['shell', 'str_replace'] });
