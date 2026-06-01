@@ -1,7 +1,7 @@
 {
   "name": "chamber",
   "productName": "Chamber",
-  "version": "0.64.0",
+  "version": "0.64.1",
   "description": "Genesis Mind Interface — desktop chat UI for Genesis agents",
   "//copilotPin": "@github/copilot is pinned in devDependencies AND chamber-copilot-runtime/package.json — both must match. Pin drift / make:sandbox version-mismatch? See ai-docs/copilot-runtime-version-pin.html.",
   "main": ".vite/build/main.js",
