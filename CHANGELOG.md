@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-06-01
+
 ### Fixed
 
 - **Fix "CLI server exited unexpectedly with code 1" on packaged macOS builds** — The bundled `@github/copilot` CLI is a Node.js Single Executable Application. `electron-osx-sign` was re-signing it with default Electron entitlements (audio, bluetooth, camera, etc.) which lack `com.apple.security.cs.allow-unsigned-executable-memory` and `com.apple.security.cs.disable-library-validation`. Under hardened runtime, V8's JIT could not allocate executable memory and the kernel SIGKILLed the process immediately, producing no stdout/stderr. `scripts/sign-macos-prepackaged.js` now re-signs the SEA binary with a dedicated entitlements plist (`assets/entitlements.copilot-cli.mac.plist`) after the main `electron-osx-sign` pass.
