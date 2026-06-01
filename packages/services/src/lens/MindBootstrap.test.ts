@@ -69,6 +69,7 @@ describe('bootstrapMindCapabilities', () => {
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toContain('# Lens');
     expect(fileText(mindSkillPath('ttasks', 'reference/api.md'))).toContain('Task API');
     expect(fileText(mindSkillPath('automation', 'SKILL.md'))).toContain('# Automation');
+    expect(fileText(mindSkillPath('automation', 'examples/briefing-with-canvas.ts'))).toContain('Canvas finale');
   });
 
   it('continues installing available skills when one asset tree is missing', () => {
@@ -359,6 +360,7 @@ function addTtasksAssets(): void {
 
 function addAutomationAsset(markdown: string): void {
   addAsset('automation-skill', 'SKILL.md', `---\nname: automation\n---\n${markdown}`);
+  addAsset('automation-skill', 'examples/briefing-with-canvas.ts', '// EXAMPLE — Briefing with a Canvas finale.\n');
 }
 
 function addAsset(assetRoot: string, relativePath: string, content: string): void {

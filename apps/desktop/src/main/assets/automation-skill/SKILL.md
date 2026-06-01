@@ -367,6 +367,16 @@ Use these tools after editing a program:
 
 Cron expressions are Croner-compatible. Use ordinary five-field schedules unless the user explicitly asks for second-level precision.
 
+## Examples
+
+- `skills/automation/examples/briefing-with-canvas.ts` — a complete, runnable
+  program that gathers Teams + email evidence in parallel, synthesizes a briefing
+  with `chamberPrompt({ includeUpstreamOutputs: true })`, notifies, and then opens
+  the result in Canvas via a `chamberPrompt` finale that calls `canvas_show`. It is
+  the reference for the Canvas-via-prompt pattern, `finally_` partial-failure
+  handling, and the per-IO-type retry policy. Copy it into `.chamber/automation/`,
+  swap the placeholder chat IDs and recipient, then `automation_validate` it.
+
 ## When to read the ttasks skill
 
 This file covers the Chamber contract (bridge handlers, env contracts, cron tools, shell choice). Everything about graphs, executors, stores, and retry is plain ttasks - read the `ttasks` skill for the authoritative API:

@@ -48,9 +48,9 @@ const TTASKS_SKILL_MANIFEST: ManagedSkillManifest = {
 
 const AUTOMATION_SKILL_MANIFEST: ManagedSkillManifest = {
   name: 'automation',
-  version: '2.1.0',
+  version: '2.2.0',
   assetRoot: 'automation-skill',
-  files: ['SKILL.md'],
+  files: ['SKILL.md', 'examples/briefing-with-canvas.ts'],
   capabilities: ['chamber-automation', 'cron-scripts', 'ttasks-runtime'],
 };
 
