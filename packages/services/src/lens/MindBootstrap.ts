@@ -15,12 +15,6 @@ const KNOWN_UNVERSIONED_LENS_SKILL_HASHES = new Set([
   '716367d40a6fa9a5a6980437ac5a4bac25118e439ccf1b70e2b21d735c0d84da',
 ]);
 
-const MANAGED_SKILL_CAPABILITIES: Record<string, string[]> = {
-  lens: ['lens-json', 'canvas-lens', 'chamber-theme-v1'],
-  ttasks: ['ttasks-ts', 'task-graphs', 'workflow-orchestration'],
-  automation: ['chamber-automation', 'cron-scripts', 'ttasks-runtime'],
-};
-
 export function seedLensDefaults(mindPath: string): void {
   const lensDir = path.join(mindPath, '.github', 'lens');
 
@@ -82,12 +76,6 @@ export function bootstrapMindCapabilities(mindPath: string): void {
   seedLensDefaults(mindPath);
 }
 
-export function installManagedSkill(mindPath: string, skillRoot: string): void {
-  const asset = readManagedSkillAsset(skillRoot);
-  if (!asset) return;
-  installManagedSkillAsset(mindPath, asset);
-}
-
 export function installManagedSkillAsset(mindPath: string, asset: ManagedSkillAsset): void {
   const { manifest } = asset;
   const skillDir = path.join(mindPath, '.github', 'skills', manifest.name);
@@ -145,87 +133,6 @@ function backupLegacyLensSkill(skillDir: string, installedContent: string): void
     backupPath = path.join(skillDir, `SKILL.legacy-backup-${index}.md`);
   }
   fs.writeFileSync(backupPath, installedContent);
-}
-
-function readManagedSkillAsset(root: string): ManagedSkillAsset | null {
-  const skillPath = path.join(root, 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    log.warn(`Managed skill asset at ${root} is missing SKILL.md, skipping install`);
-    return null;
-  }
-
-  const skillContent = fs.readFileSync(skillPath, 'utf-8');
-  const frontmatter = parseSkillFrontmatter(skillContent);
-  if (!frontmatter) {
-    log.warn(`Managed skill asset at ${root} has invalid SKILL.md frontmatter, skipping install`);
-    return null;
-  }
-
-  const files = listManagedSkillFiles(root);
-  if (files.length === 0 || !files.some((file) => file.path === 'SKILL.md')) {
-    log.warn(`${frontmatter.name} skill has no installable files, skipping install`);
-    return null;
-  }
-
-  return {
-    manifest: {
-      name: frontmatter.name,
-      version: frontmatter.version,
-      capabilities: MANAGED_SKILL_CAPABILITIES[frontmatter.name] ?? [],
-    },
-    files,
-  };
-}
-
-function listManagedSkillFiles(root: string): ManagedSkillAssetFile[] {
-  const files: ManagedSkillAssetFile[] = [];
-
-  function walk(relativeDir: string): void {
-    const absoluteDir = path.join(root, relativeDir);
-    const entries = fs.readdirSync(absoluteDir, { withFileTypes: true })
-      .sort((left, right) => compareText(left.name, right.name));
-
-    for (const entry of entries) {
-      const relativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
-      if (entry.isDirectory()) {
-        walk(relativePath);
-        continue;
-      }
-      if (!entry.isFile() || !isManagedSkillRelativePath(relativePath) || isIgnoredManagedSkillAsset(relativePath)) {
-        continue;
-      }
-      const content = fs.readFileSync(path.join(root, relativePath));
-      const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
-      files.push({ path: relativePath, content: buffer, sha256: sha256ManagedFile(relativePath, buffer) });
-    }
-  }
-
-  walk('');
-  return files.sort((left, right) => compareText(left.path, right.path));
-}
-
-function compareText(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
-function parseSkillFrontmatter(content: string): Pick<ManagedSkillManifest, 'name' | 'version'> | null {
-  const normalized = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-  if (!normalized.startsWith('---\n')) return null;
-  const end = normalized.indexOf('\n---', 4);
-  if (end < 0) return null;
-  const metadata = normalized.slice(4, end).split('\n');
-  const values = new Map<string, string>();
-  for (const line of metadata) {
-    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-    if (!match) continue;
-    values.set(match[1], match[2].replace(/^["']|["']$/g, '').trim());
-  }
-  const name = values.get('name');
-  const version = values.get('version');
-  if (!name || !version) return null;
-  return { name, version };
 }
 
 function getInstalledManagedSkillState(
@@ -323,11 +230,6 @@ function isManagedSkillRelativePath(filePath: string): boolean {
   if (path.isAbsolute(filePath) || path.win32.isAbsolute(filePath)) return false;
   const normalized = path.posix.normalize(filePath);
   return normalized === filePath && normalized !== '..' && !normalized.startsWith('../');
-}
-
-function isIgnoredManagedSkillAsset(filePath: string): boolean {
-  const baseName = path.posix.basename(filePath);
-  return baseName === MANAGED_SKILL_METADATA || /^SKILL\.legacy-backup(?:-\d+)?\.md$/.test(baseName);
 }
 
 function isLegacyBundledLensSkill(content: string): boolean {
