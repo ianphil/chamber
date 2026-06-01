@@ -14,5 +14,6 @@
       "@chamber/automation-runtime/task-helpers": ["./packages/automation-runtime/src/task-helpers.ts"]
     }
   },
-  "include": ["apps/**/*", "packages/**/*", "tests/**/*", "forge.env.d.ts"]
+  "include": ["apps/**/*", "packages/**/*", "tests/**/*", "forge.env.d.ts"],
+  "exclude": ["**/node_modules", "apps/desktop/src/main/assets/managed-skills/automation/examples"]
 }

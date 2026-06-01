@@ -1,5 +1,6 @@
 ---
 name: ttasks
+version: 0.3.0
 description: "TypeScript task runner and workflow engine using @ianphil/ttasks-ts. Use this skill whenever you need to run, chain, or orchestrate TypeScript operations — even if the user hasn't mentioned ttasks. Reach for it when they want to: run a shell command and track the result, chain steps where later ones depend on earlier ones ('do X then Y then Z'), run tasks in parallel and merge results, ensure cleanup always runs even after a failure, persist step results to disk so they survive a crash, include an LLM prompt or agent step inside a workflow, or find out exactly which step in a pipeline broke. Also triggers on: build pipeline, automate steps, retry on failure, parallel tasks, workflow with dependencies, 'if one step fails skip the rest', task queue in TypeScript. DO NOT USE FOR: non-TypeScript projects, throwaway one-liners that don't need tracking."
 ---
 

@@ -44,7 +44,7 @@ Cron scheduling is handled by `croner` in `Scheduler.ts`. Actual job execution i
 Chamber also already has a managed skill system. The Lens skill is bundled at:
 
 ```text
-apps/desktop/src/main/assets/lens-skill/SKILL.md
+apps/desktop/src/main/assets/managed-skills/lens/SKILL.md
 ```
 
 and installed into minds under:
@@ -297,7 +297,7 @@ Chamber should ship one managed skill for this feature, installed into every min
 ### Location in Repo
 
 ```text
-apps/desktop/src/main/assets/automation-skill/
+apps/desktop/src/main/assets/managed-skills/automation/
   SKILL.md
   references/
     ttasks.md

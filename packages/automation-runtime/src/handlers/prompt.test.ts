@@ -1,4 +1,4 @@
-import { Task, TaskResult, TaskStatus, type TaskContext } from '@ianphil/ttasks-ts';
+import { Task, TaskExecutor, TaskResult, TaskStatus, type TaskContext } from '@ianphil/ttasks-ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bridgeRequest } from '../bridge-client';
 import { chamberPrompt, promptHandler } from './prompt';
@@ -57,6 +57,53 @@ describe('chamberPrompt', () => {
     await promptHandler(contextFor(task, [upstream]));
 
     expect(requestedPrompt()).toContain('abc\n...[truncated 3 chars]');
+  });
+
+  it('treats empty/whitespace upstream output as (no output)', async () => {
+    const blank = taskWithOutput('blank prompt step', '   ');
+    const task = chamberPrompt({ prompt: 'Summarize.', includeUpstreamOutputs: true });
+
+    await promptHandler(contextFor(task, [blank]));
+
+    const prompt = requestedPrompt();
+    expect(prompt).toContain('blank prompt step');
+    expect(prompt).toContain('(no output)');
+  });
+
+  it('returns the assistant text as a bare string (handler contract)', async () => {
+    bridgeRequestMock.mockResolvedValue({ text: 'the briefing body' });
+    const task = chamberPrompt({ prompt: 'Brief me.' });
+
+    const returned = await promptHandler(contextFor(task, []));
+
+    expect(returned).toBe('the briefing body');
+  });
+
+  it('records the assistant text as result.output when run through the executor', async () => {
+    bridgeRequestMock.mockResolvedValue({ text: 'synthesized briefing' });
+    const executor = new TaskExecutor();
+    executor.register('chamber:prompt', promptHandler);
+    const task = chamberPrompt({ prompt: 'Synthesize.' }, { title: 'synthesize' });
+
+    await executor.execute(task);
+
+    expect(task.status).toBe(TaskStatus.SUCCEEDED);
+    expect(task.result?.output).toBe('synthesized briefing');
+  });
+
+  it('feeds a prior prompt task output into a downstream includeUpstreamOutputs prompt', async () => {
+    bridgeRequestMock.mockResolvedValue({ text: 'UPSTREAM BRIEFING TEXT' });
+    const executor = new TaskExecutor();
+    executor.register('chamber:prompt', promptHandler);
+    const briefing = chamberPrompt({ prompt: 'Synthesize.' }, { title: 'synthesize briefing' });
+
+    await executor.execute(briefing);
+
+    const downstream = chamberPrompt({ prompt: 'Open in canvas.', includeUpstreamOutputs: true });
+    await promptHandler(contextFor(downstream, [briefing]));
+
+    const lastCall = bridgeRequestMock.mock.calls.at(-1)?.[1] as { prompt: string };
+    expect(lastCall.prompt).toContain('UPSTREAM BRIEFING TEXT');
   });
 });
 

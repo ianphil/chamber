@@ -12,7 +12,7 @@ const sourceRoot = path.resolve(
   ?? process.env.TTASKS_TS_SOURCE
   ?? path.join(os.homedir(), 'src', 'ttasks-ts', 'skills', 'ttasks-ts'),
 );
-const destinationRoot = path.join(repoRoot, 'apps', 'desktop', 'src', 'main', 'assets', 'ttasks-skill');
+const destinationRoot = path.join(repoRoot, 'apps', 'desktop', 'src', 'main', 'assets', 'managed-skills', 'ttasks');
 
 const expectedFiles = [
   'SKILL.md',

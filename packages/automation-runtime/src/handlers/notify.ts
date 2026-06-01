@@ -1,4 +1,4 @@
-import { Task, TaskStatus, type TaskHandler, type TaskInit } from '@ianphil/ttasks-ts';
+import { Task, type TaskHandler, type TaskInit } from '@ianphil/ttasks-ts';
 import { bridgeRequest } from '../bridge-client';
 
 export interface ChamberNotifyInput {
@@ -23,8 +23,7 @@ export const notifyHandler: TaskHandler = async (context) => {
     title: input.title,
     body: input.body,
   });
-  return {
-    status: TaskStatus.SUCCEEDED,
-    output: 'notification fired',
-  };
+  // Return a bare string so the ttasks executor records it as result.output;
+  // returning a `{ status, output }` object normalizes to an EMPTY output.
+  return 'notification fired';
 };

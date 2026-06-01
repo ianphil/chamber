@@ -2,6 +2,50 @@ import type { SessionTool } from '../a2a/tools';
 import type { CronService } from './CronService';
 import type { CreateCronJobInput } from './types';
 
+/** Self-describing result for `automation_validate`. */
+export interface ValidationToolResult {
+  /** True when the script type-checks cleanly. Preserved for back-compat. */
+  ok: boolean;
+  /** Explicit, unambiguous outcome so the result is never a contentless success. */
+  status: 'VALIDATED' | 'NOT_VALIDATED';
+  /** One-line human/agent-readable summary that always carries the outcome. */
+  message: string;
+  /** Raw tsc output (empty on success). Preserved for back-compat. */
+  output: string;
+}
+
+/**
+ * Turn the low-level `{ ok, output }` from the script runner into a
+ * self-describing result. The raw success shape was `{ ok: true, output: '' }`
+ * — a contentless success with no artifact distinguishing "already validated"
+ * from "not yet validated". Callers (including the model) then re-issue the
+ * check. The explicit `status` + non-empty `message` make the outcome legible
+ * in a single read.
+ */
+export function summarizeValidation(
+  scriptPath: string,
+  result: { ok: boolean; output: string },
+): ValidationToolResult {
+  if (result.ok) {
+    return {
+      ok: true,
+      status: 'VALIDATED',
+      message: `VALIDATED: ${scriptPath} type-checks cleanly (tsc --noEmit, no errors). No further validation needed — safe to automation_run or cron_create.`,
+      output: result.output,
+    };
+  }
+  const toolchainUnavailable = result.output.includes('automation_validate unavailable');
+  const message = toolchainUnavailable
+    ? `NOT_VALIDATED: ${scriptPath} could not be validated — the TypeScript toolchain was unavailable. Validation did not run; this is not a type error in the script.`
+    : `NOT_VALIDATED: ${scriptPath} has type errors. Fix the errors in the output below and re-run automation_validate.`;
+  return {
+    ok: false,
+    status: 'NOT_VALIDATED',
+    message,
+    output: result.output,
+  };
+}
+
 /**
  * v2 cron tools. Cron schedules TypeScript automation scripts authored by
  * the mind under `.chamber/automation/*.ts`. To create a new scheduled job:
@@ -109,7 +153,7 @@ export function buildCronTools(
     {
       name: 'automation_validate',
       description:
-        'Type-check a .chamber/automation/*.ts script with tsc --noEmit. Always run this before cron_create.',
+        'Type-check a .chamber/automation/*.ts script with tsc --noEmit. Always run this before cron_create. Returns an explicit status ("VALIDATED" or "NOT_VALIDATED") plus a message, so the outcome is unambiguous and never needs re-running on success.',
       parameters: {
         type: 'object',
         properties: {
@@ -117,7 +161,11 @@ export function buildCronTools(
         },
         required: ['scriptPath'],
       },
-      handler: async (args) => cronService.validateScript(mindId, args.scriptPath as string),
+      handler: async (args) => {
+        const scriptPath = args.scriptPath as string;
+        const result = await cronService.validateScript(mindId, scriptPath);
+        return summarizeValidation(scriptPath, result);
+      },
     },
     {
       name: 'cron_run_detail',
