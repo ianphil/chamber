@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ManagedSkillManifest } from './MindBootstrap';
 
 const files = new Map<string, Buffer>();
 const dirs = new Set<string>();
@@ -19,11 +18,26 @@ vi.mock('fs', () => ({
   writeFileSync: vi.fn((p: string, data: string | Buffer) => {
     files.set(normalizedPath(p), Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(data));
   }),
+  readdirSync: vi.fn((p: string) => readFakeDir(p)),
   mkdirSync: vi.fn((p: string) => {
     dirs.add(normalizedPath(p));
   }),
-  rmSync: vi.fn((p: string) => {
-    files.delete(normalizedPath(p));
+  rmSync: vi.fn((p: string, options?: { recursive?: boolean }) => {
+    const normalized = normalizedPath(p);
+    if (options?.recursive) {
+      for (const filePath of [...files.keys()]) {
+        if (filePath === normalized || filePath.startsWith(`${normalized}/`)) {
+          files.delete(filePath);
+        }
+      }
+      for (const dirPath of [...dirs.keys()]) {
+        if (dirPath === normalized || dirPath.startsWith(`${normalized}/`)) {
+          dirs.delete(dirPath);
+        }
+      }
+      return;
+    }
+    files.delete(normalized);
   }),
 }));
 
@@ -70,6 +84,7 @@ describe('bootstrapMindCapabilities', () => {
     expect(fileText(mindSkillPath('ttasks', 'reference/api.md'))).toContain('Task API');
     expect(fileText(mindSkillPath('automation', 'SKILL.md'))).toContain('# Automation');
     expect(fileText(mindSkillPath('automation', 'examples/briefing-with-canvas.ts'))).toContain('Canvas finale');
+    expect(metadataFor('automation').version).toBe('2.2.0');
   });
 
   it('continues installing available skills when one asset tree is missing', () => {
@@ -120,7 +135,7 @@ describe('installLensSkill', () => {
 
   it('installs the Lens skill from packaged Forge resources', () => {
     setResourcesPath('C:\\packed\\resources');
-    addFile('C:/packed/resources/lens-skill/SKILL.md', lensSkill('# Packaged Lens'));
+    addFile('C:/packed/resources/managed-skills/lens/SKILL.md', lensSkill('# Packaged Lens'));
 
     installLensSkill(MIND_PATH);
 
@@ -185,7 +200,7 @@ describe('installLensSkill', () => {
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensSkill('new bundled content'));
   });
 
-  it('preserves locally edited managed Lens skills', () => {
+  it('clobbers locally edited managed Lens skills', () => {
     addLensAsset('new bundled content');
     addFile(mindSkillPath('lens', 'SKILL.md'), 'locally edited content');
     addFile(mindSkillPath('lens', '.chamber-skill.json'), JSON.stringify({
@@ -198,7 +213,7 @@ describe('installLensSkill', () => {
 
     installLensSkill(MIND_PATH);
 
-    expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe('locally edited content');
+    expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensSkill('new bundled content'));
   });
 
   it('preserves unmanaged non-Lens skills', () => {
@@ -214,87 +229,80 @@ describe('installLensSkill', () => {
 describe('installManagedSkill', () => {
   beforeEach(resetFakeFs);
 
-  const manifest: ManagedSkillManifest = {
-    name: 'workflow',
-    version: '1.0.0',
-    assetRoot: 'workflow-skill',
-    files: ['SKILL.md', 'reference/api.md'],
-    capabilities: ['workflow'],
-  };
+  const workflowRoot = assetRoot('workflow');
 
   it('installs a multi-file skill tree with managed metadata', () => {
-    addAsset('workflow-skill', 'SKILL.md', '# Workflow');
-    addAsset('workflow-skill', 'reference/api.md', '# API');
+    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '1.0.0', '# Workflow'));
+    addSkillAsset('workflow', 'reference/api.md', '# API');
 
-    installManagedSkill(MIND_PATH, manifest);
+    installManagedSkill(MIND_PATH, workflowRoot);
 
-    expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe('# Workflow');
+    expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe(skill('workflow', '1.0.0', '# Workflow'));
     expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# API');
     expect(metadataFor('workflow')).toMatchObject({
       name: 'workflow',
       version: '1.0.0',
       files: [
-        { path: 'SKILL.md', sha256: managedSha256('SKILL.md', '# Workflow') },
+        { path: 'SKILL.md', sha256: managedSha256('SKILL.md', skill('workflow', '1.0.0', '# Workflow')) },
         { path: 'reference/api.md', sha256: managedSha256('reference/api.md', '# API') },
       ],
     });
   });
 
-  it('skips install when a nested file is missing under the resolved asset root', () => {
-    addAsset('workflow-skill', 'SKILL.md', '# Workflow');
+  it('skips install when SKILL.md frontmatter does not declare a version', () => {
+    addSkillAsset('workflow', 'SKILL.md', '---\nname: workflow\n---\n# Workflow');
 
-    installManagedSkill(MIND_PATH, manifest);
+    installManagedSkill(MIND_PATH, workflowRoot);
 
     expect(files.has(normalizedPath(mindSkillPath('workflow', 'SKILL.md')))).toBe(false);
     expect(files.has(normalizedPath(mindSkillPath('workflow', '.chamber-skill.json')))).toBe(false);
   });
 
   it('upgrades an unmodified managed skill and removes files dropped from the manifest', () => {
-    const nextManifest = { ...manifest, version: '2.0.0', files: ['SKILL.md'] };
-    addAsset('workflow-skill', 'SKILL.md', '# Workflow v2');
+    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '2.0.0', '# Workflow v2'));
     addManagedSkillInstall('workflow', '1.0.0', [
       { path: 'SKILL.md', content: '# Workflow v1' },
       { path: 'reference/api.md', content: '# Old API' },
     ]);
 
-    installManagedSkill(MIND_PATH, nextManifest);
+    installManagedSkill(MIND_PATH, workflowRoot);
 
-    expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe('# Workflow v2');
+    expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe(skill('workflow', '2.0.0', '# Workflow v2'));
     expect(files.has(normalizedPath(mindSkillPath('workflow', 'reference/api.md')))).toBe(false);
   });
 
-  it('preserves a managed skill when any installed file has local edits', () => {
-    addAsset('workflow-skill', 'SKILL.md', '# Workflow v2');
-    addAsset('workflow-skill', 'reference/api.md', '# API v2');
+  it('clobbers a managed skill when any installed file has local edits', () => {
+    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '1.0.0', '# Workflow v2'));
+    addSkillAsset('workflow', 'reference/api.md', '# API v2');
     addManagedSkillInstall('workflow', '1.0.0', [
       { path: 'SKILL.md', content: '# Workflow v1' },
       { path: 'reference/api.md', content: '# API v1' },
     ]);
     addFile(mindSkillPath('workflow', 'reference/api.md'), '# Locally edited API');
 
-    installManagedSkill(MIND_PATH, manifest);
+    installManagedSkill(MIND_PATH, workflowRoot);
 
-    expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe('# Workflow v1');
-    expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# Locally edited API');
+    expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe(skill('workflow', '1.0.0', '# Workflow v2'));
+    expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# API v2');
   });
 
   it('repairs a managed skill when a metadata file is missing', () => {
-    addAsset('workflow-skill', 'SKILL.md', '# Workflow');
-    addAsset('workflow-skill', 'reference/api.md', '# API');
+    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '1.0.0', '# Workflow'));
+    addSkillAsset('workflow', 'reference/api.md', '# API');
     addManagedSkillInstall('workflow', '1.0.0', [
-      { path: 'SKILL.md', content: '# Workflow' },
+      { path: 'SKILL.md', content: skill('workflow', '1.0.0', '# Workflow') },
       { path: 'reference/api.md', content: '# API' },
     ]);
     files.delete(normalizedPath(mindSkillPath('workflow', 'reference/api.md')));
 
-    installManagedSkill(MIND_PATH, manifest);
+    installManagedSkill(MIND_PATH, workflowRoot);
 
     expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# API');
   });
 
   it('preserves an existing skill when managed metadata contains unsafe paths', () => {
-    addAsset('workflow-skill', 'SKILL.md', '# Workflow v2');
-    addAsset('workflow-skill', 'reference/api.md', '# API v2');
+    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '2.0.0', '# Workflow v2'));
+    addSkillAsset('workflow', 'reference/api.md', '# API v2');
     addFile(mindSkillPath('workflow', 'SKILL.md'), '# Workflow v1');
     addFile(`${MIND_PATH}/.github/skills/outside.txt`, 'outside content');
     addFile(mindSkillPath('workflow', '.chamber-skill.json'), JSON.stringify({
@@ -309,7 +317,7 @@ describe('installManagedSkill', () => {
       capabilities: ['test'],
     }));
 
-    installManagedSkill(MIND_PATH, manifest);
+    installManagedSkill(MIND_PATH, workflowRoot);
 
     expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe('# Workflow v1');
     expect(fileText(`${MIND_PATH}/.github/skills/outside.txt`)).toBe('outside content');
@@ -346,25 +354,29 @@ function addAllManagedSkillAssets(): void {
 }
 
 function addLensAsset(markdown: string): void {
-  addAsset('lens-skill', 'SKILL.md', lensSkill(markdown));
+  addSkillAsset('lens', 'SKILL.md', lensSkill(markdown));
 }
 
 function addTtasksAssets(): void {
-  addAsset('ttasks-skill', 'SKILL.md', '---\nname: ttasks\n---\n# ttasks');
-  addAsset('ttasks-skill', 'reference/api.md', '# Task API');
-  addAsset('ttasks-skill', 'reference/state-machine.md', '# State Machine');
-  addAsset('ttasks-skill', 'patterns/agent-tasks.md', '# Agent Tasks');
-  addAsset('ttasks-skill', 'patterns/custom-types.md', '# Custom Types');
-  addAsset('ttasks-skill', 'patterns/workflow-shapes.md', '# Workflow Shapes');
+  addSkillAsset('ttasks', 'SKILL.md', skill('ttasks', '0.3.0', '# ttasks'));
+  addSkillAsset('ttasks', 'reference/api.md', '# Task API');
+  addSkillAsset('ttasks', 'reference/state-machine.md', '# State Machine');
+  addSkillAsset('ttasks', 'patterns/agent-tasks.md', '# Agent Tasks');
+  addSkillAsset('ttasks', 'patterns/custom-types.md', '# Custom Types');
+  addSkillAsset('ttasks', 'patterns/workflow-shapes.md', '# Workflow Shapes');
 }
 
 function addAutomationAsset(markdown: string): void {
-  addAsset('automation-skill', 'SKILL.md', `---\nname: automation\n---\n${markdown}`);
-  addAsset('automation-skill', 'examples/briefing-with-canvas.ts', '// EXAMPLE — Briefing with a Canvas finale.\n');
+  addSkillAsset('automation', 'SKILL.md', skill('automation', '2.2.0', markdown));
+  addSkillAsset('automation', 'examples/briefing-with-canvas.ts', '// EXAMPLE — Briefing with a Canvas finale.\n');
 }
 
-function addAsset(assetRoot: string, relativePath: string, content: string): void {
-  addFile(`${process.cwd()}/apps/desktop/src/main/assets/${assetRoot}/${relativePath}`, content);
+function addSkillAsset(skillName: string, relativePath: string, content: string): void {
+  addFile(`${assetRoot(skillName)}/${relativePath}`, content);
+}
+
+function assetRoot(skillName: string): string {
+  return `${process.cwd()}/apps/desktop/src/main/assets/managed-skills/${skillName}`;
 }
 
 function addManagedSkillInstall(
@@ -387,6 +399,10 @@ function addManagedSkillInstall(
 
 function lensSkill(markdown: string): string {
   return `---\nname: lens\nversion: 2.0.0\n---\n${markdown}`;
+}
+
+function skill(name: string, version: string, markdown: string): string {
+  return `---\nname: ${name}\nversion: ${version}\n---\n${markdown}`;
 }
 
 function addFile(filePath: string, content: string): void {
@@ -437,4 +453,38 @@ function managedSha256(filePath: string, content: string): string {
 
 function normalizedPath(value: unknown): string {
   return String(value).replace(/\\/g, '/');
+}
+
+function readFakeDir(dirPath: string): Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }> {
+  const normalized = normalizedPath(dirPath);
+  const prefix = `${normalized}/`;
+  const entries = new Map<string, 'file' | 'directory'>();
+
+  for (const filePath of files.keys()) {
+    if (!filePath.startsWith(prefix)) continue;
+    const remainder = filePath.slice(prefix.length);
+    if (!remainder) continue;
+    const [name, ...rest] = remainder.split('/');
+    entries.set(name, rest.length === 0 ? 'file' : 'directory');
+  }
+
+  for (const dir of dirs.keys()) {
+    if (!dir.startsWith(prefix)) continue;
+    const remainder = dir.slice(prefix.length);
+    if (!remainder) continue;
+    const [name] = remainder.split('/');
+    if (!entries.has(name)) entries.set(name, 'directory');
+  }
+
+  if (entries.size === 0) {
+    const error = new Error(`ENOENT: no such file or directory, scandir '${dirPath}'`) as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    throw error;
+  }
+
+  return [...entries.entries()].map(([name, kind]) => ({
+    name,
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+  }));
 }

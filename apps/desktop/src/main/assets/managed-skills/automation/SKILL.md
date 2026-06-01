@@ -1,6 +1,6 @@
 ---
 name: automation
-version: 2.1.0
+version: 2.2.0
 description: "Create, validate, run, inspect, and schedule Chamber automation scripts. Use this skill whenever the user asks for cron jobs, recurring work, scheduled tasks, reminders, daily/weekly/monthly checks, background automations, unattended workflows, or anything that should run later or repeat inside a Chamber mind. This is the Chamber-specific companion to the ttasks skill; use ttasks for generic task graph patterns and this skill for Chamber cron and automation-runtime rules."
 ---
 

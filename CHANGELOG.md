@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Simplify Chamber-managed skill upgrades** — Bundled Lens, ttasks, and automation skills now live under one `managed-skills/<name>/` asset root, use `SKILL.md` frontmatter as the single version source, recursively install their bundled files, and overwrite Chamber-managed installed copies on boot so minds always get the current system-owned guidance.
 - **Replace four-job cron model with author-your-own ttasks scripts** — Cron jobs now have a single shape (`{name, schedule, scriptPath, enabled?, timeoutMs?}`). Minds author TypeScript files under `.chamber/automation/*.ts` as direct ttasks programs using `@ianphil/ttasks-ts`; `@chamber/automation-runtime` supplies Chamber bridge helpers/handlers for prompt/notify/http tasks. Cron schedules execute them via a bundled Node + tsx + typescript runtime under `resources/automation-runtime/`. Existing v1 cron files (`prompt|shell|webhook|notification`) are migrated in-place on first load with `cron.v1.backup.json` next to the source. New tools: `automation_run`, `automation_validate`, `cron_run_detail`. Loopback `AutomationBridge` provides per-spawn Bearer-token-scoped `/prompt` and `/notify` endpoints for scripts to call back into Chamber.
 - **Persist cron run history in ttasks** — Cron history now reads and writes run records through the per-mind ttasks store while keeping recurring job definitions in cron JSON for now. (#359)
 

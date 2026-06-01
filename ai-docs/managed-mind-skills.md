@@ -29,17 +29,11 @@ The Lens split is the reference model: Lens discovery and Canvas rendering enfor
 Bundled managed skills live under desktop assets:
 
 ```text
-apps/desktop/src/main/assets/<skill-name>-skill/
-  SKILL.md
+apps/desktop/src/main/assets/managed-skills/<skill-name>/
+  SKILL.md         # name/version frontmatter is the source of truth
   references/      # optional, for deeper docs
   scripts/         # optional, for deterministic helpers
   assets/          # optional, templates or static files
-```
-
-The current Lens skill lives at:
-
-```text
-apps/desktop/src/main/assets/lens-skill/SKILL.md
 ```
 
 Contributor-facing skills used while developing Chamber can live under:
@@ -87,7 +81,7 @@ When creating or updating a managed skill:
 
 ## Installation and upgrades
 
-Managed skills are installed by Chamber bootstrap code, not by Genesis templates. This lets Chamber progressively equip existing and newly created minds.
+Managed skills are installed by Chamber bootstrap code, not by Genesis templates. This lets Chamber progressively equip existing and newly created minds. Chamber-managed skills are system-owned: when the bundled skill changes, bootstrap overwrites the installed copy from the bundled assets. Users who want custom behavior should copy the skill to a different name instead of editing the managed copy in place.
 
 The bootstrap path should be idempotent and safe to call from:
 
@@ -113,7 +107,8 @@ Example metadata:
   "name": "lens",
   "version": "2.0.0",
   "managedBy": "chamber",
-  "contentSha256": "<sha256 of installed SKILL.md>",
+  "algorithm": "sha256-framed-v2",
+  "files": [{ "path": "SKILL.md", "sha256": "<framed sha256>" }],
   "capabilities": ["lens-json", "canvas-lens", "chamber-theme-v1"]
 }
 ```
