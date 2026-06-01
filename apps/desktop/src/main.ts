@@ -54,12 +54,15 @@ import {
   MicrosoftGraphProfileImporter,
   MsalBrokerGraphTokenProvider,
   MarketplaceRegistryService,
+  MarketplaceSkillCatalog,
+  MarketplaceSkillMaterializer,
   MindManager,
   MindProfileService,
   MindScaffold,
   TaskManager,
   TaskLedger,
   ChildProcessRunner,
+  ManagedSkillService,
   ToolInstaller,
   ToolsService,
   TurnQueue,
@@ -209,6 +212,7 @@ let scaffold: MindScaffold;
 let genesisTemplateCatalog: GenesisMindTemplateMarketplaceCatalog;
 let genesisTemplateInstaller: GenesisMindTemplateInstaller;
 let marketplaceRegistryService: MarketplaceRegistryService;
+let managedSkillService: ManagedSkillService;
 let toolsService: ToolsService;
 let viewDiscovery: ViewDiscovery;
 let a2aEventBus: EventEmitter;
@@ -278,6 +282,14 @@ async function initializeRuntime(): Promise<void> {
   genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
   genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
   marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
+  const marketplaceSkillCatalog = new MarketplaceSkillCatalog(githubRegistryClient, getGenesisMarketplaceSources);
+  managedSkillService = new ManagedSkillService(
+    marketplaceSkillCatalog,
+    new MarketplaceSkillMaterializer(githubRegistryClient),
+  );
+  void managedSkillService.refresh().catch((err: unknown) => {
+    log.warn('Marketplace managed skill refresh failed (non-fatal):', err);
+  });
   const marketplaceToolCatalog = new MarketplaceToolCatalog(githubRegistryClient, getGenesisMarketplaceSources);
   toolsService = new ToolsService(
     marketplaceToolCatalog,
@@ -302,6 +314,7 @@ async function initializeRuntime(): Promise<void> {
     viewDiscovery,
     () => buildProviderConfig(cachedByoLlmConfig),
     () => cachedByoLlmConfig?.model,
+    managedSkillService,
   );
   mindProfileService = new MindProfileService({
     getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,

@@ -5,9 +5,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { Logger } from '../logger';
+import type { ManagedSkillAsset, ManagedSkillAssetFile, ManagedSkillManifest, ManagedSkillMarketplaceSource } from '../skills/skillTypes';
 
 const log = Logger.create('MindBootstrap');
-const MANAGED_SKILLS_ROOT = 'managed-skills';
 const MANAGED_SKILL_METADATA = '.chamber-skill.json';
 const MANAGED_SKILL_HASH_ALGORITHM = 'sha256-framed-v2';
 const KNOWN_UNVERSIONED_LENS_SKILL_HASHES = new Set([
@@ -20,12 +20,6 @@ const MANAGED_SKILL_CAPABILITIES: Record<string, string[]> = {
   ttasks: ['ttasks-ts', 'task-graphs', 'workflow-orchestration'],
   automation: ['chamber-automation', 'cron-scripts', 'ttasks-runtime'],
 };
-
-export interface ManagedSkillManifest {
-  name: string;
-  version: string;
-  capabilities: string[];
-}
 
 export function seedLensDefaults(mindPath: string): void {
   const lensDir = path.join(mindPath, '.github', 'lens');
@@ -86,18 +80,6 @@ export function seedLensDefaults(mindPath: string): void {
 
 export function bootstrapMindCapabilities(mindPath: string): void {
   seedLensDefaults(mindPath);
-  for (const asset of discoverManagedSkillAssets()) {
-    try {
-      installManagedSkillAsset(mindPath, asset);
-    } catch (error) {
-      log.warn(`Managed skill install failed for ${asset.manifest.name}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-}
-
-export function installLensSkill(mindPath: string): void {
-  const asset = discoverManagedSkillAssets().find(({ manifest }) => manifest.name === 'lens');
-  if (asset) installManagedSkillAsset(mindPath, asset);
 }
 
 export function installManagedSkill(mindPath: string, skillRoot: string): void {
@@ -106,7 +88,7 @@ export function installManagedSkill(mindPath: string, skillRoot: string): void {
   installManagedSkillAsset(mindPath, asset);
 }
 
-function installManagedSkillAsset(mindPath: string, asset: ManagedSkillAsset): void {
+export function installManagedSkillAsset(mindPath: string, asset: ManagedSkillAsset): void {
   const { manifest } = asset;
   const skillDir = path.join(mindPath, '.github', 'skills', manifest.name);
   const skillPath = path.join(skillDir, 'SKILL.md');
@@ -165,25 +147,6 @@ function backupLegacyLensSkill(skillDir: string, installedContent: string): void
   fs.writeFileSync(backupPath, installedContent);
 }
 
-function discoverManagedSkillAssets(): ManagedSkillAsset[] {
-  const root = resolveManagedSkillsRoot();
-  if (!root) {
-    log.warn('Managed skills asset root not found, skipping managed skill install');
-    return [];
-  }
-
-  try {
-    return fs.readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => readManagedSkillAsset(path.join(root, entry.name)))
-      .filter((asset): asset is ManagedSkillAsset => asset !== null)
-      .sort((left, right) => compareText(left.manifest.name, right.manifest.name));
-  } catch (error) {
-    log.warn(`Failed to read managed skills asset root: ${error instanceof Error ? error.message : String(error)}`);
-    return [];
-  }
-}
-
 function readManagedSkillAsset(root: string): ManagedSkillAsset | null {
   const skillPath = path.join(root, 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
@@ -205,7 +168,6 @@ function readManagedSkillAsset(root: string): ManagedSkillAsset | null {
   }
 
   return {
-    root,
     manifest: {
       name: frontmatter.name,
       version: frontmatter.version,
@@ -213,33 +175,6 @@ function readManagedSkillAsset(root: string): ManagedSkillAsset | null {
     },
     files,
   };
-}
-
-function resolveManagedSkillsRoot(): string | null {
-  // Lookup order:
-  //   1-2. Packaged Electron — Forge places assets under `process.resourcesPath`.
-  //   3.   Dev — running from the repo root via `npm start`, `npm test`, etc.
-  // Source-relative paths (e.g. `__dirname` / `import.meta.url`) are deliberately
-  // omitted: services is `"type": "module"` so `__dirname` is undefined in the
-  // ESM bundle, and `import.meta.url` is rejected by CJS-mode TS loaders such
-  // as Playwright's. The cwd fallback covers every dev scenario.
-  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? '';
-  const candidates = [
-    path.join(resourcesPath, 'assets', MANAGED_SKILLS_ROOT),
-    path.join(resourcesPath, MANAGED_SKILLS_ROOT),
-    path.join(process.cwd(), 'apps', 'desktop', 'src', 'main', 'assets', MANAGED_SKILLS_ROOT),
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      fs.readdirSync(candidate, { withFileTypes: true });
-      return candidate;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-
-  return null;
 }
 
 function listManagedSkillFiles(root: string): ManagedSkillAssetFile[] {
@@ -373,6 +308,7 @@ function writeManagedSkill(
     algorithm: MANAGED_SKILL_HASH_ALGORITHM,
     files: asset.files.map(({ path: filePath, sha256 }) => ({ path: filePath, sha256 })),
     capabilities: manifest.capabilities,
+    ...(asset.source ? { source: asset.source } : {}),
   };
   fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
 }
@@ -417,6 +353,7 @@ interface ManagedSkillMetadata {
   algorithm: typeof MANAGED_SKILL_HASH_ALGORITHM | 'sha256-legacy-single-file';
   files: ManagedSkillFileMetadata[];
   capabilities: string[];
+  source?: ManagedSkillMarketplaceSource;
 }
 
 interface LegacyManagedSkillMetadata {
@@ -425,16 +362,6 @@ interface LegacyManagedSkillMetadata {
   managedBy: 'chamber';
   contentSha256: string;
   capabilities: string[];
-}
-
-interface ManagedSkillAssetFile extends ManagedSkillFileMetadata {
-  content: Buffer;
-}
-
-interface ManagedSkillAsset {
-  root: string;
-  manifest: ManagedSkillManifest;
-  files: ManagedSkillAssetFile[];
 }
 
 function sha256Buffer(content: Buffer): string {

@@ -41,10 +41,11 @@ Cron scheduling is handled by `croner` in `Scheduler.ts`. Actual job execution i
 
 `@ianphil/ttasks-ts` is already present in Chamber and used by cron as a persistence layer through `TTasksCronRunStore`. Today, cron run history is represented as ttasks `Task` records in `.chamber/runs/ttasks.db`, but cron does not execute jobs through ttasks.
 
-Chamber also already has a managed skill system. The Lens skill is bundled at:
+Chamber also already has a managed skill system. Chamber-owned system skills
+are served by the default Genesis marketplace, for example:
 
 ```text
-apps/desktop/src/main/assets/managed-skills/lens/SKILL.md
+genesis-minds/plugins/genesis-minds/skills/lens/SKILL.md
 ```
 
 and installed into minds under:
@@ -53,7 +54,7 @@ and installed into minds under:
 .github/skills/lens/
 ```
 
-via `bootstrapMindCapabilities()` in `MindBootstrap.ts`.
+via `ManagedSkillService.installIntoMind()`.
 
 ## Proposed User Experience
 
@@ -294,10 +295,10 @@ A later version may enrich `cron_history` by reading graph/task details from `CH
 
 Chamber should ship one managed skill for this feature, installed into every mind.
 
-### Location in Repo
+### Marketplace Location
 
 ```text
-apps/desktop/src/main/assets/managed-skills/automation/
+genesis-minds/plugins/genesis-minds/skills/automation/
   SKILL.md
   references/
     ttasks.md
@@ -349,7 +350,8 @@ Follow the Lens skill pattern with `.chamber-skill.json`:
   "name": "automation",
   "version": "1.0.0",
   "managedBy": "chamber",
-  "contentSha256": "<sha256>",
+  "algorithm": "sha256-framed-v2",
+  "files": [{ "path": "SKILL.md", "sha256": "<framed sha256>" }],
   "capabilities": [
     "chamber-automation-v1",
     "ttasks-ts-v1",
@@ -360,29 +362,17 @@ Follow the Lens skill pattern with `.chamber-skill.json`:
 
 ## Bootstrap Changes
 
-Add an `installAutomationSkill(mindPath)` function in `MindBootstrap.ts`, mirroring `installLensSkill()`.
-
-Update:
-
-```ts
-export function bootstrapMindCapabilities(mindPath: string): void {
-  seedLensDefaults(mindPath);
-  installLensSkill(mindPath);
-  installAutomationSkill(mindPath);
-}
-```
+`ManagedSkillService` fetches marketplace skill bundles once and installs them
+into each mind when the mind loads. `bootstrapMindCapabilities()` remains for
+local non-network seeds such as default Lens views.
 
 The install/upgrade policy should match Lens:
 
 - Install when missing.
 - Upgrade managed unmodified skills when version/content changes.
-- Preserve locally edited managed skills.
+- Clobber locally edited Chamber-managed skills.
 - Preserve unmanaged skills.
-- Write `.chamber-skill.json` with version and content hash.
-
-## Packaging
-
-Ensure the new asset directory is included in packaged desktop builds, following the Lens skill packaging path.
+- Write `.chamber-skill.json` with version, framed hashes, and marketplace source metadata.
 
 ## Tests
 

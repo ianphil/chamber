@@ -108,7 +108,6 @@ const baseExtraResource = [
   './resources/sqlite-runtime',
   './resources/automation-runtime',
   './node_modules/keytar',
-  './apps/desktop/src/main/assets/managed-skills',
 ];
 
 const config: ForgeConfig = {
