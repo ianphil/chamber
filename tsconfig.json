@@ -15,5 +15,5 @@
     }
   },
   "include": ["apps/**/*", "packages/**/*", "tests/**/*", "forge.env.d.ts"],
-  "exclude": ["**/node_modules", "apps/desktop/src/main/assets/managed-skills/automation/examples"]
+  "exclude": ["**/node_modules"]
 }

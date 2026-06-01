@@ -9,6 +9,7 @@ import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
 import type { AppConfig, LensViewManifest } from '@chamber/shared/types';
 import { MindScaffold } from '../genesis/MindScaffold';
+import type { ManagedSkillSyncResult } from '../skills';
 
 // --- Mocks ---
 
@@ -443,6 +444,27 @@ describe('MindManager', () => {
       expect(bootstrapMindCapabilities).toHaveBeenCalledWith('/tmp/agents/q');
       expect(mockClientFactory.createClient).toHaveBeenCalledWith('/tmp/agents/q');
       expect(vi.mocked(bootstrapMindCapabilities).mock.invocationCallOrder[0])
+        .toBeLessThan(mockClientFactory.createClient.mock.invocationCallOrder[0]);
+    });
+
+    it('installs marketplace managed skills before creating the SDK session', async () => {
+      const managedSkillService = {
+        installIntoMind: vi.fn(async (): Promise<ManagedSkillSyncResult> => ({ status: 'ok', installed: [], errors: [] })),
+      };
+      manager = new MindManager(
+        mockClientFactory as unknown as CopilotClientFactory,
+        mockIdentityLoader as unknown as IdentityLoader,
+        mockConfigService as unknown as ConfigService,
+        mockViewDiscovery as unknown as ViewDiscovery,
+        () => null,
+        () => undefined,
+        managedSkillService,
+      );
+
+      await manager.loadMind('/tmp/agents/q');
+
+      expect(managedSkillService.installIntoMind).toHaveBeenCalledWith('/tmp/agents/q');
+      expect(managedSkillService.installIntoMind.mock.invocationCallOrder[0])
         .toBeLessThan(mockClientFactory.createClient.mock.invocationCallOrder[0]);
     });
 

@@ -24,6 +24,7 @@ import type { ViewDiscovery } from '../lens/ViewDiscovery';
 import { bootstrapMindCapabilities } from '../lens/MindBootstrap';
 import type { SdkProviderConfig } from '../byo-llm/buildProviderConfig';
 import { MindScaffold } from '../genesis/MindScaffold';
+import type { ManagedSkillService } from '../skills/ManagedSkillService';
 
 const log = Logger.create('MindManager');
 const COPILOT_RUNTIME_CONFIG_DIR = 'copilot-runtime';
@@ -123,6 +124,7 @@ export class MindManager extends EventEmitter {
      * the SDK rejects createSession({provider}) without a model argument.
      */
     private readonly byoDefaultModelProvider: () => string | undefined = () => undefined,
+    private readonly managedSkillService?: Pick<ManagedSkillService, 'installIntoMind'>,
   ) {
     super();
   }
@@ -231,6 +233,14 @@ export class MindManager extends EventEmitter {
       bootstrapMindCapabilities(resolvedMindPath);
     } catch (err) {
       log.warn('Mind capability bootstrap failed (non-fatal):', err);
+    }
+
+    if (this.managedSkillService) {
+      try {
+        await this.managedSkillService.installIntoMind(resolvedMindPath);
+      } catch (err) {
+        log.warn('Marketplace managed skill install failed (non-fatal):', err);
+      }
     }
 
     // Create client (no env-var BYOK plumbing — provider is passed via SessionConfig.provider on createSession)

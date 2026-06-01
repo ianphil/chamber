@@ -44,8 +44,7 @@ vi.mock('fs', () => ({
 import * as fs from 'fs';
 import {
   bootstrapMindCapabilities,
-  installLensSkill,
-  installManagedSkill,
+  installManagedSkillAsset,
   seedLensDefaults,
 } from './MindBootstrap';
 
@@ -74,31 +73,27 @@ describe('seedLensDefaults', () => {
 describe('bootstrapMindCapabilities', () => {
   beforeEach(resetFakeFs);
 
-  it('seeds default lenses and installs Lens, ttasks, and automation skills', () => {
+  it('seeds default lenses while marketplace skill installation is handled separately', () => {
     addAllManagedSkillAssets();
 
     bootstrapMindCapabilities(MIND_PATH);
 
     expect(fileText(mindLensPath('hello-world/view.json'))).toContain('"Hello World"');
-    expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toContain('# Lens');
-    expect(fileText(mindSkillPath('ttasks', 'reference/api.md'))).toContain('Task API');
-    expect(fileText(mindSkillPath('automation', 'SKILL.md'))).toContain('# Automation');
-    expect(fileText(mindSkillPath('automation', 'examples/briefing-with-canvas.ts'))).toContain('Canvas finale');
-    expect(metadataFor('automation').version).toBe('2.2.0');
+    expect(files.has(normalizedPath(mindSkillPath('lens', 'SKILL.md')))).toBe(false);
+    expect(files.has(normalizedPath(mindSkillPath('automation', 'SKILL.md')))).toBe(false);
   });
 
-  it('continues installing available skills when one asset tree is missing', () => {
+  it('does not require bundled skill assets to load a mind', () => {
     addLensAsset('# Lens');
     addAutomationAsset('# Automation');
 
     expect(() => bootstrapMindCapabilities(MIND_PATH)).not.toThrow();
 
-    expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toContain('# Lens');
-    expect(fileText(mindSkillPath('automation', 'SKILL.md'))).toContain('# Automation');
-    expect(files.has(normalizedPath(mindSkillPath('ttasks', 'SKILL.md')))).toBe(false);
+    expect(files.has(normalizedPath(mindSkillPath('lens', 'SKILL.md')))).toBe(false);
+    expect(files.has(normalizedPath(mindSkillPath('automation', 'SKILL.md')))).toBe(false);
   });
 
-  it('adds missing new skills to an existing mind without disturbing managed Lens', () => {
+  it('does not disturb existing managed skills', () => {
     const lensContent = lensSkill('# Existing Lens');
     addLensAsset('# Existing Lens');
     addTtasksAssets();
@@ -108,19 +103,16 @@ describe('bootstrapMindCapabilities', () => {
     bootstrapMindCapabilities(MIND_PATH);
 
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensContent);
-    expect(fileText(mindSkillPath('ttasks', 'SKILL.md'))).toContain('# ttasks');
-    expect(fileText(mindSkillPath('automation', 'SKILL.md'))).toContain('# Automation');
+    expect(files.has(normalizedPath(mindSkillPath('ttasks', 'SKILL.md')))).toBe(false);
   });
 });
 
-describe('installLensSkill', () => {
+describe('managed Lens install compatibility', () => {
   beforeEach(resetFakeFs);
   afterEach(restoreResourcesPath);
 
-  it('installs the bundled Lens skill with managed metadata when missing', () => {
-    addLensAsset('# Lens');
-
-    installLensSkill(MIND_PATH);
+  it('installs the Lens skill with managed metadata when missing', () => {
+    installManagedSkillAsset(MIND_PATH, lensAsset('# Lens'));
 
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toContain('# Lens');
     expect(metadataFor('lens')).toMatchObject({
@@ -133,18 +125,8 @@ describe('installLensSkill', () => {
     expect(metadataFor('lens').files).toEqual([{ path: 'SKILL.md', sha256: managedSha256('SKILL.md', lensSkill('# Lens')) }]);
   });
 
-  it('installs the Lens skill from packaged Forge resources', () => {
-    setResourcesPath('C:\\packed\\resources');
-    addFile('C:/packed/resources/managed-skills/lens/SKILL.md', lensSkill('# Packaged Lens'));
-
-    installLensSkill(MIND_PATH);
-
-    expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toContain('# Packaged Lens');
-  });
-
   it('upgrades a managed unmodified Lens skill from legacy metadata', () => {
     const oldContent = 'old managed content';
-    addLensAsset('new bundled content');
     addFile(mindSkillPath('lens', 'SKILL.md'), oldContent);
     addFile(mindSkillPath('lens', '.chamber-skill.json'), JSON.stringify({
       name: 'lens',
@@ -154,7 +136,7 @@ describe('installLensSkill', () => {
       capabilities: ['lens-json'],
     }));
 
-    installLensSkill(MIND_PATH);
+    installManagedSkillAsset(MIND_PATH, lensAsset('new bundled content'));
 
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensSkill('new bundled content'));
     expect(metadataFor('lens').algorithm).toBe('sha256-framed-v2');
@@ -172,10 +154,9 @@ describe('installLensSkill', () => {
       '',
       'Local instruction: do not overwrite this customization.',
     ].join('\n');
-    addLensAsset('new bundled content');
     addFile(mindSkillPath('lens', 'SKILL.md'), legacySkill);
 
-    installLensSkill(MIND_PATH);
+    installManagedSkillAsset(MIND_PATH, lensAsset('new bundled content'));
 
     expect(fileText(mindSkillPath('lens', 'SKILL.legacy-backup.md'))).toBe(legacySkill);
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensSkill('new bundled content'));
@@ -192,16 +173,14 @@ describe('installLensSkill', () => {
       'The old contract supports form, table, and briefing panels.',
       'Local instruction: prefer concise panels.',
     ].join('\n');
-    addLensAsset('new bundled content');
     addFile(mindSkillPath('lens', 'SKILL.md'), legacySkill);
 
-    installLensSkill(MIND_PATH);
+    installManagedSkillAsset(MIND_PATH, lensAsset('new bundled content'));
 
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensSkill('new bundled content'));
   });
 
   it('clobbers locally edited managed Lens skills', () => {
-    addLensAsset('new bundled content');
     addFile(mindSkillPath('lens', 'SKILL.md'), 'locally edited content');
     addFile(mindSkillPath('lens', '.chamber-skill.json'), JSON.stringify({
       name: 'lens',
@@ -211,31 +190,28 @@ describe('installLensSkill', () => {
       capabilities: ['lens-json'],
     }));
 
-    installLensSkill(MIND_PATH);
+    installManagedSkillAsset(MIND_PATH, lensAsset('new bundled content'));
 
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe(lensSkill('new bundled content'));
   });
 
   it('preserves unmanaged non-Lens skills', () => {
-    addLensAsset('new bundled content');
     addFile(mindSkillPath('lens', 'SKILL.md'), 'custom unrelated skill');
 
-    installLensSkill(MIND_PATH);
+    installManagedSkillAsset(MIND_PATH, lensAsset('new bundled content'));
 
     expect(fileText(mindSkillPath('lens', 'SKILL.md'))).toBe('custom unrelated skill');
   });
 });
 
-describe('installManagedSkill', () => {
+describe('installManagedSkillAsset', () => {
   beforeEach(resetFakeFs);
 
-  const workflowRoot = assetRoot('workflow');
-
   it('installs a multi-file skill tree with managed metadata', () => {
-    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '1.0.0', '# Workflow'));
-    addSkillAsset('workflow', 'reference/api.md', '# API');
-
-    installManagedSkill(MIND_PATH, workflowRoot);
+    installManagedSkillAsset(MIND_PATH, workflowAsset([
+      { path: 'SKILL.md', content: skill('workflow', '1.0.0', '# Workflow') },
+      { path: 'reference/api.md', content: '# API' },
+    ]));
 
     expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe(skill('workflow', '1.0.0', '# Workflow'));
     expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# API');
@@ -249,60 +225,52 @@ describe('installManagedSkill', () => {
     });
   });
 
-  it('skips install when SKILL.md frontmatter does not declare a version', () => {
-    addSkillAsset('workflow', 'SKILL.md', '---\nname: workflow\n---\n# Workflow');
-
-    installManagedSkill(MIND_PATH, workflowRoot);
-
-    expect(files.has(normalizedPath(mindSkillPath('workflow', 'SKILL.md')))).toBe(false);
-    expect(files.has(normalizedPath(mindSkillPath('workflow', '.chamber-skill.json')))).toBe(false);
-  });
-
   it('upgrades an unmodified managed skill and removes files dropped from the manifest', () => {
-    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '2.0.0', '# Workflow v2'));
     addManagedSkillInstall('workflow', '1.0.0', [
       { path: 'SKILL.md', content: '# Workflow v1' },
       { path: 'reference/api.md', content: '# Old API' },
     ]);
 
-    installManagedSkill(MIND_PATH, workflowRoot);
+    installManagedSkillAsset(MIND_PATH, workflowAsset([
+      { path: 'SKILL.md', content: skill('workflow', '2.0.0', '# Workflow v2') },
+    ], '2.0.0'));
 
     expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe(skill('workflow', '2.0.0', '# Workflow v2'));
     expect(files.has(normalizedPath(mindSkillPath('workflow', 'reference/api.md')))).toBe(false);
   });
 
   it('clobbers a managed skill when any installed file has local edits', () => {
-    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '1.0.0', '# Workflow v2'));
-    addSkillAsset('workflow', 'reference/api.md', '# API v2');
     addManagedSkillInstall('workflow', '1.0.0', [
       { path: 'SKILL.md', content: '# Workflow v1' },
       { path: 'reference/api.md', content: '# API v1' },
     ]);
     addFile(mindSkillPath('workflow', 'reference/api.md'), '# Locally edited API');
 
-    installManagedSkill(MIND_PATH, workflowRoot);
+    installManagedSkillAsset(MIND_PATH, workflowAsset([
+      { path: 'SKILL.md', content: skill('workflow', '1.0.0', '# Workflow v2') },
+      { path: 'reference/api.md', content: '# API v2' },
+    ]));
 
     expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe(skill('workflow', '1.0.0', '# Workflow v2'));
     expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# API v2');
   });
 
   it('repairs a managed skill when a metadata file is missing', () => {
-    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '1.0.0', '# Workflow'));
-    addSkillAsset('workflow', 'reference/api.md', '# API');
     addManagedSkillInstall('workflow', '1.0.0', [
       { path: 'SKILL.md', content: skill('workflow', '1.0.0', '# Workflow') },
       { path: 'reference/api.md', content: '# API' },
     ]);
     files.delete(normalizedPath(mindSkillPath('workflow', 'reference/api.md')));
 
-    installManagedSkill(MIND_PATH, workflowRoot);
+    installManagedSkillAsset(MIND_PATH, workflowAsset([
+      { path: 'SKILL.md', content: skill('workflow', '1.0.0', '# Workflow') },
+      { path: 'reference/api.md', content: '# API' },
+    ]));
 
     expect(fileText(mindSkillPath('workflow', 'reference/api.md'))).toBe('# API');
   });
 
   it('preserves an existing skill when managed metadata contains unsafe paths', () => {
-    addSkillAsset('workflow', 'SKILL.md', skill('workflow', '2.0.0', '# Workflow v2'));
-    addSkillAsset('workflow', 'reference/api.md', '# API v2');
     addFile(mindSkillPath('workflow', 'SKILL.md'), '# Workflow v1');
     addFile(`${MIND_PATH}/.github/skills/outside.txt`, 'outside content');
     addFile(mindSkillPath('workflow', '.chamber-skill.json'), JSON.stringify({
@@ -317,10 +285,42 @@ describe('installManagedSkill', () => {
       capabilities: ['test'],
     }));
 
-    installManagedSkill(MIND_PATH, workflowRoot);
+    installManagedSkillAsset(MIND_PATH, workflowAsset([
+      { path: 'SKILL.md', content: skill('workflow', '2.0.0', '# Workflow v2') },
+      { path: 'reference/api.md', content: '# API v2' },
+    ], '2.0.0'));
 
     expect(fileText(mindSkillPath('workflow', 'SKILL.md'))).toBe('# Workflow v1');
     expect(fileText(`${MIND_PATH}/.github/skills/outside.txt`)).toBe('outside content');
+  });
+
+  it('writes marketplace source metadata for marketplace-provided skills', () => {
+    installManagedSkillAsset(MIND_PATH, marketplaceSkillAsset('# Workflow'));
+
+    expect(metadataFor('workflow').source).toEqual({
+      type: 'marketplace',
+      marketplaceId: 'github:ianphil/genesis-minds',
+      marketplaceLabel: 'Public Genesis Minds',
+      marketplaceUrl: 'https://github.com/ianphil/genesis-minds',
+      owner: 'ianphil',
+      repo: 'genesis-minds',
+      ref: 'master',
+      plugin: 'genesis-minds',
+      root: 'skills/workflow',
+    });
+  });
+
+  it('does not rewrite a bundled-origin managed install that already matches marketplace bytes', () => {
+    const asset = marketplaceSkillAsset('# Workflow');
+    addManagedSkillInstall('workflow', '1.0.0', [
+      { path: 'SKILL.md', content: skill('workflow', '1.0.0', '# Workflow') },
+    ]);
+    vi.mocked(fs.writeFileSync).mockClear();
+
+    installManagedSkillAsset(MIND_PATH, asset);
+
+    expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalled();
+    expect(metadataFor('workflow').source).toBeUndefined();
   });
 });
 
@@ -332,13 +332,6 @@ function resetFakeFs(): void {
 }
 
 const originalResourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
-
-function setResourcesPath(value: string): void {
-  Object.defineProperty(process, 'resourcesPath', {
-    configurable: true,
-    value,
-  });
-}
 
 function restoreResourcesPath(): void {
   Object.defineProperty(process, 'resourcesPath', {
@@ -376,7 +369,7 @@ function addSkillAsset(skillName: string, relativePath: string, content: string)
 }
 
 function assetRoot(skillName: string): string {
-  return `${process.cwd()}/apps/desktop/src/main/assets/managed-skills/${skillName}`;
+  return `C:/test/managed-skill-assets/${skillName}`;
 }
 
 function addManagedSkillInstall(
@@ -422,10 +415,57 @@ interface TestMetadata {
   algorithm: string;
   files: Array<{ path: string; sha256: string }>;
   capabilities: string[];
+  source?: unknown;
 }
 
 function metadataFor(skillName: string): TestMetadata {
   return JSON.parse(fileText(mindSkillPath(skillName, '.chamber-skill.json'))) as TestMetadata;
+}
+
+function lensAsset(markdown: string) {
+  return managedSkillAsset('lens', '2.0.0', ['lens-json', 'canvas-lens', 'chamber-theme-v1'], [
+    { path: 'SKILL.md', content: lensSkill(markdown) },
+  ]);
+}
+
+function workflowAsset(files: Array<{ path: string; content: string }>, version = '1.0.0') {
+  return managedSkillAsset('workflow', version, ['workflow'], files);
+}
+
+function marketplaceSkillAsset(markdown: string) {
+  return {
+    ...workflowAsset([{ path: 'SKILL.md', content: skill('workflow', '1.0.0', markdown) }]),
+    source: {
+      type: 'marketplace' as const,
+      marketplaceId: 'github:ianphil/genesis-minds',
+      marketplaceLabel: 'Public Genesis Minds',
+      marketplaceUrl: 'https://github.com/ianphil/genesis-minds',
+      owner: 'ianphil',
+      repo: 'genesis-minds',
+      ref: 'master',
+      plugin: 'genesis-minds',
+      root: 'skills/workflow',
+    },
+  };
+}
+
+function managedSkillAsset(
+  name: string,
+  version: string,
+  capabilities: string[],
+  filesToInstall: Array<{ path: string; content: string }>,
+) {
+  return {
+    manifest: { name, version, capabilities },
+    files: filesToInstall.map((file) => {
+      const content = Buffer.from(file.content);
+      return {
+        path: file.path,
+        content,
+        sha256: managedSha256(file.path, file.content),
+      };
+    }),
+  };
 }
 
 function mindLensPath(relativePath: string): string {

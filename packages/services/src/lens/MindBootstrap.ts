@@ -5,27 +5,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { Logger } from '../logger';
+import type { ManagedSkillAsset, ManagedSkillAssetFile, ManagedSkillManifest, ManagedSkillMarketplaceSource } from '../skills/skillTypes';
 
 const log = Logger.create('MindBootstrap');
-const MANAGED_SKILLS_ROOT = 'managed-skills';
 const MANAGED_SKILL_METADATA = '.chamber-skill.json';
 const MANAGED_SKILL_HASH_ALGORITHM = 'sha256-framed-v2';
 const KNOWN_UNVERSIONED_LENS_SKILL_HASHES = new Set([
   '1f263ca4285fef4c9b497ab42a286bd246ff2dfdbd0c3170101db9f2c92d23e3',
   '716367d40a6fa9a5a6980437ac5a4bac25118e439ccf1b70e2b21d735c0d84da',
 ]);
-
-const MANAGED_SKILL_CAPABILITIES: Record<string, string[]> = {
-  lens: ['lens-json', 'canvas-lens', 'chamber-theme-v1'],
-  ttasks: ['ttasks-ts', 'task-graphs', 'workflow-orchestration'],
-  automation: ['chamber-automation', 'cron-scripts', 'ttasks-runtime'],
-};
-
-export interface ManagedSkillManifest {
-  name: string;
-  version: string;
-  capabilities: string[];
-}
 
 export function seedLensDefaults(mindPath: string): void {
   const lensDir = path.join(mindPath, '.github', 'lens');
@@ -86,27 +74,9 @@ export function seedLensDefaults(mindPath: string): void {
 
 export function bootstrapMindCapabilities(mindPath: string): void {
   seedLensDefaults(mindPath);
-  for (const asset of discoverManagedSkillAssets()) {
-    try {
-      installManagedSkillAsset(mindPath, asset);
-    } catch (error) {
-      log.warn(`Managed skill install failed for ${asset.manifest.name}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
 }
 
-export function installLensSkill(mindPath: string): void {
-  const asset = discoverManagedSkillAssets().find(({ manifest }) => manifest.name === 'lens');
-  if (asset) installManagedSkillAsset(mindPath, asset);
-}
-
-export function installManagedSkill(mindPath: string, skillRoot: string): void {
-  const asset = readManagedSkillAsset(skillRoot);
-  if (!asset) return;
-  installManagedSkillAsset(mindPath, asset);
-}
-
-function installManagedSkillAsset(mindPath: string, asset: ManagedSkillAsset): void {
+export function installManagedSkillAsset(mindPath: string, asset: ManagedSkillAsset): void {
   const { manifest } = asset;
   const skillDir = path.join(mindPath, '.github', 'skills', manifest.name);
   const skillPath = path.join(skillDir, 'SKILL.md');
@@ -163,134 +133,6 @@ function backupLegacyLensSkill(skillDir: string, installedContent: string): void
     backupPath = path.join(skillDir, `SKILL.legacy-backup-${index}.md`);
   }
   fs.writeFileSync(backupPath, installedContent);
-}
-
-function discoverManagedSkillAssets(): ManagedSkillAsset[] {
-  const root = resolveManagedSkillsRoot();
-  if (!root) {
-    log.warn('Managed skills asset root not found, skipping managed skill install');
-    return [];
-  }
-
-  try {
-    return fs.readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => readManagedSkillAsset(path.join(root, entry.name)))
-      .filter((asset): asset is ManagedSkillAsset => asset !== null)
-      .sort((left, right) => compareText(left.manifest.name, right.manifest.name));
-  } catch (error) {
-    log.warn(`Failed to read managed skills asset root: ${error instanceof Error ? error.message : String(error)}`);
-    return [];
-  }
-}
-
-function readManagedSkillAsset(root: string): ManagedSkillAsset | null {
-  const skillPath = path.join(root, 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    log.warn(`Managed skill asset at ${root} is missing SKILL.md, skipping install`);
-    return null;
-  }
-
-  const skillContent = fs.readFileSync(skillPath, 'utf-8');
-  const frontmatter = parseSkillFrontmatter(skillContent);
-  if (!frontmatter) {
-    log.warn(`Managed skill asset at ${root} has invalid SKILL.md frontmatter, skipping install`);
-    return null;
-  }
-
-  const files = listManagedSkillFiles(root);
-  if (files.length === 0 || !files.some((file) => file.path === 'SKILL.md')) {
-    log.warn(`${frontmatter.name} skill has no installable files, skipping install`);
-    return null;
-  }
-
-  return {
-    root,
-    manifest: {
-      name: frontmatter.name,
-      version: frontmatter.version,
-      capabilities: MANAGED_SKILL_CAPABILITIES[frontmatter.name] ?? [],
-    },
-    files,
-  };
-}
-
-function resolveManagedSkillsRoot(): string | null {
-  // Lookup order:
-  //   1-2. Packaged Electron — Forge places assets under `process.resourcesPath`.
-  //   3.   Dev — running from the repo root via `npm start`, `npm test`, etc.
-  // Source-relative paths (e.g. `__dirname` / `import.meta.url`) are deliberately
-  // omitted: services is `"type": "module"` so `__dirname` is undefined in the
-  // ESM bundle, and `import.meta.url` is rejected by CJS-mode TS loaders such
-  // as Playwright's. The cwd fallback covers every dev scenario.
-  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? '';
-  const candidates = [
-    path.join(resourcesPath, 'assets', MANAGED_SKILLS_ROOT),
-    path.join(resourcesPath, MANAGED_SKILLS_ROOT),
-    path.join(process.cwd(), 'apps', 'desktop', 'src', 'main', 'assets', MANAGED_SKILLS_ROOT),
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      fs.readdirSync(candidate, { withFileTypes: true });
-      return candidate;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-
-  return null;
-}
-
-function listManagedSkillFiles(root: string): ManagedSkillAssetFile[] {
-  const files: ManagedSkillAssetFile[] = [];
-
-  function walk(relativeDir: string): void {
-    const absoluteDir = path.join(root, relativeDir);
-    const entries = fs.readdirSync(absoluteDir, { withFileTypes: true })
-      .sort((left, right) => compareText(left.name, right.name));
-
-    for (const entry of entries) {
-      const relativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
-      if (entry.isDirectory()) {
-        walk(relativePath);
-        continue;
-      }
-      if (!entry.isFile() || !isManagedSkillRelativePath(relativePath) || isIgnoredManagedSkillAsset(relativePath)) {
-        continue;
-      }
-      const content = fs.readFileSync(path.join(root, relativePath));
-      const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
-      files.push({ path: relativePath, content: buffer, sha256: sha256ManagedFile(relativePath, buffer) });
-    }
-  }
-
-  walk('');
-  return files.sort((left, right) => compareText(left.path, right.path));
-}
-
-function compareText(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
-function parseSkillFrontmatter(content: string): Pick<ManagedSkillManifest, 'name' | 'version'> | null {
-  const normalized = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-  if (!normalized.startsWith('---\n')) return null;
-  const end = normalized.indexOf('\n---', 4);
-  if (end < 0) return null;
-  const metadata = normalized.slice(4, end).split('\n');
-  const values = new Map<string, string>();
-  for (const line of metadata) {
-    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-    if (!match) continue;
-    values.set(match[1], match[2].replace(/^["']|["']$/g, '').trim());
-  }
-  const name = values.get('name');
-  const version = values.get('version');
-  if (!name || !version) return null;
-  return { name, version };
 }
 
 function getInstalledManagedSkillState(
@@ -373,6 +215,7 @@ function writeManagedSkill(
     algorithm: MANAGED_SKILL_HASH_ALGORITHM,
     files: asset.files.map(({ path: filePath, sha256 }) => ({ path: filePath, sha256 })),
     capabilities: manifest.capabilities,
+    ...(asset.source ? { source: asset.source } : {}),
   };
   fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
 }
@@ -387,11 +230,6 @@ function isManagedSkillRelativePath(filePath: string): boolean {
   if (path.isAbsolute(filePath) || path.win32.isAbsolute(filePath)) return false;
   const normalized = path.posix.normalize(filePath);
   return normalized === filePath && normalized !== '..' && !normalized.startsWith('../');
-}
-
-function isIgnoredManagedSkillAsset(filePath: string): boolean {
-  const baseName = path.posix.basename(filePath);
-  return baseName === MANAGED_SKILL_METADATA || /^SKILL\.legacy-backup(?:-\d+)?\.md$/.test(baseName);
 }
 
 function isLegacyBundledLensSkill(content: string): boolean {
@@ -417,6 +255,7 @@ interface ManagedSkillMetadata {
   algorithm: typeof MANAGED_SKILL_HASH_ALGORITHM | 'sha256-legacy-single-file';
   files: ManagedSkillFileMetadata[];
   capabilities: string[];
+  source?: ManagedSkillMarketplaceSource;
 }
 
 interface LegacyManagedSkillMetadata {
@@ -425,16 +264,6 @@ interface LegacyManagedSkillMetadata {
   managedBy: 'chamber';
   contentSha256: string;
   capabilities: string[];
-}
-
-interface ManagedSkillAssetFile extends ManagedSkillFileMetadata {
-  content: Buffer;
-}
-
-interface ManagedSkillAsset {
-  root: string;
-  manifest: ManagedSkillManifest;
-  files: ManagedSkillAssetFile[];
 }
 
 function sha256Buffer(content: Buffer): string {

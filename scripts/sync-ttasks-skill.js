@@ -12,7 +12,11 @@ const sourceRoot = path.resolve(
   ?? process.env.TTASKS_TS_SOURCE
   ?? path.join(os.homedir(), 'src', 'ttasks-ts', 'skills', 'ttasks-ts'),
 );
-const destinationRoot = path.join(repoRoot, 'apps', 'desktop', 'src', 'main', 'assets', 'managed-skills', 'ttasks');
+const genesisMindsRoot = path.resolve(
+  process.env.GENESIS_MINDS_REPO
+  ?? path.join(repoRoot, '..', 'genesis-minds'),
+);
+const destinationRoot = path.join(genesisMindsRoot, 'plugins', 'genesis-minds', 'skills', 'ttasks');
 
 const expectedFiles = [
   'SKILL.md',
@@ -50,7 +54,7 @@ function main() {
     files,
   }, null, 2) + '\n');
 
-  console.log(`Synced ttasks skill to ${path.relative(repoRoot, destinationRoot)}`);
+  console.log(`Synced ttasks skill to ${path.relative(genesisMindsRoot, destinationRoot)}`);
 }
 
 function validateSource() {
@@ -63,9 +67,9 @@ function validateSource() {
 }
 
 function refuseDestinationEdits() {
-  const relativeDestination = path.relative(repoRoot, destinationRoot);
+  const relativeDestination = path.relative(genesisMindsRoot, destinationRoot);
   const status = execFileSync('git', ['status', '--porcelain', '--', relativeDestination], {
-    cwd: repoRoot,
+    cwd: genesisMindsRoot,
     encoding: 'utf-8',
   }).trim();
   if (status) {

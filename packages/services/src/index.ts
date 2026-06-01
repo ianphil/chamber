@@ -17,5 +17,6 @@ export * from './mind';
 export * from './mindProfile';
 export * from './ports';
 export * from './sdk';
+export * from './skills';
 export * from './tools';
 export * from './userProfile';
