@@ -1,6 +1,6 @@
 ---
 name: release
-description: Dispatch a Chamber release build to either the insiders channel (Azure blob, Windows-only, invite-only testers) or the stable channel (public GitHub Releases, Windows + macOS). Use this skill whenever the user asks to release, cut, publish, promote, ship a build, push to insiders, send to testers, go public, or make a new version available — even if they don't explicitly name a channel. This skill picks the channel, runs pre-flight checks, handles stable remote feature-flag graduation when needed, dispatches the matching workflow via `gh`, and reports back. It may open mechanical release/policy PRs but never merges anything without explicit user approval.
+description: Dispatch a Chamber release build to either the insiders channel (Azure blob, Windows + macOS, invite-only testers) or the stable channel (public GitHub Releases, Windows + macOS). Use this skill whenever the user asks to release, cut, publish, promote, ship a build, push to insiders, send to testers, go public, or make a new version available — even if they don't explicitly name a channel. This skill picks the channel, runs pre-flight checks, handles stable remote feature-flag graduation when needed, dispatches the matching workflow via `gh`, and reports back. It may open mechanical release/policy PRs but never merges anything without explicit user approval.
 ---
 
 # Release Skill
@@ -31,7 +31,7 @@ ask once. If the channel is ambiguous, ask once.
 
 | Channel  | Audience    | Workflow                                  | Distribution                     | Platforms                           |
 | -------- | ----------- | ----------------------------------------- | -------------------------------- | ----------------------------------- |
-| Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows only                        |
+| Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows + macOS arm64 (signed + notarized) |
 | Stable   | Public      | `.github/workflows/release.yml`           | GitHub Releases                  | Windows + macOS arm64 (+x64 opt-in; macOS can be disabled by repo variable) |
 
 Both are `workflow_dispatch` only — neither fires on push.
@@ -157,7 +157,7 @@ Required state:
 
 ```
 Which channel?
-  insiders  – Windows-only, invite-only, fast cadence, no notarization
+  insiders  – Windows + macOS arm64 (signed + notarized), invite-only, fast cadence
   stable    – public, full platforms, requires macOS notary warmup
 ```
 
@@ -225,11 +225,14 @@ git fetch origin --tags --quiet
 git tag -l 'v*-insiders.*' --sort=-v:refname | head -3
 ```
 
-Surface the new tag, the install URL
+Surface the new tag, the Windows install URL
 (`https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe`),
-and the auto-update feed
-(`https://chamberinsiders.blob.core.windows.net/releases/insiders.yml`).
-Existing testers auto-update; new testers need the install URL
+the macOS DMG
+(`https://chamberinsiders.blob.core.windows.net/releases/Chamber-<version>-arm64.dmg`),
+and the auto-update feeds
+(`https://chamberinsiders.blob.core.windows.net/releases/insiders.yml` for Windows;
+`https://chamberinsiders.blob.core.windows.net/releases/latest-mac.yml` for macOS).
+Existing testers auto-update on both platforms; new testers need the install URL
 out-of-band.
 
 ### 3b. Stable dispatch
@@ -578,11 +581,12 @@ see exactly what happened. Example:
 
 ```
 ✅ Dispatched insiders release
-   - Channel:      insiders (Windows only)
+   - Channel:      insiders (Windows + macOS arm64)
    - Next tag:     v0.62.4-insiders.4
    - Audience:     invited testers only
    - Install URL:  https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe
-   - Auto-update:  existing testers receive it automatically
+   - macOS DMG:    https://chamberinsiders.blob.core.windows.net/releases/Chamber-<version>-arm64.dmg
+   - Auto-update:  existing testers receive it automatically (both platforms)
    - Run:          <gh URL>
    - Checklist:    ~/.copilot/session-state/<id>/files/release-vX.Y.Z-<channel>-checklist.md
 ```

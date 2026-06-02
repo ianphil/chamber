@@ -27,17 +27,7 @@ async function main() {
 
   const sdk = await import(pathToFileURL(sdkEntry).href);
   const contracts = await importSdkContractMappers(repoRoot);
-  const client = new sdk.CopilotClient({
-    cliPath,
-    cwd: mindPath,
-    logLevel: 'all',
-    cliArgs: [
-      '--log-dir', logDir,
-      '--allow-all-tools',
-      '--allow-all-paths',
-      '--allow-all-urls',
-    ],
-  });
+  const client = createSmokeClient(sdk, { cliPath, mindPath, logDir });
 
   let session;
   try {
@@ -58,7 +48,7 @@ async function main() {
     await assertNamedSessionResume({ sdk, cliPath, mindPath, logDir, contracts });
     console.log('SDK smoke passed.');
   } finally {
-    await session?.destroy().catch(() => undefined);
+    await session?.disconnect().catch(() => undefined);
     await client.stop().catch(() => undefined);
     await cleanupMind(mindPath);
   }
@@ -66,39 +56,9 @@ async function main() {
 
 async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir, contracts }) {
   const sessionId = `chamber-sdk-smoke-${Date.now()}`;
-  const firstClient = new sdk.CopilotClient({
-    cliPath,
-    cwd: mindPath,
-    logLevel: 'all',
-    cliArgs: [
-      '--log-dir', logDir,
-      '--allow-all-tools',
-      '--allow-all-paths',
-      '--allow-all-urls',
-    ],
-  });
-  const secondClient = new sdk.CopilotClient({
-    cliPath,
-    cwd: mindPath,
-    logLevel: 'all',
-    cliArgs: [
-      '--log-dir', logDir,
-      '--allow-all-tools',
-      '--allow-all-paths',
-      '--allow-all-urls',
-    ],
-  });
-  const thirdClient = new sdk.CopilotClient({
-    cliPath,
-    cwd: mindPath,
-    logLevel: 'all',
-    cliArgs: [
-      '--log-dir', logDir,
-      '--allow-all-tools',
-      '--allow-all-paths',
-      '--allow-all-urls',
-    ],
-  });
+  const firstClient = createSmokeClient(sdk, { cliPath, mindPath, logDir });
+  const secondClient = createSmokeClient(sdk, { cliPath, mindPath, logDir });
+  const thirdClient = createSmokeClient(sdk, { cliPath, mindPath, logDir });
   let firstSession;
   let resumedSession;
   let resumedAgainSession;
@@ -125,7 +85,7 @@ async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir, contra
       onUserInputRequest: async () => ({ answer: 'Proceed.', wasFreeform: true }),
     });
     await resumedSession.rpc.permissions.setApproveAll({ enabled: true });
-    const messages = await resumedSession.getMessages();
+    const messages = await resumedSession.getEvents();
     if (!messages.some((event) => JSON.stringify(event).includes('chamber-resume-smoke'))) {
       throw new Error('Named SDK session resume did not restore prior messages.');
     }
@@ -145,7 +105,7 @@ async function assertNamedSessionResume({ sdk, cliPath, mindPath, logDir, contra
       onUserInputRequest: async () => ({ answer: 'Proceed.', wasFreeform: true }),
     });
     await resumedAgainSession.rpc.permissions.setApproveAll({ enabled: true });
-    const secondResumeMessages = await resumedAgainSession.getMessages();
+    const secondResumeMessages = await resumedAgainSession.getEvents();
     if (!secondResumeMessages.some((event) => JSON.stringify(event).includes('chamber-resume-smoke'))) {
       throw new Error('Named SDK session second resume did not restore prior messages.');
     }
@@ -181,7 +141,7 @@ async function assertModelResumePreservesContext({ client, sessionId, mindPath, 
       onUserInputRequest: async () => ({ answer: 'Proceed.', wasFreeform: true }),
     });
     await modelSession.rpc.permissions.setApproveAll({ enabled: true });
-    const messages = await modelSession.getMessages();
+    const messages = await modelSession.getEvents();
     if (!messages.some((event) => JSON.stringify(event).includes('chamber-resume-smoke'))) {
       throw new Error(`Named SDK session resumed with model ${model} did not restore prior messages.`);
     }
@@ -274,7 +234,7 @@ async function assertToolEventContract({ client, contracts }) {
         }
       } finally {
         for (const unsub of unsubs) unsub();
-        await toolSession?.destroy().catch(() => undefined);
+        await toolSession?.disconnect().catch(() => undefined);
       }
     }
 
@@ -282,6 +242,22 @@ async function assertToolEventContract({ client, contracts }) {
   } finally {
     await cleanupMind(toolMindPath);
   }
+}
+
+function createSmokeClient(sdk, { cliPath, mindPath, logDir }) {
+  return new sdk.CopilotClient({
+    connection: sdk.RuntimeConnection.forStdio({
+      path: cliPath,
+      args: [
+        '--log-dir', logDir,
+        '--allow-all-tools',
+        '--allow-all-paths',
+        '--allow-all-urls',
+      ],
+    }),
+    workingDirectory: mindPath,
+    logLevel: 'all',
+  });
 }
 
 function assertLiveModelListContract(rawModels, contracts) {

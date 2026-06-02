@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       override_bump:
-        description: 'Emergency override: force patch/minor/major instead of reading ## Unreleased from CHANGELOG.md. Leave empty for normal Model B behavior.'
+        description: "Emergency override: force patch/minor/major instead of reading ## Unreleased from CHANGELOG.md. Leave empty for normal Model B behavior."
         required: false
-        default: ''
+        default: ""
         type: choice
         options:
-          - ''
+          - ""
           - patch
           - minor
           - major
@@ -26,8 +26,8 @@ env:
   INSIDERS_FEED_URL: https://chamberinsiders.blob.core.windows.net/releases/
 
 jobs:
-  build:
-    runs-on: windows-latest
+  prepare:
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
@@ -41,8 +41,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+          node-version-file: ".nvmrc"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm install
@@ -61,6 +61,31 @@ jobs:
           echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
           echo "Computed insider version: $new_version (target stable: ${target_stable:-from script output})"
 
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Apply insiders version
+        shell: bash
+        run: |
+          npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm install
+
       - name: Azure login (Trusted Signing)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
@@ -71,7 +96,7 @@ jobs:
       - name: Build signed NSIS package (insiders channel)
         run: npm run make:builder
         env:
-          CHAMBER_WINDOWS_SIGNING: 'true'
+          CHAMBER_WINDOWS_SIGNING: "true"
           CHAMBER_RELEASE_CHANNEL: insiders
           CHAMBER_BUILDER_UPDATE_URL: ${{ env.INSIDERS_FEED_URL }}
           AZURE_TRUSTED_SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
@@ -79,19 +104,125 @@ jobs:
           AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: chamber-public
 
       - name: Validate updater artifacts
-        run: node scripts/validate-builder-release.js --artifacts-dir=out/builder --version=${{ steps.bump.outputs.version }} --channel=insiders
+        run: node scripts/validate-builder-release.js --artifacts-dir=out/builder --version=${{ needs.prepare.outputs.version }} --channel=insiders
         env:
-          CHAMBER_REQUIRE_WINDOWS_SIGNATURE: 'true'
+          CHAMBER_REQUIRE_WINDOWS_SIGNATURE: "true"
 
       - name: Stage artifacts
         shell: pwsh
         run: |
-          $version = "${{ steps.bump.outputs.version }}"
+          $version = "${{ needs.prepare.outputs.version }}"
           New-Item -ItemType Directory -Force -Path staged
           Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination staged/
           Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe.blockmap" -Destination staged/
           Copy-Item -LiteralPath "out/builder/insiders.yml" -Destination staged/
           Copy-Item -LiteralPath "out/builder/Chamber-$version-x64.exe" -Destination "staged/Chamber-Setup-latest-insiders.exe"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: insiders-windows
+          path: staged/*
+          if-no-files-found: error
+
+  build-macos:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Apply insiders version
+        shell: bash
+        run: |
+          npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm install
+
+      - name: Import macOS signing certificate
+        run: |
+          keychain="$RUNNER_TEMP/chamber-signing.keychain-db"
+          certificate="$RUNNER_TEMP/chamber-signing.p12"
+          intermediate="$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$intermediate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security add-certificates -k "$keychain" "$intermediate" || true
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+          xcrun notarytool store-credentials chamber-notary \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --keychain "$keychain"
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-macos
+
+      - name: Build signed macOS package (insiders channel)
+        run: npm run make:builder:mac
+        env:
+          CHAMBER_MACOS_SIGNING: "true"
+          CHAMBER_RELEASE_CHANNEL: insiders
+          CHAMBER_BUILDER_UPDATE_URL: ${{ env.INSIDERS_FEED_URL }}
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CHAMBER_NOTARY_KEYCHAIN_PROFILE: chamber-notary
+          CHAMBER_NOTARY_KEYCHAIN: ${{ runner.temp }}/chamber-signing.keychain-db
+
+      - name: Stage artifacts
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          mkdir -p staged
+          cp out/builder/Chamber-"$version"-*.dmg staged/
+          cp out/builder/Chamber-"$version"-*.dmg.blockmap staged/
+          cp out/builder/Chamber-"$version"-*.zip staged/
+          cp out/builder/Chamber-"$version"-*.zip.blockmap staged/
+          cp out/builder/*-mac.yml staged/
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: insiders-macos
+          path: staged/*
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: insiders-*
+          path: staged
+          merge-multiple: true
 
       - name: Azure login (Insiders blob)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
@@ -123,5 +254,5 @@ jobs:
           # mutates package.json only to build with the right embedded version;
           # the tag points at the original master commit so promotion-from-SHA
           # and master's own history stay aligned.
-          git tag -a "${{ steps.bump.outputs.tag }}" -m "Insiders release ${{ steps.bump.outputs.tag }}"
-          git push origin "${{ steps.bump.outputs.tag }}"
+          git tag -a "${{ needs.prepare.outputs.tag }}" -m "Insiders release ${{ needs.prepare.outputs.tag }}"
+          git push origin "${{ needs.prepare.outputs.tag }}"

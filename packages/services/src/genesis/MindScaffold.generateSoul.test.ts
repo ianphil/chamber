@@ -21,7 +21,7 @@ import * as fs from 'fs';
 import { execSync } from 'child_process';
 
 const mockSend = vi.fn().mockResolvedValue(undefined);
-const mockDestroy = vi.fn().mockResolvedValue(undefined);
+const mockDisconnect = vi.fn().mockResolvedValue(undefined);
 const mockOn = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
   if (event === 'session.idle') setTimeout(() => cb(), 0);
   return vi.fn();
@@ -29,7 +29,7 @@ const mockOn = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
 
 const mockCreateSession = vi.fn(async () => ({
   send: mockSend,
-  destroy: mockDestroy,
+  disconnect: mockDisconnect,
   on: mockOn,
   rpc: { permissions: { setApproveAll: vi.fn(async () => ({ success: true })) } },
 }));
@@ -98,8 +98,7 @@ describe('MindScaffold.generateSoul — CopilotClientFactory integration', () =>
 
     expect(mockDestroyClient).toHaveBeenCalledTimes(1);
     expect(mockDestroyClient).toHaveBeenCalledWith(fakeClient);
-    // destroy happens after session.destroy
-    expect(mockDestroy).toHaveBeenCalledTimes(1);
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
   });
 
   it('destroys the client even when session.send throws', async () => {

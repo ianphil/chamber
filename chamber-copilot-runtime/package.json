@@ -3,8 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "description": "Pinned packaged runtime for Chamber Copilot SDK + CLI",
+  "//": "Pin drift / make:sandbox version-mismatch? See ai-docs/copilot-runtime-version-pin.html. This pin must match the root package.json @github/copilot pin.",
   "dependencies": {
-    "@github/copilot": "1.0.52-0",
-    "@github/copilot-sdk": "0.3.0"
+    "@github/copilot": "1.0.57-2",
+    "@github/copilot-sdk": "1.0.0-beta.8"
+  },
+  "overrides": {
+    "@github/copilot": "$@github/copilot"
   }
 }

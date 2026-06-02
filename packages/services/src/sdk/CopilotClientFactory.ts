@@ -118,10 +118,9 @@ export class CopilotClientFactory {
       : withTools;
 
     const client = new sdk.CopilotClient({
-      cliPath,
-      cwd: mindPath,
+      connection: sdk.RuntimeConnection.forStdio({ path: cliPath, args: cliArgs }),
+      workingDirectory: mindPath,
       logLevel: 'all',
-      cliArgs,
       env: finalEnv,
     });
 

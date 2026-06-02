@@ -211,4 +211,48 @@ describe('useAppSubscriptions', () => {
       expect(result.current.isStreaming).toBe(false);
     });
   });
+
+  it('refreshes conversation history after a terminal chat event', async () => {
+    let onChatEvent: Parameters<typeof api.chat.onEvent>[0] | undefined;
+    (api.chat.onEvent as ReturnType<typeof vi.fn>).mockImplementation((callback) => {
+      onChatEvent = callback;
+      return vi.fn();
+    });
+    (api.conversationHistory.list as ReturnType<typeof vi.fn>).mockResolvedValue([{
+      sessionId: 'session-1',
+      title: 'Fresh title',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:01.000Z',
+      kind: 'chat',
+      active: true,
+    }]);
+
+    const { result } = renderHook(() => {
+      useAppSubscriptions();
+      return useAppState();
+    }, {
+      wrapper: wrapper({
+        minds: [activeMind],
+        activeMindId: activeMind.mindId,
+        isStreaming: true,
+        streamingByMind: { [activeMind.mindId]: true },
+        messagesByMind: {
+          [activeMind.mindId]: [makeMessage([], { id: 'assistant-1', isStreaming: true })],
+        },
+      }),
+    });
+
+    await waitFor(() => {
+      expect(onChatEvent).toBeDefined();
+    });
+
+    act(() => {
+      onChatEvent?.(activeMind.mindId, 'assistant-1', makeChatEvent('done'), 1);
+    });
+
+    await waitFor(() => {
+      expect(api.conversationHistory.list).toHaveBeenCalledWith(activeMind.mindId);
+      expect(result.current.conversationHistoryByMind[activeMind.mindId][0].title).toBe('Fresh title');
+    });
+  });
 });

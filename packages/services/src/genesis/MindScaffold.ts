@@ -190,7 +190,7 @@ export class MindScaffold {
         });
       });
     } finally {
-      await session.destroy().catch(() => { /* noop */ });
+      await session.disconnect().catch(() => { /* noop */ });
       await this.clientFactory.destroyClient(client);
     }
   }
