@@ -1,5 +1,5 @@
 import type { AppState, AppAction } from '../state';
-import { conversationViewFor, mergeConversationSummaries, setConversationView } from './helpers';
+import { conversationViewFor, isMindChatStreaming, mergeConversationSummaries, setConversationView } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -97,6 +97,17 @@ function resumeConversation(
 ): Partial<AppState> | AppState {
   const currentView = conversationViewFor(state, action.payload.mindId);
   if (currentView.pendingSessionId && currentView.pendingSessionId !== action.payload.sessionId) return state;
+  const nextStreamingByMind = {
+    ...state.streamingByMind,
+    [action.payload.mindId]: false,
+  };
+  const nextConversationViewByMind = setConversationView(state, action.payload.mindId, {
+    status: 'ready',
+    sessionId: action.payload.sessionId,
+    pendingSessionId: undefined,
+    streaming: false,
+    error: undefined,
+  });
   return {
     messagesByMind: {
       ...state.messagesByMind,
@@ -110,18 +121,11 @@ function resumeConversation(
       ...state.activeConversationByMind,
       [action.payload.mindId]: action.payload.sessionId,
     },
-    streamingByMind: {
-      ...state.streamingByMind,
-      [action.payload.mindId]: false,
-    },
-    conversationViewByMind: setConversationView(state, action.payload.mindId, {
-      status: 'ready',
-      sessionId: action.payload.sessionId,
-      pendingSessionId: undefined,
-      streaming: false,
-      error: undefined,
-    }),
-    isStreaming: state.activeMindId === action.payload.mindId ? false : state.isStreaming,
+    streamingByMind: nextStreamingByMind,
+    conversationViewByMind: nextConversationViewByMind,
+    isStreaming: state.activeMindId
+      ? isMindChatStreaming(state, state.activeMindId, nextStreamingByMind, nextConversationViewByMind)
+      : false,
   };
 }
 

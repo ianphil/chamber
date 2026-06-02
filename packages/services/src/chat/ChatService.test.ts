@@ -251,6 +251,31 @@ describe('ChatService', () => {
       }
     });
 
+    it('ignores stale cancel requests for an older message on the same mind', async () => {
+      let resolveSend: (() => void) | undefined;
+      mockSession.on.mockReturnValue(vi.fn());
+      mockSession.send.mockImplementation(() => new Promise<void>((resolve) => {
+        resolveSend = resolve;
+      }));
+
+      const pending = svc.sendMessage('valid-mind', 'hello', 'current-msg', vi.fn());
+      try {
+        await vi.waitFor(() => {
+          expect(mockSession.send).toHaveBeenCalled();
+        });
+
+        await expect(svc.cancelMessage('valid-mind', 'stale-msg')).resolves.toBe(false);
+        expect(mockSession.abort).not.toHaveBeenCalled();
+
+        await expect(svc.cancelMessage('valid-mind', 'current-msg')).resolves.toBe(true);
+        expect(mockSession.abort).toHaveBeenCalledOnce();
+      } finally {
+        resolveSend?.();
+        mockSession.send.mockResolvedValue(undefined);
+        await pending;
+      }
+    });
+
     it('clears the streaming guard immediately when the user stops a wedged send', async () => {
       let resolveSend: (() => void) | undefined;
       mockSession.on.mockReturnValue(vi.fn());

@@ -844,6 +844,38 @@ describe('appReducer', () => {
       expect(state.streamingByMind[mindId]).toBe(false);
     });
 
+    it('CHAT_EVENT terminal event for inactive mind does not clear active mind streaming', () => {
+      const otherMindId = 'other-mind';
+      const prev = {
+        ...withActiveMind,
+        isStreaming: true,
+        streamingByMind: { [mindId]: true, [otherMindId]: true },
+        conversationViewByMind: {
+          [mindId]: { status: 'ready' as const, sessionId: 'active-session', streaming: true, modelSwitching: false },
+          [otherMindId]: { status: 'ready' as const, sessionId: 'other-session', streaming: true, modelSwitching: false },
+        },
+        messagesByMind: {
+          [mindId]: [makeMessage([], { id: 'active-assistant', isStreaming: true })],
+          [otherMindId]: [makeMessage([], { id: 'other-assistant', isStreaming: true })],
+        },
+        activeConversationByMind: {
+          [mindId]: 'active-session',
+          [otherMindId]: 'other-session',
+        },
+      };
+
+      const state = appReducer(prev, {
+        type: 'CHAT_EVENT',
+        payload: { mindId: otherMindId, messageId: 'other-assistant', event: makeChatEvent('done') },
+      });
+
+      expect(state.streamingByMind[otherMindId]).toBe(false);
+      expect(state.conversationViewByMind[otherMindId]).toMatchObject({ streaming: false });
+      expect(state.streamingByMind[mindId]).toBe(true);
+      expect(state.conversationViewByMind[mindId]).toMatchObject({ streaming: true });
+      expect(state.isStreaming).toBe(true);
+    });
+
     it('NEW_CONVERSATION clears streamingByMind for active mind', () => {
       const prev = { ...withActiveMind, streamingByMind: { [mindId]: true }, isStreaming: true };
       const state = appReducer(prev, { type: 'NEW_CONVERSATION' });

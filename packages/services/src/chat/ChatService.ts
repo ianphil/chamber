@@ -33,7 +33,7 @@ const log = Logger.create('ChatService');
 const TURN_END_QUIESCENCE_MS = 1_000;
 
 export class ChatService {
-  private abortControllers = new Map<string, AbortController>();
+  private abortControllers = new Map<string, { messageId: string; controller: AbortController }>();
 
   constructor(
     private readonly mindManager: MindManager,
@@ -60,7 +60,7 @@ export class ChatService {
   ): Promise<void> {
     return this.turnQueue.enqueue(mindId, async () => {
       const abortController = new AbortController();
-      this.abortControllers.set(mindId, abortController);
+      this.abortControllers.set(mindId, { messageId, controller: abortController });
 
       try {
         const context = this.mindManager.getMind(mindId);
@@ -93,7 +93,10 @@ export class ChatService {
         const rawMessage = err instanceof Error ? err.message : String(err);
         emit({ type: 'error', message: mapByoLlmError(rawMessage) });
       } finally {
-        this.abortControllers.delete(mindId);
+        const active = this.abortControllers.get(mindId);
+        if (active?.controller === abortController) {
+          this.abortControllers.delete(mindId);
+        }
       }
     });
   }
@@ -370,11 +373,10 @@ export class ChatService {
     }
   }
 
-  async cancelMessage(mindId: string, _messageId: string): Promise<boolean> {
-    void _messageId;
-    const controller = this.abortControllers.get(mindId);
-    if (!controller) return false;
-    controller.abort();
+  async cancelMessage(mindId: string, messageId: string): Promise<boolean> {
+    const active = this.abortControllers.get(mindId);
+    if (!active || active.messageId !== messageId) return false;
+    active.controller.abort();
     this.abortControllers.delete(mindId);
     const context = this.mindManager.getMind(mindId);
     if (context?.session) {
