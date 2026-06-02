@@ -236,8 +236,6 @@ export interface A2ARelayStatus {
   connectedAt: number | null;
 }
 
-export type A2ARelayAuthMode = 'auto' | 'static' | 'interactive';
-
 export interface A2ARelayConnectBaseRequest {
   relayBaseUrl: string;
   publishedBaseUrl?: string;

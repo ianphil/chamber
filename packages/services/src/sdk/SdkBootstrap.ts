@@ -113,15 +113,6 @@ export function getBundledNodeRoot(): string | null {
   return fs.existsSync(root) ? root : null;
 }
 
-export function getBundledNodePath(): string | null {
-  const root = getBundledNodeRoot();
-  if (!root) return null;
-  const nodePath = isWindows
-    ? path.join(root, 'node.exe')
-    : path.join(root, 'bin', 'node');
-  return fs.existsSync(nodePath) ? nodePath : null;
-}
-
 export function getPlatformCopilotPackageName(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,

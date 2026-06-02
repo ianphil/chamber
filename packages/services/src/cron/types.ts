@@ -77,10 +77,6 @@ export interface StoredCronJobs {
   jobs: CronJob[];
 }
 
-export interface StoredCronRuns {
-  runs: Record<string, CronJobRunRecord[]>;
-}
-
 /**
  * Sidecar surfaced to the user when one or more jobs failed to translate
  * during v1 → v2 migration. Cron is unblocked for the jobs that did

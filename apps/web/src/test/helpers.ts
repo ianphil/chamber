@@ -13,12 +13,6 @@ import type {
 import type { ElectronAPI } from '@chamber/shared/electron-types';
 import type {
   ChatroomMessage,
-  ChatroomStreamEvent,
-  GroupChatConfig,
-  HandoffConfig,
-  MagenticConfig,
-  OrchestrationEvent,
-  OrchestrationEventType,
 } from '@chamber/shared/chatroom-types';
 
 // ---------------------------------------------------------------------------
@@ -374,63 +368,9 @@ export function makeChatroomMessage(
   };
 }
 
-export function makeChatroomStreamEvent(
-  overrides?: Partial<ChatroomStreamEvent>,
-): ChatroomStreamEvent {
-  return {
-    mindId: 'mind-1',
-    mindName: 'Agent One',
-    messageId: 'cr-msg-1',
-    roundId: 'round-1',
-    event: { type: 'chunk', content: 'hello' },
-    ...overrides,
-  };
-}
-
 export function installElectronAPI(api?: ElectronAPI): ElectronAPI {
   const mock = api ?? mockElectronAPI();
   Object.defineProperty(window, 'electronAPI', { value: mock, writable: true, configurable: true });
   return mock;
 }
 
-// ---------------------------------------------------------------------------
-// Orchestration factories
-// ---------------------------------------------------------------------------
-
-export function makeOrchestrationEvent(
-  type: OrchestrationEventType = 'orchestration:turn-start',
-  data: Record<string, unknown> = { speaker: 'Agent One', speakerMindId: 'agent-1' },
-): OrchestrationEvent {
-  return { type, data } as OrchestrationEvent;
-}
-
-export function makeGroupChatConfig(
-  overrides?: Partial<GroupChatConfig>,
-): GroupChatConfig {
-  return {
-    moderatorMindId: 'moderator-1',
-    maxTurns: 10,
-    minRounds: 1,
-    maxSpeakerRepeats: 3,
-    ...overrides,
-  };
-}
-
-export function makeHandoffConfig(
-  overrides?: Partial<HandoffConfig>,
-): HandoffConfig {
-  return {
-    maxHandoffHops: 5,
-    ...overrides,
-  };
-}
-
-export function makeMagenticConfig(
-  overrides?: Partial<MagenticConfig>,
-): MagenticConfig {
-  return {
-    managerMindId: 'manager-1',
-    maxSteps: 10,
-    ...overrides,
-  };
-}

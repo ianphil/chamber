@@ -15,7 +15,6 @@ export type Tool = SdkTool<any>;
 // index, but SessionConfig.onUserInputRequest exposes the handler type. Derive them
 // from SessionConfig so our types stay in sync with whatever the SDK ships.
 export type UserInputHandler = NonNullable<SessionConfig['onUserInputRequest']>;
-export type UserInputRequest = Parameters<UserInputHandler>[0];
 export type UserInputResponse = Awaited<ReturnType<UserInputHandler>>;
 
 export interface InternalMindContext extends MindContext {

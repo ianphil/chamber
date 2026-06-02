@@ -6,13 +6,6 @@ export interface WireEnvelope<TType extends string, TPayload> {
   payload: TPayload;
 }
 
-export interface PrivilegedEnvelope<TType extends string, TPayload> {
-  protoVersion: 1;
-  type: TType;
-  requestId: string;
-  payload: TPayload;
-}
-
 export interface MindIdentityDto {
   readonly name: string;
   readonly systemMessage: string;
@@ -35,10 +28,6 @@ export interface ListMindsResponse {
   readonly minds: MindDto[];
 }
 
-export interface AddMindRequest {
-  readonly mindPath: string;
-}
-
 export interface AddMindResponse {
   readonly mind: MindDto;
 }
@@ -57,15 +46,6 @@ export interface SendChatRequest {
   readonly attachments?: ChatAttachmentDto[];
 }
 
-export interface NewConversationRequest {
-  readonly mindId: string;
-}
-
-export interface CancelChatRequest {
-  readonly mindId: string;
-  readonly messageId: string;
-}
-
 export interface ModelDto {
   readonly id: string;
   readonly name: string;
@@ -79,9 +59,3 @@ export interface ListModelsResponse {
 export interface CommandResponse {
   readonly ok: true;
 }
-
-export type ServerEvent =
-  | WireEnvelope<'chat:event', unknown>
-  | WireEnvelope<'chatroom:event', unknown>
-  | WireEnvelope<'observability:event', unknown>
-  | WireEnvelope<'notification', unknown>;
