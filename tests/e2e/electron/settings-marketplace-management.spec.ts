@@ -72,22 +72,22 @@ test.describe('electron Settings marketplace management smoke', () => {
 
     const internalRow = rowForMarketplaceUrl(page, internalMarketplaceUrl);
     await expect(internalRow.getByText('Enabled')).toBeVisible();
-    await expectMarketplaceSources(page, [internalMarketplaceId, publicMarketplaceId]);
+    await expectTemplateSources(page, [internalMarketplaceId, publicMarketplaceId]);
 
     await internalRow.getByRole('button', { name: 'Disable' }).click();
     await expect(internalRow.getByText('Disabled')).toBeVisible();
-    await expectMarketplaceSources(page, [publicMarketplaceId]);
+    await expectTemplateSources(page, [publicMarketplaceId]);
 
     await internalRow.getByRole('button', { name: 'Enable' }).click();
     await expect(internalRow.getByText('Enabled')).toBeVisible();
     await internalRow.getByRole('button', { name: 'Refresh' }).click();
     await expect(page.getByRole('status')).toContainText('Refreshed agency-microsoft/genesis-minds', { timeout: 90_000 });
-    await expectMarketplaceSources(page, [internalMarketplaceId, publicMarketplaceId]);
+    await expectTemplateSources(page, [internalMarketplaceId, publicMarketplaceId]);
 
     await internalRow.getByRole('button', { name: 'Remove' }).click();
     await expect(page.getByRole('status')).toContainText('Removed agency-microsoft/genesis-minds');
     await expect(page.getByText(internalMarketplaceUrl)).toHaveCount(0);
-    await expectMarketplaceSources(page, [publicMarketplaceId]);
+    await expectTemplateSources(page, [publicMarketplaceId]);
   });
 });
 
@@ -96,16 +96,13 @@ function rowForMarketplaceUrl(page: Awaited<ReturnType<typeof findRendererPage>>
     .locator('xpath=ancestor::div[contains(@class,"rounded-lg") and contains(@class,"border")][1]');
 }
 
-async function expectMarketplaceSources(
+async function expectTemplateSources(
   page: Awaited<ReturnType<typeof findRendererPage>>,
   expectedMarketplaceIds: string[],
 ): Promise<void> {
   await expect.poll(async () => {
     const templates = await page.evaluate(async () => window.electronAPI.genesis.listTemplates());
-    return templates
-      .filter((template) => template.id === 'lucy')
-      .map((template) => template.source.marketplaceId)
-      .sort();
+    return [...new Set(templates.map((template) => template.source.marketplaceId))].sort();
   }, { timeout: 90_000 }).toEqual([...expectedMarketplaceIds].sort());
 }
 
