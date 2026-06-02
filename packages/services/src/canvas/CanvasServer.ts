@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { URL } from 'node:url';
+import { isPathInside } from './pathUtils';
 import type { CanvasAction, CanvasServerLike } from './types';
 
 const MIME_TYPES: Record<string, string> = {
@@ -117,17 +118,6 @@ function injectBridge(html: string, filename: string): string {
     return html.replace('</html>', `${additions}\n</html>`);
   }
   return `${html}${additions}`;
-}
-
-function normalizePath(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-}
-
-function isPathInside(parent: string, child: string): boolean {
-  const normalizedParent = normalizePath(parent);
-  const normalizedChild = normalizePath(child);
-  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}${path.sep}`);
 }
 
 function readRequestBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise<string> {

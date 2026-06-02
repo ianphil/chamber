@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import {
@@ -96,7 +97,7 @@ export class MicrosoftGraphProfileImporter {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         profile: this.profileService.getProfile(),
       };
     } finally {

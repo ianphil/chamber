@@ -7,13 +7,7 @@ import type { AgentProfileSummary } from '../../lib/store/state';
 import { AgentAvatar } from '../profile/AgentAvatar';
 import { useMindProfiles } from '../../hooks/useMindProfiles';
 import { useUserProfile } from '../../hooks/useUserProfile';
-
-const AGENT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
-function agentColor(minds: MindContext[], mindId: string): string {
-  const idx = minds.findIndex(m => m.mindId === mindId);
-  return AGENT_COLORS[(idx >= 0 ? idx : 0) % AGENT_COLORS.length];
-}
+import { agentColor } from './agentColors';
 
 function displayName(name: string, fallback: string): string {
   const trimmed = name.trim();

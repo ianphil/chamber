@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as path from 'node:path';
 import type { CronJob, CronMigrationError, StoredCronJobs, StoredCronMigrationErrors } from '../types';
 import { STORED_CRON_SCHEMA_VERSION } from '../types';
@@ -68,7 +69,7 @@ export function runMigrations(mindPath: string): void {
         legacyId: legacy.id,
         legacyType: (legacy as { type?: string }).type ?? 'unknown',
         legacyName: legacy.name,
-        reason: err instanceof Error ? err.message : String(err),
+        reason: getErrorMessage(err),
         capturedAt: new Date().toISOString(),
       });
     }
@@ -306,7 +307,7 @@ function readLegacyJobs(
       const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
       return { sourcePath: p, raw };
     } catch (err) {
-      throw new Error(`Cron migration aborted: corrupt JSON at ${p}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      throw new Error(`Cron migration aborted: corrupt JSON at ${p}: ${getErrorMessage(err)}`, { cause: err });
     }
   }
   return { sourcePath: null, raw: null };

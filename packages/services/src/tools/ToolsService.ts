@@ -1,4 +1,5 @@
 import type { AppConfig, InstalledTool, MarketplaceToolEntry, ToolActionResult, ToolCatalogEntry } from '@chamber/shared/types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { Logger } from '../logger';
 import { MarketplaceToolCatalog } from './MarketplaceToolCatalog';
 import { ToolInstaller } from './ToolInstaller';
@@ -58,7 +59,7 @@ export class ToolsService {
     try {
       await this.installer.uninstall(tool);
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      return { success: false, error: getErrorMessage(error) };
     }
     this.persist(installed.filter((entry) => entry.id !== toolId));
     return { success: true };
@@ -105,7 +106,7 @@ export class ToolsService {
       this.persist(next);
       return { success: true, tool: installed };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 

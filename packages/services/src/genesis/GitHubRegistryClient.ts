@@ -1,4 +1,5 @@
 import { listStoredGitHubCredentials, DEFAULT_USER_AGENT } from '../auth';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { CredentialStore } from '../ports';
 
 export interface TreeEntry {
@@ -133,7 +134,7 @@ export class GitHubRegistryClient {
       const account = login ? ` using stored credential "${login}"` : ' anonymously';
       return {
         ok: false,
-        error: new Error(`GitHub API request failed${account}: ${error instanceof Error ? error.message : String(error)}`),
+        error: new Error(`GitHub API request failed${account}: ${getErrorMessage(error)}`),
       };
     } finally {
       clearTimeout(timeout);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { Camera, LogOut, UserRound } from 'lucide-react';
 import type { MarketplaceRegistry, UserProfile } from '@chamber/shared/types';
 import { APP_VERSION } from '@/renderer/lib/appVersion';
@@ -78,7 +79,7 @@ export function SettingsView() {
         if (!cancelled) applyUserProfile(profile);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setProfileMessage(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setProfileMessage(getErrorMessage(err));
       });
     return () => {
       cancelled = true;
@@ -91,7 +92,7 @@ export function SettingsView() {
 
   useEffect(() => {
     void refreshMarketplaces().catch((err: unknown) => {
-      setMarketplaceMessage(err instanceof Error ? err.message : String(err));
+      setMarketplaceMessage(getErrorMessage(err));
     });
   }, []);
 
@@ -140,7 +141,7 @@ export function SettingsView() {
       applyUserProfile(profile);
       setProfileMessage('Profile saved.');
     } catch (err) {
-      setProfileMessage(err instanceof Error ? err.message : String(err));
+      setProfileMessage(getErrorMessage(err));
     } finally {
       setProfileSaving(false);
     }
@@ -158,7 +159,7 @@ export function SettingsView() {
       applyUserProfile(result.profile);
       setProfileMessage('Imported Microsoft 365 profile. You can edit the fields and save local changes.');
     } catch (err) {
-      setProfileMessage(err instanceof Error ? err.message : String(err));
+      setProfileMessage(getErrorMessage(err));
     } finally {
       setProfileImporting(false);
     }

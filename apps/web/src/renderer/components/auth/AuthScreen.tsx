@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { TypeWriter } from '../genesis/TypeWriter';
 
 interface Props {
@@ -41,7 +42,7 @@ export function AuthScreen({ onAuthenticated }: Props) {
       setError(result.error ?? 'Authentication did not complete.');
       setStage('error');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(getErrorMessage(err));
       setStage('error');
     } finally {
       unsub();

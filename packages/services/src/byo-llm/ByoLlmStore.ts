@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { ByoLlmConfig } from '@chamber/shared/types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { Logger } from '../logger';
 import type { CredentialStore } from '../ports';
 
@@ -72,7 +73,7 @@ export class ByoLlmStore {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException)?.code;
       if (code === 'ENOENT') return null;
-      log.warn(`Failed to read BYO LLM config from ${this.filePath}: ${stringifyError(err)}`);
+      log.warn(`Failed to read BYO LLM config from ${this.filePath}: ${getErrorMessage(err)}`);
       return null;
     }
   }
@@ -125,7 +126,7 @@ export class ByoLlmStore {
       const parsed = JSON.parse(credential.password) as unknown;
       return coerceSecrets(parsed);
     } catch (err) {
-      throw new Error(`Failed to read BYO LLM secrets from credential store: ${stringifyError(err)}`, { cause: err });
+      throw new Error(`Failed to read BYO LLM secrets from credential store: ${getErrorMessage(err)}`, { cause: err });
     }
   }
 
@@ -251,10 +252,6 @@ export function redactUrlCredentials(rawUrl: string): string {
   } catch {
     return rawUrl;
   }
-}
-
-function stringifyError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 function stripSecrets(config: ByoLlmConfig): ByoLlmConfig {

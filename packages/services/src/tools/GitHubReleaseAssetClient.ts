@@ -1,4 +1,5 @@
 import { listStoredGitHubCredentials, DEFAULT_USER_AGENT } from '../auth';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { CredentialStore } from '../ports';
 import type { GitHubRegistryCredential, GitHubRegistryCredentialProvider } from '../genesis/GitHubRegistryClient';
 
@@ -144,7 +145,7 @@ export class GitHubReleaseAssetClient {
     try {
       return await this.fetchImpl(url, { ...init, signal: abort.signal });
     } catch (error) {
-      throw new Error(`GitHub release request failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      throw new Error(`GitHub release request failed: ${getErrorMessage(error)}`, { cause: error });
     } finally {
       clearTimeout(timeout);
     }

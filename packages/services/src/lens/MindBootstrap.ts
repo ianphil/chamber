@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { Logger } from '../logger';
+import { computeManagedFileHash } from '../skills/MarketplaceSkillMaterializer';
 import type { ManagedSkillAsset, ManagedSkillAssetFile, ManagedSkillManifest, ManagedSkillMarketplaceSource } from '../skills/skillTypes';
 
 const log = Logger.create('MindBootstrap');
@@ -148,7 +149,7 @@ function getInstalledManagedSkillState(
     const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
     const installedSha256 = metadata.algorithm === 'sha256-legacy-single-file'
       ? sha256Buffer(buffer)
-      : sha256ManagedFile(file.path, buffer);
+      : computeManagedFileHash(file.path, buffer);
     if (installedSha256 !== file.sha256) return 'modified';
   }
 
@@ -268,17 +269,6 @@ interface LegacyManagedSkillMetadata {
 
 function sha256Buffer(content: Buffer): string {
   return createHash('sha256').update(content).digest('hex');
-}
-
-function sha256ManagedFile(filePath: string, content: Buffer): string {
-  return createHash('sha256')
-    .update(filePath)
-    .update('\0')
-    .update(String(content.byteLength))
-    .update('\0')
-    .update(content)
-    .update('\0')
-    .digest('hex');
 }
 
 function sha256Text(content: string): string {

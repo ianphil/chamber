@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as path from 'path';
 import type {
   AgentProfile,
@@ -49,7 +50,7 @@ export class MindProfileService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         profile: this.getProfile(request.mindId),
       };
     }
@@ -94,7 +95,7 @@ export class MindProfileService {
       restorePrevious(targetPath, previous);
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         profile: this.getProfile(request.mindId),
       };
     }

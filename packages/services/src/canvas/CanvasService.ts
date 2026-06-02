@@ -8,6 +8,7 @@ const log = Logger.create('canvas');
 import type { Tool } from '../mind/types';
 import type { ExternalOpener } from '../ports';
 import { CanvasServer } from './CanvasServer';
+import { isPathInside } from './pathUtils';
 import { buildCanvasTools } from './tools';
 import type {
   CanvasAction,
@@ -35,17 +36,6 @@ function validateCanvasName(name: string): void {
   if (!VALID_CANVAS_NAME.test(name)) {
     throw new Error(`Invalid canvas name "${name}". Use letters, numbers, dots, underscores, or hyphens.`);
   }
-}
-
-function normalizePath(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-}
-
-function isPathInside(parent: string, child: string): boolean {
-  const normalizedParent = normalizePath(parent);
-  const normalizedChild = normalizePath(child);
-  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}${path.sep}`);
 }
 
 function wrapHtml(name: string, html: string, title?: string): string {

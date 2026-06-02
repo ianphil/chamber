@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { Context } from 'hono';
 import { getRequestListener } from '@hono/node-server';
 import { createServer } from 'node:http';
@@ -62,7 +63,7 @@ function streamAuthLogin(ctx: ChamberCtx): Response {
       void ctx.startAuthLogin((progress) => write({ type: 'progress', progress }))
         .then((result) => write({ type: 'result', result }))
         .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = getErrorMessage(error);
           write({ type: 'result', result: { success: false, error: message } });
         })
         .finally(() => controller.close());

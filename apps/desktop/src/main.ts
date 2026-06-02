@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, session, shell, Notification, type MessageBoxOptions, type NativeImage, type Tray as ElectronTray } from 'electron';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -641,7 +642,7 @@ const handleProtocolUrl = (rawUrl: string): void => {
     })
     .catch((error: unknown) => {
       log.warn('Protocol registry enrollment failed:', error);
-      showMarketplaceProtocolMessage('error', 'Unable to add marketplace', error instanceof Error ? error.message : String(error));
+      showMarketplaceProtocolMessage('error', 'Unable to add marketplace', getErrorMessage(error));
     });
 };
 

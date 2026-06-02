@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE, GitHubRegistryClient, type TreeEntry } from '../genesis';
 import type { MarketplaceSkillEntry, SkillMarketplaceSource } from './skillTypes';
 
@@ -34,7 +35,7 @@ export class MarketplaceSkillCatalog {
       } catch (error) {
         errors.push({
           marketplaceId: marketplaceId(source),
-          message: error instanceof Error ? error.message : String(error),
+          message: getErrorMessage(error),
         });
       }
     }

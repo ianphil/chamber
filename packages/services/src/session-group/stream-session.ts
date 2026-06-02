@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { MindContext } from '@chamber/shared/types';
 import type { ChatroomStreamEvent, OrchestrationMode, ChatroomMessage } from '@chamber/shared/chatroom-types';
 import type { OrchestrationContext } from './orchestrators/legacy-types';
@@ -207,7 +208,7 @@ export async function streamAgentTurn(opts: StreamAgentOptions): Promise<StreamA
     } else {
       emitEvent({
         type: 'error',
-        message: err instanceof Error ? err.message : String(err),
+        message: getErrorMessage(err),
       });
     }
     throw err;

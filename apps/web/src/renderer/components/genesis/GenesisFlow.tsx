@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { useAppDispatch } from '../../lib/store';
 import { Logger } from '../../lib/logger';
 import { VoidScreen } from './VoidScreen';
@@ -34,7 +35,7 @@ export function GenesisFlow({ onComplete }: Props) {
     try {
       setTemplates(await window.electronAPI.genesis.listTemplates());
     } catch (error) {
-      setTemplateError(error instanceof Error ? error.message : String(error));
+      setTemplateError(getErrorMessage(error));
     }
   }, []);
 
@@ -66,7 +67,7 @@ export function GenesisFlow({ onComplete }: Props) {
       basePath: defaultPath,
     }).catch((error: unknown) => ({
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     }));
     creationPromiseRef.current = creationPromise;
     const result = await creationPromise;
@@ -97,7 +98,7 @@ export function GenesisFlow({ onComplete }: Props) {
       basePath: defaultPath,
     }).catch((error: unknown) => ({
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     }));
     creationPromiseRef.current = creationPromise;
     const result = await creationPromise;

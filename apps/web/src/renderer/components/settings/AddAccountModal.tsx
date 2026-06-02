@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 
 import {
   Dialog,
@@ -86,7 +87,7 @@ export function AddAccountModal({ open, openId, onClose, onRetry }: Props) {
           }
         } catch (err) {
           if (cancelled) return;
-          setError(err instanceof Error ? err.message : String(err));
+          setError(getErrorMessage(err));
           setStage('error');
         }
       })();

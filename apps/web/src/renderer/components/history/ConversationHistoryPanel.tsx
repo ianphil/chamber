@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConversationSummary } from '@chamber/shared/types';
 import { useAppDispatch, useAppState } from '../../lib/store';
@@ -64,7 +65,7 @@ export function ConversationHistoryPanel() {
       applyResumeResult(mindId, result);
       return result;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       dispatch({ type: 'CONVERSATION_HYDRATE_FAILED', payload: { mindId, sessionId, error: message } });
       log.warn('Failed to hydrate conversation:', error);
       throw error;

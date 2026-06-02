@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { A2ARelayStatus } from '@chamber/shared/a2a-types';
 import { RadioTower, ShieldCheck, Unplug, RefreshCw } from 'lucide-react';
 import { Badge } from '../ui/badge';
@@ -40,7 +41,7 @@ export function A2ARelayView() {
         if (nextStatus.authMode) setAuthMode(nextStatus.authMode);
       })
       .catch((err: unknown) => {
-        if (mounted) setError(err instanceof Error ? err.message : String(err));
+        if (mounted) setError(getErrorMessage(err));
       });
     const unsubscribe = window.electronAPI.a2a.onRelayStateChanged((nextStatus) => {
       setStatus(nextStatus);
@@ -69,7 +70,7 @@ export function A2ARelayView() {
           });
       setStatus(nextStatus);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(getErrorMessage(err));
     }
   };
 
@@ -78,7 +79,7 @@ export function A2ARelayView() {
     try {
       setStatus(await window.electronAPI.a2a.relayDisconnect());
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(getErrorMessage(err));
     }
   };
 
@@ -87,7 +88,7 @@ export function A2ARelayView() {
     try {
       setStatus(await window.electronAPI.a2a.relayStatus());
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(getErrorMessage(err));
     }
   };
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { MindContext } from '@chamber/shared/types';
 import type {
   MagenticConfig,
@@ -132,7 +133,7 @@ export class MagenticStrategy extends BaseStrategy {
         silent: true,
       }));
     } catch (err) {
-      obs.failure(`Planning failed: ${err instanceof Error ? err.message : String(err)}`);
+      obs.failure(`Planning failed: ${getErrorMessage(err)}`);
       obs.end({ terminationReason: 'ERROR' });
       return;
     }
@@ -221,7 +222,7 @@ export class MagenticStrategy extends BaseStrategy {
           silent: true,
         }));
       } catch (err) {
-        obs.failure(`Assignment failed: ${err instanceof Error ? err.message : String(err)}`, { step });
+        obs.failure(`Assignment failed: ${getErrorMessage(err)}`, { step });
         break;
       }
       const assignDecision = parseManagerResponse(assignRawContent);

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -292,7 +293,7 @@ export class ChatroomService extends EventEmitter {
       mindName: 'System',
       messageId: randomUUID(),
       roundId,
-      event: { type: 'error', message: `Orchestration error: ${err instanceof Error ? err.message : String(err)}` },
+      event: { type: 'error', message: `Orchestration error: ${getErrorMessage(err)}` },
     } satisfies ChatroomStreamEvent);
   }
 

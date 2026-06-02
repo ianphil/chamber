@@ -1,4 +1,5 @@
 import { Logger } from '../logger';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { installManagedSkillAsset } from '../lens/MindBootstrap';
 import type { MarketplaceSkillCatalog } from './MarketplaceSkillCatalog';
 import type { MarketplaceSkillMaterializer } from './MarketplaceSkillMaterializer';
@@ -48,7 +49,7 @@ export class ManagedSkillService {
       try {
         this.installAsset(mindPath, asset);
       } catch (error) {
-        log.warn(`Managed skill install failed for ${asset.manifest.name}: ${error instanceof Error ? error.message : String(error)}`);
+        log.warn(`Managed skill install failed for ${asset.manifest.name}: ${getErrorMessage(error)}`);
       }
     }
 
@@ -67,7 +68,7 @@ export class ManagedSkillService {
         errors.push({
           marketplaceId: skill.source.marketplaceId,
           skillId: skill.id,
-          message: error instanceof Error ? error.message : String(error),
+          message: getErrorMessage(error),
         });
       }
     }

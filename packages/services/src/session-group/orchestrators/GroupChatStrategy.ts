@@ -1,4 +1,5 @@
 import type { MindContext } from '@chamber/shared/types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type {
   GroupChatConfig,
 } from '@chamber/shared/chatroom-types';
@@ -138,7 +139,7 @@ export class GroupChatStrategy extends BaseStrategy {
         mindName: moderator.identity.name,
         messageId: '',
         roundId,
-        event: { type: 'error', message: `Moderator failed: ${err instanceof Error ? err.message : String(err)}` },
+        event: { type: 'error', message: `Moderator failed: ${getErrorMessage(err)}` },
       });
       return;
     }

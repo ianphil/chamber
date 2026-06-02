@@ -9,6 +9,7 @@
 // Electron context. The IPC adapter remains a thin wrapper.
 
 import * as http from 'node:http';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as https from 'node:https';
 
 import type { ByoLlmConfig, ByoLlmProbeResult } from '@chamber/shared/types';
@@ -78,7 +79,7 @@ export async function probeEndpoint(
 
     return { ok: true, modelCount: models.length, models };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = getErrorMessage(err);
     return { ok: false, error: redactSecrets(message, config) };
   }
 }

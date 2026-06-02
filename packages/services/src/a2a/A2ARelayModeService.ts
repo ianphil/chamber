@@ -1,4 +1,5 @@
 import { ActiveA2AResolver } from './ActiveA2AResolver';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { AgentCardRegistry } from './AgentCardRegistry';
 import { RelayA2ARegistryClient, type RelayA2ARegistryClientOptions } from './RelayA2ARegistryClient';
 import type { A2ARelayQueuedMessage, AgentCard, SendMessageRequest, SendMessageResponse } from './types';
@@ -168,7 +169,7 @@ export class A2ARelayModeService {
       await this.pollOnce();
       this.lastPollError = null;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       this.lastPollError = message;
       log.warn(`A2A relay poll failed: ${message}`, error);
     } finally {

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { AgentCardRegistry } from './AgentCardRegistry';
 import type { CopilotSession, UserInputHandler, UserInputResponse } from '../mind/types';
 import { Logger } from '../logger';
@@ -413,6 +414,6 @@ function getSessionErrorMessage(event: unknown): string {
   try {
     return getSdkSessionErrorMessage(event);
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return getErrorMessage(error);
   }
 }

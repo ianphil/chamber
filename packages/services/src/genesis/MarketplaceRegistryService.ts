@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
+import { isSafeRelativePath } from './pathSafety';
 import { DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE } from './GenesisMindTemplateCatalog';
 import { GitHubRegistryClient, type TreeEntry } from './GitHubRegistryClient';
 import type { AppConfig, MarketplaceRegistry, MarketplaceRegistryActionResult } from '@chamber/shared/types';
@@ -36,7 +38,7 @@ export class MarketplaceRegistryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       };
     }
 
@@ -241,12 +243,6 @@ function safeJoin(base: string, relativePath: string, message: string): string {
     throw new MarketplaceManifestError(message);
   }
   return path.posix.normalize(path.posix.join(base, relativePath));
-}
-
-function isSafeRelativePath(value: string): boolean {
-  if (!value || path.posix.isAbsolute(value)) return false;
-  const normalized = path.posix.normalize(value);
-  return normalized === '.' || (!normalized.startsWith('..') && !normalized.includes('/../'));
 }
 
 function marketplaceValidationMessage(

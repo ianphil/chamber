@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isSafeRelativePath } from './pathSafety';
 import { GitHubRegistryClient, type TreeEntry } from './GitHubRegistryClient';
 import type {
   GenesisMindTemplate,
@@ -168,12 +169,6 @@ function stringField(record: Record<string, unknown>, key: string): string {
     throw new Error(`Expected string field: ${key}`);
   }
   return value;
-}
-
-function isSafeRelativePath(value: string): boolean {
-  if (!value || path.posix.isAbsolute(value)) return false;
-  const normalized = path.posix.normalize(value);
-  return normalized === '.' || (!normalized.startsWith('..') && !normalized.includes('/../'));
 }
 
 function marketplaceId(source: GenesisMindTemplateMarketplaceSource): string {

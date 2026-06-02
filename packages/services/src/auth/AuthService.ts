@@ -2,6 +2,7 @@
 // Stores the token in the exact Windows credential shape the CLI reads.
 
 import * as https from 'https';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { CredentialStore } from '../ports';
 import { Logger } from '../logger';
 
@@ -252,7 +253,7 @@ export class AuthService {
       onProgress?.({ step: 'error', error: 'Timed out waiting for authorization' });
       return { success: false };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
       onProgress?.({ step: 'error', error: message });
       return { success: false };
     }

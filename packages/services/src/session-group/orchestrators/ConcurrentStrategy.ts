@@ -1,4 +1,5 @@
 import type { MindContext } from '@chamber/shared/types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { OrchestrationStrategy, OrchestrationContext } from './legacy-types';
 import type { CopilotSession } from '../../mind';
 import { isStaleSessionError } from '@chamber/shared/sessionErrors';
@@ -101,7 +102,7 @@ export class ConcurrentStrategy implements OrchestrationStrategy {
       } catch (err) {
         if (!abortController.signal.aborted) {
           if (isStaleSessionError(err)) throw err;
-          const message = err instanceof Error ? err.message : String(err);
+          const message = getErrorMessage(err);
           context.emitEvent({
             mindId: mind.mindId,
             mindName: mind.identity.name,

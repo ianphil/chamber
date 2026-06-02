@@ -1,5 +1,6 @@
 import { autoUpdater, type AppUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater';
 import type { DesktopUpdateActionResult, DesktopUpdateState } from '@chamber/shared/types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 
 import {
   canCheckForUpdates,
@@ -31,10 +32,6 @@ export interface UpdaterServiceOptions {
   readonly logger?: UpdaterLogger;
   readonly allowDevUpdates?: boolean;
   readonly setQuitting?: () => void;
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export class UpdaterService {
@@ -102,7 +99,7 @@ export class UpdaterService {
       await this.updater.checkForUpdates();
       return { success: true };
     } catch (error) {
-      const message = formatError(error);
+      const message = getErrorMessage(error);
       this.setState(reduceOnError(this.state, message, 'check'));
       return { success: false, message };
     } finally {
@@ -120,7 +117,7 @@ export class UpdaterService {
       await this.updater.downloadUpdate();
       return { success: true };
     } catch (error) {
-      const message = formatError(error);
+      const message = getErrorMessage(error);
       this.setState(reduceOnError(this.state, message, 'download'));
       return { success: false, message };
     } finally {
@@ -168,7 +165,7 @@ export class UpdaterService {
       if (this.installInFlight) {
         this.installInFlight = false;
       }
-      const message = formatError(error);
+      const message = getErrorMessage(error);
       this.setState(reduceOnError(this.state, message, 'event'));
       this.logger.error(`[updater] ${message}`);
     });

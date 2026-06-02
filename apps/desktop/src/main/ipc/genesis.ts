@@ -1,5 +1,6 @@
 // Genesis IPC handlers — wire MindScaffold to renderer
 import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
@@ -80,7 +81,7 @@ export function setupGenesisIPC(
       const mindPath = await scaffold.create(config);
       return await activateCreatedMind(mindManager, mindPath);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
       if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
       return { success: false, error: message };
     }
@@ -97,7 +98,7 @@ export function setupGenesisIPC(
       if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'complete', detail: 'Genesis template install complete.' });
       return result;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
       if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
       return { success: false, error: message };
     }
@@ -117,7 +118,7 @@ async function activateCreatedMind(mindManager: MindManager, mindPath: string): 
     mindManager.setActiveMind(mind.mindId);
     return { success: true, mindId: mind.mindId, mindPath };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = getErrorMessage(err);
     return { success: false, error: message };
   }
 }

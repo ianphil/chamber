@@ -1,4 +1,5 @@
 import { Cron } from 'croner';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { SqliteStore } from '@ianphil/ttasks-ts';
@@ -225,7 +226,7 @@ export class CronService implements ChamberToolProvider {
       return record;
     } catch (err) {
       const endedAt = new Date().toISOString();
-      const error = err instanceof Error ? err.message : String(err);
+      const error = getErrorMessage(err);
       try {
         runStore.recordRun({
           mindId,

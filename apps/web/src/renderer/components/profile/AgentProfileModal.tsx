@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { Camera, FileText, Trash2 } from 'lucide-react';
 import {
   Dialog,
@@ -55,7 +56,7 @@ export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }
         if (!cancelled) setProfile(loadedProfile);
       })
       .catch((loadError: unknown) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
+        if (!cancelled) setError(getErrorMessage(loadError));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -99,7 +100,7 @@ export function AgentProfileModal({ mind, open, onOpenChange, onProfileChanged }
       setProfile(updatedProfile);
       onProfileChanged?.(updatedProfile);
     } catch (restartError) {
-      setError(restartError instanceof Error ? restartError.message : String(restartError));
+      setError(getErrorMessage(restartError));
     } finally {
       setRestarting(false);
     }

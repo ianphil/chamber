@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -100,7 +101,7 @@ export async function cleanupLegacySquirrelInstall(
       uninstallExitCode = await runSquirrelUninstall(updateExe, spawnFile);
       logger.info(`[squirrel-migration] Legacy Squirrel uninstall exited with ${uninstallExitCode ?? 'null'}.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       logger.warn(`[squirrel-migration] Legacy Squirrel uninstall failed: ${message}`);
       return {
         status: 'failed',
@@ -118,7 +119,7 @@ export async function cleanupLegacySquirrelInstall(
   try {
     fsImpl.rmSync(legacyDir, { recursive: true, force: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn(`[squirrel-migration] Could not remove legacy Squirrel directory: ${message}`);
     return {
       status: 'partial',

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { ByoLlmConfig, ByoLlmProbeResult } from '@chamber/shared/types';
 import { cn } from '../../lib/utils';
 
@@ -118,7 +119,7 @@ export function LocalLlmSettingsSection() {
       }
       return { headers, error: null };
     } catch (err) {
-      return { error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` };
+      return { error: `Invalid JSON: ${getErrorMessage(err)}` };
     }
   };
 

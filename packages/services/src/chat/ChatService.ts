@@ -2,6 +2,7 @@
 // Gets sessions from MindManager, streams SDK events via callback.
 
 import type { MindManager } from '../mind';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { ChatEvent, ChatImageAttachment, ConversationResumeResult, ConversationSummary, ModelInfo } from '@chamber/shared/types';
 import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import type { CopilotSession } from '../mind/types';
@@ -90,7 +91,7 @@ export class ChatService {
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
-        const rawMessage = err instanceof Error ? err.message : String(err);
+        const rawMessage = getErrorMessage(err);
         emit({ type: 'error', message: mapByoLlmError(rawMessage) });
       } finally {
         const active = this.abortControllers.get(mindId);

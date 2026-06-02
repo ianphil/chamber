@@ -1,4 +1,5 @@
 import type { ChamberCtx, ChamberRequest, ChamberResponse } from './types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { ChatAttachmentDto, CommandResponse, ListModelsResponse, SendChatRequest } from '@chamber/wire-contracts';
 
 export async function healthHandler(): Promise<ChamberResponse> {
@@ -19,7 +20,7 @@ export async function addMindHandler(request: ChamberRequest, ctx: ChamberCtx): 
   try {
     return { status: 200, body: { mind: await ctx.addMind(mindPath) } };
   } catch (error) {
-    return { status: 400, body: { error: error instanceof Error ? error.message : String(error) } };
+    return { status: 400, body: { error: getErrorMessage(error) } };
   }
 }
 

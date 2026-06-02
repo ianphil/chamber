@@ -1,4 +1,5 @@
 import { GitHubRegistryClient, type TreeEntry } from '../genesis/GitHubRegistryClient';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { GitHubReleaseAssetSelector, MarketplaceToolEntry, MarketplaceToolInstall } from '@chamber/shared/types';
 import type { ToolMarketplaceSource } from './toolTypes';
 
@@ -36,7 +37,7 @@ export class MarketplaceToolCatalog {
       } catch (error) {
         errors.push({
           marketplaceId: source.id ?? `github:${source.owner}/${source.repo}`,
-          message: error instanceof Error ? error.message : String(error),
+          message: getErrorMessage(error),
         });
       }
     }

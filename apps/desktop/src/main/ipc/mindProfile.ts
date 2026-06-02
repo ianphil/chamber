@@ -1,4 +1,5 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -56,7 +57,7 @@ export function setupMindProfileIPC(profileService: MindProfileService, mindMana
         },
       };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 

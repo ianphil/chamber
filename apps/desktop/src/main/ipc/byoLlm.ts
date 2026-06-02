@@ -2,6 +2,7 @@
 // custom OpenAI-compatible LLM endpoint surface in Settings.
 
 import { ipcMain, BrowserWindow } from 'electron';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { IPC } from '@chamber/shared';
 import type { ByoLlmConfig, ByoLlmProbeResult, ByoLlmSaveResult } from '@chamber/shared/types';
 import {
@@ -68,7 +69,7 @@ export function setupByoLlmIPC(
       broadcast(savedConfig);
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
       log.error('Failed to save BYO LLM config:', message);
       return { success: false, error: message };
     }
@@ -82,7 +83,7 @@ export function setupByoLlmIPC(
       broadcast(null);
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
       log.error('Failed to disable BYO LLM config:', message);
       return { success: false, error: message };
     }
@@ -103,7 +104,7 @@ export function setupByoLlmIPC(
       const result = await mindManager.restartAllMindsForByoChange(config?.enabled === true ? undefined : null);
       return { success: true, restartedCount: result.restartedCount };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
       log.error('Failed to restart agents after BYO change:', message);
       return { success: false, restartedCount: 0, error: message };
     }

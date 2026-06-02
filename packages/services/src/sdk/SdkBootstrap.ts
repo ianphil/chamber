@@ -1,6 +1,7 @@
 // SDK bootstrap — pure runtime path resolution and validation for dev/packaged builds.
 
 import * as fs from 'fs';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import * as path from 'path';
 import type { SdkRuntimeLayout } from '../ports';
 import { Logger } from '../logger';
@@ -66,7 +67,7 @@ function readJsonFile<T>(filePath: string): T {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
   } catch (error) {
     throw new Error(
-      `Failed to read JSON file at ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to read JSON file at ${filePath}: ${getErrorMessage(error)}`,
       { cause: error },
     );
   }

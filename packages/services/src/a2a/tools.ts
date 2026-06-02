@@ -1,4 +1,5 @@
 import type { MessageRouter } from './MessageRouter';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { A2AAgentResolver } from './ActiveA2AResolver';
 import type { TaskManager } from './TaskManager';
 import type { TaskState } from './types';
@@ -171,7 +172,7 @@ function buildTaskTools(mindId: string, taskManager: TaskManager): SessionTool[]
       try {
         return taskManager.cancelTask(task_id);
       } catch (err: unknown) {
-        return { error: err instanceof Error ? err.message : String(err) };
+        return { error: getErrorMessage(err) };
       }
     },
   };

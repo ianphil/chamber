@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { EventEmitter } from 'events';
 import { IPC } from '@chamber/shared';
 import type { AppConfig } from '@chamber/shared/types';
@@ -137,7 +138,7 @@ export function setupA2AIPC(
       return nextStatus;
     } catch (error) {
       await relayOptions.relayModeService.disconnect().catch(() => undefined);
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       const nextStatus: A2ARelayStatus = {
         ...createDisconnectedStatus(request.relayBaseUrl),
         state: 'error',
