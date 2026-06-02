@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Restore legacy conversation resume fallback** — Conversation resume now falls back from Chamber's current SDK session-state root to the legacy default Copilot session-state root before recreating a missing session, so pre-move chat history hydrates instead of opening empty.
+
+
 ## [0.64.1] - 2026-06-01
 
 ### Fixed
