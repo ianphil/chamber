@@ -89,11 +89,27 @@ describe('IdentityLoader', () => {
         return [] as unknown as ReturnType<typeof fs.readdirSync>;
       });
 
-      const result = loader.load('/tmp/test');
+      // Use an injected composer so the test does not depend on `node:fs`
+      // (the real composer reads via `node:fs`, which the `vi.mock('fs')` setup
+      // above does not intercept). The composer contract here is only that
+      // IdentityLoader forwards mindPath and inserts the returned section.
+      const composer = {
+        compose: vi.fn(() => 'Curated memory\n\n---\n\nOperational rule'),
+      };
+      const customLoader = new IdentityLoader(() => [], composer);
+      const result = customLoader.load('/tmp/test');
 
+      expect(composer.compose).toHaveBeenCalledWith('/tmp/test', expect.objectContaining({
+        lastKTurns: expect.any(Number),
+        perTurnMaxBytes: expect.any(Number),
+        memoryMaxBytes: expect.any(Number),
+      }));
       expect(result?.systemMessage).toContain('Curated memory');
       expect(result?.systemMessage).toContain('Operational rule');
-      expect(result?.systemMessage).toContain('Chronological note');
+      // Unstructured log.md is filtered out by the composer; the IdentityLoader
+      // never includes it directly. The fake composer above returns no log
+      // section, so the chronological note must NOT appear.
+      expect(result?.systemMessage).not.toContain('Chronological note');
     });
 
     it('does not extract the mind name from working-memory headings', () => {
@@ -118,7 +134,9 @@ describe('IdentityLoader', () => {
         return [] as unknown as ReturnType<typeof fs.readdirSync>;
       });
 
-      const result = loader.load('/tmp/agents/fox');
+      const composer = { compose: vi.fn(() => '# Memory\nCurated memory') };
+      const customLoader = new IdentityLoader(() => [], composer);
+      const result = customLoader.load('/tmp/agents/fox');
 
       expect(result?.name).toBe('fox');
       expect(result?.systemMessage).toContain('# Memory');
@@ -181,6 +199,159 @@ describe('IdentityLoader', () => {
 
       expect(systemMessage.indexOf('## Chamber')).toBeGreaterThan(systemMessage.indexOf('# Q'));
       expect(systemMessage.indexOf('## Tools')).toBeGreaterThan(systemMessage.indexOf('## Chamber'));
+    });
+
+    it('uses a default WorkingMemoryComposer when none injected', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readFileSync).mockReturnValue('');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      // Should not throw — proves the default composer is constructed and called.
+      const defaultLoader = new IdentityLoader();
+      expect(() => defaultLoader.load('/tmp/test')).not.toThrow();
+    });
+
+    it('forwards mindPath and resolved config defaults to the composer', () => {
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith('SOUL.md');
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue('# Soul');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const composer = { compose: vi.fn(() => '') };
+      const loader2 = new IdentityLoader(() => [], composer);
+      loader2.load('/tmp/agents/widget');
+
+      expect(composer.compose).toHaveBeenCalledWith(
+        '/tmp/agents/widget',
+        {
+          // Defaults from chamberMindConfig (Phase 4) when no .chamber.json exists.
+          // Phase 1 of v0.60.0 added `enabled` (strict opt-in for the dream daemon).
+          enabled: false,
+          lastKTurns: 10,
+          perTurnMaxBytes: 2048,
+          memoryMaxBytes: 8192,
+        },
+      );
+    });
+
+    it('backward compat: builds a system prompt when composer returns empty', () => {
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith('SOUL.md');
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue('# Mind\nIdentity body');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const composer = { compose: vi.fn(() => '') };
+      const loader2 = new IdentityLoader(() => [], composer);
+      const result = loader2.load('/tmp/test');
+
+      expect(result).not.toBeNull();
+      expect(result?.systemMessage).toContain('Identity body');
+      expect(result?.systemMessage).toContain('## Chamber');
+    });
+
+    it('backward compat: does not crash when composer throws', () => {
+      vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith('SOUL.md');
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue('# Soul');
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      const composer = {
+        compose: vi.fn(() => {
+          throw new Error('composer boom');
+        }),
+      };
+      const loader2 = new IdentityLoader(() => [], composer);
+      expect(() => loader2.load('/tmp/test')).not.toThrow();
+      const result = loader2.load('/tmp/test');
+      expect(result?.systemMessage).toContain('# Soul');
+    });
+
+    describe('feature-flag gate (dreamDaemonFeatureEnabled)', () => {
+      // The app-level `dreamDaemon` flag must be authoritative over the
+      // per-mind `.chamber.json workingMemory.consolidation.enabled` field.
+      // A stable build that picks up a mind opted-in under insiders must
+      // still pass `enabled: false` to the composer so the system prompt
+      // never references consolidated structured-log content.
+      const mockChamberJsonWithDaemonEnabled = () => {
+        vi.mocked(fs.existsSync).mockImplementation((candidate) => {
+          const normalized = String(candidate).replace(/\\/g, '/');
+          return normalized.endsWith('SOUL.md') || normalized.endsWith('.chamber.json');
+        });
+        vi.mocked(fs.readFileSync).mockImplementation((candidate) => {
+          const normalized = String(candidate).replace(/\\/g, '/');
+          if (normalized.endsWith('.chamber.json')) {
+            return JSON.stringify({
+              workingMemory: {
+                consolidation: {
+                  enabled: true,
+                  lastKTurns: 7,
+                  perTurnMaxBytes: 4096,
+                  memoryMaxBytes: 16384,
+                },
+              },
+            });
+          }
+          return '# Soul';
+        });
+        vi.mocked(fs.readdirSync).mockReturnValue([]);
+      };
+
+      it('forces enabled:false when the feature accessor returns false', () => {
+        mockChamberJsonWithDaemonEnabled();
+        const composer = { compose: vi.fn(() => '') };
+        const loader2 = new IdentityLoader(() => [], composer, () => false);
+
+        loader2.load('/tmp/agents/widget');
+
+        expect(composer.compose).toHaveBeenCalledWith(
+          '/tmp/agents/widget',
+          // Caps come from .chamber.json (faithful to user config) so a
+          // future re-enable resumes with the persisted limits. Only the
+          // `enabled` bit is overridden by the app-level flag.
+          {
+            enabled: false,
+            lastKTurns: 7,
+            perTurnMaxBytes: 4096,
+            memoryMaxBytes: 16384,
+          },
+        );
+      });
+
+      it('honors .chamber.json enabled:true when the feature accessor returns true', () => {
+        mockChamberJsonWithDaemonEnabled();
+        const composer = { compose: vi.fn(() => '') };
+        const loader2 = new IdentityLoader(() => [], composer, () => true);
+
+        loader2.load('/tmp/agents/widget');
+
+        expect(composer.compose).toHaveBeenCalledWith(
+          '/tmp/agents/widget',
+          {
+            enabled: true,
+            lastKTurns: 7,
+            perTurnMaxBytes: 4096,
+            memoryMaxBytes: 16384,
+          },
+        );
+      });
+
+      it('default-on accessor preserves existing behavior when omitted', () => {
+        // Backwards-compatibility guarantee: every existing IdentityLoader
+        // call site (server bin, tests, e2e harness) constructs without
+        // the third arg and must continue to honor .chamber.json verbatim.
+        mockChamberJsonWithDaemonEnabled();
+        const composer = { compose: vi.fn(() => '') };
+        const loader2 = new IdentityLoader(() => [], composer);
+
+        loader2.load('/tmp/agents/widget');
+
+        expect(composer.compose).toHaveBeenCalledWith(
+          '/tmp/agents/widget',
+          expect.objectContaining({ enabled: true }),
+        );
+      });
     });
   });
 });

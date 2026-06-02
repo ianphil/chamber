@@ -74,6 +74,7 @@ export interface ElectronAPI {
     list: () => Promise<MindContext[]>;
     setActive: (mindId: string) => Promise<void>;
     setModel: (mindId: string, model: string | null) => Promise<MindContext | null>;
+    setDreamDaemon: (mindId: string, enabled: boolean) => Promise<MindContext>;
     selectDirectory: () => Promise<string | null>;
     openWindow: (mindId: string) => Promise<void>;
     onMindChanged: (callback: (minds: MindContext[]) => void) => () => void;
@@ -110,7 +111,7 @@ export interface ElectronAPI {
     getDefaultPath: () => Promise<string>;
     pickPath: () => Promise<string | null>;
     listTemplates: () => Promise<GenesisMindTemplate[]>;
-    create: (config: { name: string; role: string; voice: string; voiceDescription: string; basePath: string }) => Promise<{ success: boolean; mindId?: string; mindPath?: string; error?: string }>;
+    create: (config: { name: string; role: string; voice: string; voiceDescription: string; basePath: string; enableDreamDaemon?: boolean }) => Promise<{ success: boolean; mindId?: string; mindPath?: string; error?: string }>;
     createFromTemplate: (request: { templateId: string; marketplaceId?: string; basePath: string }) => Promise<{ success: boolean; mindId?: string; mindPath?: string; error?: string }>;
     onProgress: (callback: (progress: { step: string; detail: string }) => void) => () => void;
   };

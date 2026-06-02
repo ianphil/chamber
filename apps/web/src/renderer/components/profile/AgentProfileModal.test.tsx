@@ -6,6 +6,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentProfileModal } from './AgentProfileModal';
 import { AppStateProvider } from '../../lib/store';
+import { DEFAULT_APP_FEATURE_FLAGS } from '@chamber/shared/feature-flags';
+import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 import type { AgentProfile, MindContext } from '@chamber/shared/types';
 
@@ -84,11 +86,88 @@ describe('AgentProfileModal', () => {
       crop: expect.objectContaining({ width: 600, height: 600 }),
     }));
   });
+
+  describe('dream-daemon switch', () => {
+    it('renders the switch in the OFF position when dreamDaemonEnabled is false', async () => {
+      (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: false }));
+      renderProfileModal();
+
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('renders the switch in the ON position when dreamDaemonEnabled is true', async () => {
+      (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: true }));
+      renderProfileModal();
+
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('flipping the switch from OFF to ON calls mind.setDreamDaemon(mindId, true) then refreshes the profile', async () => {
+      const offProfile = makeProfile({ dreamDaemonEnabled: false });
+      const onProfile = makeProfile({ dreamDaemonEnabled: true });
+      const getMock = api.mindProfile.get as ReturnType<typeof vi.fn>;
+      getMock.mockResolvedValueOnce(offProfile);
+      getMock.mockResolvedValueOnce(onProfile);
+      (api.mind.setDreamDaemon as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mind });
+
+      renderProfileModal();
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(api.mind.setDreamDaemon).toHaveBeenCalledWith('mind-1', true));
+      await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    });
+
+    it('flipping the switch from ON to OFF calls mind.setDreamDaemon(mindId, false)', async () => {
+      const onProfile = makeProfile({ dreamDaemonEnabled: true });
+      const offProfile = makeProfile({ dreamDaemonEnabled: false });
+      const getMock = api.mindProfile.get as ReturnType<typeof vi.fn>;
+      getMock.mockResolvedValueOnce(onProfile);
+      getMock.mockResolvedValueOnce(offProfile);
+      (api.mind.setDreamDaemon as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mind });
+
+      renderProfileModal();
+      const toggle = await screen.findByRole('switch', { name: /dream daemon/i });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(api.mind.setDreamDaemon).toHaveBeenCalledWith('mind-1', false));
+    });
+
+    describe('feature-flag gate (dreamDaemon: false)', () => {
+      // When the app-level flag is off the toggle row is hidden entirely.
+      // MindProfileService also forces `dreamDaemonEnabled: false` server-side
+      // in the same case, so the renderer would never even see ON — but the
+      // hide-on-flag-off check protects against any stale value.
+      it('hides the dream-daemon switch row when the feature flag is off', async () => {
+        (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: false }));
+        renderProfileModal({ dreamDaemon: false });
+
+        // The profile load + first content render must complete so the
+        // `Display name` label is in the DOM before we assert absence.
+        await screen.findByText('Display name');
+        expect(screen.queryByRole('switch', { name: /dream daemon/i })).toBeNull();
+      });
+
+      it('hides the row even if the server payload still reports dreamDaemonEnabled=true', async () => {
+        // Defense-in-depth: renderer must not trust a stale ON state. The
+        // server should force false when the flag is off, but the renderer
+        // gates independently.
+        (api.mindProfile.get as ReturnType<typeof vi.fn>).mockResolvedValue(makeProfile({ dreamDaemonEnabled: true }));
+        renderProfileModal({ dreamDaemon: false });
+
+        await screen.findByText('Display name');
+        expect(screen.queryByRole('switch', { name: /dream daemon/i })).toBeNull();
+      });
+    });
+  });
 });
 
-function renderProfileModal() {
+function renderProfileModal(flags: Partial<AppFeatureFlags> = { dreamDaemon: true }) {
   render(
-    <AppStateProvider>
+    <AppStateProvider testInitialState={{ featureFlags: { ...DEFAULT_APP_FEATURE_FLAGS, ...flags } }}>
       <AgentProfileModal mind={mind} open onOpenChange={vi.fn()} />
     </AppStateProvider>,
   );
@@ -111,6 +190,7 @@ function makeProfile(overrides?: Partial<AgentProfile>): AgentProfile {
     },
     agentFiles: [makeAgentFile('moneypenny.agent.md')],
     needsRestart: false,
+    dreamDaemonEnabled: false,
     ...overrides,
   };
 }

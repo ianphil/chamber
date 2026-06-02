@@ -37,12 +37,12 @@ describe('ActivityBar', () => {
   });
 
   it('hides the A2A Relay button when the Switchboard Relay flag is disabled', () => {
-    renderActivityBar({ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false } });
+    renderActivityBar({ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, dreamDaemon: false } });
     expect(screen.queryByLabelText('A2A Relay')).toBeNull();
   });
 
   it('renders the A2A Relay button above settings when the Switchboard Relay flag is enabled', () => {
-    renderActivityBar({ featureFlags: { switchboardRelay: true, byoLlm: false, chamberCopilot: false } });
+    renderActivityBar({ featureFlags: { switchboardRelay: true, byoLlm: false, chamberCopilot: false, dreamDaemon: false } });
     const relayButton = screen.getByLabelText('A2A Relay');
     const settingsButton = screen.getByLabelText('Settings');
     const footer = relayButton.closest('[data-testid="activity-bar-footer"]');

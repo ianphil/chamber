@@ -6,8 +6,19 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { GenesisFlow } from './GenesisFlow';
 import { AppStateProvider, useAppState } from '../../lib/store';
+import { DEFAULT_APP_FEATURE_FLAGS } from '@chamber/shared/feature-flags';
+import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 import type { GenesisMindTemplate, MindContext } from '@chamber/shared/types';
+
+// Helper for tests that exercise the dream-daemon path: provide an
+// AppStateProvider whose feature-flag slice has `dreamDaemon: true` so
+// the renderer-side coercion in GenesisFlow.handleRole does not zero out
+// the opt-in. Tests without an explicit flags arg get the default-off
+// shape so coercion behavior under the flag-off case stays visible.
+function flagsState(flags: Partial<AppFeatureFlags> = {}) {
+  return { featureFlags: { ...DEFAULT_APP_FEATURE_FLAGS, ...flags } };
+}
 
 vi.mock('./VoidScreen', () => ({
   VoidScreen: ({
@@ -47,8 +58,17 @@ vi.mock('./VoiceScreen', () => ({
 }));
 
 vi.mock('./RoleScreen', () => ({
-  RoleScreen: ({ onSelect }: { onSelect: (role: string) => void }) => (
-    <button onClick={() => onSelect('Chief of Staff')}>Choose role</button>
+  RoleScreen: ({
+    onSelect,
+  }: {
+    onSelect: (role: string, enableDreamDaemon: boolean) => void;
+  }) => (
+    <>
+      <button onClick={() => onSelect('Chief of Staff', false)}>Choose role</button>
+      <button onClick={() => onSelect('Engineering Partner', true)}>
+        Choose role with daemon
+      </button>
+    </>
   ),
 }));
 
@@ -213,9 +233,66 @@ describe('GenesisFlow', () => {
         voice: 'Test Agent',
         voiceDescription: 'Test voice',
         basePath: 'C:\\Users\\test\\agents',
+        enableDreamDaemon: false,
       });
     });
     expect(api.genesis.createFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it('forwards enableDreamDaemon=true into the genesis.create IPC payload', async () => {
+    // RoleScreen owns the Switch; GenesisFlow.handleRole must thread the
+    // captured opt-in into the IPC call so MindScaffold sees it. Without
+    // this the user toggles the Switch and nothing reaches the main process.
+    // The dreamDaemon feature flag must be ON for the coercion in
+    // handleRole to allow the `true` through.
+    render(
+      <AppStateProvider testInitialState={flagsState({ dreamDaemon: true })}>
+        <GenesisFlow onComplete={vi.fn()} />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByText('Begin'));
+    fireEvent.click(screen.getByText('Choose voice'));
+    fireEvent.click(await screen.findByText('Choose role with daemon'));
+
+    await waitFor(() => {
+      expect(api.genesis.create).toHaveBeenCalledWith({
+        name: 'Test Agent',
+        role: 'Engineering Partner',
+        voice: 'Test Agent',
+        voiceDescription: 'Test voice',
+        basePath: 'C:\\Users\\test\\agents',
+        enableDreamDaemon: true,
+      });
+    });
+  });
+
+  it('coerces enableDreamDaemon to false when the dreamDaemon feature flag is off', async () => {
+    // Renderer-side defense-in-depth: even if a child screen (test mock,
+    // future deep-link, stale local state) sends `true`, the GenesisFlow
+    // boundary must zero it out when the flag is off. The IPC layer
+    // (genesis.ts handler) also enforces this server-side, but the
+    // renderer should not depend on that.
+    render(
+      <AppStateProvider testInitialState={flagsState({ dreamDaemon: false })}>
+        <GenesisFlow onComplete={vi.fn()} />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByText('Begin'));
+    fireEvent.click(screen.getByText('Choose voice'));
+    fireEvent.click(await screen.findByText('Choose role with daemon'));
+
+    await waitFor(() => {
+      expect(api.genesis.create).toHaveBeenCalledWith({
+        name: 'Test Agent',
+        role: 'Engineering Partner',
+        voice: 'Test Agent',
+        voiceDescription: 'Test voice',
+        basePath: 'C:\\Users\\test\\agents',
+        enableDreamDaemon: false,
+      });
+    });
   });
 
   it('adds a marketplace from the landing page and refreshes templates', async () => {

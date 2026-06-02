@@ -16,9 +16,17 @@ export interface MindIPCConfig {
   devServerUrl?: string;
   rendererPath?: string;
   windowIcon?: NativeImage;
+  // Returns the current value of the `dreamDaemon` app feature flag. When this
+  // returns false, `IPC.MIND.SET_DREAM_DAEMON` rejects with a "feature
+  // unavailable" Error rather than calling into MindManager. The renderer's
+  // typed contract is `Promise<MindContext>` (not a result union), so a thrown
+  // Error surfaces through the caller's `await … catch` path. Defaults to
+  // always-on so test harnesses that omit it keep the existing contract.
+  dreamDaemonEnabled?: () => boolean;
 }
 
 export function setupMindIPC(mindManager: MindManager, chatService: ChatService, config: MindIPCConfig): void {
+  const dreamDaemonEnabled = config.dreamDaemonEnabled ?? (() => true);
   const windowByMind = new Map<string, BrowserWindow>();
   const listMinds = (): MindContext[] =>
     mindManager.listMinds().map((mind) => ({
@@ -55,6 +63,23 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
     const e2eDelayMs = Number(process.env.CHAMBER_E2E_MODEL_SWITCH_DELAY_MS ?? 0);
     if (e2eDelayMs > 0) await delay(e2eDelayMs);
     return chatService.setMindModel(mindId, model);
+  });
+
+  ipcMain.handle(IPC.MIND.SET_DREAM_DAEMON, async (_event, mindId: string, enabled: boolean) => {
+    // Authoritative gate at the IPC boundary. When the app-level `dreamDaemon`
+    // feature flag is off, the renderer must not be able to *enable* the
+    // per-mind opt-in via this channel — that would activate consolidation in
+    // a build that disables the feature. The *disable* direction stays
+    // available so a future stable build that re-introduces a "clean up legacy
+    // state" path can route through this channel without a special case.
+    // The rejection surfaces via the renderer's `await … catch` path. See
+    // AgentProfileModal for the consuming UI.
+    if (enabled && !dreamDaemonEnabled()) {
+      throw new Error('Dream Daemon is not available in this build');
+    }
+    return enabled
+      ? mindManager.enableDreamDaemon(mindId)
+      : mindManager.disableDreamDaemon(mindId);
   });
 
   ipcMain.handle(IPC.MIND.SELECT_DIRECTORY, async (event) => {

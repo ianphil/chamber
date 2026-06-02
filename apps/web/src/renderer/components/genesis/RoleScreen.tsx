@@ -1,10 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TypeWriter } from './TypeWriter';
 import { cn } from '../../lib/utils';
+import { useAppState } from '../../lib/store';
 
 interface Props {
   name: string;
-  onSelect: (role: string) => void;
+  /**
+   * v0.60.0 Phase 2: signature changed from `(role: string)` to
+   * `(role: string, enableDreamDaemon: boolean)`. The boolean is captured
+   * from the dream-daemon Switch at the bottom of this screen — Role is the
+   * last input the user makes before `genesis.create` fires, so colocating
+   * the Switch here means GenesisFlow can forward the choice into the IPC
+   * payload without an extra screen or extra state hop.
+   */
+  onSelect: (role: string, enableDreamDaemon: boolean) => void;
 }
 
 const ROLES = [
@@ -15,10 +24,16 @@ const ROLES = [
 ];
 
 export function RoleScreen({ name, onSelect }: Props) {
+  const { featureFlags } = useAppState();
+  const dreamDaemonFlag = featureFlags.dreamDaemon;
   const [showCards, setShowCards] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [customRole, setCustomRole] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+  // Strict opt-in. Defaults to OFF so a user who never touches the Switch
+  // ends up with a quiet mind. The dream daemon never starts, log.md stays
+  // empty, and `.chamber.json` is never written — see MindScaffold.createStructure.
+  const [enableDreamDaemon, setEnableDreamDaemon] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -26,6 +41,11 @@ export function RoleScreen({ name, onSelect }: Props) {
     const t = setTimeout(() => inputRef.current?.focus(), 350);
     return () => clearTimeout(t);
   }, [showCustomInput]);
+
+  // Defense-in-depth: even if a stale component state held `true` from
+  // before the flag flipped off, never forward an opt-in when the
+  // feature flag is disabled. The IPC layer also coerces this server-side.
+  const effectiveDreamDaemon = dreamDaemonFlag && enableDreamDaemon;
 
   const handleSelect = (roleId: string) => {
     if (roleId === 'custom') {
@@ -36,14 +56,14 @@ export function RoleScreen({ name, onSelect }: Props) {
     setSelected(roleId);
     setTimeout(() => {
       const role = ROLES.find(r => r.id === roleId);
-      onSelect(role?.label ?? roleId);
+      onSelect(role?.label ?? roleId, effectiveDreamDaemon);
     }, 300);
   };
 
   const handleCustomSubmit = () => {
     const role = customRole.trim();
     if (!role) return;
-    onSelect(role);
+    onSelect(role, effectiveDreamDaemon);
   };
 
   return (
@@ -100,6 +120,47 @@ export function RoleScreen({ name, onSelect }: Props) {
                     That's my purpose
                   </button>
                 )}
+              </div>
+            )}
+
+            {/*
+              Dream-daemon opt-in. Sits at the bottom because it's a
+              secondary, optional choice — the role cards are the primary
+              decision. ARIA `switch` role + `aria-checked` is the WCAG-
+              recommended shape for an on/off toggle (better than a raw
+              checkbox here because the binary state is the whole UI).
+              Gated behind the app-level `dreamDaemon` feature flag: when
+              off, the Switch is hidden entirely so genesis creates a
+              quiet mind regardless of `.chamber.json` state.
+            */}
+            {dreamDaemonFlag && (
+              <div className="pt-6 border-t border-border/50 flex items-center justify-between gap-4 text-left">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-foreground">Enable dream daemon</div>
+                  <div className="text-xs text-muted-foreground">
+                    Background memory consolidation. Off by default — you can change this later.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enableDreamDaemon}
+                  aria-label="Enable dream daemon"
+                  onClick={() => setEnableDreamDaemon((v) => !v)}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    enableDreamDaemon ? 'bg-primary' : 'bg-input',
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition',
+                      enableDreamDaemon ? 'translate-x-5' : 'translate-x-0',
+                    )}
+                  />
+                </button>
               </div>
             )}
           </div>

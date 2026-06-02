@@ -1,0 +1,349 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { createWorkingMemoryComposer, type WorkingMemoryComposerConfig } from './WorkingMemoryComposer';
+import { STRUCTURED_LOG_SENTINEL, serializeTurn, type CompletedTurn } from '../mindMemory/StructuredLogFormat';
+
+// Most existing tests assert opted-in behaviour (sentinel logs, truncation,
+// info-on-unstructured). Default `enabled: true` keeps those tests unchanged.
+// New tests below pass `enabled: false` to exercise the opt-out gate added
+// in v0.60.0. See "Dream Daemon Opt-In UX" (issue tracked in plan.md).
+const DEFAULTS: WorkingMemoryComposerConfig = {
+  enabled: true,
+  lastKTurns: 10,
+  perTurnMaxBytes: 2048,
+  memoryMaxBytes: 8192,
+};
+
+let mindRoot: string;
+let workingMemoryDir: string;
+
+beforeEach(() => {
+  mindRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-wmc-'));
+  workingMemoryDir = path.join(mindRoot, '.working-memory');
+  fs.mkdirSync(workingMemoryDir, { recursive: true });
+});
+
+afterEach(() => {
+  fs.rmSync(mindRoot, { recursive: true, force: true });
+});
+
+function makeTurn(i: number, overrides: Partial<CompletedTurn> = {}): CompletedTurn {
+  const ts = `2026-05-12T17:${String(20 + i).padStart(2, '0')}:00Z`;
+  return {
+    turnId: `turn-${i}`,
+    sessionId: `sess-${i}`,
+    model: 'claude-opus-4.7',
+    status: 'completed',
+    startedAt: ts,
+    endedAt: ts,
+    prompt: `prompt body ${i}`,
+    finalAssistantMessage: `assistant body ${i}`,
+    ...overrides,
+  };
+}
+
+function writeStructuredLog(turns: CompletedTurn[]): void {
+  const body = STRUCTURED_LOG_SENTINEL + '\n\n' + turns.map(serializeTurn).join('\n');
+  fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), body, 'utf-8');
+}
+
+describe('WorkingMemoryComposer.compose', () => {
+  it('returns empty string when working-memory dir is empty', () => {
+    const composer = createWorkingMemoryComposer();
+    expect(composer.compose(mindRoot, DEFAULTS)).toBe('');
+  });
+
+  it('returns empty string when working-memory dir is missing', () => {
+    fs.rmSync(workingMemoryDir, { recursive: true, force: true });
+    const composer = createWorkingMemoryComposer();
+    expect(composer.compose(mindRoot, DEFAULTS)).toBe('');
+  });
+
+  it('includes only rules.md when memory and log are absent', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'rules.md'), 'Operational rule', 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toContain('Operational rule');
+    expect(out).not.toContain('---');
+  });
+
+  it('includes memory.md and rules.md joined by separator', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'Curated memory', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'rules.md'), 'Operational rule', 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toBe('Curated memory\n\n---\n\nOperational rule');
+  });
+
+  it('returns only the last K structured turns when log has more than K', () => {
+    const turns = Array.from({ length: 15 }, (_, i) => makeTurn(i));
+    writeStructuredLog(turns);
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, { ...DEFAULTS, lastKTurns: 5 });
+    expect(out).toContain('turn:turn-14');
+    expect(out).toContain('turn:turn-10');
+    expect(out).not.toContain('turn:turn-9');
+    expect(out).not.toContain('turn:turn-0');
+  });
+
+  it('returns all turns when log has fewer than K', () => {
+    writeStructuredLog([makeTurn(0), makeTurn(1)]);
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, { ...DEFAULTS, lastKTurns: 10 });
+    expect(out).toContain('turn:turn-0');
+    expect(out).toContain('turn:turn-1');
+  });
+
+  it('truncates a turn whose rendered size exceeds perTurnMaxBytes', () => {
+    const huge = 'x'.repeat(10_000);
+    writeStructuredLog([makeTurn(0, { finalAssistantMessage: huge })]);
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, { ...DEFAULTS, perTurnMaxBytes: 512 });
+    // The rendered turn (or its truncation block) must not exceed the cap by more than a small margin.
+    // We assert two things:
+    // 1) The full huge body is NOT present verbatim.
+    expect(out).not.toContain(huge);
+    // 2) A truncation marker is present.
+    expect(out).toMatch(/truncated/);
+  });
+
+  it('logs at info-level (not warn) when log.md is unstructured, and contributes nothing', () => {
+    // Migration window: pre-existing minds may still have an unstructured
+    // log.md. DailyLogWriter will rotate it on first turn. Until then, the
+    // composer must skip the section without elevating to a [warn] (which
+    // misleads SREs into thinking something failed). Uncle Bob (plan review)
+    // rejected the Set<string> dedupe — this is the lightweight alternative.
+    // TODO: remove the info-level fallback after the migration window closes.
+    fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'just freeform notes\nnot structured\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toBe('mem');
+    expect(out).not.toContain('freeform');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).toMatch(/unstructured/i);
+    // Cosmetic (Uncle Bob plan-review finding 6): the message text must NOT
+    // start with `WorkingMemoryComposer:` — the Logger already prepends the
+    // tag, so duplicating it produces noisy `[WorkingMemoryComposer] WorkingMemoryComposer: ...`
+    // lines in tray logs. Locked here to prevent regression.
+    expect(info.mock.calls[0][0]).not.toMatch(/^WorkingMemoryComposer:/);
+  });
+
+  it('emits neither warn nor info when log.md is sentinel-only with zero turns (the new-mind default)', () => {
+    // After Fix 2, MindScaffold.createStructure seeds log.md with the
+    // chamber-structured-log/v1 sentinel and no turn frames. The composer must
+    // recognise this as a structured-but-empty log, not as unstructured noise.
+    fs.writeFileSync(
+      path.join(workingMemoryDir, 'log.md'),
+      STRUCTURED_LOG_SENTINEL + '\n',
+      'utf-8',
+    );
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toBe('');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('omits log entirely when log.md is unstructured (no sentinel) — historical assertion superseded by warn/info split above', () => {
+    // Kept as a regression check that the section is omitted, regardless of
+    // log level. The level itself is locked by the test above.
+    fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'just freeform notes\nnot structured\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).toBe('mem');
+    expect(out).not.toContain('freeform');
+  });
+
+  it('contributes nothing when log.md is missing', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    expect(composer.compose(mindRoot, DEFAULTS)).toBe('mem');
+  });
+
+  it('never includes log.legacy.md content', () => {
+    writeStructuredLog([makeTurn(0)]);
+    fs.writeFileSync(
+      path.join(workingMemoryDir, 'log.legacy.md'),
+      'LEGACY-CONTENT-MUST-NOT-APPEAR',
+      'utf-8',
+    );
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, DEFAULTS);
+    expect(out).not.toContain('LEGACY-CONTENT-MUST-NOT-APPEAR');
+    expect(out).toContain('turn:turn-0');
+  });
+
+  it('truncates memory.md when it exceeds memoryMaxBytes', () => {
+    const huge = 'm'.repeat(20_000);
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), huge, 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, { ...DEFAULTS, memoryMaxBytes: 1024 });
+    expect(Buffer.byteLength(out, 'utf-8')).toBeLessThanOrEqual(1024 + 100); // marker tolerance
+    expect(out).toMatch(/truncated/);
+  });
+
+  it('does not throw when memory.md, rules.md, and log.md are all missing', () => {
+    const composer = createWorkingMemoryComposer();
+    expect(() => composer.compose(mindRoot, DEFAULTS)).not.toThrow();
+    expect(composer.compose(mindRoot, DEFAULTS)).toBe('');
+  });
+
+  it('respects custom lastKTurns from config', () => {
+    const turns = Array.from({ length: 8 }, (_, i) => makeTurn(i));
+    writeStructuredLog(turns);
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, { ...DEFAULTS, lastKTurns: 3 });
+    expect(out).toContain('turn:turn-7');
+    expect(out).toContain('turn:turn-6');
+    expect(out).toContain('turn:turn-5');
+    expect(out).not.toContain('turn:turn-4');
+  });
+
+  it('orders sections memory → rules → log', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'MEMSECTION', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'rules.md'), 'RULESECTION', 'utf-8');
+    writeStructuredLog([makeTurn(0)]);
+    const composer = createWorkingMemoryComposer();
+    const out = composer.compose(mindRoot, DEFAULTS);
+    const memIdx = out.indexOf('MEMSECTION');
+    const ruleIdx = out.indexOf('RULESECTION');
+    const logIdx = out.indexOf('turn:turn-0');
+    expect(memIdx).toBeGreaterThanOrEqual(0);
+    expect(ruleIdx).toBeGreaterThan(memIdx);
+    expect(logIdx).toBeGreaterThan(ruleIdx);
+  });
+
+  it('skips empty/whitespace-only files', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), '   \n\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'rules.md'), 'rules-content', 'utf-8');
+    const composer = createWorkingMemoryComposer();
+    expect(composer.compose(mindRoot, DEFAULTS)).toBe('rules-content');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.60.0 — Dream Daemon opt-in gate (Phase 1)
+//
+// The composer must NOT include the structured-log section when the mind has
+// opted out of dream-daemon consolidation (the default). For opted-out minds
+// the composer also must NOT log info or warn — silence is the contract;
+// otherwise tray logs would scream "log.md is unstructured" for every brand-
+// new mind that hasn't enabled the feature.
+//
+// Per Uncle Bob plan-review (finding 6) the info-once dedupe Set lives on the
+// COMPOSER INSTANCE, not module scope, so each test gets fresh state without
+// resetModules() acrobatics. The test below proves the dedupe path on a
+// single instance shared across two compose() calls.
+// ---------------------------------------------------------------------------
+
+describe('WorkingMemoryComposer.compose — dream-daemon opt-in gate', () => {
+  it('opted-out + structured log → log section omitted, no info, no warn', () => {
+    writeStructuredLog([makeTurn(0)]);
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const out = composer.compose(mindRoot, { ...DEFAULTS, enabled: false });
+    expect(out).toBe('mem');
+    expect(out).not.toContain('turn:turn-0');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('opted-out + unstructured log → log section omitted, no info, no warn (silence is the contract)', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'just freeform notes\nnot structured\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const out = composer.compose(mindRoot, { ...DEFAULTS, enabled: false });
+    expect(out).toBe('mem');
+    expect(out).not.toContain('freeform');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('opted-out + sentinel-only log → log section omitted, no info, no warn', () => {
+    fs.writeFileSync(
+      path.join(workingMemoryDir, 'log.md'),
+      STRUCTURED_LOG_SENTINEL + '\n\n',
+      'utf-8',
+    );
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const out = composer.compose(mindRoot, { ...DEFAULTS, enabled: false });
+    expect(out).toBe('mem');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('opted-in + unstructured log → info fires AT MOST ONCE per composer instance, even across many compose() calls', () => {
+    fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'unstructured\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+
+    composer.compose(mindRoot, DEFAULTS);
+    composer.compose(mindRoot, DEFAULTS);
+    composer.compose(mindRoot, DEFAULTS);
+
+    expect(warn).not.toHaveBeenCalled();
+    // Three reads of the same unstructured log.md must produce ONE info line.
+    // The composer keeps a per-instance Set<mindPath> of already-warned paths.
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).not.toMatch(/^WorkingMemoryComposer:/);
+  });
+
+  it('opted-in + unstructured logs across DIFFERENT mind paths each fire info once on the same composer', () => {
+    // The dedupe is keyed by mindPath, not "any mind". Two different opted-in
+    // minds with unstructured logs must each get their own info line.
+    const otherMind = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-wmc-other-'));
+    const otherWmDir = path.join(otherMind, '.working-memory');
+    fs.mkdirSync(otherWmDir, { recursive: true });
+    try {
+      fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'unstructured-a\n', 'utf-8');
+      fs.writeFileSync(path.join(otherWmDir, 'log.md'), 'unstructured-b\n', 'utf-8');
+      const warn = vi.fn();
+      const info = vi.fn();
+      const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+
+      composer.compose(mindRoot, DEFAULTS);
+      composer.compose(otherMind, DEFAULTS);
+      composer.compose(mindRoot, DEFAULTS);
+      composer.compose(otherMind, DEFAULTS);
+
+      expect(warn).not.toHaveBeenCalled();
+      expect(info).toHaveBeenCalledTimes(2);
+    } finally {
+      fs.rmSync(otherMind, { recursive: true, force: true });
+    }
+  });
+
+  it('opted-out is the default for missing/incomplete config (defensive)', () => {
+    // If a caller forgets to thread enabled through, composer must not leak
+    // log section content. Pass a config object missing `enabled`.
+    fs.writeFileSync(path.join(workingMemoryDir, 'log.md'), 'unstructured\n', 'utf-8');
+    fs.writeFileSync(path.join(workingMemoryDir, 'memory.md'), 'mem', 'utf-8');
+    const warn = vi.fn();
+    const info = vi.fn();
+    const composer = createWorkingMemoryComposer({ logger: { warn, info } });
+    const noFlag = { lastKTurns: 10, perTurnMaxBytes: 2048, memoryMaxBytes: 8192 } as unknown as WorkingMemoryComposerConfig;
+    const out = composer.compose(mindRoot, noFlag);
+    expect(out).toBe('mem');
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+  });
+});

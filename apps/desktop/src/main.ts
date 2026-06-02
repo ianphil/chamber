@@ -86,6 +86,7 @@ import {
   type Notifier,
 } from '@chamber/services';
 import { Logger } from '@chamber/services';
+import { buildMindMemoryService, type MindMemoryComposition } from './main/services/mindMemory/buildMindMemoryService';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
 import { installContextMenu } from './main/contextMenu/ContextMenu';
 import { installExternalNavigationGuard } from './main/navigationGuard';
@@ -205,6 +206,12 @@ const notifier: Notifier = {
 };
 
 let appFeatureFlags: AppFeatureFlags = DEFAULT_APP_FEATURE_FLAGS;
+// Module-level accessor over the live `appFeatureFlags` binding. Shared by
+// `initializeRuntime` (IdentityLoader, MindManager, MindProfileService) and
+// the `app.on('ready')` IPC setup (setupMindIPC, setupGenesisIPC). Reading
+// the property at call-time tracks future remote-policy reloads that
+// re-assign `appFeatureFlags`.
+const dreamDaemonFeatureEnabled = (): boolean => appFeatureFlags.dreamDaemon;
 let credentialStore: CredentialStore;
 let sharp: typeof sharpModule;
 let configService: ConfigService;
@@ -233,6 +240,8 @@ let automationBridgeStop: (() => Promise<void>) | null = null;
 let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
 let updaterService: UpdaterService;
+let mindMemoryComposition: MindMemoryComposition | undefined;
+let mindMemoryService: MindMemoryComposition['service'] | undefined;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
 
 const createTaskLedger = (mindPath: string): TaskLedger => {
@@ -262,7 +271,11 @@ async function initializeRuntime(): Promise<void> {
   });
 
   configService = new ConfigService();
-  const identityLoader = new IdentityLoader(() => configService.load().installedTools ?? []);
+  const identityLoader = new IdentityLoader(
+    () => configService.load().installedTools ?? [],
+    undefined,
+    dreamDaemonFeatureEnabled,
+  );
   const getGenesisMarketplaceSources = (): GenesisMindTemplateMarketplaceSource[] =>
     configService.load().marketplaceRegistries ?? [DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE];
   const saveActiveLogin = (login: string | null) => {
@@ -314,12 +327,13 @@ async function initializeRuntime(): Promise<void> {
     viewDiscovery,
     () => buildProviderConfig(cachedByoLlmConfig),
     () => cachedByoLlmConfig?.model,
+    dreamDaemonFeatureEnabled,
     managedSkillService,
   );
   mindProfileService = new MindProfileService({
     getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath ?? null,
     restartMind: (mindId) => mindManager.reloadMind(mindId),
-  }, identityLoader, new SharpAvatarNormalizer(sharp));
+  }, identityLoader, new SharpAvatarNormalizer(sharp), dreamDaemonFeatureEnabled);
   userProfileService = new UserProfileService(configService);
   microsoftGraphProfileImporter = new MicrosoftGraphProfileImporter(
     userProfileService,
@@ -413,6 +427,40 @@ async function initializeRuntime(): Promise<void> {
   mindManager.setProviders(mindToolProviders);
   wireLifecycleEvents({ mindManager, agentCardRegistry, a2aRelayModeService, taskManager, a2aEventBus });
   viewDiscovery.setRefreshHandler(createLensRefreshHandler((mindPath, prompt) => mindManager.sendBackgroundPrompt(mindPath, prompt)));
+
+  // -------------------------------------------------------------------------
+  // MindMemory (Dream Daemon) — per-mind background memory consolidation.
+  // Gated behind the `dreamDaemon` app feature flag. When the flag is off,
+  // `mindMemoryComposition` stays undefined and the lifecycle hooks below
+  // are never registered, so `mind:loaded` / `mind:unloaded` are no-ops
+  // for memory purposes. The composition root owns close() during quit —
+  // requestQuit() and before-quit both guard on `mindMemoryComposition?`.
+  //
+  // Wires after providers so chatService observers + scheduler are ready
+  // before any mind:loaded event fires. The better-sqlite3 ctor is injected
+  // from the shared `loadBetterSqlite3()` resolver so dev and packaged
+  // builds both go through the unified `chamber-sqlite-runtime`.
+  // -------------------------------------------------------------------------
+  if (appFeatureFlags.dreamDaemon) {
+    mindMemoryComposition = buildMindMemoryService({
+      mindManager,
+      chatService,
+      Database: loadBetterSqlite3(),
+    });
+    mindMemoryService = mindMemoryComposition.service;
+    const memoryService = mindMemoryService;
+    mindManager.on('mind:loaded', (ctx: MindContext) => {
+      memoryService.activateMind(ctx.mindId, ctx.mindPath).catch((err) => {
+        log.warn('mindMemory: activateMind failed', { mindId: ctx.mindId, err: String(err) });
+      });
+    });
+    mindManager.on('mind:unloaded', (mindId: string) => {
+      memoryService.releaseMind(mindId).catch((err) => {
+        log.warn('mindMemory: releaseMind failed', { mindId, err: String(err) });
+      });
+    });
+  }
+
   updaterService = new UpdaterService({
     currentVersion: app.getVersion(),
     isPackaged: app.isPackaged,
@@ -471,7 +519,20 @@ const requestQuit = () => {
   if (isQuitting) return;
   isQuitting = true;
 
-  mindManager.shutdown()
+  // INVARIANT: close MindMemoryService BEFORE MindManager.shutdown so each
+  // mind's dream.db handle and scheduler entry tear down while the underlying
+  // Mind / SDK client is still alive — avoids cron ticks racing with mind
+  // teardown and leaves dream.db files cleanly closed on disk. The optional
+  // chain matters because requestQuit() can run before initializeRuntime()
+  // has assigned mindMemoryComposition (e.g., updater smoke early-return)
+  // and because Phase 3 will gate composition behind the dreamDaemon flag.
+  const closeMindMemory = mindMemoryComposition
+    ? mindMemoryComposition.close().catch((err) => {
+        log.warn('mindMemory: shutdown close failed', { err: String(err) });
+      })
+    : Promise.resolve();
+  closeMindMemory
+    .then(() => mindManager.shutdown())
     .then(() => {
       updaterService.stop();
       return Promise.allSettled([a2aRelayModeService.disconnect(), stopMvpServer()]);
@@ -757,6 +818,7 @@ app.on('ready', async () => {
     devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined,
     rendererPath: MAIN_WINDOW_VITE_DEV_SERVER_URL ? undefined : path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     windowIcon,
+    dreamDaemonEnabled: dreamDaemonFeatureEnabled,
   });
   setupMindProfileIPC(mindProfileService, mindManager, sharp);
   setupUserProfileIPC(userProfileService, microsoftGraphProfileImporter);
@@ -775,6 +837,7 @@ app.on('ready', async () => {
       return result.templates;
     }},
     genesisTemplateInstaller,
+    { dreamDaemonEnabled: dreamDaemonFeatureEnabled },
   );
   setupMarketplaceIPC(marketplaceRegistryService, { onRegistryToolsChanged: reconcileMarketplaceTools });
   setupToolsIPC(toolsService);
@@ -796,6 +859,18 @@ app.on('ready', async () => {
   });
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);
+
+  // Test-only hook: expose the MindMemoryService on globalThis so a Playwright
+  // driver attached via `electronApp.evaluate(...)` can drive the Dream Daemon
+  // (forceRun, getStatus, dbPath) without us building a renderer-facing bridge
+  // and the production type contract that comes with it. Gated by CHAMBER_E2E.
+  // After Phase 3 gates the composition behind the dreamDaemon flag, this
+  // assignment becomes a no-op (mindMemoryService stays undefined) when the
+  // flag is off — exactly what we want for the flag-off E2E smoke.
+  if (process.env.CHAMBER_E2E === '1' && mindMemoryService) {
+    (globalThis as { __chamberMindMemoryService?: typeof mindMemoryService }).__chamberMindMemoryService =
+      mindMemoryService;
+  }
 
   // Fire-and-forget tool reconciliation: install any new marketplace tools.
   // Errors are logged in ToolsService and surface via tools:list later.

@@ -7,7 +7,12 @@ export interface GenesisPromptInput {
     agent: string;
     memory: string;
     rules: string;
-    log: string;
+    /**
+     * @deprecated log.md is reserved for structured CompletedTurn frames
+     * written by DailyLogWriter. The genesis prompt no longer references this
+     * path. Kept optional for backward-compatible call-site shape only.
+     */
+    log?: string;
     index: string;
   };
 }
@@ -45,10 +50,11 @@ Write to: ${paths.soul}
 [One paragraph on how you communicate. Your tone, your style, your energy.]
 
 ## Continuity
-You maintain memory across sessions through three files:
+You maintain memory across sessions through these working-memory files:
 - \`.working-memory/memory.md\` — curated long-term reference
 - \`.working-memory/rules.md\` — operational rules learned from experience
-- \`.working-memory/log.md\` — raw chronological observations
+
+Your turn-by-turn history is preserved automatically; you do not write to it.
 ---
 
 Write to: ${paths.agent}
@@ -76,12 +82,6 @@ Write to: ${paths.rules}
 [One starter rule that fits your character voice.]
 ---
 
-Write to: ${paths.log}
----
-# Log
-- ${new Date().toISOString()}: Genesis. I am ${name}. My purpose is ${role}. Let's begin.
----
-
 Write to: ${paths.index}
 ---
 # Mind Index
@@ -93,8 +93,7 @@ Write to: ${paths.index}
 ## Working Memory
 - \`.working-memory/memory.md\` — curated long-term reference
 - \`.working-memory/rules.md\` — operational rules
-- \`.working-memory/log.md\` — chronological observations
 ---
 
-Write all six files now.`;
+Write all five files now.`;
 }

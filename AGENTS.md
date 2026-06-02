@@ -23,6 +23,13 @@ Chamber is a desktop application where AI agents ("minds") operate as a Chief of
 - **Handoff**: Agent-to-agent delegation
 - **Magentic**: Manager-driven task ledger
 
+### Memory Consolidation (Dream Daemon — experimental, opt-in)
+
+- **Per-mind opt-in**: `workingMemory.consolidation.enabled` in each mind's `.chamber.json`. Default OFF.
+- **Toggle surfaces**: Genesis wizard role screen (pre-genesis) and agent profile modal (post-genesis); never silent.
+- **Bidirectional**: Disabling rolls the structured `log.md` (and any `log.legacy.md`) back to unstructured turn-by-turn markdown via `rollbackToUnstructured`. Single source of truth after rollback.
+- **Failure semantics**: Toggle resolves even if rollback fails; config flip is the contract.
+
 ## Security Boundaries
 
 ### Credential Storage

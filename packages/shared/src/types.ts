@@ -183,6 +183,13 @@ export interface AgentProfile {
   soul: AgentProfileFile;
   agentFiles: AgentProfileFile[];
   needsRestart: boolean;
+  /**
+   * True when this mind has opted in to the dream-daemon working-memory
+   * consolidation pipeline (`.chamber.json` →
+   * `workingMemory.consolidation.enabled`). Defaults to false when no
+   * `.chamber.json` is present, matching `loadChamberMindConfig`.
+   */
+  dreamDaemonEnabled: boolean;
 }
 
 export interface AgentProfileSaveRequest {

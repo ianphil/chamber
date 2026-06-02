@@ -133,6 +133,7 @@ export function mockElectronAPI(): ElectronAPI {
       list: vi.fn().mockResolvedValue([]),
       setActive: vi.fn().mockResolvedValue(undefined),
       setModel: vi.fn().mockResolvedValue(null),
+      setDreamDaemon: vi.fn().mockResolvedValue({ mindId: 'test-1234', mindPath: 'C:\\test', identity: { name: 'Test', systemMessage: '' }, status: 'ready' }),
       selectDirectory: vi.fn().mockResolvedValue(null),
       openWindow: vi.fn().mockResolvedValue(undefined),
       onMindChanged: vi.fn().mockReturnValue(vi.fn()),
@@ -147,6 +148,7 @@ export function mockElectronAPI(): ElectronAPI {
         soul: { kind: 'soul', label: 'SOUL.md', relativePath: 'SOUL.md', content: '# Test\n', exists: true, mtimeMs: 1 },
         agentFiles: [{ kind: 'agent', label: 'test.agent.md', relativePath: '.github\\agents\\test.agent.md', content: '# Test agent\n', exists: true, mtimeMs: 2 }],
         needsRestart: false,
+        dreamDaemonEnabled: false,
       })),
       saveFile: vi.fn().mockResolvedValue({ success: true, needsRestart: true, profile: {
         mindId: 'test-1234',
@@ -157,6 +159,7 @@ export function mockElectronAPI(): ElectronAPI {
         soul: { kind: 'soul', label: 'SOUL.md', relativePath: 'SOUL.md', content: '# Test\n', exists: true, mtimeMs: 3 },
         agentFiles: [{ kind: 'agent', label: 'test.agent.md', relativePath: '.github\\agents\\test.agent.md', content: '# Test agent\n', exists: true, mtimeMs: 2 }],
         needsRestart: true,
+        dreamDaemonEnabled: false,
       } }),
       pickAvatarImage: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       saveAvatar: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
@@ -350,7 +353,7 @@ export function mockElectronAPI(): ElectronAPI {
       close: vi.fn(),
     },
     app: {
-      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false }),
+      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false, dreamDaemon: false }),
       onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     },
   };

@@ -10,13 +10,14 @@ import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
 import { buildGenesisPrompt } from './genesisPrompt';
 import { GitHubRegistryClient } from './GitHubRegistryClient';
+import { STRUCTURED_LOG_SENTINEL } from '../mindMemory/StructuredLogFormat';
 
 const log = Logger.create('MindScaffold');
 
 const IDEA_FOLDERS = ['inbox', 'domains', 'expertise', 'initiatives', 'Archive'];
 const WORKING_MEMORY_FILES = ['memory.md', 'rules.md', 'log.md'];
 
-const GENESIS_SOURCE = 'ianphil/genesis';
+const GENESIS_SOURCE = 'ianphil/genesis-frontier';
 const GENESIS_CHANNEL = 'main';
 const CHAMBER_GITIGNORE_ENTRIES = ['runs/', 'cron-runs.json', 'cron-runs.json.migrated-*'] as const;
 const CHAMBER_GITIGNORE_CONTENT = `${CHAMBER_GITIGNORE_ENTRIES.join('\n')}\n`;
@@ -27,6 +28,16 @@ export interface GenesisConfig {
   voice: string;
   voiceDescription: string;
   basePath: string;
+  /**
+   * Strict opt-in for the dream daemon (v0.60.0). When `true`, MindScaffold
+   * seeds the chamber-structured-log/v1 sentinel into log.md AND writes
+   * `.chamber.json` with `workingMemory.consolidation.enabled: true` so
+   * MindMemoryService.activateMind starts the daemon on the first mind load.
+   * When `false` or omitted, log.md is left empty and `.chamber.json` is
+   * not written — the mind operates without consolidation, matching the
+   * default for every existing user upgrading into this release.
+   */
+  enableDreamDaemon?: boolean;
 }
 
 export interface GenesisProgress {
@@ -87,7 +98,7 @@ export class MindScaffold {
 
     // 1. Create deterministic structure
     this.emit('structure', 'Creating mind structure...');
-    this.createStructure(mindPath);
+    this.createStructure(mindPath, { enableDreamDaemon: config.enableDreamDaemon === true });
 
     // 2. Generate soul via agent
     this.emit('soul', `Writing SOUL.md...`);
@@ -117,7 +128,10 @@ export class MindScaffold {
     return mindPath;
   }
 
-  private createStructure(mindPath: string): void {
+  private createStructure(
+    mindPath: string,
+    opts: { enableDreamDaemon?: boolean } = {},
+  ): void {
     // IDEA folders
     for (const folder of IDEA_FOLDERS) {
       fs.mkdirSync(path.join(mindPath, folder), { recursive: true });
@@ -131,12 +145,41 @@ export class MindScaffold {
     const wmDir = path.join(mindPath, '.working-memory');
     fs.mkdirSync(wmDir, { recursive: true });
 
+    const enableDreamDaemon = opts.enableDreamDaemon === true;
+
+    // v0.60.0 Phase 2: log.md sentinel seed is now strict opt-in. When the
+    // user toggles the dream-daemon Switch in Genesis we seed the sentinel
+    // exactly as before (byte-for-byte parity with DailyLogWriter.seedFreshLog
+    // — `SENTINEL + '\n\n'`). When the user opts out (default), log.md is
+    // left empty by the WORKING_MEMORY_FILES placeholder loop below — no
+    // sentinel byte means DailyLogWriter never engages even if a future bug
+    // somehow registers a writer for this mind.
+    if (enableDreamDaemon) {
+      fs.writeFileSync(path.join(wmDir, 'log.md'), STRUCTURED_LOG_SENTINEL + '\n\n');
+    }
+
     // Create placeholder files so the agent has targets
     for (const file of WORKING_MEMORY_FILES) {
       const filePath = path.join(wmDir, file);
       if (!fs.existsSync(filePath)) {
         fs.writeFileSync(filePath, '');
       }
+    }
+
+    // v0.60.0 Phase 2: persist the opt-in choice into `.chamber.json` so
+    // MindMemoryService.activateMind reads it back on the very next mind
+    // load. We only WRITE this file on opt-in — opt-out is the default
+    // shape returned by chamberMindConfig when the file is absent, so an
+    // empty marker file would be wasted I/O AND signal intent the user
+    // never expressed.
+    if (enableDreamDaemon) {
+      const chamberJsonPath = path.join(mindPath, '.chamber.json');
+      const chamberConfig = {
+        workingMemory: {
+          consolidation: { enabled: true },
+        },
+      };
+      fs.writeFileSync(chamberJsonPath, JSON.stringify(chamberConfig, null, 2) + '\n');
     }
   }
 
@@ -147,14 +190,16 @@ export class MindScaffold {
     const agentPath = path.join(mindPath, '.github', 'agents', `${slug}.agent.md`);
     const memoryPath = path.join(mindPath, '.working-memory', 'memory.md');
     const rulesPath = path.join(mindPath, '.working-memory', 'rules.md');
-    const logPath = path.join(mindPath, '.working-memory', 'log.md');
     const indexPath = path.join(mindPath, 'mind-index.md');
 
+    // log.md is intentionally NOT a prompt target. It is pre-seeded with the
+    // chamber-structured-log/v1 sentinel by createStructure() and reserved for
+    // structured CompletedTurn frames written by DailyLogWriter.
     const prompt = buildGenesisPrompt({
       name: config.name,
       role: config.role,
       voiceDescription: config.voiceDescription,
-      paths: { soul: soulPath, agent: agentPath, memory: memoryPath, rules: rulesPath, log: logPath, index: indexPath },
+      paths: { soul: soulPath, agent: agentPath, memory: memoryPath, rules: rulesPath, index: indexPath },
     });
 
     const sessionConfig: Record<string, unknown> = {
@@ -309,7 +354,7 @@ export class MindScaffold {
     }
 
     if (upgradeFiles.length === 0) {
-      throw new Error('Upgrade skill not found in genesis repo');
+      throw new Error(`Upgrade skill not found in ${GENESIS_SOURCE}@${GENESIS_CHANNEL}`);
     }
 
     // Download and write each file
