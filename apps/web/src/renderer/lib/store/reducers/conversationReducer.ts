@@ -1,5 +1,6 @@
 import type { AppState, AppAction } from '../state';
-import { conversationViewFor, mergeConversationSummaries, setConversationView } from './helpers';
+import type { ConversationSummary } from '@chamber/shared/types';
+import { conversationViewFor, isMindChatStreaming, mergeConversationSummaries, setConversationView } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -10,18 +11,21 @@ function setConversationHistory(
   state: AppState,
   action: Extract<AppAction, { type: 'SET_CONVERSATION_HISTORY' }>,
 ): Partial<AppState> {
-  const conversations = mergeConversationSummaries(
+  const mergedConversations = mergeConversationSummaries(
     state.conversationHistoryByMind[action.payload.mindId],
     action.payload.conversations,
   );
-  const activeSessionId = conversations.find((conversation) => conversation.active)?.sessionId;
+  const incomingActiveSessionId = mergedConversations.find((conversation) => conversation.active)?.sessionId;
   const currentView = conversationViewFor(state, action.payload.mindId);
   const hasLocalMessages = (state.messagesByMind[action.payload.mindId]?.length ?? 0) > 0;
   const shouldBindLocalReadyView =
-    currentView.status === 'ready' && currentView.sessionId === undefined && hasLocalMessages;
+    currentView.status === 'ready' && currentView.sessionId === undefined && hasLocalMessages && incomingActiveSessionId !== undefined;
+  const selectedSessionId = selectConversationSessionId(mergedConversations, currentView, incomingActiveSessionId);
+  const activeSessionId = shouldBindLocalReadyView ? incomingActiveSessionId : selectedSessionId;
+  const conversations = normalizeActiveConversation(mergedConversations, activeSessionId);
   const shouldPreserveView =
-    (currentView.status === 'ready' && currentView.sessionId === activeSessionId) ||
-    (currentView.status === 'hydrating' && currentView.pendingSessionId === activeSessionId);
+    (currentView.status === 'ready' && currentView.sessionId === activeSessionId)
+    || (currentView.status === 'hydrating' && currentView.pendingSessionId === activeSessionId);
 
   return {
     conversationHistoryByMind: {
@@ -55,6 +59,34 @@ function setConversationHistory(
             })
           : state.conversationViewByMind,
   };
+}
+
+function selectConversationSessionId(
+  conversations: ConversationSummary[],
+  currentView: ReturnType<typeof conversationViewFor>,
+  incomingActiveSessionId: string | undefined,
+): string | undefined {
+  if (currentView.status === 'hydrating' && currentView.pendingSessionId) {
+    return currentView.pendingSessionId;
+  }
+  if (
+    currentView.status === 'ready'
+    && currentView.sessionId
+    && conversations.some((conversation) => conversation.sessionId === currentView.sessionId)
+  ) {
+    return currentView.sessionId;
+  }
+  return incomingActiveSessionId;
+}
+
+function normalizeActiveConversation(
+  conversations: ConversationSummary[],
+  activeSessionId: string | undefined,
+): ConversationSummary[] {
+  return conversations.map((conversation) => {
+    const active = activeSessionId !== undefined && conversation.sessionId === activeSessionId;
+    return conversation.active === active ? conversation : { ...conversation, active };
+  });
 }
 
 function conversationHydrating(
@@ -97,6 +129,17 @@ function resumeConversation(
 ): Partial<AppState> | AppState {
   const currentView = conversationViewFor(state, action.payload.mindId);
   if (currentView.pendingSessionId && currentView.pendingSessionId !== action.payload.sessionId) return state;
+  const nextStreamingByMind = {
+    ...state.streamingByMind,
+    [action.payload.mindId]: false,
+  };
+  const nextConversationViewByMind = setConversationView(state, action.payload.mindId, {
+    status: 'ready',
+    sessionId: action.payload.sessionId,
+    pendingSessionId: undefined,
+    streaming: false,
+    error: undefined,
+  });
   return {
     messagesByMind: {
       ...state.messagesByMind,
@@ -110,18 +153,11 @@ function resumeConversation(
       ...state.activeConversationByMind,
       [action.payload.mindId]: action.payload.sessionId,
     },
-    streamingByMind: {
-      ...state.streamingByMind,
-      [action.payload.mindId]: false,
-    },
-    conversationViewByMind: setConversationView(state, action.payload.mindId, {
-      status: 'ready',
-      sessionId: action.payload.sessionId,
-      pendingSessionId: undefined,
-      streaming: false,
-      error: undefined,
-    }),
-    isStreaming: state.activeMindId === action.payload.mindId ? false : state.isStreaming,
+    streamingByMind: nextStreamingByMind,
+    conversationViewByMind: nextConversationViewByMind,
+    isStreaming: state.activeMindId
+      ? isMindChatStreaming(state, state.activeMindId, nextStreamingByMind, nextConversationViewByMind)
+      : false,
   };
 }
 

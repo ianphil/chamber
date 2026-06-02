@@ -41,6 +41,15 @@ export function conversationViewFor(state: AppState, mindId: string): Conversati
   return state.conversationViewByMind[mindId] ?? defaultConversationView();
 }
 
+export function isMindChatStreaming(
+  state: AppState,
+  mindId: string,
+  streamingByMind = state.streamingByMind,
+  conversationViewByMind = state.conversationViewByMind,
+): boolean {
+  return Boolean(streamingByMind[mindId] || conversationViewByMind[mindId]?.streaming);
+}
+
 export function setConversationView(
   state: AppState,
   mindId: string,

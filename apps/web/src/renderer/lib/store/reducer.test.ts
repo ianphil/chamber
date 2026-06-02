@@ -443,6 +443,106 @@ describe('appReducer', () => {
     expect(titled.conversationHistoryByMind[mindId][0].title).toBe('First prompt');
   });
 
+  it('SET_CONVERSATION_HISTORY binds first-message local ready state to the new active session', () => {
+    const localReady = {
+      ...withActiveMind,
+      messagesByMind: { [mindId]: [makeMessage([makeTextBlock('local prompt')], { id: 'local' })] },
+      conversationViewByMind: {
+        [mindId]: { status: 'ready' as const, streaming: false, modelSwitching: false },
+      },
+    };
+
+    const state = appReducer(localReady, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'First prompt', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', kind: 'chat', active: true },
+        ],
+      },
+    });
+
+    expect(state.activeConversationByMind[mindId]).toBe('session-1');
+    expect(state.conversationViewByMind[mindId]).toMatchObject({
+      status: 'ready',
+      sessionId: 'session-1',
+      pendingSessionId: undefined,
+    });
+    expect(state.conversationHistoryByMind[mindId].filter((conversation) => conversation.active)).toHaveLength(1);
+  });
+
+  it('SET_CONVERSATION_HISTORY preserves ready local selection over stale active history', () => {
+    const selected = {
+      ...withActiveMind,
+      activeConversationByMind: { [mindId]: 'session-2' },
+      conversationHistoryByMind: {
+        [mindId]: [
+          { sessionId: 'session-2', title: 'Selected chat', createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:02.000Z', kind: 'chat' as const, active: true },
+          { sessionId: 'session-1', title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', kind: 'chat' as const, active: false },
+        ],
+      },
+      conversationViewByMind: {
+        [mindId]: { status: 'ready' as const, sessionId: 'session-2', streaming: false, modelSwitching: false },
+      },
+    };
+
+    const state = appReducer(selected, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', kind: 'chat', active: true },
+          { sessionId: 'session-2', title: 'Selected chat', createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:01.000Z', kind: 'chat', active: false },
+        ],
+      },
+    });
+
+    expect(state.activeConversationByMind[mindId]).toBe('session-2');
+    expect(state.conversationViewByMind[mindId]).toMatchObject({
+      status: 'ready',
+      sessionId: 'session-2',
+    });
+    expect(state.conversationHistoryByMind[mindId].filter((conversation) => conversation.active)).toEqual([
+      expect.objectContaining({ sessionId: 'session-2' }),
+    ]);
+  });
+
+  it('SET_CONVERSATION_HISTORY preserves hydrating local selection over stale active history', () => {
+    const hydrating = appReducer({
+      ...withActiveMind,
+      activeConversationByMind: { [mindId]: 'session-1' },
+      conversationHistoryByMind: {
+        [mindId]: [
+          { sessionId: 'session-1', title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', kind: 'chat' as const, active: true },
+          { sessionId: 'session-2', title: 'Selected chat', createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', kind: 'chat' as const, active: false },
+        ],
+      },
+    }, {
+      type: 'CONVERSATION_HYDRATING',
+      payload: { mindId, sessionId: 'session-2' },
+    });
+
+    const state = appReducer(hydrating, {
+      type: 'SET_CONVERSATION_HISTORY',
+      payload: {
+        mindId,
+        conversations: [
+          { sessionId: 'session-1', title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', kind: 'chat', active: true },
+          { sessionId: 'session-2', title: 'Selected chat', createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', kind: 'chat', active: false },
+        ],
+      },
+    });
+
+    expect(state.activeConversationByMind[mindId]).toBe('session-2');
+    expect(state.conversationViewByMind[mindId]).toMatchObject({
+      status: 'hydrating',
+      pendingSessionId: 'session-2',
+    });
+    expect(state.conversationHistoryByMind[mindId].filter((conversation) => conversation.active)).toEqual([
+      expect.objectContaining({ sessionId: 'session-2' }),
+    ]);
+  });
+
   it('CONVERSATION_HYDRATING records the selected session before messages arrive', () => {
     const state = appReducer(withActiveMind, {
       type: 'CONVERSATION_HYDRATING',
@@ -842,6 +942,38 @@ describe('appReducer', () => {
       let state = appReducer(withActiveMind, { type: 'ADD_ASSISTANT_MESSAGE', payload: { id: 'a1', timestamp: 1000 } });
       state = appReducer(state, { type: 'CHAT_EVENT', payload: { mindId, messageId: 'a1', event: makeChatEvent('done') } });
       expect(state.streamingByMind[mindId]).toBe(false);
+    });
+
+    it('CHAT_EVENT terminal event for inactive mind does not clear active mind streaming', () => {
+      const otherMindId = 'other-mind';
+      const prev = {
+        ...withActiveMind,
+        isStreaming: true,
+        streamingByMind: { [mindId]: true, [otherMindId]: true },
+        conversationViewByMind: {
+          [mindId]: { status: 'ready' as const, sessionId: 'active-session', streaming: true, modelSwitching: false },
+          [otherMindId]: { status: 'ready' as const, sessionId: 'other-session', streaming: true, modelSwitching: false },
+        },
+        messagesByMind: {
+          [mindId]: [makeMessage([], { id: 'active-assistant', isStreaming: true })],
+          [otherMindId]: [makeMessage([], { id: 'other-assistant', isStreaming: true })],
+        },
+        activeConversationByMind: {
+          [mindId]: 'active-session',
+          [otherMindId]: 'other-session',
+        },
+      };
+
+      const state = appReducer(prev, {
+        type: 'CHAT_EVENT',
+        payload: { mindId: otherMindId, messageId: 'other-assistant', event: makeChatEvent('done') },
+      });
+
+      expect(state.streamingByMind[otherMindId]).toBe(false);
+      expect(state.conversationViewByMind[otherMindId]).toMatchObject({ streaming: false });
+      expect(state.streamingByMind[mindId]).toBe(true);
+      expect(state.conversationViewByMind[mindId]).toMatchObject({ streaming: true });
+      expect(state.isStreaming).toBe(true);
     });
 
     it('NEW_CONVERSATION clears streamingByMind for active mind', () => {

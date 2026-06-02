@@ -1,6 +1,6 @@
 import type { AppState, AppAction } from '../state';
 import { parseModelSelectionKey } from '@chamber/shared/model-selection';
-import { selectedModelForActiveMind } from './helpers';
+import { isMindChatStreaming, selectedModelForActiveMind } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -31,7 +31,7 @@ function setActiveMind(state: AppState, action: Extract<AppAction, { type: 'SET_
     activeMindId: action.payload,
     selectedModel: selectedModelForActiveMind(state, action.payload),
     isStreaming: action.payload
-      ? Boolean(state.streamingByMind[action.payload] || state.conversationViewByMind[action.payload]?.streaming)
+      ? isMindChatStreaming(state, action.payload)
       : false,
   };
 }

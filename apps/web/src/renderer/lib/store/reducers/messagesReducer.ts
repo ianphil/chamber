@@ -1,6 +1,6 @@
 import type { ChatMessage, ContentBlock } from '@chamber/shared/types';
 import type { AppState, AppAction } from '../state';
-import { conversationViewFor, handleChatEvent, setConversationView } from './helpers';
+import { conversationViewFor, handleChatEvent, isMindChatStreaming, setConversationView } from './helpers';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -82,25 +82,29 @@ function chatEvent(state: AppState, action: Extract<AppAction, { type: 'CHAT_EVE
   const newStreamingByMind = isDone
     ? { ...state.streamingByMind, [mindId]: false }
     : state.streamingByMind;
+  const newConversationViewByMind = isDone
+    ? setConversationView(state, mindId, {
+      status: 'ready',
+      sessionId: state.activeConversationByMind[mindId] ?? conversationViewFor(state, mindId).sessionId,
+      pendingSessionId: undefined,
+      streaming: false,
+    })
+    : state.conversationViewByMind;
+  const activeMindIsStreaming = state.activeMindId
+    ? isMindChatStreaming(state, state.activeMindId, newStreamingByMind, newConversationViewByMind)
+    : false;
   return {
     messagesByMind: { ...state.messagesByMind, [mindId]: newMessages },
-    isStreaming: isDone ? false : state.isStreaming,
+    isStreaming: isDone ? activeMindIsStreaming : state.isStreaming,
     streamingByMind: newStreamingByMind,
-    conversationViewByMind: isDone
-      ? setConversationView(state, mindId, {
-        status: 'ready',
-        sessionId: state.activeConversationByMind[mindId] ?? conversationViewFor(state, mindId).sessionId,
-        pendingSessionId: undefined,
-        streaming: false,
-      })
-      : state.conversationViewByMind,
+    conversationViewByMind: newConversationViewByMind,
   };
 }
 
 function hydrateChatState(state: AppState, action: Extract<AppAction, { type: 'HYDRATE_CHAT_STATE' }>): Partial<AppState> {
   const nextConversationViewByMind = action.payload.conversationViewByMind ?? state.conversationViewByMind;
   const isActiveMindStreaming = state.activeMindId
-    ? Boolean(action.payload.streamingByMind[state.activeMindId] || nextConversationViewByMind[state.activeMindId]?.streaming)
+    ? isMindChatStreaming(state, state.activeMindId, action.payload.streamingByMind, nextConversationViewByMind)
     : Object.values(action.payload.streamingByMind).some(Boolean);
   return {
     messagesByMind: action.payload.messagesByMind,

@@ -47,7 +47,7 @@ test.describe('electron Genesis marketplace aggregation smoke', () => {
     }
   });
 
-  test('shows duplicate public and internal marketplace templates as separate source-aware cards', async () => {
+  test('shows public and internal marketplace templates as separate source-aware cards', async () => {
     const page = await findRendererPage(app?.browser, app?.logs ?? []);
     await page.waitForLoadState('domcontentloaded');
 
@@ -58,11 +58,14 @@ test.describe('electron Genesis marketplace aggregation smoke', () => {
     const templates = await page.evaluate(async () => window.electronAPI.genesis.listTemplates());
     const lucyTemplates = templates.filter((template) => template.id === 'lucy');
 
-    expect(lucyTemplates.map((template) => template.source.marketplaceId).sort()).toEqual([
+    expect(lucyTemplates.map((template) => template.source.marketplaceId)).toEqual([
+      publicMarketplaceId,
+    ]);
+    expect([...new Set(templates.map((template) => template.source.marketplaceId))].sort()).toEqual([
       internalMarketplaceId,
       publicMarketplaceId,
     ]);
-    await expect(page.getByRole('button', { name: /Lucy/i })).toHaveCount(2);
+    await expect(page.getByRole('button', { name: /Lucy/i })).toHaveCount(1);
   });
 });
 
