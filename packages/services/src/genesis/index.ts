@@ -3,6 +3,7 @@ export type { GenesisConfig, GenesisProgress } from './MindScaffold';
 export { buildGenesisPrompt } from './genesisPrompt';
 export type { GenesisPromptInput } from './genesisPrompt';
 export { GitHubRegistryClient } from './GitHubRegistryClient';
+export type { TreeEntry } from './GitHubRegistryClient';
 export { GenesisMindTemplateCatalog, DEFAULT_GENESIS_MIND_TEMPLATE_SOURCE } from './GenesisMindTemplateCatalog';
 export { GenesisMindTemplateMarketplaceCatalog } from './GenesisMindTemplateMarketplaceCatalog';
 export { GenesisMindTemplateInstaller } from './GenesisMindTemplateInstaller';

@@ -31,6 +31,89 @@ function getPlatformBinaryName(platform) {
   return normalizePlatform(platform) === 'win32' ? 'copilot.exe' : 'copilot';
 }
 
+const PREBUILD_TRIPLE_PATTERN = /^(?:win32|darwin|linux|linuxmusl)-(?:x64|arm64)$/;
+
+// The prebuild triples the host can actually load. Linux ships both glibc
+// (`linux-*`) and musl (`linuxmusl-*`) variants, selected at runtime, so both
+// are kept for a Linux target.
+function getKeepPrebuildTriples(platform, arch) {
+  const normalizedPlatform = normalizePlatform(platform);
+  const normalizedArch = normalizeArch(arch);
+  if (normalizedPlatform === 'linux') {
+    return new Set([`linux-${normalizedArch}`, `linuxmusl-${normalizedArch}`]);
+  }
+  return new Set([`${normalizedPlatform}-${normalizedArch}`]);
+}
+
+function getCopilotPrebuildsDir(modulesDir) {
+  return path.join(modulesDir, '@github', 'copilot', 'prebuilds');
+}
+
+function listPrebuildTriples(prebuildsDir) {
+  return fs
+    .readdirSync(prebuildsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && PREBUILD_TRIPLE_PATTERN.test(entry.name))
+    .map((entry) => entry.name);
+}
+
+// Removes foreign-platform prebuilt native addons bundled as files inside the
+// retained @github/copilot package. npm ci filters platform optionalDependencies
+// by os/cpu, but these prebuilds are vendored files and ship regardless. Only
+// recognized `<plat>-<arch>` triple dirs that aren't host triples are removed;
+// anything unrecognized is left untouched.
+function pruneForeignPrebuilds(modulesDir, targetPlatform, targetArch) {
+  const prebuildsDir = getCopilotPrebuildsDir(modulesDir);
+  if (!fs.existsSync(prebuildsDir)) {
+    return [];
+  }
+  const keep = getKeepPrebuildTriples(targetPlatform, targetArch);
+  const removed = [];
+  for (const triple of listPrebuildTriples(prebuildsDir)) {
+    if (keep.has(triple)) {
+      continue;
+    }
+    fs.rmSync(path.join(prebuildsDir, triple), { recursive: true, force: true });
+    removed.push(triple);
+  }
+  return removed;
+}
+
+// The SDK declares `@github/copilot: ^1.0.55-1`; our prerelease pin does not
+// satisfy that range under SemVer prerelease rules, so without an override npm
+// installs a second nested copy under copilot-sdk. The override dedupes to a
+// single hoisted copy; this guards against regressions (and rejects stale
+// runtimes on the reuse fast-path).
+function assertNoDuplicateCli(modulesDir) {
+  const nested = path.join(modulesDir, '@github', 'copilot-sdk', 'node_modules', '@github', 'copilot');
+  if (fs.existsSync(nested)) {
+    throw new Error(
+      `Duplicate Copilot CLI found at ${nested}. Expected a single hoisted @github/copilot copy.`
+    );
+  }
+}
+
+function assertPrebuildsPruned(modulesDir, targetPlatform, targetArch) {
+  const prebuildsDir = getCopilotPrebuildsDir(modulesDir);
+  if (!fs.existsSync(prebuildsDir)) {
+    return;
+  }
+  const keep = getKeepPrebuildTriples(targetPlatform, targetArch);
+  const triples = listPrebuildTriples(prebuildsDir);
+  for (const triple of keep) {
+    if (!triples.includes(triple)) {
+      throw new Error(
+        `Packaged Copilot runtime is missing required prebuild ${triple} in ${prebuildsDir}.`
+      );
+    }
+  }
+  const foreign = triples.filter((triple) => !keep.has(triple));
+  if (foreign.length > 0) {
+    throw new Error(
+      `Packaged Copilot runtime contains foreign prebuilds [${foreign.join(', ')}] in ${prebuildsDir}.`
+    );
+  }
+}
+
 function getPlatformBinaryPath(modulesDir, platform, arch) {
   return path.join(
     modulesDir,
@@ -204,6 +287,9 @@ function validateRuntimeDir(runtimeRoot, targetPlatform, targetArch, requiredVer
     }
   }
 
+  assertNoDuplicateCli(modulesDir);
+  assertPrebuildsPruned(modulesDir, targetPlatform, targetArch);
+
   return {
     modulesDir,
     sdkEntry,
@@ -310,6 +396,12 @@ function prepareCopilotRuntime({ targetPlatform, targetArch }) {
     },
   });
 
+  const stagingModulesDir = path.join(stagingDir, 'node_modules');
+  const removedPrebuilds = pruneForeignPrebuilds(stagingModulesDir, normalizedPlatform, normalizedArch);
+  if (removedPrebuilds.length > 0) {
+    console.log(`[CopilotRuntime] Pruned foreign prebuilds: ${removedPrebuilds.join(', ')}`);
+  }
+
   const prepared = validateRuntimeDir(stagingDir, normalizedPlatform, normalizedArch, requiredVersions);
   smokeTestRuntime(prepared.binaryPath, requiredVersions.cli);
   promoteRuntime();
@@ -347,10 +439,12 @@ function main() {
 
 module.exports = {
   assertHostMatchesTarget,
+  getKeepPrebuildTriples,
   getPlatformBinaryPath,
   getPlatformPackageName,
   prepareCopilotRuntime,
   promoteDirectory,
+  pruneForeignPrebuilds,
   readRequiredVersions,
   validateRuntimeDir,
 };

@@ -79,6 +79,18 @@ function prepareMsalRuntime(): void {
   }
 }
 
+function prepareAutomationRuntime(): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-automation-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error('Failed to prepare packaged Chamber automation runtime.');
+  }
+}
+
 // Issue #145 — the loopback server bundle ships as an Electron resource only
 // when CHAMBER_MVP_SERVER=1 is set at package time. The runtime gate in
 // apps/desktop/src/main.ts uses the same env variable to decide whether to
@@ -94,8 +106,8 @@ const baseExtraResource = [
   './resources/acp-runtime',
   './resources/msal-runtime',
   './resources/sqlite-runtime',
+  './resources/automation-runtime',
   './node_modules/keytar',
-  './apps/desktop/src/main/assets/lens-skill',
 ];
 
 const config: ForgeConfig = {
@@ -136,6 +148,7 @@ const config: ForgeConfig = {
       prepareAcpRuntime();
       prepareMsalRuntime();
       prepareSqliteRuntime();
+      prepareAutomationRuntime();
     },
   },
   makers: [

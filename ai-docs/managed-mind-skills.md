@@ -24,22 +24,17 @@ Prefer a runtime tool when Chamber must enforce a hard boundary:
 
 The Lens split is the reference model: Lens discovery and Canvas rendering enforce service-level safety, while the Lens skill teaches the mind how to create useful, Chamber-branded views.
 
-## Repository layout
+## Marketplace layout
 
-Bundled managed skills live under desktop assets:
+Chamber-owned managed skills live in the default Genesis marketplace, not in
+the desktop installer:
 
 ```text
-apps/desktop/src/main/assets/<skill-name>-skill/
-  SKILL.md
+genesis-minds/plugins/genesis-minds/skills/<skill-name>/
+  SKILL.md         # name/version frontmatter is the source of truth
   references/      # optional, for deeper docs
   scripts/         # optional, for deterministic helpers
   assets/          # optional, templates or static files
-```
-
-The current Lens skill lives at:
-
-```text
-apps/desktop/src/main/assets/lens-skill/SKILL.md
 ```
 
 Contributor-facing skills used while developing Chamber can live under:
@@ -56,7 +51,7 @@ Follow the progressive-disclosure model used by Anthropic skills:
 
 1. **Metadata**: `name` and `description` are always visible to the model and drive triggering.
 2. **`SKILL.md` body**: loaded when the skill triggers; keep it concise and operational.
-3. **Bundled resources**: references, scripts, and assets loaded only when needed.
+3. **Marketplace resources**: references, scripts, and assets loaded only when needed.
 
 The frontmatter description should be pushy enough to trigger in real user language. Include synonyms and debugging contexts.
 
@@ -87,7 +82,7 @@ When creating or updating a managed skill:
 
 ## Installation and upgrades
 
-Managed skills are installed by Chamber bootstrap code, not by Genesis templates. This lets Chamber progressively equip existing and newly created minds.
+Managed skills are installed by Chamber bootstrap code, not by Genesis templates. This lets Chamber progressively equip existing and newly created minds. Chamber-managed skills are system-owned: when the default marketplace skill changes, Chamber overwrites the installed copy from marketplace bytes. Users who want custom behavior should copy the skill to a different name instead of editing the managed copy in place.
 
 The bootstrap path should be idempotent and safe to call from:
 
@@ -96,7 +91,7 @@ The bootstrap path should be idempotent and safe to call from:
 - Genesis scaffold activation;
 - Genesis template activation.
 
-Use a shared helper, such as `bootstrapMindCapabilities(mindPath)`, when multiple capability seeds must run together.
+Use `ManagedSkillService.installIntoMind(mindPath)` for marketplace skills. `bootstrapMindCapabilities(mindPath)` remains for non-network local capability seeds such as default Lens views.
 
 For each managed skill, write metadata next to the installed skill:
 
@@ -113,16 +108,26 @@ Example metadata:
   "name": "lens",
   "version": "2.0.0",
   "managedBy": "chamber",
-  "contentSha256": "<sha256 of installed SKILL.md>",
-  "capabilities": ["lens-json", "canvas-lens", "chamber-theme-v1"]
+  "algorithm": "sha256-framed-v2",
+  "files": [{ "path": "SKILL.md", "sha256": "<framed sha256>" }],
+  "capabilities": ["lens-json", "canvas-lens", "chamber-theme-v1"],
+  "source": {
+    "type": "marketplace",
+    "marketplaceId": "github:ianphil/genesis-minds",
+    "owner": "ianphil",
+    "repo": "genesis-minds",
+    "ref": "master",
+    "plugin": "genesis-minds",
+    "root": "skills/lens"
+  }
 }
 ```
 
 Upgrade policy:
 
 - Install when missing.
-- Upgrade managed skills when metadata says Chamber owns the file and the checksum still matches.
-- Preserve locally edited managed skills and log a warning.
+- Upgrade managed skills when metadata says Chamber owns the file and the version, file set, or checksums differ.
+- Clobber locally edited Chamber-managed skills so system-owned guidance returns to the marketplace version.
 - For old unversioned Chamber-shaped skills, back up the previous file and install the managed version.
 - Preserve unmanaged skills that do not look like the Chamber-owned skill.
 
@@ -133,18 +138,12 @@ SKILL.legacy-backup.md
 SKILL.legacy-backup-1.md
 ```
 
-## Packaging
-
-If a managed skill must be available in packaged Chamber builds, include its asset directory in packaging resources. The Lens skill is copied through the desktop packaging config so packaged minds can be upgraded without needing source files.
-
-When introducing another managed skill, verify both development and packaged asset lookup paths.
-
 ## Testing expectations
 
 Add focused tests for:
 
 - installing the skill when missing;
-- reading the skill from packaged resources;
+- reading exact bytes from the default Genesis marketplace;
 - upgrading managed unmodified skills;
 - preserving locally edited managed skills;
 - migrating legacy unversioned Chamber-owned skills with a backup;

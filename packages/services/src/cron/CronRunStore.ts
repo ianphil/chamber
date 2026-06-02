@@ -1,9 +1,28 @@
-import { Task, TaskResult, TaskStatus, type Store, type TaskMetadata } from '@ianphil/ttasks-ts';
-import type { LedgerRecord, LedgerStatus } from '@chamber/shared';
-import type { CronJob, CronJobRunRecord, CronJobType, CronRunStatus, RunSource } from './types';
+import {
+  Task,
+  TaskResult,
+  TaskStatus,
+  type Store,
+  type TaskGraph,
+  type TaskMetadata,
+} from '@ianphil/ttasks-ts';
+import type {
+  CronJob,
+  CronJobRunRecord,
+  CronRunDetail,
+  CronRunDetailNode,
+  CronRunStatus,
+  RunSource,
+} from './types';
 
-const CRON_TASK_TYPE_PREFIX = 'cron:';
-const IMPORT_TIMESTAMP_TOLERANCE_MS = 1_000;
+/**
+ * v2 cron run store. Each `CronJobRunRecord` is persisted as a ttasks
+ * `Task` row in the mind's `.chamber/runs/ttasks.db`. The script's per-graph
+ * task rows live in the same DB; `cron_run_detail(runId)` looks up the script
+ * graph by its `graphId` and renders that graph's member tasks.
+ */
+
+const CRON_TASK_TYPE = 'cron:script';
 
 type CronTaskMetadata = TaskMetadata & {
   runtime: 'cron';
@@ -11,11 +30,10 @@ type CronTaskMetadata = TaskMetadata & {
   scopeKind: 'system';
   sourceId: string;
   label: RunSource;
-  kind: CronJobType;
   cronStatus: CronRunStatus;
   startedAt: string;
   endedAt: string;
-  externalTaskId?: string;
+  graphId?: string;
 };
 
 export interface CronRunStore {
@@ -23,7 +41,7 @@ export interface CronRunStore {
   hasRun(runId: string): boolean;
   hasActiveRun(mindId: string, jobId: string): boolean;
   recordRun(run: Omit<CronJobRunRecord, 'id'>, job?: CronJob): CronJobRunRecord;
-  importRun(run: CronJobRunRecord, job?: CronJob): void;
+  getRunDetail(runId: string): CronRunDetail | null;
 }
 
 export class TTasksCronRunStore implements CronRunStore {
@@ -31,7 +49,7 @@ export class TTasksCronRunStore implements CronRunStore {
 
   listRuns(mindId: string, jobId?: string): CronJobRunRecord[] {
     return [...this.store.tasks.values()]
-      .map((task) => this.toCronRunRecord(task))
+      .map((task) => this.toRecord(task))
       .filter((run): run is CronJobRunRecord => run !== null)
       .filter((run) => run.mindId === mindId)
       .filter((run) => !jobId || run.jobId === jobId)
@@ -44,9 +62,9 @@ export class TTasksCronRunStore implements CronRunStore {
 
   hasActiveRun(mindId: string, jobId: string): boolean {
     for (const task of this.store.tasks.values()) {
-      const metadata = getCronMetadata(task);
-      if (!metadata) continue;
-      if (metadata.ownerMindId === mindId && metadata.sourceId === jobId && task.isActive) {
+      const md = getCronMetadata(task);
+      if (!md) continue;
+      if (md.ownerMindId === mindId && md.sourceId === jobId && task.isActive) {
         return true;
       }
     }
@@ -56,52 +74,70 @@ export class TTasksCronRunStore implements CronRunStore {
   recordRun(run: Omit<CronJobRunRecord, 'id'>, job?: CronJob): CronJobRunRecord {
     const task = this.buildTask(run, job);
     this.store.tasks.save(task);
-    const record = this.toCronRunRecord(task);
-    if (!record) {
-      throw new Error(`Failed to persist cron run for job ${run.jobId}`);
-    }
+    const record = this.toRecord(task);
+    if (!record) throw new Error(`Failed to persist cron run for job ${run.jobId}`);
     return record;
   }
 
-  importRun(run: CronJobRunRecord, job?: CronJob): void {
-    if (this.hasRun(run.id) || this.hasEquivalentRun(run)) return;
-    const task = this.buildTask(run, job, run.id);
-    this.store.tasks.save(task);
+  /**
+   * Return a cron run plus the member tasks of the script graph it launched.
+   * Allows `cron_run_detail` to render the per-task tree the script produced.
+   *
+   * ttasks records graph membership in its `graph_members` table, not in each
+   * task's metadata, so we resolve the graph by id and enumerate its members
+   * rather than scanning every task row for a `graphId` it does not carry.
+   */
+  getRunDetail(runId: string): CronRunDetail | null {
+    const runTask = this.store.tasks.get(runId);
+    if (!runTask) return null;
+    const run = this.toRecord(runTask);
+    if (!run) return null;
+    const graphId = run.graphId;
+    const graph: CronRunDetailNode[] = [];
+    if (graphId) {
+      const scriptGraph = this.safeGetGraph(graphId);
+      if (scriptGraph) {
+        for (const task of scriptGraph.tasks) {
+          graph.push(toDetailNode(task));
+        }
+        graph.sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? ''));
+      }
+    }
+    return { run, graph };
   }
 
-  private hasEquivalentRun(run: CronJobRunRecord): boolean {
-    return this.listRuns(run.mindId, run.jobId).some((existing) => isEquivalentRun(existing, run));
+  private safeGetGraph(graphId: string): TaskGraph | undefined {
+    try {
+      return this.store.graphs.get(graphId);
+    } catch {
+      return undefined;
+    }
   }
 
-  private buildTask(
-    run: Omit<CronJobRunRecord, 'id'>,
-    job?: CronJob,
-    id?: string,
-  ): Task {
+  private buildTask(run: Omit<CronJobRunRecord, 'id'>, job?: CronJob): Task {
     const startedAt = new Date(run.startedAt);
     const endedAt = new Date(run.endedAt);
-    const terminalStatus = toTaskStatus(run.status);
-    const task = Task.custom(`${CRON_TASK_TYPE_PREFIX}${run.type}`, '', {
-      id,
+    const terminal = toTaskStatus(run.status);
+    const metadata: CronTaskMetadata = {
+      runtime: 'cron',
+      ownerMindId: run.mindId,
+      scopeKind: 'system',
+      sourceId: run.jobId,
+      label: run.source,
+      cronStatus: run.status,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      ...(run.graphId ? { graphId: run.graphId } : {}),
+    };
+    const task = Task.custom(CRON_TASK_TYPE, '', {
       title: job?.name ?? `Cron job ${run.jobId}`,
       description: run.source,
       createdAt: startedAt,
-      metadata: {
-        runtime: 'cron',
-        ownerMindId: run.mindId,
-        scopeKind: 'system',
-        sourceId: run.jobId,
-        label: run.source,
-        kind: run.type,
-        cronStatus: run.status,
-        startedAt: run.startedAt,
-        endedAt: run.endedAt,
-        ...(run.taskId ? { externalTaskId: run.taskId } : {}),
-      } satisfies CronTaskMetadata,
+      metadata,
     });
     const result = new TaskResult({
       taskId: task.id,
-      status: terminalStatus,
+      status: terminal,
       startedAt,
       finishedAt: endedAt,
       duration: Math.max(0, endedAt.getTime() - startedAt.getTime()),
@@ -112,75 +148,50 @@ export class TTasksCronRunStore implements CronRunStore {
       terminationReason: toTerminationReason(run.status),
     });
     task.transitionTo(TaskStatus.RUNNING);
-    task.transitionTo(terminalStatus, {
-      result,
-      error: run.error,
-    });
+    task.transitionTo(terminal, { result, error: run.error });
     return task;
   }
 
-  private toCronRunRecord(task: Task): CronJobRunRecord | null {
-    const metadata = getCronMetadata(task);
-    if (!metadata) return null;
+  private toRecord(task: Task): CronJobRunRecord | null {
+    const md = getCronMetadata(task);
+    if (!md) return null;
     const result = task.result;
     return {
       id: task.id,
-      jobId: metadata.sourceId,
-      mindId: metadata.ownerMindId,
-      type: metadata.kind,
-      status: metadata.cronStatus,
-      startedAt: metadata.startedAt,
-      endedAt: metadata.endedAt,
-      taskId: metadata.externalTaskId,
+      jobId: md.sourceId,
+      mindId: md.ownerMindId,
+      status: md.cronStatus,
+      startedAt: md.startedAt,
+      endedAt: md.endedAt,
+      ...(md.graphId ? { graphId: md.graphId } : {}),
       output: result?.output || undefined,
       error: task.error ?? result?.error ?? undefined,
-      source: metadata.label,
+      source: md.label,
     };
   }
 }
 
-export function ledgerRecordToCronRunRecord(
-  record: LedgerRecord,
-  jobsById: ReadonlyMap<string, CronJob>,
-): CronJobRunRecord | null {
-  if (record.payload.runtime !== 'cron' || !record.sourceId) return null;
-  const job = jobsById.get(record.sourceId);
-  return {
-    id: record.ledgerId,
-    jobId: record.sourceId,
-    mindId: record.ownerMindId,
-    type: job?.type ?? record.payload.kind,
-    status: toCronRunStatus(record.status, record.terminalSummary),
-    startedAt: record.startedAt ?? record.createdAt,
-    endedAt: record.endedAt ?? record.lastEventAt ?? record.startedAt ?? record.createdAt,
-    output: record.progressSummary,
-    error: record.error,
-    source: toRunSource(record.label),
-  };
-}
-
 function getCronMetadata(task: Task): CronTaskMetadata | null {
-  const metadata = task.metadata;
-  if (metadata.runtime !== 'cron') return null;
+  const md = task.metadata;
+  if (md.runtime !== 'cron') return null;
   if (
-    typeof metadata.ownerMindId !== 'string'
-    || metadata.scopeKind !== 'system'
-    || typeof metadata.sourceId !== 'string'
-    || !isRunSource(metadata.label)
-    || !isCronJobType(metadata.kind)
-    || !isCronRunStatus(metadata.cronStatus)
-    || typeof metadata.startedAt !== 'string'
-    || typeof metadata.endedAt !== 'string'
+    typeof md.ownerMindId !== 'string'
+    || md.scopeKind !== 'system'
+    || typeof md.sourceId !== 'string'
+    || !isRunSource(md.label)
+    || !isCronRunStatus(md.cronStatus)
+    || typeof md.startedAt !== 'string'
+    || typeof md.endedAt !== 'string'
   ) {
     return null;
   }
-  if (metadata.externalTaskId !== undefined && typeof metadata.externalTaskId !== 'string') {
-    return null;
-  }
-  return metadata as CronTaskMetadata;
+  if (md.graphId !== undefined && typeof md.graphId !== 'string') return null;
+  return md as CronTaskMetadata;
 }
 
-function toTaskStatus(status: CronRunStatus): TaskStatus.SUCCEEDED | TaskStatus.FAILED | TaskStatus.CANCELLED {
+function toTaskStatus(
+  status: CronRunStatus,
+): TaskStatus.SUCCEEDED | TaskStatus.FAILED | TaskStatus.CANCELLED {
   switch (status) {
     case 'completed':
       return TaskStatus.SUCCEEDED;
@@ -188,11 +199,14 @@ function toTaskStatus(status: CronRunStatus): TaskStatus.SUCCEEDED | TaskStatus.
     case 'timed-out':
       return TaskStatus.FAILED;
     case 'skipped':
+    case 'canceled':
       return TaskStatus.CANCELLED;
   }
 }
 
-function toTerminationReason(status: CronRunStatus): 'handler' | 'timeout' | 'cancelled' | null {
+function toTerminationReason(
+  status: CronRunStatus,
+): 'handler' | 'timeout' | 'cancelled' | null {
   switch (status) {
     case 'completed':
       return null;
@@ -201,52 +215,8 @@ function toTerminationReason(status: CronRunStatus): 'handler' | 'timeout' | 'ca
     case 'timed-out':
       return 'timeout';
     case 'skipped':
+    case 'canceled':
       return 'cancelled';
-  }
-}
-
-function toRunSource(label: string | undefined): RunSource {
-  return isRunSource(label) ? label : 'scheduled';
-}
-
-function isEquivalentRun(left: CronJobRunRecord, right: CronJobRunRecord): boolean {
-  return left.mindId === right.mindId
-    && left.jobId === right.jobId
-    && left.type === right.type
-    && left.status === right.status
-    && left.source === right.source
-    && normalizeString(left.output) === normalizeString(right.output)
-    && normalizeString(left.error) === normalizeString(right.error)
-    && isCloseTimestamp(left.startedAt, right.startedAt)
-    && isCloseTimestamp(left.endedAt, right.endedAt);
-}
-
-function normalizeString(value: string | undefined): string {
-  return value ?? '';
-}
-
-function isCloseTimestamp(left: string, right: string): boolean {
-  const leftTime = Date.parse(left);
-  const rightTime = Date.parse(right);
-  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) return left === right;
-  return Math.abs(leftTime - rightTime) <= IMPORT_TIMESTAMP_TOLERANCE_MS;
-}
-
-function toCronRunStatus(status: LedgerStatus, terminalSummary?: string): CronRunStatus {
-  if (terminalSummary === 'skipped') return 'skipped';
-  switch (status) {
-    case 'succeeded':
-      return 'completed';
-    case 'failed':
-    case 'lost':
-      return 'failed';
-    case 'timed-out':
-      return 'timed-out';
-    case 'cancelled':
-      return 'skipped';
-    case 'queued':
-    case 'running':
-      return 'failed';
   }
 }
 
@@ -254,10 +224,32 @@ function isRunSource(value: unknown): value is RunSource {
   return value === 'manual' || value === 'resume' || value === 'scheduled';
 }
 
-function isCronRunStatus(value: unknown): value is CronRunStatus {
-  return value === 'completed' || value === 'failed' || value === 'timed-out' || value === 'skipped';
+function toDetailNode(task: Task): CronRunDetailNode {
+  const md = task.metadata as Record<string, unknown>;
+  const result = task.result;
+  const parentId = typeof md.parentId === 'string' ? md.parentId : null;
+  const node: CronRunDetailNode = {
+    id: task.id,
+    type: task.type ?? 'unknown',
+    title: task.title ?? task.id,
+    status: String(task.status),
+    parentId,
+  };
+  if (result?.startedAt) node.startedAt = result.startedAt.toISOString();
+  if (result?.finishedAt) node.finishedAt = result.finishedAt.toISOString();
+  if (typeof result?.duration === 'number') node.durationMs = result.duration;
+  if (result?.output) node.output = String(result.output).slice(0, 4096);
+  const err = task.error ?? result?.error ?? null;
+  if (err) node.error = String(err).slice(0, 4096);
+  return node;
 }
 
-function isCronJobType(value: unknown): value is CronJobType {
-  return value === 'prompt' || value === 'shell' || value === 'webhook' || value === 'notification';
+function isCronRunStatus(value: unknown): value is CronRunStatus {
+  return (
+    value === 'completed'
+    || value === 'failed'
+    || value === 'timed-out'
+    || value === 'skipped'
+    || value === 'canceled'
+  );
 }

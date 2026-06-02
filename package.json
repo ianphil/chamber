@@ -1,8 +1,9 @@
 {
   "name": "chamber",
   "productName": "Chamber",
-  "version": "0.63.0",
+  "version": "0.64.0",
   "description": "Genesis Mind Interface — desktop chat UI for Genesis agents",
+  "//copilotPin": "@github/copilot is pinned in devDependencies AND chamber-copilot-runtime/package.json — both must match. Pin drift / make:sandbox version-mismatch? See ai-docs/copilot-runtime-version-pin.html.",
   "main": ".vite/build/main.js",
   "private": true,
   "workspaces": [
@@ -42,7 +43,8 @@
     "presmoke:desktop": "node scripts/ensure-native-abi.cjs electron",
     "smoke:a2a-relay": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 --headed tests/e2e/electron/a2a-relay-roundtrip.spec.ts",
     "smoke:byo-llm": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 tests/e2e/electron/byo-llm-settings.spec.ts",
-    "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js"
+    "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js",
+    "smoke:automation": "node scripts/prepare-automation-runtime.js && node scripts/run-automation-smoke.js"
   },
   "keywords": [],
   "author": {
@@ -61,7 +63,7 @@
     "@electron-forge/publisher-github": "^7.11.1",
     "@electron/fuses": "^2.1.1",
     "@eslint/js": "^10.0.1",
-    "@github/copilot": "1.0.55-1",
+    "@github/copilot": "1.0.57-2",
     "@github/copilot-sdk": "1.0.0-beta.8",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/typography": "^0.5.19",
@@ -123,6 +125,7 @@
     "@electron-forge/plugin-fuses": {
       "@electron/fuses": "$@electron/fuses"
     },
+    "@github/copilot": "$@github/copilot",
     "@electron/rebuild": "^4.0.4",
     "tmp": "^0.2.5",
     "yauzl": "^3.3.1"

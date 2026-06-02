@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { cn } from '../../lib/utils';
+import { isMac } from '../../lib/platform';
 import { MessageSquare, Zap, Newspaper, Users, Clock, Settings, Layout, RadioTower, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { Separator } from '../ui/separator';
@@ -29,6 +30,8 @@ export function ActivityBar() {
 
   return (
     <div className="w-12 bg-card border border-border rounded-xl flex flex-col items-center py-2 shrink-0">
+      {/* Clear the inset macOS traffic-light window controls (titleBarStyle: hiddenInset). */}
+      {isMac && <div className="h-6 shrink-0" data-testid="activity-bar-mac-spacer" />}
       <div className="flex flex-col items-center gap-1 flex-1">
         {/* Chat — always present */}
         <Tooltip delayDuration={300}>

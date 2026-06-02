@@ -64,7 +64,7 @@ A2A complements tools. MCP-style tools and marketplace CLIs give a mind access t
 - **Lens** — Drop a `view.json` into `.github/lens/` and Chamber renders a form, table, briefing, detail view, status board, timeline, editor, or canvas.
 - **Chatroom** — Coordinate multiple minds in concurrent, round-robin, moderated, handoff, or manager-led orchestration modes.
 - **Canvas** — Render sandboxed HTML dashboards and reports in the browser with live reload and an action back-channel.
-- **Cron** — Schedule prompt, process, webhook, and notification jobs per mind.
+- **Cron** — Schedule TypeScript automation scripts authored by minds under `.chamber/automation/*.ts` and executed via the bundled ttasks runtime.
 - **Marketplace links** — Enroll Genesis mind registries from `chamber://install?registry=...` links.
 - **Desktop updates** — Windows installer and update metadata are produced by the release pipeline.
 

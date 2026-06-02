@@ -1,0 +1,14 @@
+{
+  "name": "@chamber/automation-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Task handlers and bridge client used by Chamber automation scripts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./task-helpers": "./src/task-helpers.ts"
+  },
+  "dependencies": {
+    "@ianphil/ttasks-ts": "git+https://github.com/ianphil/ttasks-ts.git#v0.3.0"
+  }
+}
