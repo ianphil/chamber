@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.1] - 2026-06-01
+
 ### Fixed
 
 - **Load marketplace-installed skills in SDK sessions** — Mind sessions now pass each mind's `.github/skills` parent directory through `skillDirectories` when creating or resuming Copilot SDK sessions, so the SDK `skill` tool can discover marketplace-installed skills like `ttasks` and `automation`.
