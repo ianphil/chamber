@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import started from 'electron-squirrel-startup';
 import { DEFAULT_APP_FEATURE_FLAGS, IPC } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
@@ -87,6 +87,7 @@ import {
   type Notifier,
 } from '@chamber/services';
 import { Logger } from '@chamber/services';
+import { SqliteStore } from '@ianphil/ttasks-ts';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
 import { installContextMenu } from './main/contextMenu/ContextMenu';
 import { installExternalNavigationGuard } from './main/navigationGuard';
@@ -235,6 +236,7 @@ let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
 let updaterService: UpdaterService;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
+const ttasksStoresByMindPath = new Map<string, SqliteStore>();
 
 const createTaskLedger = (mindPath: string): TaskLedger => {
   const existing = taskLedgersByMindPath.get(mindPath);
@@ -244,6 +246,23 @@ const createTaskLedger = (mindPath: string): TaskLedger => {
   );
   taskLedgersByMindPath.set(mindPath, ledger);
   return ledger;
+};
+
+const createTTasksStore = (mindPath: string): SqliteStore => {
+  const existing = ttasksStoresByMindPath.get(mindPath);
+  if (existing) return existing;
+  const runsDir = path.join(mindPath, '.chamber', 'runs');
+  fs.mkdirSync(runsDir, { recursive: true });
+  const store = new SqliteStore({ path: path.join(runsDir, 'ttasks.db') });
+  ttasksStoresByMindPath.set(mindPath, store);
+  return store;
+};
+
+const closeTTasksStores = (): void => {
+  for (const store of ttasksStoresByMindPath.values()) {
+    store.close();
+  }
+  ttasksStoresByMindPath.clear();
 };
 
 async function initializeRuntime(): Promise<void> {
@@ -336,6 +355,10 @@ async function initializeRuntime(): Promise<void> {
       const mindPath = mindManager.getMind(mindId)?.mindPath;
       return mindPath ? createTaskLedger(mindPath) : undefined;
     },
+    createTTasksStore: (mindId) => {
+      const mindPath = mindManager.getMind(mindId)?.mindPath;
+      return mindPath ? createTTasksStore(mindPath) : undefined;
+    },
   });
   // The SDK model catalog does not include BYO endpoint models, so keep the
   // saved BYO model visible through this side-channel when the flag is enabled.
@@ -396,6 +419,29 @@ async function initializeRuntime(): Promise<void> {
     },
     onNotify: async ({ title, body }) => {
       notifier.notify({ kind: 'info', title, body });
+    },
+    onA2a: async ({ mindId, recipient, message, contextId, referenceTaskIds }) => {
+      if (!mindManager.getMind(mindId)) {
+        throw new Error(`mind ${mindId} not active`);
+      }
+
+      const task = await taskManager.sendTask({
+        recipient,
+        message: {
+          messageId: randomUUID(),
+          role: 'ROLE_USER',
+          parts: [{ text: message, mediaType: 'text/plain' }],
+          metadata: { fromId: mindId, fromName: 'automation' },
+          ...(contextId ? { contextId } : {}),
+          ...(referenceTaskIds?.length ? { referenceTaskIds } : {}),
+        },
+      });
+
+      return {
+        id: task.id,
+        contextId: task.contextId,
+        status: task.status.state,
+      };
     },
   });
   const bridgeStart = await automationBridge.start();
@@ -899,6 +945,7 @@ app.on('before-quit', (e) => {
 app.on('will-quit', () => {
   appTray?.destroy();
   appTray = null;
+  closeTTasksStores();
   if (automationBridgeStop) {
     void automationBridgeStop().catch(() => { /* noop */ });
     automationBridgeStop = null;

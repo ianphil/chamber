@@ -10,10 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Restore legacy conversation resume fallback** — Conversation resume now falls back from Chamber's current SDK session-state root to the legacy default Copilot session-state root before recreating a missing session, so pre-move chat history hydrates instead of opening empty.
+- **Refresh packaged Copilot runtime pin** — Aligns the committed @github/copilot runtime pin with the launcher-resolved 1.0.58 build so package smoke validates the bundled CLI.
 
 ### Tests
 
 - **Add invariant test suite** — Introduces test:invariants for high-signal Chamber contracts covering session-state fallback order, stable conversation state roots, SDK config discovery, metadata-only history records, renderer/preload and shared architecture boundaries, managed skill/session ordering, approval redaction/default-deny behavior, credential-write boundaries, automation bridge/token safety, startup prewarm ordering, Electron window preferences, and cron script validation.
+
+### Added
+
+- **Add chamber:a2a ttasks runtime support** — Adds a chamber:a2a custom task type, production A2A bridge wiring, durable ttasks persistence, and invariants for the runtime contract.
+
 
 
 

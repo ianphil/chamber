@@ -1,11 +1,12 @@
 import { EventEmitter } from 'events';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
+import { Task as TTasksTask, TaskResult, TaskStatus, type Store } from '@ianphil/ttasks-ts';
 import type { AgentCardRegistry } from './AgentCardRegistry';
 import type { CopilotSession, UserInputHandler, UserInputResponse } from '../mind/types';
 import { Logger } from '../logger';
 import type {
   SendMessageRequest,
-  Task,
+  Task as A2ATask,
   TaskState,
   TaskStatusUpdateEvent,
   TaskArtifactUpdateEvent,
@@ -51,15 +52,18 @@ export interface SendTaskRequest extends SendMessageRequest {
 interface TaskManagerOptions {
   ledger?: TaskLedger;
   getLedgerForMind?: (mindId: string) => TaskLedger | undefined;
+  ttasksStore?: Store;
+  createTTasksStore?: (mindId: string) => Store | undefined;
 }
 
 export class TaskManager extends EventEmitter {
   static readonly MAX_COMPLETED_TASKS = 100;
 
-  private tasks = new Map<string, Task>();
+  private tasks = new Map<string, A2ATask>();
   private sessions = new Map<string, CopilotSession>();
   private pendingInputs = new Map<string, (answer: UserInputResponse) => void>();
   private taskTargets = new Map<string, string>();
+  private ttasksTasks = new Map<string, TTasksTask>();
 
   constructor(
     private readonly sessionFactory: TaskSessionFactory,
@@ -69,7 +73,7 @@ export class TaskManager extends EventEmitter {
     super();
   }
 
-  async sendTask(request: SendTaskRequest): Promise<Task> {
+  async sendTask(request: SendTaskRequest): Promise<A2ATask> {
     // 1. Resolve recipient
     const card =
       this.agentCardRegistry.getCard(request.recipient) ??
@@ -84,7 +88,7 @@ export class TaskManager extends EventEmitter {
     const contextId = request.message.contextId || generateContextId();
 
     // 4. Create task
-    const task: Task = {
+    const task: A2ATask = {
       id: taskId,
       contextId,
       status: createTaskStatus('TASK_STATE_SUBMITTED'),
@@ -95,6 +99,7 @@ export class TaskManager extends EventEmitter {
     // 5. Store
     this.tasks.set(taskId, task);
     this.taskTargets.set(taskId, targetMindId);
+    this.persistTTasksTask(task, targetMindId, request);
     if (!request.suppressLedgerWrite) {
       this.recordTaskLedgerSubmitted(task, targetMindId);
     }
@@ -103,7 +108,7 @@ export class TaskManager extends EventEmitter {
     this.emitStatusUpdate(task);
 
     // 7. Snapshot the submitted state before async processing mutates it
-    const snapshot: Task = {
+    const snapshot: A2ATask = {
       ...task,
       status: { ...task.status },
       history: task.history ? [...task.history] : [],
@@ -123,7 +128,7 @@ export class TaskManager extends EventEmitter {
     return snapshot;
   }
 
-  getTask(id: string, historyLength?: number): Task | null {
+  getTask(id: string, historyLength?: number): A2ATask | null {
     const task = this.tasks.get(id);
     if (!task) return null;
 
@@ -154,27 +159,24 @@ export class TaskManager extends EventEmitter {
     };
   }
 
-  cancelTask(id: string): Task {
+  cancelTask(id: string): A2ATask {
     const task = this.tasks.get(id);
     if (!task) throw new Error(`Task ${id} not found`);
     if (TERMINAL_STATES.has(task.status.state)) {
       throw new Error(`Cannot cancel task in terminal state: ${task.status.state}`);
     }
 
-    this.transitionState(task, 'TASK_STATE_CANCELED');
-
-    // Abort session if exists
     const session = this.sessions.get(id);
     if (session) {
-      // CopilotSession type may not expose abort() — use optional chaining
       (session as { abort?: () => Promise<void> }).abort?.().catch(() => { /* noop */ });
-      this.sessions.delete(id);
     }
+
+    this.transitionState(task, 'TASK_STATE_CANCELED');
 
     return this.snapshotTask(task);
   }
 
-  resumeTask(id: string, message: Message): Task {
+  resumeTask(id: string, message: Message): A2ATask {
     const task = this.tasks.get(id);
     if (!task) throw new Error(`Task ${id} not found`);
     if (task.status.state !== 'TASK_STATE_INPUT_REQUIRED') {
@@ -201,7 +203,7 @@ export class TaskManager extends EventEmitter {
   // Private
   // ---------------------------------------------------------------------------
 
-  private snapshotTask(task: Task): Task {
+  private snapshotTask(task: A2ATask): A2ATask {
     return {
       ...task,
       status: { ...task.status },
@@ -211,7 +213,7 @@ export class TaskManager extends EventEmitter {
   }
 
   private async processTask(
-    task: Task,
+    task: A2ATask,
     targetMindId: string,
     message: Message,
     onUserInputOverride?: UserInputHandler,
@@ -258,7 +260,7 @@ export class TaskManager extends EventEmitter {
     }
   }
 
-  private recordTaskLedgerSubmitted(task: Task, targetMindId: string): void {
+  private recordTaskLedgerSubmitted(task: A2ATask, targetMindId: string): void {
     try {
       this.getLedgerForMind(targetMindId)?.writer.createRunning({
         runtime: 'a2a',
@@ -276,7 +278,7 @@ export class TaskManager extends EventEmitter {
     }
   }
 
-  private finalizeTaskLedger(task: Task): void {
+  private finalizeTaskLedger(task: A2ATask): void {
     try {
       const targetMindId = this.taskTargets.get(task.id);
       if (!targetMindId) return;
@@ -295,6 +297,10 @@ export class TaskManager extends EventEmitter {
 
   private getLedgerForMind(mindId: string): TaskLedger | undefined {
     return this.options.getLedgerForMind?.(mindId) ?? this.options.ledger;
+  }
+
+  private getTTasksStore(mindId: string): Store | undefined {
+    return this.options.createTTasksStore?.(mindId) ?? this.options.ttasksStore;
   }
 
   private toLedgerStatus(state: TaskState): 'succeeded' | 'failed' | 'timed-out' | 'cancelled' {
@@ -317,7 +323,7 @@ export class TaskManager extends EventEmitter {
     }
   }
 
-  private bindTaskSessionListeners(session: CopilotSession, task: Task, targetMindId: string): void {
+  private bindTaskSessionListeners(session: CopilotSession, task: A2ATask, targetMindId: string): void {
     void targetMindId;
     let responseText = '';
 
@@ -372,13 +378,83 @@ export class TaskManager extends EventEmitter {
     });
   }
 
-  private transitionState(task: Task, state: TaskState): void {
+  private transitionState(task: A2ATask, state: TaskState): void {
     task.status = createTaskStatus(state);
     this.emitStatusUpdate(task);
+    this.persistTTasksResult(task, state);
 
     if (TERMINAL_STATES.has(state)) {
       this.finalizeTaskLedger(task);
       this.evictOldTasks();
+      this.cleanupTaskResources(task.id);
+    }
+  }
+
+  private persistTTasksTask(task: A2ATask, targetMindId: string, request: SendTaskRequest): void {
+    try {
+      const store = this.getTTasksStore(targetMindId);
+      if (!store) return;
+
+      const ttasksTask = TTasksTask.custom('chamber:a2a', JSON.stringify({
+        recipient: request.recipient,
+        message: getMessageText(request.message),
+        contextId: task.contextId,
+        referenceTaskIds: request.message.referenceTaskIds,
+      }), {
+        id: task.id,
+        title: `A2A task ${task.id}`,
+        description: request.message.parts.find((part) => part.text)?.text ?? 'A2A delegated task',
+        createdAt: new Date(),
+        metadata: {
+          runtime: 'a2a',
+          ownerMindId: targetMindId,
+          scopeKind: 'system',
+          sourceId: task.id,
+          a2aTaskId: task.id,
+          contextId: task.contextId,
+        },
+      });
+
+      this.ttasksTasks.set(task.id, ttasksTask);
+      store.tasks.save(ttasksTask);
+    } catch (err) {
+      log.warn(`Failed to persist ttasks row for A2A task ${task.id}:`, err);
+    }
+  }
+
+  private persistTTasksResult(task: A2ATask, state: TaskState): void {
+    try {
+      const targetMindId = this.taskTargets.get(task.id) ?? undefined;
+      const store = targetMindId ? this.getTTasksStore(targetMindId) : this.options.ttasksStore;
+      const ttasksTask = this.ttasksTasks.get(task.id);
+      if (!store || !ttasksTask) return;
+
+      const status = toTTasksStatus(state);
+      const output = summarizeArtifacts(task.artifacts) || summarizeStatusMessage(task.status.message);
+      const errorMessage = task.status.message?.parts.find((part) => part.text)?.text ?? undefined;
+      const error = errorMessage ?? null;
+
+      if (status === TaskStatus.RUNNING) {
+        ttasksTask.transitionTo(TaskStatus.RUNNING);
+      } else {
+        const result = new TaskResult({
+          taskId: ttasksTask.id,
+          status,
+          startedAt: new Date(task.status.timestamp ?? Date.now()),
+          finishedAt: new Date(task.status.timestamp ?? Date.now()),
+          duration: 0,
+          output,
+          error,
+          raw: output,
+          returncode: status === TaskStatus.SUCCEEDED ? 0 : 1,
+          terminationReason: null,
+        });
+        ttasksTask.transitionTo(status, { result, error: errorMessage });
+      }
+
+      store.tasks.save(ttasksTask);
+    } catch (err) {
+      log.warn(`Failed to update ttasks row for A2A task ${task.id}:`, err);
     }
   }
 
@@ -396,10 +472,18 @@ export class TaskManager extends EventEmitter {
       if (!entry) break;
       const [id] = entry;
       this.tasks.delete(id);
+      this.ttasksTasks.delete(id);
     }
   }
 
-  private emitStatusUpdate(task: Task): void {
+  private cleanupTaskResources(taskId: string): void {
+    this.pendingInputs.delete(taskId);
+    this.taskTargets.delete(taskId);
+    this.sessions.delete(taskId);
+    this.ttasksTasks.delete(taskId);
+  }
+
+  private emitStatusUpdate(task: A2ATask): void {
     const event: TaskStatusUpdateEvent & { targetMindId: string } = {
       taskId: task.id,
       contextId: task.contextId,
@@ -408,6 +492,42 @@ export class TaskManager extends EventEmitter {
     };
     this.emit('task:status-update', event);
   }
+}
+
+function toTTasksStatus(state: TaskState): TaskStatus.SUCCEEDED | TaskStatus.FAILED | TaskStatus.CANCELLED | TaskStatus.RUNNING {
+  switch (state) {
+    case 'TASK_STATE_SUBMITTED':
+    case 'TASK_STATE_WORKING':
+    case 'TASK_STATE_INPUT_REQUIRED':
+      return TaskStatus.RUNNING;
+    case 'TASK_STATE_COMPLETED':
+      return TaskStatus.SUCCEEDED;
+    case 'TASK_STATE_FAILED':
+    case 'TASK_STATE_REJECTED':
+    case 'TASK_STATE_AUTH_REQUIRED':
+      return TaskStatus.FAILED;
+    case 'TASK_STATE_CANCELED':
+      return TaskStatus.CANCELLED;
+    default: {
+      const _exhaustive: never = state;
+      throw new Error(`Unknown A2A task state: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function summarizeArtifacts(artifacts: A2ATask['artifacts']): string {
+  return (artifacts ?? [])
+    .map((artifact) => artifact.parts.map((part) => part.text ?? '').filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n');
+}
+
+function summarizeStatusMessage(message: A2ATask['status']['message']): string {
+  return message?.parts.map((part) => part.text ?? '').filter(Boolean).join('\n') ?? '';
+}
+
+function getMessageText(message: Message): string {
+  return message.parts.map((part) => part.text ?? '').filter(Boolean).join('\n');
 }
 
 function getSessionErrorMessage(event: unknown): string {

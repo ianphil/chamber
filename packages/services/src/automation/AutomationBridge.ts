@@ -19,6 +19,14 @@ export interface BridgeNotifyRequest {
   body: string;
 }
 
+export interface BridgeA2ARequest {
+  mindId: string;
+  recipient: string;
+  message: string;
+  contextId?: string;
+  referenceTaskIds?: string[];
+}
+
 export interface BridgeHandlers {
   /**
    * Invoked when an automation script posts /prompt. Runs unattended (no
@@ -30,6 +38,7 @@ export interface BridgeHandlers {
    */
   onPrompt: (req: BridgePromptRequest) => Promise<{ text: string }>;
   onNotify: (req: BridgeNotifyRequest) => Promise<void>;
+  onA2a?: (req: BridgeA2ARequest) => Promise<Record<string, unknown>>;
 }
 
 interface BridgeStartResult {
@@ -162,6 +171,35 @@ export class AutomationBridge {
         }
         await this.handlers.onNotify({ mindId, title, body: text });
         this.sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (url === '/a2a') {
+        const recipient = (body as { recipient?: unknown }).recipient;
+        const message = (body as { message?: unknown }).message;
+        if (typeof recipient !== 'string' || recipient.trim() === '') {
+          this.sendJson(res, 400, { error: 'recipient-required' });
+          return;
+        }
+        if (typeof message !== 'string' || message.trim() === '') {
+          this.sendJson(res, 400, { error: 'message-required' });
+          return;
+        }
+        if (!this.handlers.onA2a) {
+          this.sendJson(res, 501, { error: 'a2a-handler-not-configured' });
+          return;
+        }
+        const contextId = (body as { contextId?: unknown }).contextId;
+        const referenceTaskIds = (body as { referenceTaskIds?: unknown }).referenceTaskIds;
+        const result = await this.handlers.onA2a({
+          mindId,
+          recipient,
+          message,
+          ...(typeof contextId === 'string' ? { contextId } : {}),
+          ...(Array.isArray(referenceTaskIds) && referenceTaskIds.every((item) => typeof item === 'string')
+            ? { referenceTaskIds }
+            : {}),
+        });
+        this.sendJson(res, 200, result);
         return;
       }
       this.sendJson(res, 404, { error: 'not-found' });

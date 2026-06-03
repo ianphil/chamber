@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SqliteStore } from '@ianphil/ttasks-ts';
 import { TaskManager } from './TaskManager';
 import type { TaskSessionFactory } from './TaskManager';
 import type { UserInputHandler } from '../mind/types';
@@ -199,7 +200,51 @@ describe('TaskManager', () => {
     });
   });
 
-  it('sendTask() skips audit ledger writes when suppressLedgerWrite is set', async () => {
+  it('sendTask() persists a chamber:a2a ttasks row when a store is configured', async () => {
+    const store = new SqliteStore({ path: ':memory:' });
+    tm = new TaskManager(
+      mockMindManager as unknown as TaskSessionFactory,
+      mockRegistry as unknown as AgentCardRegistry,
+      { ttasksStore: store },
+    );
+
+    const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+
+    const persisted = store.tasks.get(task.id);
+    expect(persisted).toBeDefined();
+    expect(persisted?.type).toBe('chamber:a2a');
+    expect(JSON.parse(persisted?.payload ?? '{}')).toMatchObject({
+      recipient: 'target-1',
+      message: 'hello',
+      contextId: task.contextId,
+    });
+    expect(persisted?.metadata).toMatchObject({ runtime: 'a2a', ownerMindId: 'target-1', a2aTaskId: task.id });
+  });
+
+  it('sendTask() tolerates ttasks persistence failures', async () => {
+   const badStore = {
+     tasks: {
+       save: vi.fn(() => {
+         throw new Error('db unavailable');
+       }),
+     },
+   };
+   tm = new TaskManager(
+     mockMindManager as unknown as TaskSessionFactory,
+     mockRegistry as unknown as AgentCardRegistry,
+     { ttasksStore: badStore as never },
+   );
+
+   const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+   await flushPromises();
+
+   latestMockSession._emit('session.idle');
+   await flushPromises();
+
+   expect(tm.getTask(task.id)?.status.state).toBe('TASK_STATE_COMPLETED');
+  });
+
+   it('sendTask() skips audit ledger writes when suppressLedgerWrite is set', async () => {
     const ledger = new TaskLedger(new InMemoryLedgerStore(), {
       createLedgerId: () => 'ledger-1',
       now: () => '2026-05-21T21:45:00.000Z',
@@ -421,6 +466,15 @@ describe('TaskManager', () => {
     expect(canceled.status.state).toBe('TASK_STATE_CANCELED');
   });
 
+  it('cancelTask() aborts the active session before cleanup', async () => {
+    const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+    await flushPromises();
+
+    tm.cancelTask(task.id);
+
+    expect(latestMockSession.abort).toHaveBeenCalledOnce();
+  });
+
 
   it('cancelTask() on terminal task throws', async () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
@@ -556,6 +610,27 @@ describe('TaskManager', () => {
       expect(inputRequiredEvent!.status.message!.parts[0].text).toBe('Need info');
     });
 
+
+    it('cancelTask clears pending input state for input-required tasks', async () => {
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      capturedOnUserInputRequest({ question: 'Pick a color' }, { sessionId: 'sess-1' });
+      await flushPromises();
+
+      const internals = tm as unknown as {
+        pendingInputs: Map<string, (answer: { answer: string; wasFreeform: boolean }) => void>;
+        taskTargets: Map<string, string>;
+      };
+      expect(internals.pendingInputs.has(task.id)).toBe(true);
+
+      tm.cancelTask(task.id);
+
+      expect(internals.pendingInputs.has(task.id)).toBe(false);
+      expect(internals.taskTargets.has(task.id)).toBe(false);
+      expect(tm.getTask(task.id)?.status.state).toBe('TASK_STATE_CANCELED');
+    });
 
     it('resumeTask sends answer to session callback', async () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));
