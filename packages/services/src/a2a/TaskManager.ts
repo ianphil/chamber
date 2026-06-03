@@ -166,15 +166,12 @@ export class TaskManager extends EventEmitter {
       throw new Error(`Cannot cancel task in terminal state: ${task.status.state}`);
     }
 
-    this.transitionState(task, 'TASK_STATE_CANCELED');
-
-    // Abort session if exists
     const session = this.sessions.get(id);
     if (session) {
-      // CopilotSession type may not expose abort() — use optional chaining
       (session as { abort?: () => Promise<void> }).abort?.().catch(() => { /* noop */ });
-      this.sessions.delete(id);
     }
+
+    this.transitionState(task, 'TASK_STATE_CANCELED');
 
     return this.snapshotTask(task);
   }
@@ -400,7 +397,7 @@ export class TaskManager extends EventEmitter {
 
       const ttasksTask = TTasksTask.custom('chamber:a2a', JSON.stringify({
         recipient: request.recipient,
-        message: request.message,
+        message: getMessageText(request.message),
         contextId: task.contextId,
         referenceTaskIds: request.message.referenceTaskIds,
       }), {
@@ -527,6 +524,10 @@ function summarizeArtifacts(artifacts: A2ATask['artifacts']): string {
 
 function summarizeStatusMessage(message: A2ATask['status']['message']): string {
   return message?.parts.map((part) => part.text ?? '').filter(Boolean).join('\n') ?? '';
+}
+
+function getMessageText(message: Message): string {
+  return message.parts.map((part) => part.text ?? '').filter(Boolean).join('\n');
 }
 
 function getSessionErrorMessage(event: unknown): string {

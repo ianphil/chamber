@@ -236,6 +236,7 @@ let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
 let updaterService: UpdaterService;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
+const ttasksStoresByMindPath = new Map<string, SqliteStore>();
 
 const createTaskLedger = (mindPath: string): TaskLedger => {
   const existing = taskLedgersByMindPath.get(mindPath);
@@ -245,6 +246,23 @@ const createTaskLedger = (mindPath: string): TaskLedger => {
   );
   taskLedgersByMindPath.set(mindPath, ledger);
   return ledger;
+};
+
+const createTTasksStore = (mindPath: string): SqliteStore => {
+  const existing = ttasksStoresByMindPath.get(mindPath);
+  if (existing) return existing;
+  const runsDir = path.join(mindPath, '.chamber', 'runs');
+  fs.mkdirSync(runsDir, { recursive: true });
+  const store = new SqliteStore({ path: path.join(runsDir, 'ttasks.db') });
+  ttasksStoresByMindPath.set(mindPath, store);
+  return store;
+};
+
+const closeTTasksStores = (): void => {
+  for (const store of ttasksStoresByMindPath.values()) {
+    store.close();
+  }
+  ttasksStoresByMindPath.clear();
 };
 
 async function initializeRuntime(): Promise<void> {
@@ -332,19 +350,15 @@ async function initializeRuntime(): Promise<void> {
       tenantId: process.env.CHAMBER_MICROSOFT_GRAPH_TENANT_ID,
     }),
   );
-  const createTTasksStore = (mindId: string) => {
-    const mindPath = mindManager.getMind(mindId)?.mindPath;
-    if (!mindPath) return undefined;
-    const runsDir = path.join(mindPath, '.chamber', 'runs');
-    fs.mkdirSync(runsDir, { recursive: true });
-    return new SqliteStore({ path: path.join(runsDir, 'ttasks.db') });
-  };
   taskManager = new TaskManager(mindManager, agentCardRegistry, {
     getLedgerForMind: (mindId) => {
       const mindPath = mindManager.getMind(mindId)?.mindPath;
       return mindPath ? createTaskLedger(mindPath) : undefined;
     },
-    createTTasksStore,
+    createTTasksStore: (mindId) => {
+      const mindPath = mindManager.getMind(mindId)?.mindPath;
+      return mindPath ? createTTasksStore(mindPath) : undefined;
+    },
   });
   // The SDK model catalog does not include BYO endpoint models, so keep the
   // saved BYO model visible through this side-channel when the flag is enabled.
@@ -931,6 +945,7 @@ app.on('before-quit', (e) => {
 app.on('will-quit', () => {
   appTray?.destroy();
   appTray = null;
+  closeTTasksStores();
   if (automationBridgeStop) {
     void automationBridgeStop().catch(() => { /* noop */ });
     automationBridgeStop = null;

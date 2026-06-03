@@ -8,11 +8,26 @@ describe('A2A runtime invariants', () => {
   it('desktop production wiring supplies the A2A bridge handler and per-mind ttasks store', () => {
     const source = fs.readFileSync(path.join(repoRoot, 'apps', 'desktop', 'src', 'main.ts'), 'utf8');
 
-    expect(source).toContain('const createTTasksStore = (mindId: string) => {');
+    expect(source).toContain('const ttasksStoresByMindPath = new Map<string, SqliteStore>();');
+    expect(source).toContain('const createTTasksStore = (mindPath: string): SqliteStore => {');
+    expect(source).toContain('ttasksStoresByMindPath.set(mindPath, store);');
+    expect(source).toContain('const closeTTasksStores = (): void => {');
+    expect(source).toContain('store.close();');
+    expect(source).toContain('closeTTasksStores();');
     expect(source).toContain('new TaskManager(mindManager, agentCardRegistry, {');
-    expect(source).toContain('createTTasksStore,');
+    expect(source).toContain('createTTasksStore: (mindId) => {');
     expect(source).toContain('onA2a: async ({ mindId, recipient, message, contextId, referenceTaskIds }) => {');
     expect(source).toContain('new SqliteStore');
+  });
+
+  it('persisted A2A ttasks rows use the registered chamber:a2a handler payload shape', () => {
+    const source = fs.readFileSync(path.join(repoRoot, 'packages', 'services', 'src', 'a2a', 'TaskManager.ts'), 'utf8');
+
+    expect(source).toContain("TTasksTask.custom('chamber:a2a', JSON.stringify({");
+    expect(source).toContain('recipient: request.recipient,');
+    expect(source).toContain('message: getMessageText(request.message),');
+    expect(source).toContain('contextId: task.contextId,');
+    expect(source).toContain('referenceTaskIds: request.message.referenceTaskIds,');
   });
 
   it('A2A task persistence stays best-effort when ttasks storage fails', () => {

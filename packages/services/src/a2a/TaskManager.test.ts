@@ -213,6 +213,11 @@ describe('TaskManager', () => {
     const persisted = store.tasks.get(task.id);
     expect(persisted).toBeDefined();
     expect(persisted?.type).toBe('chamber:a2a');
+    expect(JSON.parse(persisted?.payload ?? '{}')).toMatchObject({
+      recipient: 'target-1',
+      message: 'hello',
+      contextId: task.contextId,
+    });
     expect(persisted?.metadata).toMatchObject({ runtime: 'a2a', ownerMindId: 'target-1', a2aTaskId: task.id });
   });
 
@@ -459,6 +464,15 @@ describe('TaskManager', () => {
     const task = await tm.sendTask(makeRequest('target-1', 'hello'));
     const canceled = tm.cancelTask(task.id);
     expect(canceled.status.state).toBe('TASK_STATE_CANCELED');
+  });
+
+  it('cancelTask() aborts the active session before cleanup', async () => {
+    const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+    await flushPromises();
+
+    tm.cancelTask(task.id);
+
+    expect(latestMockSession.abort).toHaveBeenCalledOnce();
   });
 
 
