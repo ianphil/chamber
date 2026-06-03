@@ -1189,6 +1189,7 @@ export class MindManager extends EventEmitter {
     useSetApproveAllShortcut = false,
     model?: string,
     modelProvider?: ModelProvider,
+    configDir: string | null = this.getCopilotRuntimeConfigDir(),
   ): Promise<CopilotSession> {
     this.assertResumeSessionPolicy(kind);
     const mcpServers = loadMcpServersFromMindPath(mindPath);
@@ -1198,7 +1199,6 @@ export class MindManager extends EventEmitter {
     const effectiveModel = this.resolveModelForSdk(model, provider);
     const sessionConfig: ResumeSessionConfig = {
       workingDirectory: mindPath,
-      configDir: this.getCopilotRuntimeConfigDir(),
       enableConfigDiscovery: false,
       tools,
       systemMessage: {
@@ -1211,6 +1211,7 @@ export class MindManager extends EventEmitter {
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
       ...(skillDirectories.length > 0 ? { skillDirectories } : {}),
+      ...(configDir ? { configDir } : {}),
       ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
         ? { excludedTools: chamberMindConfig.excludedTools }
         : {}),
@@ -1277,7 +1278,26 @@ export class MindManager extends EventEmitter {
       );
     } catch (error) {
       if (!isStaleSessionError(error)) throw error;
-      log.warn(`SDK session ${conversationSessionId} was not found; reattaching by recreating the session under the same id.`);
+      log.warn(`SDK session ${conversationSessionId} was not found in Chamber runtime state; trying legacy default session-state.`);
+      try {
+        return await this.resumeSessionForMind(
+          client,
+          kind,
+          conversationSessionId,
+          mindPath,
+          systemMessage,
+          tools,
+          undefined,
+          approveForSessionCompat,
+          false,
+          model,
+          modelProvider,
+          null,
+        );
+      } catch (legacyError) {
+        if (!isStaleSessionError(legacyError)) throw legacyError;
+      }
+      log.warn(`SDK session ${conversationSessionId} was not found in either session-state root; reattaching by recreating the session under the same id.`);
       return this.createSessionForMind({
         kind,
         client,

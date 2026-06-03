@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Restore legacy conversation resume fallback** — Conversation resume now falls back from Chamber's current SDK session-state root to the legacy default Copilot session-state root before recreating a missing session, so pre-move chat history hydrates instead of opening empty.
+
+### Tests
+
+- **Add invariant test suite** — Introduces test:invariants for high-signal Chamber contracts covering session-state fallback order, stable conversation state roots, SDK config discovery, metadata-only history records, renderer/preload and shared architecture boundaries, managed skill/session ordering, approval redaction/default-deny behavior, credential-write boundaries, automation bridge/token safety, startup prewarm ordering, Electron window preferences, and cron script validation.
+
+
+
 ## [0.64.1] - 2026-06-01
 
 ### Fixed

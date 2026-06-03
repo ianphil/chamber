@@ -874,6 +874,7 @@ describe('MindManager', () => {
       manager.markActiveConversationHasMessages(mind.mindId, 'Hello Q');
       mockCreateSession.mockClear();
       mockResumeSession.mockRejectedValueOnce(new Error('failed to resume session: Session not found: stale-session'));
+      mockResumeSession.mockRejectedValueOnce(new Error('failed to resume session: Session not found: stale-legacy-session'));
       mockCreateSession.mockResolvedValueOnce(reattachedSession);
 
       const recovered = await manager.recoverActiveConversationSession(mind.mindId);
@@ -882,6 +883,10 @@ describe('MindManager', () => {
       expect(mockResumeSession).toHaveBeenCalledWith(
         mind.activeSessionId,
         expect.objectContaining({ workingDirectory: '/tmp/agents/q' }),
+      );
+      expect(mockResumeSession).toHaveBeenCalledWith(
+        mind.activeSessionId,
+        expect.not.objectContaining({ configDir: expect.any(String) }),
       );
       expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({
         sessionId: mind.activeSessionId,
@@ -901,6 +906,7 @@ describe('MindManager', () => {
       manager.markActiveConversationHasMessages(mind.mindId, 'Hello Q');
       mockCreateSession.mockClear();
       mockResumeSession.mockRejectedValueOnce(new Error('Session not found: stale-1'));
+      mockResumeSession.mockRejectedValueOnce(new Error('Session not found: stale-legacy'));
       mockCreateSession.mockRejectedValueOnce(new Error('Session not found: stale-2'));
 
       await expect(manager.recoverActiveConversationSession(mind.mindId)).rejects.toThrow(/Session not found/);
@@ -997,6 +1003,54 @@ describe('MindManager', () => {
       expect(result.conversations.map((conversation) => conversation.sessionId)).toEqual(
         historyBeforeResume.map((conversation) => conversation.sessionId),
       );
+    });
+
+    it('falls back to the legacy default session-state root when Chamber runtime state is missing', async () => {
+      const legacySession = createSessionStub();
+      legacySession.getEvents.mockResolvedValue([
+        {
+          type: 'user.message',
+          timestamp: '2026-05-05T22:00:00.000Z',
+          data: { messageId: 'u1', content: 'legacy chat' },
+        },
+      ]);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Existing chat');
+      await manager.startNewConversation(mind.mindId);
+      const target = manager.listConversationHistory(mind.mindId)[1];
+      mockResumeSession.mockClear();
+      mockResumeSession
+        .mockRejectedValueOnce(new Error('failed to resume session: Session not found: missing-runtime'))
+        .mockResolvedValueOnce(legacySession);
+
+      const result = await manager.resumeConversation(mind.mindId, target.sessionId);
+
+      expect(mockResumeSession).toHaveBeenCalledTimes(2);
+      expect(mockResumeSession).toHaveBeenNthCalledWith(
+        1,
+        target.sessionId,
+        expect.objectContaining({
+          configDir: COPILOT_RUNTIME_CONFIG_DIR,
+          enableConfigDiscovery: false,
+        }),
+      );
+      expect(mockResumeSession).toHaveBeenNthCalledWith(
+        2,
+        target.sessionId,
+        expect.not.objectContaining({ configDir: expect.any(String) }),
+      );
+      const legacyResumeConfig = mockResumeSession.mock.calls[1][1] as Record<string, unknown>;
+      expect(legacyResumeConfig.enableConfigDiscovery).toBe(false);
+      expect(result.sessionId).toBe(target.sessionId);
+      expect(result.messages).toEqual([
+        {
+          id: 'u1',
+          role: 'user',
+          blocks: [{ type: 'text', content: 'legacy chat' }],
+          timestamp: Date.parse('2026-05-05T22:00:00.000Z'),
+        },
+      ]);
+      expect(mockCreateSession).toHaveBeenCalledTimes(2);
     });
 
     it('wires approveForSessionCompat on resumed sessions and does not short-circuit via setApproveAll (issue #131)', async () => {

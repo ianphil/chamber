@@ -9,6 +9,7 @@ export default defineConfig({
     include: [
       'apps/**/*.{test,spec}.{ts,tsx}',
       'packages/**/*.{test,spec}.{ts,tsx}',
+      'tests/invariants/**/*.{test,spec}.{ts,tsx}',
       'tests/regression/**/*.{test,spec}.{ts,tsx}',
       '.github/extensions/**/*.{test,spec}.mjs',
     ],
