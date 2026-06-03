@@ -28,6 +28,7 @@
     "deps:check": "depcruise apps packages --config config/dependency-cruiser.cjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config config/vitest.config.ts --no-file-parallelism --maxWorkers=1",
+    "test:invariants": "vitest run --config config/vitest.config.ts --no-file-parallelism --maxWorkers=1 tests/invariants",
     "test:coverage": "vitest run --config config/vitest.config.ts --coverage --no-file-parallelism --maxWorkers=1",
     "clean": "node scripts/clean-artifacts.js",
     "capture:hero": "node scripts/capture-readme-hero.js",
