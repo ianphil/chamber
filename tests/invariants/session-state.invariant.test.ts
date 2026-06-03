@@ -182,6 +182,81 @@ describe('session-state invariants', () => {
     expect(serialized).not.toContain('assistant');
   });
 
+  it('conversation histories stay isolated by mind', async () => {
+    const manager = createManager();
+    const monica = await manager.loadMind('/tmp/agents/monica');
+    const lucy = await manager.loadMind('/tmp/agents/lucy');
+
+    manager.markActiveConversationHasMessages(monica.mindId, 'Monica only');
+    manager.markActiveConversationHasMessages(lucy.mindId, 'Lucy only');
+
+    expect(manager.listConversationHistory(monica.mindId).map((conversation) => conversation.title)).toEqual(['Monica only']);
+    expect(manager.listConversationHistory(lucy.mindId).map((conversation) => conversation.title)).toEqual(['Lucy only']);
+  });
+
+  it('first user prompt titles the active draft and removes the generic new-chat title', async () => {
+    const manager = createManager();
+    const mind = await manager.loadMind('/tmp/agents/q');
+
+    manager.markActiveConversationHasMessages(mind.mindId, 'History smoke first prompt title');
+
+    const history = manager.listConversationHistory(mind.mindId);
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      title: 'History smoke first prompt title',
+      hasMessages: true,
+      active: true,
+    });
+    expect(history.map((conversation) => conversation.title)).not.toContain(expect.stringMatching(/^New chat ·/));
+  });
+
+  it('deleting an active empty draft returns to the previous real conversation', async () => {
+    const resumedSession = createSessionStub();
+    resumedSession.getEvents.mockResolvedValue([
+      {
+        type: 'user.message',
+        timestamp: '2026-05-05T22:00:00.000Z',
+        data: { messageId: 'u1', content: 'keep this chat' },
+      },
+    ]);
+    mockResumeSession.mockResolvedValueOnce(resumedSession);
+    const manager = createManager();
+    const mind = await manager.loadMind('/tmp/agents/q');
+    const firstSessionId = mind.activeSessionId;
+    manager.markActiveConversationHasMessages(mind.mindId, 'Keep this chat');
+    await manager.startNewConversation(mind.mindId);
+    const activeDraftId = manager.getMind(mind.mindId)?.activeSessionId;
+
+    const result = await manager.deleteConversation(mind.mindId, activeDraftId!);
+
+    expect(result.sessionId).toBe(firstSessionId);
+    expect(result.conversations).toHaveLength(1);
+    expect(result.conversations[0]).toMatchObject({
+      sessionId: firstSessionId,
+      title: 'Keep this chat',
+      active: true,
+      hasMessages: true,
+    });
+    expect(result.messages[0]).toMatchObject({
+      role: 'user',
+      blocks: [{ type: 'text', content: 'keep this chat' }],
+    });
+  });
+
+  it('selected model persists per mind instead of globally', async () => {
+    const manager = createManager();
+    const alpha = await manager.loadMind('/tmp/agents/alpha');
+    const beta = await manager.loadMind('/tmp/agents/beta');
+
+    await manager.setMindModel(alpha.mindId, 'copilot:model-alpha');
+    await manager.setMindModel(beta.mindId, 'copilot:model-beta');
+
+    expect(manager.getMind(alpha.mindId)?.selectedModel).toBe('model-alpha');
+    expect(manager.getMind(beta.mindId)?.selectedModel).toBe('model-beta');
+    expect(currentConfig.minds.find((mind) => mind.id === alpha.mindId)?.selectedModel).toBe('model-alpha');
+    expect(currentConfig.minds.find((mind) => mind.id === beta.mindId)?.selectedModel).toBe('model-beta');
+  });
+
   it('managed skills install before SDK client and session creation', async () => {
     const managedSkillService = {
       installIntoMind: vi.fn(async (): Promise<ManagedSkillSyncResult> => ({ status: 'ok', installed: [], errors: [] })),

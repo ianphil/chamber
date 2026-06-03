@@ -160,6 +160,30 @@ describe('security boundary invariants', () => {
     expect(source).toMatch(/sanitizeOutput\(stderr \|\| `Script exited with code \$\{exitCode\}`,\s*truncatedErr,\s*minted\.token\)/);
   });
 
+  it('managed core skills stay lens automation and ttasks from the default marketplace only', () => {
+    const managedService = fs.readFileSync(path.join(repoRoot, 'packages', 'services', 'src', 'skills', 'ManagedSkillService.ts'), 'utf8');
+    const catalog = fs.readFileSync(path.join(repoRoot, 'packages', 'services', 'src', 'skills', 'MarketplaceSkillCatalog.ts'), 'utf8');
+
+    expect(managedService).toContain("const CORE_SKILL_IDS = new Set(['lens', 'automation', 'ttasks']);");
+    expect(catalog).toContain("const RESERVED_CORE_SKILL_IDS = new Set(['lens', 'automation', 'ttasks']);");
+    expect(catalog).toMatch(/reserved && marketplaceId\(source\) !== DEFAULT_CORE_SKILL_MARKETPLACE_ID/);
+  });
+
+  it('cron job schema remains script-path based and does not reintroduce inline shell jobs', () => {
+    const source = fs.readFileSync(path.join(repoRoot, 'packages', 'services', 'src', 'cron', 'types.ts'), 'utf8');
+    const cronJob = source.match(/export interface CronJob \{(?<body>[\s\S]*?)\n\}/)?.groups?.body;
+    const createInput = source.match(/export interface CreateCronJobInput \{(?<body>[\s\S]*?)\n\}/)?.groups?.body;
+
+    expect(cronJob).toBeDefined();
+    expect(createInput).toBeDefined();
+    expect(cronJob).toContain('scriptPath: string;');
+    expect(createInput).toContain('scriptPath: string;');
+    for (const forbidden of ['type:', 'command:', 'shell:', 'prompt:', 'webhook:', 'notification:']) {
+      expect(cronJob).not.toContain(forbidden);
+      expect(createInput).not.toContain(forbidden);
+    }
+  });
+
   it('cron execution and validation both resolve scripts through validateScriptPath', () => {
     const cronService = fs.readFileSync(path.join(repoRoot, 'packages', 'services', 'src', 'cron', 'CronService.ts'), 'utf8');
     const scriptRunner = fs.readFileSync(path.join(repoRoot, 'packages', 'services', 'src', 'cron', 'ScriptRunner.ts'), 'utf8');
