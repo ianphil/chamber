@@ -214,7 +214,30 @@ describe('TaskManager', () => {
     expect(persisted).toBeDefined();
     expect(persisted?.type).toBe('chamber:a2a');
     expect(persisted?.metadata).toMatchObject({ runtime: 'a2a', ownerMindId: 'target-1', a2aTaskId: task.id });
-   });
+  });
+
+  it('sendTask() tolerates ttasks persistence failures', async () => {
+   const badStore = {
+     tasks: {
+       save: vi.fn(() => {
+         throw new Error('db unavailable');
+       }),
+     },
+   };
+   tm = new TaskManager(
+     mockMindManager as unknown as TaskSessionFactory,
+     mockRegistry as unknown as AgentCardRegistry,
+     { ttasksStore: badStore as never },
+   );
+
+   const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+   await flushPromises();
+
+   latestMockSession._emit('session.idle');
+   await flushPromises();
+
+   expect(tm.getTask(task.id)?.status.state).toBe('TASK_STATE_COMPLETED');
+  });
 
    it('sendTask() skips audit ledger writes when suppressLedgerWrite is set', async () => {
     const ledger = new TaskLedger(new InMemoryLedgerStore(), {
@@ -573,6 +596,27 @@ describe('TaskManager', () => {
       expect(inputRequiredEvent!.status.message!.parts[0].text).toBe('Need info');
     });
 
+
+    it('cancelTask clears pending input state for input-required tasks', async () => {
+      const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+      await flushPromises();
+
+      if (!capturedOnUserInputRequest) throw new Error('Expected callback');
+      capturedOnUserInputRequest({ question: 'Pick a color' }, { sessionId: 'sess-1' });
+      await flushPromises();
+
+      const internals = tm as unknown as {
+        pendingInputs: Map<string, (answer: { answer: string; wasFreeform: boolean }) => void>;
+        taskTargets: Map<string, string>;
+      };
+      expect(internals.pendingInputs.has(task.id)).toBe(true);
+
+      tm.cancelTask(task.id);
+
+      expect(internals.pendingInputs.has(task.id)).toBe(false);
+      expect(internals.taskTargets.has(task.id)).toBe(false);
+      expect(tm.getTask(task.id)?.status.state).toBe('TASK_STATE_CANCELED');
+    });
 
     it('resumeTask sends answer to session callback', async () => {
       const task = await tm.sendTask(makeRequest('target-1', 'hello'));

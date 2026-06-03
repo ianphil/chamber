@@ -53,6 +53,7 @@ interface TaskManagerOptions {
   ledger?: TaskLedger;
   getLedgerForMind?: (mindId: string) => TaskLedger | undefined;
   ttasksStore?: Store;
+  createTTasksStore?: (mindId: string) => Store | undefined;
 }
 
 export class TaskManager extends EventEmitter {
@@ -301,6 +302,10 @@ export class TaskManager extends EventEmitter {
     return this.options.getLedgerForMind?.(mindId) ?? this.options.ledger;
   }
 
+  private getTTasksStore(mindId: string): Store | undefined {
+    return this.options.createTTasksStore?.(mindId) ?? this.options.ttasksStore;
+  }
+
   private toLedgerStatus(state: TaskState): 'succeeded' | 'failed' | 'timed-out' | 'cancelled' {
     switch (state) {
       case 'TASK_STATE_COMPLETED':
@@ -384,66 +389,76 @@ export class TaskManager extends EventEmitter {
     if (TERMINAL_STATES.has(state)) {
       this.finalizeTaskLedger(task);
       this.evictOldTasks();
+      this.cleanupTaskResources(task.id);
     }
   }
 
   private persistTTasksTask(task: A2ATask, targetMindId: string, request: SendTaskRequest): void {
-    const store = this.options.ttasksStore;
-    if (!store) return;
+    try {
+      const store = this.getTTasksStore(targetMindId);
+      if (!store) return;
 
-    const ttasksTask = TTasksTask.custom('chamber:a2a', JSON.stringify({
-      recipient: request.recipient,
-      message: request.message,
-      contextId: task.contextId,
-      referenceTaskIds: request.message.referenceTaskIds,
-    }), {
-      id: task.id,
-      title: `A2A task ${task.id}`,
-      description: request.message.parts.find((part) => part.text)?.text ?? 'A2A delegated task',
-      createdAt: new Date(),
-      metadata: {
-        runtime: 'a2a',
-        ownerMindId: targetMindId,
-        scopeKind: 'system',
-        sourceId: task.id,
-        a2aTaskId: task.id,
+      const ttasksTask = TTasksTask.custom('chamber:a2a', JSON.stringify({
+        recipient: request.recipient,
+        message: request.message,
         contextId: task.contextId,
-      },
-    });
+        referenceTaskIds: request.message.referenceTaskIds,
+      }), {
+        id: task.id,
+        title: `A2A task ${task.id}`,
+        description: request.message.parts.find((part) => part.text)?.text ?? 'A2A delegated task',
+        createdAt: new Date(),
+        metadata: {
+          runtime: 'a2a',
+          ownerMindId: targetMindId,
+          scopeKind: 'system',
+          sourceId: task.id,
+          a2aTaskId: task.id,
+          contextId: task.contextId,
+        },
+      });
 
-    this.ttasksTasks.set(task.id, ttasksTask);
-    store.tasks.save(ttasksTask);
+      this.ttasksTasks.set(task.id, ttasksTask);
+      store.tasks.save(ttasksTask);
+    } catch (err) {
+      log.warn(`Failed to persist ttasks row for A2A task ${task.id}:`, err);
+    }
   }
 
   private persistTTasksResult(task: A2ATask, state: TaskState): void {
-    const store = this.options.ttasksStore;
-    const ttasksTask = this.ttasksTasks.get(task.id);
-    if (!store || !ttasksTask) return;
+    try {
+      const targetMindId = this.taskTargets.get(task.id) ?? undefined;
+      const store = targetMindId ? this.getTTasksStore(targetMindId) : this.options.ttasksStore;
+      const ttasksTask = this.ttasksTasks.get(task.id);
+      if (!store || !ttasksTask) return;
 
-    const status = toTTasksStatus(state);
-    const output = summarizeArtifacts(task.artifacts) || summarizeStatusMessage(task.status.message);
-    const errorMessage = task.status.message?.parts.find((part) => part.text)?.text ?? undefined;
-    const error = errorMessage ?? null;
+      const status = toTTasksStatus(state);
+      const output = summarizeArtifacts(task.artifacts) || summarizeStatusMessage(task.status.message);
+      const errorMessage = task.status.message?.parts.find((part) => part.text)?.text ?? undefined;
+      const error = errorMessage ?? null;
 
-    if (status === TaskStatus.RUNNING) {
-      ttasksTask.transitionTo(TaskStatus.RUNNING);
-    } else {
-      const result = new TaskResult({
-        taskId: ttasksTask.id,
-        status,
-        startedAt: new Date(task.status.timestamp ?? Date.now()),
-        finishedAt: new Date(task.status.timestamp ?? Date.now()),
-        duration: 0,
-        output,
-        error,
-        raw: output,
-        returncode: status === TaskStatus.SUCCEEDED ? 0 : 1,
-        terminationReason: null,
-      });
-      ttasksTask.transitionTo(status, { result, error: errorMessage });
+      if (status === TaskStatus.RUNNING) {
+        ttasksTask.transitionTo(TaskStatus.RUNNING);
+      } else {
+        const result = new TaskResult({
+          taskId: ttasksTask.id,
+          status,
+          startedAt: new Date(task.status.timestamp ?? Date.now()),
+          finishedAt: new Date(task.status.timestamp ?? Date.now()),
+          duration: 0,
+          output,
+          error,
+          raw: output,
+          returncode: status === TaskStatus.SUCCEEDED ? 0 : 1,
+          terminationReason: null,
+        });
+        ttasksTask.transitionTo(status, { result, error: errorMessage });
+      }
+
+      store.tasks.save(ttasksTask);
+    } catch (err) {
+      log.warn(`Failed to update ttasks row for A2A task ${task.id}:`, err);
     }
-
-    store.tasks.save(ttasksTask);
   }
 
   private evictOldTasks(): void {
@@ -460,7 +475,15 @@ export class TaskManager extends EventEmitter {
       if (!entry) break;
       const [id] = entry;
       this.tasks.delete(id);
+      this.ttasksTasks.delete(id);
     }
+  }
+
+  private cleanupTaskResources(taskId: string): void {
+    this.pendingInputs.delete(taskId);
+    this.taskTargets.delete(taskId);
+    this.sessions.delete(taskId);
+    this.ttasksTasks.delete(taskId);
   }
 
   private emitStatusUpdate(task: A2ATask): void {

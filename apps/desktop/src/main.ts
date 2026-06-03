@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import started from 'electron-squirrel-startup';
 import { DEFAULT_APP_FEATURE_FLAGS, IPC } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
@@ -87,6 +87,7 @@ import {
   type Notifier,
 } from '@chamber/services';
 import { Logger } from '@chamber/services';
+import { SqliteStore } from '@ianphil/ttasks-ts';
 import { createAppTray, loadAppIcon } from './main/tray/Tray';
 import { installContextMenu } from './main/contextMenu/ContextMenu';
 import { installExternalNavigationGuard } from './main/navigationGuard';
@@ -331,11 +332,19 @@ async function initializeRuntime(): Promise<void> {
       tenantId: process.env.CHAMBER_MICROSOFT_GRAPH_TENANT_ID,
     }),
   );
+  const createTTasksStore = (mindId: string) => {
+    const mindPath = mindManager.getMind(mindId)?.mindPath;
+    if (!mindPath) return undefined;
+    const runsDir = path.join(mindPath, '.chamber', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    return new SqliteStore({ path: path.join(runsDir, 'ttasks.db') });
+  };
   taskManager = new TaskManager(mindManager, agentCardRegistry, {
     getLedgerForMind: (mindId) => {
       const mindPath = mindManager.getMind(mindId)?.mindPath;
       return mindPath ? createTaskLedger(mindPath) : undefined;
     },
+    createTTasksStore,
   });
   // The SDK model catalog does not include BYO endpoint models, so keep the
   // saved BYO model visible through this side-channel when the flag is enabled.
@@ -396,6 +405,29 @@ async function initializeRuntime(): Promise<void> {
     },
     onNotify: async ({ title, body }) => {
       notifier.notify({ kind: 'info', title, body });
+    },
+    onA2a: async ({ mindId, recipient, message, contextId, referenceTaskIds }) => {
+      if (!mindManager.getMind(mindId)) {
+        throw new Error(`mind ${mindId} not active`);
+      }
+
+      const task = await taskManager.sendTask({
+        recipient,
+        message: {
+          messageId: randomUUID(),
+          role: 'ROLE_USER',
+          parts: [{ text: message, mediaType: 'text/plain' }],
+          metadata: { fromId: mindId, fromName: 'automation' },
+          ...(contextId ? { contextId } : {}),
+          ...(referenceTaskIds?.length ? { referenceTaskIds } : {}),
+        },
+      });
+
+      return {
+        id: task.id,
+        contextId: task.contextId,
+        status: task.status.state,
+      };
     },
   });
   const bridgeStart = await automationBridge.start();
