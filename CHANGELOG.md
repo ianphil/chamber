@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- **Add invariant test suite** — Introduces test:invariants for high-signal Chamber contracts covering session-state fallback order, renderer/shared architecture boundaries, approval default-deny behavior, Electron window preferences, and cron script validation.
+- **Add invariant test suite** — Introduces test:invariants for high-signal Chamber contracts covering session-state fallback order, stable conversation state roots, SDK config discovery, metadata-only history records, renderer/preload and shared architecture boundaries, managed skill/session ordering, approval redaction/default-deny behavior, credential-write boundaries, automation bridge/token safety, startup prewarm ordering, Electron window preferences, and cron script validation.
 
 
 

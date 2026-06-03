@@ -33,6 +33,19 @@ describe('architecture invariants', () => {
     expect(violations).toEqual([]);
   });
 
+  it('renderer source only reaches Electron through the preload-exposed API', () => {
+    const rendererRoot = path.join(repoRoot, 'apps', 'web', 'src');
+    const forbidden = /\b(?:ipcRenderer|contextBridge)\b/;
+    const violations = walkSourceFiles(rendererRoot).flatMap((filePath) => {
+      const source = fs.readFileSync(filePath, 'utf8');
+      return forbidden.test(source)
+        ? [`${path.relative(repoRoot, filePath)} bypasses the preload bridge`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
   it('shared source never imports main-process or renderer modules', () => {
     const sharedRoot = path.join(repoRoot, 'packages', 'shared', 'src');
     const forbidden = /^(?:@\/(?:main|renderer)\b|.*\/(?:main|renderer)(?:\/|$))/;

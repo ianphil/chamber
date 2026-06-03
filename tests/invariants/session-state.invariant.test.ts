@@ -5,6 +5,7 @@ import type { CopilotClientFactory } from '../../packages/services/src/sdk/Copil
 import type { IdentityLoader } from '../../packages/services/src/chat/IdentityLoader';
 import type { ConfigService } from '../../packages/services/src/config/ConfigService';
 import type { ViewDiscovery } from '../../packages/services/src/lens/ViewDiscovery';
+import type { ManagedSkillSyncResult } from '../../packages/services/src/skills';
 import type { AppConfig } from '@chamber/shared/types';
 
 vi.mock('fs', () => ({
@@ -87,13 +88,28 @@ const mockViewDiscovery = {
   setRefreshHandler: vi.fn(),
 };
 
-function createManager(): MindManager {
+function createManager(managedSkillService?: { installIntoMind: (mindPath: string) => Promise<ManagedSkillSyncResult> }): MindManager {
   return new MindManager(
     mockClientFactory as unknown as CopilotClientFactory,
     mockIdentityLoader as unknown as IdentityLoader,
     mockConfigService as unknown as ConfigService,
     mockViewDiscovery as unknown as ViewDiscovery,
+    () => null,
+    () => undefined,
+    managedSkillService,
   );
+}
+
+function assertConversationConfigDirIsStable(config: Record<string, unknown>): void {
+  if (config.configDir !== COPILOT_RUNTIME_CONFIG_DIR) {
+    throw new Error(
+      [
+        `Conversation SDK configDir changed from ${COPILOT_RUNTIME_CONFIG_DIR} to ${String(config.configDir)}.`,
+        'Changing this path moves session-state roots, so existing conversations listed in the history pane can no longer hydrate and open as empty chats.',
+        'If this is intentional, add an explicit migration/fallback plan before updating this invariant.',
+      ].join(' '),
+    );
+  }
 }
 
 describe('session-state invariants', () => {
@@ -119,6 +135,66 @@ describe('session-state invariants', () => {
     });
     vi.mocked(fs.readFileSync).mockReturnValue('# TestAgent\nSome content');
     vi.mocked(fs.realpathSync.native).mockImplementation((candidate) => String(candidate));
+  });
+
+  it('conversation session-state config path stays stable so history pane entries keep hydrating', async () => {
+    const manager = createManager();
+    const mind = await manager.loadMind('/tmp/agents/q');
+    const createConfig = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown>;
+
+    assertConversationConfigDirIsStable(createConfig);
+    expect(createConfig).toMatchObject({
+      enableConfigDiscovery: false,
+      sessionId: expect.stringMatching(new RegExp(`^chamber-${mind.mindId}-`)),
+    });
+
+    manager.markActiveConversationHasMessages(mind.mindId, 'Existing chat');
+    await manager.startNewConversation(mind.mindId);
+    const target = manager.listConversationHistory(mind.mindId)[1];
+    mockResumeSession.mockClear();
+
+    await manager.resumeConversation(mind.mindId, target.sessionId);
+
+    const resumeConfig = mockResumeSession.mock.calls[0]?.[1] as Record<string, unknown>;
+    assertConversationConfigDirIsStable(resumeConfig);
+    expect(resumeConfig).toMatchObject({
+      enableConfigDiscovery: false,
+      workingDirectory: '/tmp/agents/q',
+    });
+  });
+
+  it('conversation history metadata never persists transcript contents', async () => {
+    const manager = createManager();
+    const mind = await manager.loadMind('/tmp/agents/q');
+    manager.markActiveConversationHasMessages(mind.mindId, 'Visible title');
+
+    const saved = currentConfig.minds[0];
+    const serialized = JSON.stringify(saved);
+
+    expect(saved.conversations).toEqual([
+      expect.objectContaining({
+        title: 'Visible title',
+        hasMessages: true,
+      }),
+    ]);
+    expect(serialized).not.toContain('messages');
+    expect(serialized).not.toContain('blocks');
+    expect(serialized).not.toContain('assistant');
+  });
+
+  it('managed skills install before SDK client and session creation', async () => {
+    const managedSkillService = {
+      installIntoMind: vi.fn(async (): Promise<ManagedSkillSyncResult> => ({ status: 'ok', installed: [], errors: [] })),
+    };
+    const manager = createManager(managedSkillService);
+
+    await manager.loadMind('/tmp/agents/q');
+
+    expect(managedSkillService.installIntoMind).toHaveBeenCalledWith('/tmp/agents/q');
+    expect(managedSkillService.installIntoMind.mock.invocationCallOrder[0])
+      .toBeLessThan(mockClientFactory.createClient.mock.invocationCallOrder[0]);
+    expect(managedSkillService.installIntoMind.mock.invocationCallOrder[0])
+      .toBeLessThan(mockCreateSession.mock.invocationCallOrder[0]);
   });
 
   it('persisted conversations resume from Chamber state, then legacy state, before reattaching', async () => {
@@ -187,6 +263,31 @@ describe('session-state invariants', () => {
         configDir: COPILOT_RUNTIME_CONFIG_DIR,
         enableConfigDiscovery: false,
       });
+    }
+  });
+
+  it('all SDK sessions keep implicit config discovery disabled', async () => {
+    const manager = createManager();
+    const mind = await manager.loadMind('/tmp/agents/q');
+    manager.markActiveConversationHasMessages(mind.mindId, 'Existing chat');
+    await manager.startNewConversation(mind.mindId);
+    const target = manager.listConversationHistory(mind.mindId)[1];
+    await manager.resumeConversation(mind.mindId, target.sessionId);
+    await manager.createTaskSession(mind.mindId, 'task-1');
+    await manager.createChatroomSession(mind.mindId);
+    await manager.runIsolatedPrompt(mind.mindId, 'summarize');
+
+    const configs = [
+      ...mockCreateSession.mock.calls.map(([config]) => config),
+      ...mockResumeSession.mock.calls.map(([, config]) => config),
+    ];
+
+    for (const config of configs) {
+      if (config.enableConfigDiscovery !== false) {
+        throw new Error(
+          'SDK sessions must keep enableConfigDiscovery:false so the SDK cannot silently pick up MCP servers, skills, or tools outside Chamber\'s explicit tool surface.',
+        );
+      }
     }
   });
 });
