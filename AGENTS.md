@@ -61,3 +61,4 @@ When contributing to Chamber:
 - Cron schedules must reference TypeScript automation scripts; do not introduce arbitrary shell execution paths
 - Tool call responses must be sanitized before display in chat UI
 - Multi-agent chatroom changes require review of orchestration safety (delegation limits, approval gates)
+- Invariant test failures are contract violations, not routine test updates. Do not weaken, delete, or rewrite an invariant test just to make a change pass; stop and discuss whether the protected contract must remain, the change should be abandoned, or the invariant needs an explicit, reviewed replacement with the original side effect still documented.
