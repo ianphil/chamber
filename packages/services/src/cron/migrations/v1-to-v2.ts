@@ -165,7 +165,7 @@ function promptScript(prompt: string, recipient?: string): string {
     : '';
   return `${header()}${recipientNote}
 import { TaskGraph, TaskExecutor, SqliteStore, type Store } from '@ianphil/ttasks-ts';
-import { chamberPrompt, promptHandler } from '@chamber/automation-runtime';
+import { chamberPrompt, registerChamberHandlers } from '@chamber/automation-runtime';
 
 const graphId = process.env.CHAMBER_GRAPH_ID;
 const dbPath = process.env.CHAMBER_TTASKS_DB;
@@ -179,7 +179,7 @@ graph.add(chamberPrompt({
 
 const store: Store = new SqliteStore({ path: dbPath });
 const executor = new TaskExecutor({ store });
-executor.register('chamber:prompt', promptHandler);
+registerChamberHandlers(executor);
 
 try {
   await graph.run(executor);
@@ -231,7 +231,7 @@ function webhookScript(
 ): string {
   return `${header()}
 import { TaskGraph, TaskExecutor, SqliteStore, type Store } from '@ianphil/ttasks-ts';
-import { httpHandler, httpTask } from '@chamber/automation-runtime';
+import { httpTask, registerChamberHandlers } from '@chamber/automation-runtime';
 
 const graphId = process.env.CHAMBER_GRAPH_ID;
 const dbPath = process.env.CHAMBER_TTASKS_DB;
@@ -248,7 +248,7 @@ graph.add(httpTask({
 
 const store: Store = new SqliteStore({ path: dbPath });
 const executor = new TaskExecutor({ store });
-executor.register('http', httpHandler);
+registerChamberHandlers(executor);
 
 try {
   await graph.run(executor);
@@ -261,7 +261,7 @@ try {
 function notificationScript(title: string, body: string): string {
   return `${header()}
 import { TaskGraph, TaskExecutor, SqliteStore, type Store } from '@ianphil/ttasks-ts';
-import { chamberNotify, notifyHandler } from '@chamber/automation-runtime';
+import { chamberNotify, registerChamberHandlers } from '@chamber/automation-runtime';
 
 const graphId = process.env.CHAMBER_GRAPH_ID;
 const dbPath = process.env.CHAMBER_TTASKS_DB;
@@ -276,7 +276,7 @@ graph.add(chamberNotify({
 
 const store: Store = new SqliteStore({ path: dbPath });
 const executor = new TaskExecutor({ store });
-executor.register('chamber:notify', notifyHandler);
+registerChamberHandlers(executor);
 
 try {
   await graph.run(executor);

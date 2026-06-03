@@ -29,7 +29,7 @@ export class BridgeError extends Error {
 }
 
 export async function bridgeRequest<TResponse>(
-  endpoint: '/prompt' | '/notify',
+  endpoint: '/prompt' | '/notify' | '/a2a',
   body: Record<string, unknown>,
 ): Promise<TResponse> {
   const url = process.env.CHAMBER_BRIDGE_URL;

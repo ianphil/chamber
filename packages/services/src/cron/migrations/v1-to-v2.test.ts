@@ -58,6 +58,7 @@ describe('v1 → v2 cron migration', () => {
     const src = fs.readFileSync(scriptAbs, 'utf8');
     expect(src).toContain('chamberPrompt');
     expect(src).toContain('Give me a status update');
+    expect(src).toContain('registerChamberHandlers(executor);');
   });
 
   it('translates shell, webhook, and notification jobs', () => {
@@ -72,7 +73,9 @@ describe('v1 → v2 cron migration', () => {
     const byId = Object.fromEntries(state.jobs.map((j) => [j.id, j]));
     expect(fs.readFileSync(path.join(mindPath, byId['shell-1'].scriptPath), 'utf8')).toContain('Task.bash');
     expect(fs.readFileSync(path.join(mindPath, byId['web-1'].scriptPath), 'utf8')).toContain('https://example.com');
+    expect(fs.readFileSync(path.join(mindPath, byId['web-1'].scriptPath), 'utf8')).toContain('registerChamberHandlers(executor);');
     expect(fs.readFileSync(path.join(mindPath, byId['notif-1'].scriptPath), 'utf8')).toContain('chamberNotify');
+    expect(fs.readFileSync(path.join(mindPath, byId['notif-1'].scriptPath), 'utf8')).toContain('registerChamberHandlers(executor);');
   });
 
   it('writes a backup at cron.v1.backup.json and is idempotent', () => {

@@ -19,10 +19,12 @@ afterEach(async () => {
 async function startBridge(handlers: {
   onPrompt?: (req: { mindId: string; prompt: string; recipient?: string }) => Promise<{ text: string }>;
   onNotify?: (req: { mindId: string; title: string; body: string }) => Promise<void>;
+  onA2a?: (req: { mindId: string; recipient: string; message: string; contextId?: string; referenceTaskIds?: string[] }) => Promise<Record<string, unknown>>;
 } = {}): Promise<RunningBridge> {
   const bridge = new AutomationBridge({
     onPrompt: handlers.onPrompt ?? (async () => ({ text: 'queued' })),
     onNotify: handlers.onNotify ?? (async () => {}),
+    onA2a: handlers.onA2a,
   });
   const started = await bridge.start();
   const r: RunningBridge = { url: started.url, bridge, stop: started.stop };
@@ -98,6 +100,37 @@ describe('AutomationBridge', () => {
     );
     expect(res.status).toBe(200);
     expect(seen).toEqual([{ mindId: 'mind-1', title: 'Hi', body: 'There' }]);
+  });
+
+  it('routes /a2a to the configured handler', async () => {
+    const seen: unknown[] = [];
+    const r = await startBridge({
+      onA2a: async (req) => {
+        seen.push(req);
+        return { id: 'task-1', status: 'submitted' };
+      },
+    });
+    const minted = r.bridge.tokens.mint('mind-1', 'run-1');
+    const res = await post(
+      `${r.url}/a2a`,
+      { authorization: `Bearer ${minted.token}` },
+      { recipient: 'mind-b', message: 'draft the report', contextId: 'ctx-1', referenceTaskIds: ['task-0'] },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'task-1', status: 'submitted' });
+    expect(seen).toEqual([{ mindId: 'mind-1', recipient: 'mind-b', message: 'draft the report', contextId: 'ctx-1', referenceTaskIds: ['task-0'] }]);
+  });
+
+  it('returns 501 when /a2a has no handler configured', async () => {
+    const r = await startBridge();
+    const minted = r.bridge.tokens.mint('mind-1', 'run-1');
+    const res = await post(
+      `${r.url}/a2a`,
+      { authorization: `Bearer ${minted.token}` },
+      { recipient: 'mind-b', message: 'draft the report' },
+    );
+    expect(res.status).toBe(501);
+    expect(await res.json()).toEqual({ error: 'a2a-handler-not-configured' });
   });
 
   it('returns 404 for unknown routes', async () => {

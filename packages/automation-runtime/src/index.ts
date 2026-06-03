@@ -11,7 +11,9 @@
 export { bridgeRequest, BridgeUnconfiguredError, BridgeError } from './bridge-client';
 export { promptHandler, chamberPrompt } from './handlers/prompt';
 export { notifyHandler, chamberNotify } from './handlers/notify';
+export { a2aHandler, chamberA2A } from './handlers/a2a';
 export { httpHandler } from './handlers/http';
+export { registerChamberHandlers } from './registerHandlers';
 export { httpTask } from './task-helpers';
 export type { ChamberPromptInput, ChamberPromptOutput } from './handlers/prompt';
 export type { ChamberNotifyInput, ChamberNotifyOutput } from './handlers/notify';

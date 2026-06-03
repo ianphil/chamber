@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SqliteStore } from '@ianphil/ttasks-ts';
 import { TaskManager } from './TaskManager';
 import type { TaskSessionFactory } from './TaskManager';
 import type { UserInputHandler } from '../mind/types';
@@ -199,7 +200,23 @@ describe('TaskManager', () => {
     });
   });
 
-  it('sendTask() skips audit ledger writes when suppressLedgerWrite is set', async () => {
+  it('sendTask() persists a chamber:a2a ttasks row when a store is configured', async () => {
+    const store = new SqliteStore({ path: ':memory:' });
+    tm = new TaskManager(
+      mockMindManager as unknown as TaskSessionFactory,
+      mockRegistry as unknown as AgentCardRegistry,
+      { ttasksStore: store },
+    );
+
+    const task = await tm.sendTask(makeRequest('target-1', 'hello'));
+
+    const persisted = store.tasks.get(task.id);
+    expect(persisted).toBeDefined();
+    expect(persisted?.type).toBe('chamber:a2a');
+    expect(persisted?.metadata).toMatchObject({ runtime: 'a2a', ownerMindId: 'target-1', a2aTaskId: task.id });
+   });
+
+   it('sendTask() skips audit ledger writes when suppressLedgerWrite is set', async () => {
     const ledger = new TaskLedger(new InMemoryLedgerStore(), {
       createLedgerId: () => 'ledger-1',
       now: () => '2026-05-21T21:45:00.000Z',
