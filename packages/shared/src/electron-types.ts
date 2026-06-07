@@ -51,6 +51,7 @@ import type {
   UserProfileImportResult,
   UserProfileSaveRequest,
 } from './types';
+import type { SkillManifest } from './skill-types';
 
 export interface ElectronAPI {
   chat: {
@@ -187,6 +188,10 @@ export interface ElectronAPI {
      * log (#56). Returns an unsubscribe function — call it on unmount.
      */
     onStartupProgress: (callback: (event: StartupProgressEvent) => void) => () => void;
+  };
+  skills: {
+    /** List the skills installed under `<mindPath>/.github/skills/`. */
+    listForMind: (mindId: string) => Promise<SkillManifest[]>;
   };
 }
 
