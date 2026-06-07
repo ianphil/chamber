@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { cn } from '../../lib/utils';
 
 interface Props {
   name: string;
   role: string;
   onComplete: () => void;
   onError?: (error: string) => void;
+  /** Render inside the center pane instead of as a fixed full-screen overlay. */
+  embedded?: boolean;
 }
 
-export function BootScreen({ name, role, onComplete, onError }: Props) {
+export function BootScreen({ name, role, onComplete, onError, embedded = false }: Props) {
   const [lines, setLines] = useState<string[]>([]);
   const [progress, setProgress] = useState(0); // 0 to 100
   const [failed, setFailed] = useState(false);
@@ -73,7 +76,7 @@ export function BootScreen({ name, role, onComplete, onError }: Props) {
   }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50">
+    <div className={cn('bg-black flex flex-col items-center justify-center', embedded ? 'relative h-full w-full' : 'fixed inset-0 z-50')}>
       <div className="font-mono text-sm text-green-500 space-y-1 max-w-md w-full px-8">
         {lines.map((line, i) => (
           <div

@@ -19,6 +19,10 @@ export interface GenesisMindTemplate {
   templateVersion: string;
   agent: string;
   requiredFiles: string[];
+  /** Tools this template comes pre-configured with, surfaced in the marketplace detail pane. */
+  tools?: string[];
+  /** Skills this template comes pre-configured with, surfaced in the marketplace detail pane. */
+  skills?: string[];
   source: GenesisMindTemplateSource;
 }
 

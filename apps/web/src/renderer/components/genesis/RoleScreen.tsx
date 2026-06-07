@@ -5,6 +5,8 @@ import { cn } from '../../lib/utils';
 interface Props {
   name: string;
   onSelect: (role: string) => void;
+  /** Render inside the center pane instead of as a fixed full-screen overlay. */
+  embedded?: boolean;
 }
 
 const ROLES = [
@@ -14,7 +16,7 @@ const ROLES = [
   { emoji: '✏️', label: 'Something else...', description: 'Tell me', id: 'custom' },
 ];
 
-export function RoleScreen({ name, onSelect }: Props) {
+export function RoleScreen({ name, onSelect, embedded = false }: Props) {
   const [showCards, setShowCards] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [customRole, setCustomRole] = useState('');
@@ -47,7 +49,7 @@ export function RoleScreen({ name, onSelect }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-50">
+    <div className={cn('bg-background flex flex-col items-center justify-center', embedded ? 'relative h-full w-full' : 'fixed inset-0 z-50')}>
       <div className="max-w-lg w-full px-8 text-center space-y-8">
         <TypeWriter
           text={`And what am I, ${name}? What's my purpose?`}

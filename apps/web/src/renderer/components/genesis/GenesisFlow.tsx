@@ -16,10 +16,18 @@ const log = Logger.create('Genesis');
 
 interface Props {
   onComplete: () => void;
+  /**
+   * Stage to start at. Defaults to the animated 'void' opening. The center-pane
+   * "Add Agents" view starts at 'voice' to cut straight to the marketplace and
+   * agent-creation content without the full-screen intro.
+   */
+  initialStage?: Stage;
+  /** Render inside the center pane instead of as a fixed full-screen overlay. */
+  embedded?: boolean;
 }
 
-export function GenesisFlow({ onComplete }: Props) {
-  const [stage, setStage] = useState<Stage>('void');
+export function GenesisFlow({ onComplete, initialStage = 'void', embedded = false }: Props) {
+  const [stage, setStage] = useState<Stage>(initialStage);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   // Store voice description for the create call
@@ -38,6 +46,12 @@ export function GenesisFlow({ onComplete }: Props) {
       setTemplateError(getErrorMessage(error));
     }
   }, []);
+
+  // When the flow starts past the void opening (embedded center-pane), templates
+  // are not loaded by handleBegin, so load them on mount.
+  React.useEffect(() => {
+    if (initialStage !== 'void') void loadTemplates();
+  }, [initialStage, loadTemplates]);
 
   const handleBegin = useCallback(() => {
     setStage('voice');
@@ -138,14 +152,15 @@ export function GenesisFlow({ onComplete }: Props) {
           templateError={templateError}
           onSelect={handleVoiceWithDesc}
           onSelectTemplate={handleTemplateSelect}
+          embedded={embedded}
         />
       );
     case 'role':
-      return <RoleScreen name={name} onSelect={handleRole} />;
+      return <RoleScreen name={name} onSelect={handleRole} embedded={embedded} />;
     case 'boot':
       return (
         <>
-          <BootScreen name={name} role={role} onComplete={handleBootComplete} />
+          <BootScreen name={name} role={role} onComplete={handleBootComplete} embedded={embedded} />
           {creationError ? (
             <div role="alert" className="fixed top-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-red-500/40 bg-black px-4 py-2 text-sm text-red-300">
               {creationError}

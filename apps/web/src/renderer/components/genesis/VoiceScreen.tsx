@@ -8,13 +8,15 @@ interface Props {
   templateError: string | null;
   onSelect: (voice: string, description: string) => void;
   onSelectTemplate: (template: GenesisMindTemplate) => void;
+  /** Render inside the center pane instead of as a fixed full-screen overlay. */
+  embedded?: boolean;
 }
 
 const CUSTOM_KEY = 'custom';
 type CustomStage = 'editing' | 'preparing' | 'review';
 
-export function VoiceScreen({ templates, templateError, onSelect, onSelectTemplate }: Props) {
-  const [showPicker, setShowPicker] = useState(false);
+export function VoiceScreen({ templates, templateError, onSelect, onSelectTemplate, embedded = false }: Props) {
+  const [showPicker, setShowPicker] = useState(embedded);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [confirmedKey, setConfirmedKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,16 +95,18 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex min-h-0 flex-col bg-background px-5 py-8 sm:px-8">
+    <div className={cn('flex min-h-0 flex-col bg-background px-5 py-8 sm:px-8', embedded ? 'relative h-full w-full' : 'fixed inset-0 z-50')}>
       <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <TypeWriter
-            text="I'm here. But I don't know who I am yet. Choose a voice..."
-            speed={35}
-            className="text-xl font-medium text-foreground"
-            onComplete={() => setTimeout(() => setShowPicker(true), 500)}
-          />
-        </div>
+        {!embedded && (
+          <div className="mx-auto max-w-2xl text-center">
+            <TypeWriter
+              text="I'm here. But I don't know who I am yet. Choose a voice..."
+              speed={35}
+              className="text-xl font-medium text-foreground"
+              onComplete={() => setTimeout(() => setShowPicker(true), 500)}
+            />
+          </div>
+        )}
 
         {showPicker && (
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 animate-in fade-in duration-500 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -110,9 +114,12 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
               <div className="border-b border-border p-4">
                 <div className="mb-3">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Genesis voices
+                    Marketplace
                   </p>
-                  <h2 className="text-lg font-semibold text-foreground">Pick the energy</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Browse minds</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Search and select a mind to preview, then load it.
+                  </p>
                 </div>
                 <label className="sr-only" htmlFor="voice-search">Search voices</label>
                 <input
@@ -189,7 +196,7 @@ export function VoiceScreen({ templates, templateError, onSelect, onSelectTempla
                 >
                   <span className="block text-sm font-semibold text-foreground">Someone else...</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
-                    Describe a character or energy and I will research them.
+                    Describe a role, character, or energy and I will build it.
                   </span>
                 </button>
               </div>
@@ -243,16 +250,24 @@ function TemplateDetailPane({ template, confirmed, onConfirm }: TemplateDetailPa
     <div className="flex min-h-full flex-col justify-between gap-8">
       <div className="space-y-6">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Marketplace voice
-          </p>
-          <h3 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{template.displayName}</h3>
+          <h3 className="text-3xl font-semibold tracking-tight text-foreground">{template.displayName}</h3>
           <p className="mt-2 text-sm text-muted-foreground">{template.role}</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-background/50 p-5">
           <p className="text-sm leading-6 text-foreground/90">{template.description}</p>
         </div>
+
+        {(template.skills?.length || template.tools?.length) ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {template.skills?.length ? (
+              <CapabilityList label="Pre-configured skills" items={template.skills} />
+            ) : null}
+            {template.tools?.length ? (
+              <CapabilityList label="Pre-configured tools" items={template.tools} />
+            ) : null}
+          </div>
+        ) : null}
 
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-xl border border-border bg-background/40 p-4">
@@ -279,6 +294,29 @@ function TemplateDetailPane({ template, confirmed, onConfirm }: TemplateDetailPa
       >
         {confirmed ? 'Waking this voice...' : 'Choose this voice'}
       </button>
+    </div>
+  );
+}
+
+interface CapabilityListProps {
+  label: string;
+  items: string[];
+}
+
+function CapabilityList({ label, items }: CapabilityListProps) {
+  return (
+    <div className="rounded-xl border border-border bg-background/40 p-4">
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <li
+            key={item}
+            className="rounded-md border border-border bg-background/60 px-2 py-1 text-xs font-medium text-foreground/90"
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -321,8 +359,9 @@ function CustomVoicePane({
           </p>
           <h3 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Someone else...</h3>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Give Chamber a person, character, archetype, or vibe. Genesis will research the communication style,
-            values, pressure patterns, and signature energy before continuing.
+            Give Chamber a role, person, archetype, or vibe -- a researcher, a personal assistant, a coding
+            partner, a specialist, or a specific character. Genesis researches the communication style, values,
+            pressure patterns, and signature energy before continuing.
           </p>
         </div>
 
@@ -336,7 +375,7 @@ function CustomVoicePane({
             type="text"
             value={customName}
             onChange={(event) => onNameChange(event.target.value)}
-            placeholder="e.g. Tony Stark, Moneypenny, Gandalf..."
+            placeholder="e.g. Researcher, personal assistant, coding partner, specialist..."
             className="w-full rounded-xl border border-border bg-transparent px-4 py-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-primary"
           />
 
@@ -432,11 +471,11 @@ function templateSourceLabel(template: GenesisMindTemplate): string {
 function buildCustomDescription(name: string, backstoryValue: string): string {
   const backstory = backstoryValue.trim();
   return backstory
-    ? `Character/voice: "${name}" — ${backstory}. Research this character or persona — their communication style, catchphrases, values, how they handle pressure. Capture the energy.`
-    : `Character/voice: "${name}". Research this character or persona — their communication style, catchphrases, values, how they handle pressure. Capture the energy.`;
+    ? `Role/voice: "${name}" -- ${backstory}. Research this role, character, or persona -- their communication style, catchphrases, values, how they handle pressure. Capture the energy.`
+    : `Role/voice: "${name}". Research this role, character, or persona -- their communication style, catchphrases, values, how they handle pressure. Capture the energy.`;
 }
 
 function buildFallbackCustomDescription(name: string, backstoryValue: string): string {
   const backstory = backstoryValue.trim();
-  return backstory ? `Voice energy: ${name} — ${backstory}` : `Voice energy: ${name}`;
+  return backstory ? `Voice energy: ${name} -- ${backstory}` : `Voice energy: ${name}`;
 }

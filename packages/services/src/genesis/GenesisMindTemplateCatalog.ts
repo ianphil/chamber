@@ -38,6 +38,8 @@ interface MindManifest {
   root: string;
   agent: string;
   requiredFiles: string[];
+  tools: string[];
+  skills: string[];
 }
 
 export class GenesisMindTemplateCatalog {
@@ -85,6 +87,8 @@ export class GenesisMindTemplateCatalog {
       templateVersion: manifest.templateVersion,
       agent: manifest.agent,
       requiredFiles: manifest.requiredFiles,
+      tools: manifest.tools,
+      skills: manifest.skills,
       source: {
         owner: this.source.owner,
         repo: this.source.repo,
@@ -142,6 +146,8 @@ export class GenesisMindTemplateCatalog {
       root: stringField(manifest, 'root'),
       agent: stringField(manifest, 'agent'),
       requiredFiles: manifest.requiredFiles,
+      tools: optionalStringArray(manifest, 'tools', manifestPath),
+      skills: optionalStringArray(manifest, 'skills', manifestPath),
     };
   }
 
@@ -169,6 +175,17 @@ function stringField(record: Record<string, unknown>, key: string): string {
     throw new Error(`Expected string field: ${key}`);
   }
   return value;
+}
+
+function optionalStringArray(record: Record<string, unknown>, key: string, manifestPath: string): string[] {
+  const value = record[key];
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`Template manifest ${manifestPath} must define ${key} as a string array`);
+  }
+  return value as string[];
 }
 
 function marketplaceId(source: GenesisMindTemplateMarketplaceSource): string {

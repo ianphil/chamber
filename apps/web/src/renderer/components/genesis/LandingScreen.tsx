@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { FolderOpen, Sparkles, X } from 'lucide-react';
 
 interface Props {
   onNewAgent: () => void;
@@ -35,13 +35,13 @@ export function LandingScreen({ onNewAgent, onOpenExisting, onClose, error }: Pr
             onClick={onNewAgent}
             className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
           >
-            <span>✨</span> New Agent
+            <Sparkles size={16} aria-hidden /> New Agent
           </button>
           <button
             onClick={onOpenExisting}
             className="px-6 py-3 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center gap-2"
           >
-            <span>📂</span> Open Existing
+            <FolderOpen size={16} aria-hidden /> Open Existing
           </button>
         </div>
 
