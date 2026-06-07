@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { Camera, LogOut, UserRound } from 'lucide-react';
 import type { MarketplaceRegistry, UserProfile } from '@chamber/shared/types';
@@ -14,7 +14,7 @@ import {
 } from '../ui/select';
 import { AddAccountModal } from './AddAccountModal';
 import { LocalLlmSettingsSection } from './LocalLlmSettingsSection';
-
+import { Skeleton } from '../ui/skeleton';
 const ADD_ACCOUNT_VALUE = '__add-account__';
 
 export function SettingsView() {
@@ -203,222 +203,358 @@ export function SettingsView() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-2xl space-y-8">
-      <h1 className="text-xl font-semibold mb-6">Settings</h1>
+    <SettingsLayout showLocalLlm={Boolean(featureFlags.byoLlm)}>
+      {(activeSection) => (
+        <>
+          {activeSection === 'profile' && (
+            <section className="space-y-3">
+              <header>
+                <h2 className="text-lg font-semibold text-foreground">Profile</h2>
+                <p className="text-xs text-foreground/60">How Chamber addresses you and what your agents know about you.</p>
+              </header>
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="flex items-start gap-4">
+                  <button
+                    type="button"
+                    onClick={() => { void handleImportWorkProfile(); }}
+                    disabled={profileImporting}
+                    aria-label="Import profile photo from Microsoft 365"
+                    className="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+                  >
+                    {profileAvatarDataUrl ? (
+                      <img src={profileAvatarDataUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <UserRound size={40} />
+                    )}
+                    <span className="absolute inset-0 flex items-end justify-center bg-black/55 pb-3 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                      <Camera size={13} className="mr-1" />
+                      Import
+                    </span>
+                  </button>
 
-      <section>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">Profile</h2>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-start gap-4">
-            <button
-              type="button"
-              onClick={() => { void handleImportWorkProfile(); }}
-              disabled={profileImporting}
-              aria-label="Import profile photo from Microsoft 365"
-              className="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
-            >
-              {profileAvatarDataUrl ? (
-                <img src={profileAvatarDataUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <UserRound size={40} />
-              )}
-              <span className="absolute inset-0 flex items-end justify-center bg-black/55 pb-3 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                <Camera size={13} className="mr-1" />
-                Import
-              </span>
-            </button>
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-name">
+                        Name
+                      </label>
+                      <input
+                        id="profile-name"
+                        type="text"
+                        value={profileName}
+                        onChange={(event) => setProfileName(event.target.value)}
+                        placeholder="How Chamber should address you"
+                        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
+                      />
+                    </div>
 
-            <div className="min-w-0 flex-1 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-name">
-                  Name
-                </label>
-                <input
-                  id="profile-name"
-                  type="text"
-                  value={profileName}
-                  onChange={(event) => setProfileName(event.target.value)}
-                  placeholder="How Chamber should address you"
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
-                />
-              </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-work">
+                          Work
+                        </label>
+                        <input
+                          id="profile-work"
+                          type="text"
+                          value={profileWork}
+                          onChange={(event) => setProfileWork(event.target.value)}
+                          placeholder="Role, team, or company"
+                          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-location">
+                          Location
+                        </label>
+                        <input
+                          id="profile-location"
+                          type="text"
+                          value={profileLocation}
+                          onChange={(event) => setProfileLocation(event.target.value)}
+                          placeholder="City, office, or timezone"
+                          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
+                        />
+                      </div>
+                    </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-work">
-                    Work
-                  </label>
-                  <input
-                    id="profile-work"
-                    type="text"
-                    value={profileWork}
-                    onChange={(event) => setProfileWork(event.target.value)}
-                    placeholder="Role, team, or company"
-                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-location">
-                    Location
-                  </label>
-                  <input
-                    id="profile-location"
-                    type="text"
-                    value={profileLocation}
-                    onChange={(event) => setProfileLocation(event.target.value)}
-                    placeholder="City, office, or timezone"
-                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-about">
+                        About
+                      </label>
+                      <textarea
+                        id="profile-about"
+                        value={profileAbout}
+                        onChange={(event) => setProfileAbout(event.target.value)}
+                        placeholder="A little context your agents should know about you"
+                        rows={3}
+                        className="mt-1 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
+                      />
+                    </div>
 
-              <div>
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="profile-about">
-                  About
-                </label>
-                <textarea
-                  id="profile-about"
-                  value={profileAbout}
-                  onChange={(event) => setProfileAbout(event.target.value)}
-                  placeholder="A little context your agents should know about you"
-                  rows={3}
-                  className="mt-1 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => { void handleImportWorkProfile(); }}
-                  disabled={profileImporting}
-                  className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
-                >
-                  {profileImporting ? 'Importing…' : 'Import from work account'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { void handleSaveProfile(); }}
-                  disabled={profileSaving}
-                  className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-                >
-                  {profileSaving ? 'Saving…' : 'Save profile'}
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  Pulls name and photo from Microsoft Graph.
-                </span>
-              </div>
-              {profileMessage ? (
-                <p role="status" className="text-xs text-muted-foreground">{profileMessage}</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">Account</h2>
-        <div className="rounded-lg border border-border bg-card p-4">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : error ? (
-            <p className="text-sm text-destructive">Unable to load account info</p>
-          ) : login || accounts.length > 0 ? (
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Signed in as</p>
-                <Select value={login ?? undefined} onValueChange={(value) => { void handleAccountChange(value); }}>
-                  <SelectTrigger className="mt-2 min-w-56" aria-label="Select account">
-                    <SelectValue placeholder="Select account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.login} value={account.login}>
-                        {account.login}
-                      </SelectItem>
-                    ))}
-                    <SelectSeparator />
-                    <SelectItem value={ADD_ACCOUNT_VALUE}>+ Add Account</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <button
-                onClick={() => window.electronAPI.auth.logout()}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
-              >
-                <LogOut size={16} />
-                Log out
-              </button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Not signed in</p>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">Marketplaces</h2>
-        <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-          <form className="flex gap-2" onSubmit={(event) => { void handleAddMarketplace(event); }}>
-            <input
-              type="url"
-              value={marketplaceUrl}
-              onChange={(event) => setMarketplaceUrl(event.target.value)}
-              placeholder="https://github.com/agency-microsoft/genesis-minds"
-              aria-label="Marketplace repository URL"
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
-            />
-            <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">
-              Add
-            </button>
-          </form>
-
-          {marketplaceMessage ? (
-            <p role="status" className="text-sm text-muted-foreground">{marketplaceMessage}</p>
-          ) : null}
-
-          <div className="space-y-3">
-            {marketplaces.map((registry) => (
-              <div key={registry.id} className="rounded-lg border border-border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{registry.label}</p>
-                    <p className="truncate text-xs text-muted-foreground">{registry.url}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {registry.enabled ? 'Enabled' : 'Disabled'}{registry.isDefault ? ' · Default' : ''}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <button type="button" className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" onClick={() => { void handleToggleMarketplace(registry); }}>
-                      {registry.enabled ? 'Disable' : 'Enable'}
-                    </button>
-                    <button type="button" className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" onClick={() => { void handleRefreshMarketplace(registry); }}>
-                      Refresh
-                    </button>
-                    {!registry.isDefault ? (
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-destructive/10" onClick={() => { void handleRemoveMarketplace(registry); }}>
-                        Remove
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { void handleImportWorkProfile(); }}
+                        disabled={profileImporting}
+                        title="Pulls name and photo from Microsoft Graph."
+                        className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
+                      >
+                        {profileImporting ? 'Importing…' : 'Import from work account'}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => { void handleSaveProfile(); }}
+                        disabled={profileSaving}
+                        className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                      >
+                        {profileSaving ? 'Saving…' : 'Save profile'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <strong className="font-medium text-foreground/80">Import</strong> pulls your name and photo from Microsoft Graph. <strong className="font-medium text-foreground/80">Save</strong> stores changes locally; nothing syncs back to your account.
+                    </p>
+                    {profileMessage ? (
+                      <p role="status" className="text-xs text-muted-foreground">{profileMessage}</p>
                     ) : null}
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+            </section>
+          )}
+
+          {activeSection === 'account' && (
+            <section className="space-y-3">
+              <header>
+                <h2 className="text-lg font-semibold text-foreground">Account</h2>
+                <p className="text-xs text-foreground/60">Which GitHub identity is signed in.</p>
+              </header>
+              <div className="rounded-lg border border-border bg-card p-4">
+                {loading ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-2">
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="h-9 w-40" />
+                    </div>
+                  </div>
+                ) : error ? (
+                  <p className="text-sm text-destructive">Unable to load account info</p>
+                ) : login || accounts.length > 0 ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Signed in as</p>
+                      {accounts.length <= 1 ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium">
+                            {login ?? '—'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddAccountIntent((prev) => prev + 1);
+                              setAddAccountOpen(true);
+                            }}
+                            className="rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                          >
+                            + Add account
+                          </button>
+                        </div>
+                      ) : (
+                        <Select value={login ?? undefined} onValueChange={(value) => { void handleAccountChange(value); }}>
+                          <SelectTrigger className="mt-2 min-w-56" aria-label="Select account">
+                            <SelectValue placeholder="Select account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {accounts.map((account) => (
+                              <SelectItem key={account.login} value={account.login}>
+                                {account.login}
+                              </SelectItem>
+                            ))}
+                            <SelectSeparator />
+                            <SelectItem value={ADD_ACCOUNT_VALUE}>+ Add Account</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => window.electronAPI.auth.logout()}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      <LogOut size={16} />
+                      Log out
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Not signed in</p>
+                )}
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'marketplaces' && (
+            <section className="space-y-3">
+              <header>
+                <h2 className="text-lg font-semibold text-foreground">Marketplaces</h2>
+                <p className="text-xs text-foreground/60">Repositories Chamber pulls Genesis mind templates from.</p>
+              </header>
+              <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+                <form className="flex gap-2" onSubmit={(event) => { void handleAddMarketplace(event); }}>
+                  <input
+                    type="url"
+                    value={marketplaceUrl}
+                    onChange={(event) => setMarketplaceUrl(event.target.value)}
+                    placeholder="https://github.com/agency-microsoft/genesis-minds"
+                    aria-label="Marketplace repository URL"
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-muted-foreground"
+                  />
+                  <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">
+                    Add
+                  </button>
+                </form>
+
+                {marketplaceMessage ? (
+                  <p role="status" className="text-sm text-muted-foreground">{marketplaceMessage}</p>
+                ) : null}
+
+                <div className="space-y-3">
+                  {marketplaces.map((registry) => (
+                    <div key={registry.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{registry.label}</p>
+                          <p className="truncate text-xs text-muted-foreground">{registry.url}</p>
+                          <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            <span>{registry.enabled ? 'Enabled' : 'Disabled'}</span>
+                            {registry.isDefault ? (
+                              <>
+                                <span aria-hidden>·</span>
+                                <span
+                                  title="The default marketplace supplies built-in templates and is used when a mind references a partial template id."
+                                  className="rounded border border-border bg-muted/40 px-1 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                                >
+                                  Default
+                                </span>
+                              </>
+                            ) : null}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <button type="button" className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" onClick={() => { void handleToggleMarketplace(registry); }}>
+                            {registry.enabled ? 'Disable' : 'Enable'}
+                          </button>
+                          <button type="button" className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent" onClick={() => { void handleRefreshMarketplace(registry); }}>
+                            Refresh
+                          </button>
+                          {!registry.isDefault ? (
+                            <button type="button" className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-destructive/10" onClick={() => { void handleRemoveMarketplace(registry); }}>
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'local-llm' && featureFlags.byoLlm && (
+            <section className="space-y-3">
+              <LocalLlmSettingsSection />
+            </section>
+          )}
+
+          <AddAccountModal
+            open={addAccountOpen}
+            openId={addAccountIntent}
+            onClose={() => setAddAccountOpen(false)}
+            onRetry={handleRetryAddAccount}
+          />
+        </>
+      )}
+    </SettingsLayout>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SettingsLayout
+//
+// Tabbed layout: left rail picks one section, the right pane shows just that
+// section's content. Replaces the previous single-long-scroller layout with
+// scroll-spy. Section swaps reuse the `view-enter` animation defined in
+// index.css so navigating between sections matches the rest of the app.
+// ---------------------------------------------------------------------------
+
+export type SettingsSectionId = 'profile' | 'account' | 'marketplaces' | 'local-llm';
+
+interface SettingsRailItem {
+  id: SettingsSectionId;
+  label: string;
+}
+
+interface SettingsLayoutProps {
+  showLocalLlm: boolean;
+  children: (activeSection: SettingsSectionId) => React.ReactNode;
+}
+
+function SettingsLayout({ children, showLocalLlm }: SettingsLayoutProps) {
+  const railItems = useMemo<SettingsRailItem[]>(() => {
+    const items: SettingsRailItem[] = [
+      { id: 'profile', label: 'Profile' },
+      { id: 'account', label: 'Account' },
+      { id: 'marketplaces', label: 'Marketplaces' },
+    ];
+    if (showLocalLlm) items.push({ id: 'local-llm', label: 'Local LLM' });
+    return items;
+  }, [showLocalLlm]);
+
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(railItems[0]?.id ?? 'profile');
+
+  // If the LLM tab is currently active and the feature flag flips off,
+  // fall back to the first available section so we don't render an empty
+  // pane.
+  useEffect(() => {
+    if (!railItems.some((item) => item.id === activeSection)) {
+      setActiveSection(railItems[0]?.id ?? 'profile');
+    }
+  }, [activeSection, railItems]);
+
+  return (
+    <div className="flex-1 flex min-h-0">
+      <nav
+        aria-label="Settings sections"
+        className="w-44 shrink-0 flex flex-col gap-0.5 border-r border-border px-3 py-6 text-sm"
+      >
+        {railItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setActiveSection(item.id)}
+            aria-current={activeSection === item.id ? 'page' : undefined}
+            className={
+              'relative rounded-md px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring '
+              + 'before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:rounded-r-full before:bg-primary before:transition-all before:duration-200 '
+              + (activeSection === item.id
+                ? 'bg-selected text-foreground font-medium before:h-4 before:opacity-100'
+                : 'text-foreground/70 hover:bg-hover hover:text-foreground before:h-0 before:opacity-0')
+            }
+          >
+            {item.label}
+          </button>
+        ))}
+        <div className="mt-auto pt-4 text-center text-[10px] text-foreground/50">
+          Chamber v{APP_VERSION}
         </div>
-      </section>
-
-      {featureFlags.byoLlm ? <LocalLlmSettingsSection /> : null}
-
-      <AddAccountModal
-        open={addAccountOpen}
-        openId={addAccountIntent}
-        onClose={() => setAddAccountOpen(false)}
-        onRetry={handleRetryAddAccount}
-      />
-
-      <p className="border-t border-border pt-4 text-center text-xs text-muted-foreground">
-        Chamber v{APP_VERSION}
-      </p>
+      </nav>
+      <div className="flex-1 overflow-y-auto">
+        <h1 className="sr-only">Settings</h1>
+        {/* Keying on activeSection restarts the `view-enter` animation
+         * (defined in index.css) every time the user picks a new tab,
+         * matching the activity-bar transitions. */}
+        <div key={activeSection} className="view-enter p-6 max-w-3xl space-y-6">
+          {children(activeSection)}
+        </div>
+      </div>
     </div>
   );
 }
+
