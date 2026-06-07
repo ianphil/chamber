@@ -46,7 +46,7 @@ const MODES: ModeOption[] = [
   },
   {
     value: 'magentic',
-    label: 'Magentic',
+    label: 'Manager-led',
     enabled: true,
     description: 'A manager agent decomposes the goal into a task ledger and delegates subtasks to workers.',
     bestFor: 'Complex multi-step projects, long-running workflows, anything that benefits from explicit task planning and parallel delegation.',
@@ -56,6 +56,11 @@ const MODES: ModeOption[] = [
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
+
+// Shared style for the inline config selects. Filled surface, rounded, subtle
+// border and shadow, with a clear focus ring so the controls read as a set.
+const selectClass =
+  'rounded-md border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground shadow-xs transition-colors hover:border-foreground/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50';
 
 interface OrchestrationPickerProps {
   mode: OrchestrationMode;
@@ -152,7 +157,7 @@ export function OrchestrationPicker({
           <p className="text-[11px] text-muted-foreground leading-snug">
             <span className="font-medium text-foreground/70">{active.label}:</span>{' '}
             {active.description}{' '}
-            <span className="text-muted-foreground/60">Best for: {active.bestFor}</span>
+            <span className="text-muted-foreground/80">Best for: {active.bestFor}</span>
           </p>
         );
       })()}
@@ -172,7 +177,7 @@ export function OrchestrationPicker({
                 maxSpeakerRepeats: groupChatConfig?.maxSpeakerRepeats ?? 3,
               });
             }}
-            className="bg-secondary text-secondary-foreground rounded px-2 py-0.5 text-xs border border-border"
+            className={selectClass}
           >
             {readyMinds.map((mind) => (
               <option key={mind.mindId} value={mind.mindId}>
@@ -196,7 +201,7 @@ export function OrchestrationPicker({
                 maxHandoffHops: handoffConfig?.maxHandoffHops ?? 5,
               });
             }}
-            className="bg-secondary text-secondary-foreground rounded px-2 py-0.5 text-xs border border-border"
+            className={selectClass}
           >
             {readyMinds.map((mind) => (
               <option key={mind.mindId} value={mind.mindId}>
@@ -220,7 +225,7 @@ export function OrchestrationPicker({
                 maxSteps: magneticConfig?.maxSteps ?? 10,
               });
             }}
-            className="bg-secondary text-secondary-foreground rounded px-2 py-0.5 text-xs border border-border"
+            className={selectClass}
           >
             {readyMinds.map((mind) => (
               <option key={mind.mindId} value={mind.mindId}>

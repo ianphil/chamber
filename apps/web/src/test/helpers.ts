@@ -290,6 +290,15 @@ export function mockElectronAPI(): ElectronAPI {
       setMindEnabled: vi.fn().mockResolvedValue(undefined),
       getDisabledMindIds: vi.fn().mockResolvedValue([]),
       onStateChanged: vi.fn().mockReturnValue(vi.fn()),
+      listSessions: vi.fn().mockResolvedValue([]),
+      createSession: vi.fn().mockResolvedValue({ sessionId: 'cr-1', title: 'New chatroom', createdAt: '', updatedAt: '', active: true, hasMessages: false }),
+      resumeSession: vi.fn().mockResolvedValue({
+        session: { sessionId: 'cr-1', title: 'New chatroom', createdAt: '', updatedAt: '', active: true, hasMessages: false },
+        messages: [],
+        taskLedger: [],
+      }),
+      renameSession: vi.fn().mockResolvedValue([]),
+      deleteSession: vi.fn().mockResolvedValue([]),
     },
     updater: {
       getState: vi.fn((): Promise<DesktopUpdateState> => new Promise<DesktopUpdateState>(() => {})),

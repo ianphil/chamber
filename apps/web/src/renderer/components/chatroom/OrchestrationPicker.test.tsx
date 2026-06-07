@@ -64,14 +64,14 @@ describe('OrchestrationPicker', () => {
     expect(screen.getByText('Sequential')).toBeTruthy();
     expect(screen.getByText('Group Chat')).toBeTruthy();
     expect(screen.getByText('Handoff')).toBeTruthy();
-    expect(screen.getByText('Magentic')).toBeTruthy();
+    expect(screen.getByText('Manager-led')).toBeTruthy();
   });
 
-  it('Handoff and Magentic buttons are enabled and clickable', () => {
+  it('Handoff and Manager-led buttons are enabled and clickable', () => {
     const onModeChange = vi.fn();
     renderPicker({ onModeChange });
     const handoff = screen.getByText('Handoff');
-    const magentic = screen.getByText('Magentic');
+    const magentic = screen.getByText('Manager-led');
     expect(handoff.closest('button')?.disabled).toBe(false);
     expect(magentic.closest('button')?.disabled).toBe(false);
 
@@ -218,7 +218,7 @@ describe('OrchestrationPicker', () => {
     const onMagneticConfigChange = vi.fn();
     renderPicker({ onModeChange, onMagneticConfigChange });
 
-    fireEvent.click(screen.getByText('Magentic'));
+    fireEvent.click(screen.getByText('Manager-led'));
     expect(onModeChange).toHaveBeenCalledWith('magentic');
     expect(onMagneticConfigChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -277,7 +277,7 @@ describe('OrchestrationPicker', () => {
 
   it('exposes "Best for:" in each mode button title for hover tooltips', () => {
     renderPicker();
-    for (const label of ['Concurrent', 'Sequential', 'Group Chat', 'Handoff', 'Magentic']) {
+    for (const label of ['Concurrent', 'Sequential', 'Group Chat', 'Handoff', 'Manager-led']) {
       const btn = screen.getByText(label).closest('button');
       expect(btn?.getAttribute('title')).toMatch(/Best for:/);
     }

@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatEvent, ConversationSummary, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '@chamber/shared/types';
 import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@chamber/shared/a2a-types';
-import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '@chamber/shared/chatroom-types';
+import type { ChatroomMessage, ChatroomSessionSummary, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 import { DEFAULT_APP_FEATURE_FLAGS, type AppFeatureFlags } from '@chamber/shared/feature-flags';
 
 export type LensView = 'chat' | string;
@@ -67,6 +67,19 @@ export interface AppState {
   chatroomMetrics: { elapsedMs: number; totalTasks: number; completedTasks: number; failedTasks: number; agentsUsed: number; orchestrationMode: string } | null;
   /** Mind IDs the user has disabled in the chatroom; excluded from broadcasts. */
   chatroomDisabledMindIds: string[];
+  /**
+   * Sidebar list of every persisted chatroom session (newest first). Sourced
+   * from `chatroom.listSessions` and refreshed after create / rename / delete.
+   */
+  chatroomSessions: ChatroomSessionSummary[];
+  /**
+   * ID of the chatroom session currently surfaced in ChatroomPanel. When
+   * null, the panel renders the session-picker empty state. The transcript
+   * + ledger + disabled-mind set for the active session live in the
+   * existing top-level chatroom* fields (kept as the active-session view
+   * to avoid churning every downstream consumer).
+   */
+  activeChatroomSessionId: string | null;
 }
 
 export type AppAction =
@@ -112,7 +125,10 @@ export type AppAction =
   | { type: 'SET_HANDOFF_CONFIG'; payload: HandoffConfig | null }
   | { type: 'SET_MAGENTIC_CONFIG'; payload: MagenticConfig | null }
   | { type: 'CHATROOM_ACTIVE_SPEAKER'; payload: { mindId: string; mindName: string; phase: 'speaking' | 'moderating' | 'synthesizing' } | null }
-  | { type: 'SET_CHATROOM_DISABLED_MIND_IDS'; payload: string[] };
+  | { type: 'SET_CHATROOM_DISABLED_MIND_IDS'; payload: string[] }
+  | { type: 'SET_CHATROOM_SESSIONS'; payload: ChatroomSessionSummary[] }
+  | { type: 'RESUME_CHATROOM_SESSION'; payload: { session: ChatroomSessionSummary; messages: ChatroomMessage[]; taskLedger: TaskLedgerItem[]; sessions: ChatroomSessionSummary[] } }
+  | { type: 'CLEAR_ACTIVE_CHATROOM_SESSION' };
 
 export const initialState: AppState = {
   minds: [],
@@ -146,4 +162,6 @@ export const initialState: AppState = {
   chatroomTaskLedger: [],
   chatroomMetrics: null,
   chatroomDisabledMindIds: [],
+  chatroomSessions: [],
+  activeChatroomSessionId: null,
 };

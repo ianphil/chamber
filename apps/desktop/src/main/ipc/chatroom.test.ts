@@ -31,6 +31,11 @@ describe('Chatroom IPC', () => {
     clearHistory: ReturnType<typeof vi.fn>;
     stopAll: ReturnType<typeof vi.fn>;
     setOrchestration: ReturnType<typeof vi.fn>;
+    listSessions: ReturnType<typeof vi.fn>;
+    createSession: ReturnType<typeof vi.fn>;
+    resumeSession: ReturnType<typeof vi.fn>;
+    renameSession: ReturnType<typeof vi.fn>;
+    deleteSession: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -42,6 +47,15 @@ describe('Chatroom IPC', () => {
       clearHistory: vi.fn().mockResolvedValue(undefined),
       stopAll: vi.fn(),
       setOrchestration: vi.fn(),
+      listSessions: vi.fn().mockReturnValue([]),
+      createSession: vi.fn().mockReturnValue({ sessionId: 'cr-new', title: 'New chatroom', createdAt: '', updatedAt: '', active: false, hasMessages: false }),
+      resumeSession: vi.fn().mockReturnValue({
+        session: { sessionId: 'cr-1', title: 'A', createdAt: '', updatedAt: '', active: true, hasMessages: false },
+        messages: [],
+        taskLedger: [],
+      }),
+      renameSession: vi.fn().mockReturnValue([]),
+      deleteSession: vi.fn().mockReturnValue([]),
     });
     setupChatroomIPC(mockService as unknown as ChatroomService);
   });
@@ -401,5 +415,71 @@ describe('Chatroom IPC', () => {
 
     expect(wc1.send).not.toHaveBeenCalled();
     expect(wc2.send).toHaveBeenCalledWith('chatroom:event', event);
+  });
+
+  describe('session adapters', () => {
+    it('chatroom:list-sessions delegates to listSessions', async () => {
+      const summary = [{ sessionId: 'cr-1', title: 'A', createdAt: '', updatedAt: '', active: true, hasMessages: false }];
+      mockService.listSessions.mockReturnValue(summary);
+
+      const result = await getHandler('chatroom:list-sessions')(EVT);
+
+      expect(mockService.listSessions).toHaveBeenCalled();
+      expect(result).toBe(summary);
+    });
+
+    it('chatroom:create-session passes through a string title', async () => {
+      await getHandler('chatroom:create-session')(EVT, 'New room');
+      expect(mockService.createSession).toHaveBeenCalledWith('New room');
+    });
+
+    it('chatroom:create-session normalizes non-string titles to undefined', async () => {
+      await getHandler('chatroom:create-session')(EVT, 42);
+      expect(mockService.createSession).toHaveBeenCalledWith(undefined);
+    });
+
+    it('chatroom:resume-session rejects when sessionId is missing or non-string', async () => {
+      await expect(getHandler('chatroom:resume-session')(EVT)).rejects.toThrow(/sessionId/);
+      await expect(getHandler('chatroom:resume-session')(EVT, 7)).rejects.toThrow(/sessionId/);
+      await expect(getHandler('chatroom:resume-session')(EVT, '')).rejects.toThrow(/sessionId/);
+      expect(mockService.resumeSession).not.toHaveBeenCalled();
+    });
+
+    it('chatroom:resume-session returns the service payload for a valid id', async () => {
+      const payload = {
+        session: { sessionId: 'cr-2', title: 'Two', createdAt: '', updatedAt: '', active: true, hasMessages: false },
+        messages: [],
+        taskLedger: [],
+      };
+      mockService.resumeSession.mockReturnValue(payload);
+
+      const result = await getHandler('chatroom:resume-session')(EVT, 'cr-2');
+
+      expect(mockService.resumeSession).toHaveBeenCalledWith('cr-2');
+      expect(result).toBe(payload);
+    });
+
+    it('chatroom:rename-session rejects when either argument is invalid', async () => {
+      await expect(getHandler('chatroom:rename-session')(EVT)).rejects.toThrow(/sessionId/);
+      await expect(getHandler('chatroom:rename-session')(EVT, 'cr-1')).rejects.toThrow(/title/);
+      await expect(getHandler('chatroom:rename-session')(EVT, 'cr-1', 7)).rejects.toThrow(/title/);
+      expect(mockService.renameSession).not.toHaveBeenCalled();
+    });
+
+    it('chatroom:rename-session passes both arguments to the service', async () => {
+      await getHandler('chatroom:rename-session')(EVT, 'cr-1', 'Renamed');
+      expect(mockService.renameSession).toHaveBeenCalledWith('cr-1', 'Renamed');
+    });
+
+    it('chatroom:delete-session rejects when sessionId is missing or non-string', async () => {
+      await expect(getHandler('chatroom:delete-session')(EVT)).rejects.toThrow(/sessionId/);
+      await expect(getHandler('chatroom:delete-session')(EVT, 0)).rejects.toThrow(/sessionId/);
+      expect(mockService.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('chatroom:delete-session forwards the id to the service', async () => {
+      await getHandler('chatroom:delete-session')(EVT, 'cr-1');
+      expect(mockService.deleteSession).toHaveBeenCalledWith('cr-1');
+    });
   });
 });

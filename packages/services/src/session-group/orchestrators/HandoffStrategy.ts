@@ -267,14 +267,24 @@ export class HandoffStrategy extends BaseStrategy {
   }
 
   // -------------------------------------------------------------------------
-  // Loop detection — A→B→A or A→B→C→A patterns
+  // Loop detection — repeated transitions (ping-pong)
   // -------------------------------------------------------------------------
+  //
+  // A single hand-back to a prior agent (A→B→A) is legitimate: an agent
+  // delegates, the delegate does its part, then hands the baton back to the
+  // originator (e.g. a coordinator) to continue. We only stop when a *transition*
+  // repeats, i.e. the same from→to edge is traversed twice (A→B→A→B ping-pong, or
+  // any re-traversed edge in a longer cycle).
 
   private detectLoop(visited: string[], candidate: string): boolean {
     if (visited.length < 2) return false;
-    // Check if the candidate would create a cycle in the last 3 entries
-    const recent = visited.slice(-2);
-    return recent.includes(candidate);
+    const previous = visited[visited.length - 1];
+    for (let i = 0; i < visited.length - 1; i++) {
+      if (visited[i] === previous && visited[i + 1] === candidate) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // -------------------------------------------------------------------------

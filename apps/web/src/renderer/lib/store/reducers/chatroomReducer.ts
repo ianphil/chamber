@@ -200,6 +200,51 @@ function setChatroomDisabledMindIds(
   return { chatroomDisabledMindIds: action.payload };
 }
 
+function setChatroomSessions(
+  state: AppState,
+  action: Extract<AppAction, { type: 'SET_CHATROOM_SESSIONS' }>,
+): Partial<AppState> {
+  // If the active session is gone from the list (deleted in another window),
+  // clear the active marker so the panel falls back to the picker. The
+  // transcript/ledger persist until an explicit CLEAR / RESUME action.
+  const stillActive = state.activeChatroomSessionId
+    ? action.payload.some((s) => s.sessionId === state.activeChatroomSessionId)
+    : false;
+  return {
+    chatroomSessions: action.payload,
+    ...(state.activeChatroomSessionId && !stillActive ? { activeChatroomSessionId: null } : {}),
+  };
+}
+
+function resumeChatroomSession(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'RESUME_CHATROOM_SESSION' }>,
+): Partial<AppState> {
+  return {
+    chatroomSessions: action.payload.sessions,
+    activeChatroomSessionId: action.payload.session.sessionId,
+    chatroomMessages: action.payload.messages,
+    chatroomTaskLedger: action.payload.taskLedger,
+    chatroomStreamingByMind: {},
+    chatroomActiveSpeaker: null,
+    chatroomMetrics: null,
+  };
+}
+
+function clearActiveChatroomSession(): Partial<AppState> {
+  // Used when the active session is deleted or the user backs out to the
+  // session-picker empty state. Mirrors CHATROOM_CLEAR's wipe of in-flight
+  // view state but additionally drops the active id.
+  return {
+    activeChatroomSessionId: null,
+    chatroomMessages: [],
+    chatroomStreamingByMind: {},
+    chatroomActiveSpeaker: null,
+    chatroomTaskLedger: [],
+    chatroomMetrics: null,
+  };
+}
+
 export const chatroomHandlers: {
   SET_CHATROOM_HISTORY: Handler<'SET_CHATROOM_HISTORY'>;
   CHATROOM_USER_MESSAGE: Handler<'CHATROOM_USER_MESSAGE'>;
@@ -213,6 +258,9 @@ export const chatroomHandlers: {
   SET_MAGENTIC_CONFIG: Handler<'SET_MAGENTIC_CONFIG'>;
   CHATROOM_ACTIVE_SPEAKER: Handler<'CHATROOM_ACTIVE_SPEAKER'>;
   SET_CHATROOM_DISABLED_MIND_IDS: Handler<'SET_CHATROOM_DISABLED_MIND_IDS'>;
+  SET_CHATROOM_SESSIONS: Handler<'SET_CHATROOM_SESSIONS'>;
+  RESUME_CHATROOM_SESSION: Handler<'RESUME_CHATROOM_SESSION'>;
+  CLEAR_ACTIVE_CHATROOM_SESSION: Handler<'CLEAR_ACTIVE_CHATROOM_SESSION'>;
 } = {
   SET_CHATROOM_HISTORY: setChatroomHistory,
   CHATROOM_USER_MESSAGE: chatroomUserMessage,
@@ -226,4 +274,7 @@ export const chatroomHandlers: {
   SET_MAGENTIC_CONFIG: setMagenticConfig,
   CHATROOM_ACTIVE_SPEAKER: chatroomActiveSpeaker,
   SET_CHATROOM_DISABLED_MIND_IDS: setChatroomDisabledMindIds,
+  SET_CHATROOM_SESSIONS: setChatroomSessions,
+  RESUME_CHATROOM_SESSION: resumeChatroomSession,
+  CLEAR_ACTIVE_CHATROOM_SESSION: clearActiveChatroomSession,
 };

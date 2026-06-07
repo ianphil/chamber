@@ -8,14 +8,14 @@ interface TaskLedgerPanelProps {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  'pending': 'border-zinc-600 bg-zinc-800',
+  'pending': 'border-border bg-secondary',
   'in-progress': 'border-blue-400 bg-blue-400/20',
   'completed': 'border-green-400 bg-green-400/20',
   'failed': 'border-red-400 bg-red-400/20',
 };
 
 const LINE_COLORS: Record<string, string> = {
-  'pending': 'bg-zinc-700',
+  'pending': 'bg-muted-foreground/20',
   'in-progress': 'bg-blue-400/50',
   'completed': 'bg-green-400/50',
   'failed': 'bg-red-400/50',
@@ -41,14 +41,14 @@ export function TaskLedgerPanel({ ledger, minds, onRetry }: TaskLedgerPanelProps
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   return (
-    <div className="border border-zinc-800 rounded-md p-3 mx-4 mb-3 bg-zinc-900/50 max-h-48 overflow-y-auto">
+    <div className="border border-border rounded-md p-3 mx-4 mb-3 bg-secondary/40 max-h-48 overflow-y-auto">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Task Ledger</span>
-        <span className="text-xs text-zinc-500">{completedCount}/{totalCount}</span>
+        <span className="text-xs font-medium text-foreground/70 uppercase tracking-wide">Task Ledger</span>
+        <span className="text-xs text-foreground/60">{completedCount}/{totalCount}</span>
       </div>
 
       {/* Progress bar */}
-      <div className="h-1 bg-zinc-800 rounded-full mb-3 overflow-hidden">
+      <div className="h-1 bg-secondary rounded-full mb-3 overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all duration-500"
           style={{ width: `${progress}%` }}
@@ -68,31 +68,31 @@ export function TaskLedgerPanel({ ledger, minds, onRetry }: TaskLedgerPanelProps
             <div key={task.id} className="flex gap-3 relative">
               {/* Timeline node + connector */}
               <div className="flex flex-col items-center shrink-0 w-4">
-                <div className={`w-3 h-3 rounded-full border-2 shrink-0 ${STATUS_COLORS[task.status] ?? 'border-zinc-600 bg-zinc-800'} ${task.status === 'in-progress' ? 'animate-pulse' : ''}`} />
+                <div className={`w-3 h-3 rounded-full border-2 shrink-0 ${STATUS_COLORS[task.status] ?? 'border-border bg-secondary'} ${task.status === 'in-progress' ? 'animate-pulse' : ''}`} />
                 {!isLast && (
-                  <div className={`w-0.5 flex-1 min-h-[16px] ${LINE_COLORS[task.status] ?? 'bg-zinc-700'}`} />
+                  <div className={`w-0.5 flex-1 min-h-[16px] ${LINE_COLORS[task.status] ?? 'bg-muted-foreground/20'}`} />
                 )}
               </div>
 
               {/* Task content */}
               <div className="flex-1 min-w-0 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-zinc-200 truncate flex-1" title={task.description}>
-                    {hasDependency && idx === ledger.length - 1 && <span className="text-zinc-500 mr-1">↳</span>}
+                  <span className="text-sm text-foreground truncate flex-1" title={task.description}>
+                    {hasDependency && idx === ledger.length - 1 && <span className="text-foreground/60 mr-1">↳</span>}
                     {task.description}
                   </span>
                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
                     task.status === 'completed' ? 'bg-green-400/10 text-green-400'
                     : task.status === 'failed' ? 'bg-red-400/10 text-red-400'
                     : task.status === 'in-progress' ? 'bg-blue-400/10 text-blue-400'
-                    : 'bg-zinc-700 text-zinc-400'
+                    : 'bg-muted-foreground/20 text-foreground/70'
                   }`}>
                     {STATUS_LABELS[task.status] ?? task.status}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   {assigneeName && (
-                    <span className="text-xs text-zinc-500">{assigneeName}</span>
+                    <span className="text-xs text-foreground/60">{assigneeName}</span>
                   )}
                   {task.status === 'failed' && onRetry && (
                     <button

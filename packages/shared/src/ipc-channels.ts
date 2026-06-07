@@ -108,6 +108,11 @@ export const IPC = {
     SET_MIND_ENABLED: 'chatroom:set-mind-enabled',
     GET_DISABLED_MIND_IDS: 'chatroom:get-disabled-mind-ids',
     STATE_CHANGED: 'chatroom:state-changed',
+    LIST_SESSIONS: 'chatroom:list-sessions',
+    CREATE_SESSION: 'chatroom:create-session',
+    RESUME_SESSION: 'chatroom:resume-session',
+    RENAME_SESSION: 'chatroom:rename-session',
+    DELETE_SESSION: 'chatroom:delete-session',
   },
   UPDATER: {
     GET_STATE: 'updater:get-state',

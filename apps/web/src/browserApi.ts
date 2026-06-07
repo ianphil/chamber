@@ -34,6 +34,11 @@ function createBrowserChatroomApi(): ChatroomAPI {
     setMindEnabled: async () => unavailable('chatroom participant toggles'),
     getDisabledMindIds: async (): Promise<string[]> => [],
     onStateChanged: () => noopUnsubscribe,
+    listSessions: async () => [],
+    createSession: async () => unavailable('chatroom session create'),
+    resumeSession: async () => unavailable('chatroom session resume'),
+    renameSession: async () => unavailable('chatroom session rename'),
+    deleteSession: async () => unavailable('chatroom session delete'),
   };
 }
 

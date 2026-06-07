@@ -112,6 +112,11 @@ const electronAPI: ElectronAPI = {
     setMindEnabled: (mindId: string, enabled: boolean) => ipcRenderer.invoke(IPC.CHATROOM.SET_MIND_ENABLED, mindId, enabled),
     getDisabledMindIds: () => ipcRenderer.invoke(IPC.CHATROOM.GET_DISABLED_MIND_IDS),
     onStateChanged: (callback) => createIpcListener(ipcRenderer, IPC.CHATROOM.STATE_CHANGED, callback),
+    listSessions: () => ipcRenderer.invoke(IPC.CHATROOM.LIST_SESSIONS),
+    createSession: (title?: string) => ipcRenderer.invoke(IPC.CHATROOM.CREATE_SESSION, title),
+    resumeSession: (sessionId: string) => ipcRenderer.invoke(IPC.CHATROOM.RESUME_SESSION, sessionId),
+    renameSession: (sessionId: string, title: string) => ipcRenderer.invoke(IPC.CHATROOM.RENAME_SESSION, sessionId, title),
+    deleteSession: (sessionId: string) => ipcRenderer.invoke(IPC.CHATROOM.DELETE_SESSION, sessionId),
   },
   updater: {
     getState: () => ipcRenderer.invoke(IPC.UPDATER.GET_STATE),

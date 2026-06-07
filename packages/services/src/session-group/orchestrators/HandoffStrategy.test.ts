@@ -189,7 +189,44 @@ describe('HandoffStrategy', () => {
     expect((terminatedEvents[0].event as { data: Record<string, unknown> }).data.reason).toBe('MAX_HOPS');
   });
 
-  it('detects loops (A→B→A)', async () => {
+  it('allows a single hand-back to the originating agent (A→B→A)', async () => {
+    const sessA = createMockSession();
+    const sessB = createMockSession();
+    sessions.set('agent-a', sessA);
+    sessions.set('agent-b', sessB);
+
+    // A hands to B once, then on the hand-back completes the task.
+    let aCalls = 0;
+    sessA.send.mockImplementation(async () => {
+      aCalls += 1;
+      const content = aCalls === 1
+        ? '{"action": "handoff", "target_agent": "Beta", "reason": "need Beta"}'
+        : 'Wrapping up. {"action": "done", "reason": "resolved after hand-back"}';
+      setTimeout(() => {
+        sessA._emit('assistant.message', { data: { messageId: 'sdk-msg-a', content } });
+        sessA._emit('session.idle', {});
+      }, 0);
+    });
+    autoIdleWith(sessB, '{"action": "handoff", "target_agent": "Alpha", "reason": "back to Alpha"}');
+
+    const strategy = new HandoffStrategy({ maxHandoffHops: 10 });
+    const ctx = createContext(sessions);
+    const minds = [makeMind('agent-a', 'Alpha'), makeMind('agent-b', 'Beta')];
+
+    await strategy.execute('Help', minds, 'round-1', ctx);
+
+    // A→B→A is allowed: A runs twice (initial + hand-back), B runs once.
+    expect(sessA.send).toHaveBeenCalledTimes(2);
+    expect(sessB.send).toHaveBeenCalledTimes(1);
+
+    const terminatedEvents = (ctx as unknown as { _events: ChatroomStreamEvent[] })._events.filter(
+      (e) => e.event.type === 'orchestration:handoff-terminated',
+    );
+    expect(terminatedEvents).toHaveLength(1);
+    expect((terminatedEvents[0].event as { data: Record<string, unknown> }).data.reason).toBe('DONE');
+  });
+
+  it('detects ping-pong loops (A→B→A→B)', async () => {
     const sessA = createMockSession();
     const sessB = createMockSession();
     sessions.set('agent-a', sessA);
@@ -204,8 +241,9 @@ describe('HandoffStrategy', () => {
 
     await strategy.execute('Help', minds, 'round-1', ctx);
 
-    // A→B→(A is loop) — should detect loop before invoking A again
-    expect(sessA.send).toHaveBeenCalledTimes(1);
+    // A→B→A is allowed (A runs twice), but the repeated A→B transition trips
+    // the loop guard before B runs a second time.
+    expect(sessA.send).toHaveBeenCalledTimes(2);
     expect(sessB.send).toHaveBeenCalledTimes(1);
 
     const terminatedEvents = (ctx as unknown as { _events: ChatroomStreamEvent[] })._events.filter(

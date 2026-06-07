@@ -145,6 +145,44 @@ export interface ChatroomTranscript {
 }
 
 // ---------------------------------------------------------------------------
+// Chatroom sessions — named, persistent multi-agent transcripts
+// ---------------------------------------------------------------------------
+
+/**
+ * A single named chatroom session: title + persistence id + audit timestamps.
+ * Mirrors the lightweight ConversationSummary used for single-mind chat
+ * history; the full transcript lives in `ChatroomSessionRecord`.
+ */
+export interface ChatroomSessionSummary {
+  sessionId: string;
+  title: string;
+  /** ISO-8601 timestamp. */
+  createdAt: string;
+  /** ISO-8601 timestamp; bumped on every persist. */
+  updatedAt: string;
+  /** True for the session currently surfaced in the chatroom panel. */
+  active: boolean;
+  /** True once at least one user message has been recorded. */
+  hasMessages: boolean;
+}
+
+/**
+ * On-disk shape for a single chatroom session. Stored at
+ * `<userData>/chatroom-sessions/<sessionId>.json` (one file per session).
+ *
+ * Wraps the existing ChatroomTranscript shape with id/title/timestamps so
+ * loading or migrating a session reuses the same transcript code path.
+ */
+export interface ChatroomSessionRecord {
+  version: 1;
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  transcript: ChatroomTranscript;
+}
+
+// ---------------------------------------------------------------------------
 // Chatroom IPC events
 // ---------------------------------------------------------------------------
 
@@ -183,4 +221,23 @@ export interface ChatroomAPI {
   setMindEnabled: (mindId: string, enabled: boolean) => Promise<void>;
   getDisabledMindIds: () => Promise<string[]>;
   onStateChanged: (callback: (state: ChatroomStateChange) => void) => () => void;
+
+  // ---------------------------------------------------------------------
+  // Sessions
+  //
+  // Each session is a named, persisted chatroom transcript. The single-
+  // session methods above (send/history/clear/...) operate on the
+  // currently active session, set via `resumeSession`. `clear` only wipes
+  // the active session's transcript; use `deleteSession` to remove a
+  // session entirely.
+  // ---------------------------------------------------------------------
+  listSessions: () => Promise<ChatroomSessionSummary[]>;
+  createSession: (title?: string) => Promise<ChatroomSessionSummary>;
+  resumeSession: (sessionId: string) => Promise<{
+    session: ChatroomSessionSummary;
+    messages: ChatroomMessage[];
+    taskLedger: TaskLedgerItem[];
+  }>;
+  renameSession: (sessionId: string, title: string) => Promise<ChatroomSessionSummary[]>;
+  deleteSession: (sessionId: string) => Promise<ChatroomSessionSummary[]>;
 }

@@ -3,8 +3,13 @@ import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConversationSummary } from '@chamber/shared/types';
 import { useAppDispatch, useAppState } from '../../lib/store';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { useResizableWidth } from '../../hooks/useResizableWidth';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 import { Logger } from '../../lib/logger';
-import { cn } from '../../lib/utils';
+import { cn, formatRelativeTime } from '../../lib/utils';
+import { TooltipFor } from '../ui/tooltip';
+import { Skeleton } from '../ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +21,30 @@ import {
 
 const log = Logger.create('ConversationHistoryPanel');
 const HISTORY_COLLAPSED_STORAGE_KEY = 'chamber:conversation-history-collapsed';
+const HISTORY_WIDTH_STORAGE_KEY = 'chamber:conversation-history-width';
+
+// Placeholder rows shown while a mind's history is loading. Mirrors the real
+// grouped-row layout (bucket heading + indented rows) so the panel reserves
+// space and doesn't jump when conversations arrive.
+function HistorySkeleton() {
+  return (
+    <div data-testid="history-skeleton" className="space-y-3">
+      {[3, 2].map((rows, group) => (
+        <section key={group}>
+          <Skeleton className="mx-2 mb-2 h-2.5 w-16" />
+          <div className="space-y-1">
+            {Array.from({ length: rows }).map((_, row) => (
+              <div key={row} className="flex flex-col gap-1.5 px-2 py-2">
+                <Skeleton className="h-3 w-[80%]" />
+                <Skeleton className="h-2 w-12" />
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
 
 export function ConversationHistoryPanel() {
   const { activeMindId, conversationHistoryByMind, activeConversationByMind, conversationViewByMind, streamingByMind } = useAppState();
@@ -27,6 +56,20 @@ export function ConversationHistoryPanel() {
   const [pendingDeleteConversation, setPendingDeleteConversation] = useState<ConversationSummary | null>(null);
   const [loadingMindId, setLoadingMindId] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem(HISTORY_COLLAPSED_STORAGE_KEY) === 'true');
+  const { shouldAutoCollapseHistory } = useResponsiveLayout();
+  // Below `lg`, auto-collapse unless the user has explicitly expanded since the
+  // last narrow event. The explicit-expand bit is per-session (resets on reload).
+  const [explicitlyExpandedWhileNarrow, setExplicitlyExpandedWhileNarrow] = useState(false);
+  useEffect(() => {
+    if (!shouldAutoCollapseHistory) setExplicitlyExpandedWhileNarrow(false);
+  }, [shouldAutoCollapseHistory]);
+  const displayCollapsed = isCollapsed || (shouldAutoCollapseHistory && !explicitlyExpandedWhileNarrow);
+  const { width, handleProps, reset: resetWidth } = useResizableWidth({
+    storageKey: HISTORY_WIDTH_STORAGE_KEY,
+    defaultWidth: 320,
+    min: 240,
+    max: 560,
+  });
   const renameInputRef = useRef<HTMLInputElement>(null);
   const creatingConversationRef = useRef(false);
 
@@ -42,6 +85,8 @@ export function ConversationHistoryPanel() {
     : false;
   const isActiveMindBusy = isActiveMindStreaming || Boolean(activeConversationView?.modelSwitching);
   const isHistoryLoading = Boolean(activeMindId && loadingMindId === activeMindId && conversations === undefined);
+  // Grace-gate the skeleton so a fast history fetch doesn't flash a pulse.
+  const showHistorySkeleton = useDelayedFlag(isHistoryLoading);
   const selectedConversationError = selectedConversationId && activeConversationView?.sessionId === selectedConversationId
     ? activeConversationView.error
     : undefined;
@@ -85,6 +130,9 @@ export function ConversationHistoryPanel() {
     }).catch((error: unknown) => {
       log.warn('Failed to load conversation history:', error);
       if (!cancelled) {
+        // Record an empty history so the chat pane settles to its welcome
+        // state instead of waiting forever on a hydrating skeleton.
+        dispatch({ type: 'SET_CONVERSATION_HISTORY', payload: { mindId: activeMindId, conversations: [] } });
         setLoadingMindId((current) => current === activeMindId ? null : current);
       }
     });
@@ -180,6 +228,13 @@ export function ConversationHistoryPanel() {
   const setCollapsed = (nextCollapsed: boolean) => {
     setIsCollapsed(nextCollapsed);
     localStorage.setItem(HISTORY_COLLAPSED_STORAGE_KEY, String(nextCollapsed));
+    // If user explicitly expands while the viewport is narrow, remember that so
+    // we don't immediately auto-collapse them again on the next render.
+    if (!nextCollapsed && shouldAutoCollapseHistory) {
+      setExplicitlyExpandedWhileNarrow(true);
+    } else if (nextCollapsed) {
+      setExplicitlyExpandedWhileNarrow(false);
+    }
   };
 
   const performDeleteConversation = async (conversation: ConversationSummary) => {
@@ -228,51 +283,66 @@ export function ConversationHistoryPanel() {
     <aside
       aria-label="Conversation history"
       className={cn(
-        'shrink-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col transition-[width]',
-        isCollapsed ? 'w-10' : 'w-80',
+        'surface-panel relative shrink-0 bg-card/65 border border-border rounded-xl overflow-hidden flex flex-col',
+        displayCollapsed && 'w-10',
       )}
+      style={displayCollapsed ? undefined : { width }}
     >
-      {isCollapsed ? (
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          className="m-1 h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 flex items-center justify-center"
-          aria-label="Expand history panel"
-        >
-          <ChevronLeft size={15} />
-        </button>
+      {!displayCollapsed && (
+        <div
+          {...handleProps}
+          onDoubleClick={resetWidth}
+          aria-label="Resize history panel"
+          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-foreground/20 active:bg-foreground/30 transition-colors"
+        />
+      )}
+      {displayCollapsed ? (
+        <TooltipFor label="Expand history" side="left">
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            className="m-1 h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex items-center justify-center"
+            aria-label="Expand history panel"
+          >
+            <ChevronLeft size={15} />
+          </button>
+        </TooltipFor>
       ) : (
         <>
           <div className="h-10 border-b border-border px-3 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setCollapsed(true)}
-                className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 flex items-center justify-center"
-                aria-label="Collapse history panel"
-              >
-                <ChevronRight size={15} />
-              </button>
+              <TooltipFor label="Collapse history">
+                <button
+                  type="button"
+                  onClick={() => setCollapsed(true)}
+                  className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex items-center justify-center"
+                  aria-label="Collapse history panel"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </TooltipFor>
               <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 History
               </span>
             </div>
-            <button
-              type="button"
-              disabled={!activeMindId || isActiveMindBusy || isCreatingConversation}
-              onClick={() => { void startNewConversation(); }}
-              className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 flex items-center justify-center disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-              aria-label="New conversation"
-            >
-              <Plus size={15} />
-            </button>
+            <TooltipFor label="New conversation">
+              <button
+                type="button"
+                disabled={!activeMindId || isActiveMindBusy || isCreatingConversation}
+                onClick={() => { void startNewConversation(); }}
+                className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex items-center justify-center disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                aria-label="New conversation"
+              >
+                <Plus size={15} />
+              </button>
+            </TooltipFor>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
             {!activeMindId ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">Select an agent to see history</p>
             ) : isHistoryLoading ? (
-              <p className="px-2 py-3 text-xs text-muted-foreground">Loading history...</p>
+              showHistorySkeleton ? <HistorySkeleton /> : null
             ) : visibleConversations.length === 0 ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">No conversations yet</p>
             ) : null}
@@ -281,69 +351,91 @@ export function ConversationHistoryPanel() {
                 {selectedConversationError}
               </p>
             ) : null}
-            {visibleConversations.map((conversation) => {
-              const isSelected = conversation.sessionId === selectedConversationId || conversation.active;
+            {groupByRecency(visibleConversations).map((group) => (
+              <section key={group.bucket} className="mb-3 last:mb-0">
+                <h3 className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {BUCKET_LABEL[group.bucket]}
+                </h3>
+                {group.items.map((conversation) => {
+                  const isSelected = conversation.sessionId === selectedConversationId || conversation.active;
+                  const displayTitle = cleanTitle(conversation.title);
 
-              return (
-                <div
-                  key={conversation.sessionId}
-                  className={cn(
-                    'group flex items-center gap-2 rounded-lg border-l-2 px-2 py-2 transition-colors',
-                    isSelected
-                      ? 'border-l-primary bg-accent text-foreground'
-                      : 'border-l-transparent text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                  )}
-                >
-                  <button
-                    type="button"
-                    aria-label={`Resume ${conversation.title}`}
-                    disabled={isActiveMindBusy}
-                    onClick={() => { void resumeConversation(conversation.sessionId); }}
-                    className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
-                  >
-                    {renamingId === conversation.sessionId ? (
-                      <input
-                        ref={renameInputRef}
-                        value={renameValue}
-                        onChange={(event) => setRenameValue(event.target.value)}
-                        onKeyDown={(event) => handleRenameKeyDown(event, conversation.sessionId)}
-                        onBlur={() => { void completeRename(conversation.sessionId, renameValue.trim() || null); }}
-                        className="w-full rounded border border-primary bg-background px-1.5 py-0.5 text-sm text-foreground outline-none"
-                      />
-                    ) : (
-                      <>
-                        <div className="truncate text-sm font-medium">{conversation.title}</div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {formatRelativeTime(conversation.updatedAt)}
-                          {conversation.active ? ' · Active' : ''}
-                        </div>
-                      </>
-                    )}
-                  </button>
+                  return (
+                    <div
+                      key={conversation.sessionId}
+                      className={cn(
+                        'group flex items-center gap-2 rounded-lg border-l-2 px-2 py-2 transition-colors',
+                        isSelected
+                          ? 'border-l-foreground bg-selected text-foreground'
+                          : 'border-l-transparent text-muted-foreground hover:text-foreground hover:bg-hover'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Resume ${displayTitle}`}
+                        disabled={isActiveMindBusy}
+                        onClick={() => { void resumeConversation(conversation.sessionId); }}
+                        className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
+                      >
+                        {renamingId === conversation.sessionId ? (
+                          <div className="space-y-1">
+                            <input
+                              ref={renameInputRef}
+                              value={renameValue}
+                              onChange={(event) => setRenameValue(event.target.value)}
+                              onKeyDown={(event) => handleRenameKeyDown(event, conversation.sessionId)}
+                              onBlur={() => { void completeRename(conversation.sessionId, renameValue.trim() || null); }}
+                              className="w-full rounded border border-primary bg-background px-1.5 py-0.5 text-sm text-foreground outline-none"
+                            />
+                            <p className="text-[10px] text-muted-foreground/80">
+                              <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[9px] font-mono">↵</kbd> save · <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[9px] font-mono">esc</kbd> cancel
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="truncate text-sm font-medium">{displayTitle}</div>
+                            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <span>{formatRelativeTime(conversation.updatedAt)}</span>
+                              {conversation.active ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-genesis/15 px-1.5 py-px text-[10px] font-medium text-genesis">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-genesis animate-pulse" />
+                                  Active
+                                </span>
+                              ) : null}
+                            </div>
+                          </>
+                        )}
+                      </button>
 
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => startRename(conversation)}
-                      disabled={isActiveMindBusy || deletingId === conversation.sessionId}
-                      className="h-7 w-7 rounded-md text-muted-foreground opacity-0 hover:text-foreground hover:bg-accent group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={`Rename ${conversation.title}`}
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { void deleteConversation(conversation); }}
-                      disabled={isActiveMindBusy || deletingId !== null}
-                      className="h-7 w-7 rounded-md text-muted-foreground opacity-0 hover:text-destructive hover:bg-destructive/10 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={`Delete ${conversation.title}`}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                      <div className="flex items-center">
+                        <TooltipFor label="Rename">
+                          <button
+                            type="button"
+                            onClick={() => startRename(conversation)}
+                            disabled={isActiveMindBusy || deletingId === conversation.sessionId}
+                            className="h-7 w-7 rounded-md text-muted-foreground opacity-40 hover:text-foreground hover:bg-accent hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
+                            aria-label={`Rename ${displayTitle}`}
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </TooltipFor>
+                        <TooltipFor label="Delete">
+                          <button
+                            type="button"
+                            onClick={() => { void deleteConversation(conversation); }}
+                            disabled={isActiveMindBusy || deletingId !== null}
+                            className="h-7 w-7 rounded-md text-muted-foreground opacity-40 hover:text-destructive hover:bg-destructive/10 hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
+                            aria-label={`Delete ${displayTitle}`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </TooltipFor>
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
           </div>
         </>
       )}
@@ -362,7 +454,7 @@ export function ConversationHistoryPanel() {
               type="button"
               onClick={() => setPendingDeleteConversation(null)}
               disabled={deletingId !== null}
-              className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50"
+              className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
               Cancel
             </button>
@@ -381,14 +473,57 @@ export function ConversationHistoryPanel() {
   );
 }
 
-function formatRelativeTime(value: string): string {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+// Drop the absolute timestamp baked into auto-generated titles like
+// `New chat · 6/3/2026, 9:39:42 AM`. Until the first user prompt summarizes
+// the thread, the row badge already shows the relative time -- showing the
+// same instant twice in two formats is noisy.
+function cleanTitle(title: string): string {
+  // Match "New chat · <anything>" and trim the timestamp tail.
+  if (/^New chat\s*[·:]/i.test(title)) return 'New chat';
+  return title;
+}
+
+type ConversationBucket = 'today' | 'yesterday' | 'older';
+
+const BUCKET_LABEL: Record<ConversationBucket, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  older: 'Older',
+};
+
+function bucketFor(timestamp: number, now: Date = new Date()): ConversationBucket {
+  const d = new Date(timestamp);
+  const sameDay = d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+  if (sameDay) return 'today';
+
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const wasYesterday = d.getFullYear() === yesterday.getFullYear()
+    && d.getMonth() === yesterday.getMonth()
+    && d.getDate() === yesterday.getDate();
+  if (wasYesterday) return 'yesterday';
+
+  return 'older';
+}
+
+// Group an already-sorted (newest-first) conversation list into recency
+// buckets while preserving order within each bucket.
+function groupByRecency(
+  conversations: ConversationSummary[],
+  now: Date = new Date(),
+): Array<{ bucket: ConversationBucket; items: ConversationSummary[] }> {
+  const groups: Array<{ bucket: ConversationBucket; items: ConversationSummary[] }> = [];
+  for (const c of conversations) {
+    const ts = Date.parse(c.updatedAt);
+    if (Number.isNaN(ts)) continue;
+    const b = bucketFor(ts, now);
+    const last = groups[groups.length - 1];
+    if (last && last.bucket === b) {
+      last.items.push(c);
+    } else {
+      groups.push({ bucket: b, items: [c] });
+    }
+  }
+  return groups;
 }

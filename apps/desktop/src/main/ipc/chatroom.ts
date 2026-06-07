@@ -102,6 +102,48 @@ export function setupChatroomIPC(chatroomService: ChatroomService): void {
     return chatroomService.getDisabledMindIds();
   });
 
+  // ---------------------------------------------------------------------
+  // Sessions
+  //
+  // Thin adapters: every method delegates to ChatroomService and returns
+  // either a single summary, a list, or a (session, messages, taskLedger)
+  // resume payload. Errors propagate as Promise rejections so the
+  // renderer can show them via the existing alert / toast surface.
+  // ---------------------------------------------------------------------
+
+  ipcMain.handle(IPC.CHATROOM.LIST_SESSIONS, async () => {
+    return chatroomService.listSessions();
+  });
+
+  ipcMain.handle(IPC.CHATROOM.CREATE_SESSION, async (_event, title?: unknown) => {
+    const cleaned = typeof title === 'string' ? title : undefined;
+    return chatroomService.createSession(cleaned);
+  });
+
+  ipcMain.handle(IPC.CHATROOM.RESUME_SESSION, async (_event, sessionId: unknown) => {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('resumeSession requires a sessionId');
+    }
+    return chatroomService.resumeSession(sessionId);
+  });
+
+  ipcMain.handle(IPC.CHATROOM.RENAME_SESSION, async (_event, sessionId: unknown, title: unknown) => {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('renameSession requires a sessionId');
+    }
+    if (typeof title !== 'string') {
+      throw new Error('renameSession requires a title');
+    }
+    return chatroomService.renameSession(sessionId, title);
+  });
+
+  ipcMain.handle(IPC.CHATROOM.DELETE_SESSION, async (_event, sessionId: unknown) => {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('deleteSession requires a sessionId');
+    }
+    return chatroomService.deleteSession(sessionId);
+  });
+
   // Forward chatroom streaming events to all renderer windows.
   // The 'chatroom:event' string passed to chatroomService.on(...) is an internal
   // EventEmitter event name on the service, not an IPC wire channel; the

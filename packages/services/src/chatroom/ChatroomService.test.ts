@@ -14,6 +14,8 @@ vi.mock('node:fs', () => ({
   renameSync: vi.fn(),
   mkdirSync: vi.fn(),
   unlinkSync: vi.fn(),
+  readdirSync: vi.fn(() => []),
+  rmSync: vi.fn(),
 }));
 
 // Mock node:crypto for UUID generation
@@ -24,7 +26,7 @@ vi.mock('node:crypto', () => ({
 
 import * as fs from 'node:fs';
 import { ChatroomService, type ChatroomSessionFactory } from './ChatroomService';
-import type { ChatroomMessage, ChatroomStreamEvent } from '@chamber/shared/chatroom-types';
+import type { ChatroomStreamEvent } from '@chamber/shared/chatroom-types';
 import type { MindContext } from '@chamber/shared/types';
 import type { PermissionHandler } from '@github/copilot-sdk';
 import type { AppPaths } from '../ports';
@@ -310,132 +312,15 @@ describe('ChatroomService', () => {
     });
   });
 
-  // 7. Incremental persistence
-  describe('incremental persistence', () => {
-    it('saves user message immediately, agent replies on completion', async () => {
-      const sess = createMockSession();
-      sessions.set('dude', sess);
-      minds.length = 0;
-      minds.push(makeMind('dude', 'The Dude'));
-
-      const writeTimestamps: string[] = [];
-      vi.mocked(fs.writeFileSync).mockImplementation((_p, data) => {
-        writeTimestamps.push(data as string);
-      });
-      vi.mocked(fs.renameSync).mockImplementation(vi.fn());
-
-      autoIdle(sess);
-      await svc.broadcast('Hello');
-
-      // Should have at least 2 writes: one for user message, one after agent reply
-      expect(writeTimestamps.length).toBeGreaterThanOrEqual(2);
-
-      // First write should contain user message but not agent reply
-      const firstWrite = JSON.parse(writeTimestamps[0]) as { messages: Array<{ role: string }> };
-      expect(firstWrite.messages.some((m) => m.role === 'user')).toBe(true);
-      expect(firstWrite.messages.some((m) => m.role === 'assistant')).toBe(false);
-
-      // Last write should contain both
-      const lastWrite = JSON.parse(writeTimestamps[writeTimestamps.length - 1]) as { messages: Array<{ role: string }> };
-      expect(lastWrite.messages.some((m) => m.role === 'user')).toBe(true);
-      expect(lastWrite.messages.some((m) => m.role === 'assistant')).toBe(true);
-    });
-
-    it('debounces ledger-update persistence into a single write', async () => {
-      vi.useFakeTimers();
-      try {
-        vi.mocked(fs.writeFileSync).mockClear();
-        vi.mocked(fs.renameSync).mockImplementation(vi.fn());
-
-        // Fire a burst of task-ledger-update events (Magentic emits one per
-        // task transition + per parallel-worker completion).
-        for (let i = 0; i < 25; i++) {
-          svc.emit('chatroom:event', {
-            roundId: 'r1',
-            mindId: 'magentic-orchestrator',
-            event: {
-              type: 'orchestration:task-ledger-update',
-              data: { ledger: [{ id: `t${i}`, description: `task ${i}`, status: 'pending' }] },
-            },
-          });
-        }
-
-        // Synchronous burst MUST NOT have triggered a write.
-        expect(fs.writeFileSync).not.toHaveBeenCalled();
-
-        // Advance past the debounce window — exactly one write should land.
-        await vi.advanceTimersByTimeAsync(600);
-        expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-  });
-
-  // 8. Persistence cap
-  describe('persistence cap', () => {
-    it('trims to 500 messages on save', async () => {
-      // Pre-load 499 messages
-      const existingMessages: ChatroomMessage[] = [];
-      for (let i = 0; i < 499; i++) {
-        existingMessages.push({
-          id: `old-${i}`,
-          role: 'user',
-          blocks: [{ type: 'text', content: `msg ${i}` }],
-          timestamp: i,
-          sender: { mindId: 'user', name: 'You' },
-          roundId: `round-${i}`,
-        });
-      }
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(
-        JSON.stringify({ version: 1, messages: existingMessages }),
-      );
-
-      // Only one mind so we don't have dangling sessions
-      minds.length = 0;
-      minds.push(makeMind('dude', 'The Dude'));
-
-      const sess = createMockSession();
-      sessions.set('dude', sess);
-      autoIdle(sess);
-
-      svc = new ChatroomService(factory, mockAppPaths);
-
-      await svc.broadcast('New message');
-
-      // Check written data — should be capped at 500
-      const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-      const lastWrite = writeCall[writeCall.length - 1];
-      const written = JSON.parse(lastWrite[1] as string);
-      expect(written.messages.length).toBeLessThanOrEqual(500);
-    });
-  });
-
-  // 9. Persistence loading
-  describe('persistence loading', () => {
-    it('loads existing transcript on construction', async () => {
-      const existing: ChatroomMessage[] = [
-        {
-          id: 'prev-1',
-          role: 'user',
-          blocks: [{ type: 'text', content: 'Old message' }],
-          timestamp: 1000,
-          sender: { mindId: 'user', name: 'You' },
-          roundId: 'old-round',
-        },
-      ];
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(
-        JSON.stringify({ version: 1, messages: existing }),
-      );
-
-      const loaded = new ChatroomService(factory, mockAppPaths);
-      const history = loaded.getHistory();
-      expect(history).toHaveLength(1);
-      expect(history[0].id).toBe('prev-1');
-    });
-  });
+  // 7. Incremental persistence + persistence cap + persistence loading
+  //
+  // The original three describes here asserted internal fs.writeFileSync
+  // call patterns against the legacy single-file `chatroom.json` layout.
+  // Persistence now lives in ChatroomSessionStore (covered by
+  // ChatroomSessionStore.test.ts with real fs in os.tmpdir), and the
+  // end-to-end session API is covered by ChatroomService.sessions.test.ts.
+  // The fs-mock-driven assertions were dropped to avoid coupling these
+  // behavior tests to disk-layout details that are exercised elsewhere.
 
   // 10. Mid-round send
   describe('mid-round send', () => {
@@ -863,39 +748,12 @@ describe('ChatroomService', () => {
       expect(stateChanges[1]).toEqual({ disabledMindIds: [] });
     });
 
-    it('persists disabledMindIds in chatroom.json', () => {
-      svc.setMindEnabled('dude', false);
-
-      const writes = vi.mocked(fs.writeFileSync).mock.calls;
-      const lastWrite = writes[writes.length - 1];
-      const transcript = JSON.parse(lastWrite[1] as string);
-      expect(transcript.disabledMindIds).toEqual(['dude']);
-    });
-
-    it('loads disabledMindIds defensively from a prior transcript', () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-        version: 1,
-        messages: [],
-        disabledMindIds: ['dude', 42, null, 'jarvis'], // mixed garbage
-      }));
-
-      const fresh = new ChatroomService(factory, mockAppPaths);
-      expect(fresh.getDisabledMindIds().sort()).toEqual(['dude', 'jarvis']);
-    });
-
-    it('still loads transcript when disabledMindIds is malformed (not an array)', () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-        version: 1,
-        messages: [{ id: 'm1', role: 'user', blocks: [{ type: 'text', content: 'hi' }], timestamp: 1, sender: { mindId: 'user', name: 'You' }, roundId: 'r1' }],
-        disabledMindIds: 'not-an-array',
-      }));
-
-      const fresh = new ChatroomService(factory, mockAppPaths);
-      expect(fresh.getHistory()).toHaveLength(1);
-      expect(fresh.getDisabledMindIds()).toEqual([]);
-    });
+    // The three previously-here cases asserted on the legacy `chatroom.json`
+    // single-file layout: persisted-disabledMindIds, defensive load of mixed
+    // ids, and tolerating a malformed disabledMindIds field. With sessions
+    // the disabled-mind set is per-session and lives in the session record,
+    // covered by ChatroomSessionStore.test.ts and the session API tests in
+    // ChatroomService.sessions.test.ts.
 
     it('all-disabled produces a system message and no agent invocation', async () => {
       const dudeSess = createMockSession();
