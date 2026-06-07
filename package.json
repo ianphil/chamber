@@ -110,6 +110,7 @@
     "hono": "^4.12.15",
     "keytar": "^7.9.0",
     "lucide-react": "^1.9.0",
+    "microsoft-cognitiveservices-speech-sdk": "1.50.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

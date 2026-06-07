@@ -209,6 +209,14 @@ export function mockElectronAPI(): ElectronAPI {
       restartAgents: vi.fn().mockResolvedValue({ success: true, restartedCount: 0 }),
       onChanged: vi.fn().mockReturnValue(vi.fn()),
     },
+    azureSpeech: {
+      get: vi.fn().mockResolvedValue(null),
+      save: vi.fn().mockResolvedValue({ success: true }),
+      disable: vi.fn().mockResolvedValue({ success: true }),
+      test: vi.fn().mockResolvedValue({ ok: true }),
+      mintToken: vi.fn().mockResolvedValue(null),
+      onChanged: vi.fn().mockReturnValue(vi.fn()),
+    },
     genesis: {
       getDefaultPath: vi.fn().mockResolvedValue('C:\\Users\\test\\agents'),
       pickPath: vi.fn().mockResolvedValue(null),
@@ -344,7 +352,7 @@ export function mockElectronAPI(): ElectronAPI {
       close: vi.fn(),
     },
     app: {
-      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false }),
+      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false, azureSpeech: false }),
       onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     },
   };

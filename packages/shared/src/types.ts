@@ -519,6 +519,49 @@ export interface ByoLlmSaveResult {
   error?: string;
 }
 
+// Azure Speech (voice) — speech-to-text + text-to-speech configuration.
+// The subscription key is stored in the OS keychain; only non-secret metadata
+// is persisted to disk. The renderer authenticates with short-lived tokens
+// minted by the main process, never the key itself.
+// ---------------------------------------------------------------------------
+export interface AzureSpeechConfig {
+  enabled: boolean;
+  /** Azure region of the Speech resource, e.g. 'eastus'. */
+  region: string;
+  /** STT recognition language BCP-47 tag, e.g. 'en-US'. */
+  sttLanguage?: string;
+  /** Default neural TTS voice, e.g. 'en-US-AvaNeural'. */
+  ttsVoice?: string;
+  /** Subscription key — secret. Present only on the save round-trip from the
+   * renderer; never returned to the renderer (redacted/masked). */
+  apiKey?: string;
+}
+
+/** Short-lived authorization token the renderer Speech SDK uses to connect. */
+export interface AzureSpeechToken {
+  token: string;
+  region: string;
+  /** Epoch milliseconds at which the token expires. */
+  expiresAt: number;
+}
+
+export interface AzureSpeechTestSuccess {
+  ok: true;
+}
+
+export interface AzureSpeechTestFailure {
+  ok: false;
+  error: string;
+  status?: number;
+}
+
+export type AzureSpeechTestResult = AzureSpeechTestSuccess | AzureSpeechTestFailure;
+
+export interface AzureSpeechSaveResult {
+  success: boolean;
+  error?: string;
+}
+
 /**
  * Per-step progress event broadcast from the main process to all renderer
  * windows while the app boots. Drives the boot-screen activity log (#56) so

@@ -249,6 +249,14 @@ export function installBrowserApi(): void {
       restartAgents: async () => ({ success: false, restartedCount: 0, error: 'Agent restart is desktop-only in browser mode.' }),
       onChanged: () => noopUnsubscribe,
     },
+    azureSpeech: {
+      get: async () => null,
+      save: async () => ({ success: false, error: 'Voice is desktop-only in browser mode.' }),
+      disable: async () => ({ success: false, error: 'Voice is desktop-only in browser mode.' }),
+      test: async () => ({ ok: false, error: 'Voice testing is desktop-only in browser mode.' }),
+      mintToken: async () => null,
+      onChanged: () => noopUnsubscribe,
+    },
     genesis: {
       getDefaultPath: async () => '',
       pickPath: async () => null,

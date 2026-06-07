@@ -69,6 +69,14 @@ const electronAPI: ElectronAPI = {
     restartAgents: () => ipcRenderer.invoke(IPC.BYO_LLM.RESTART_AGENTS),
     onChanged: (callback) => createIpcListener(ipcRenderer, IPC.BYO_LLM.CHANGED, callback),
   },
+  azureSpeech: {
+    get: () => ipcRenderer.invoke(IPC.AZURE_SPEECH.GET),
+    save: (config) => ipcRenderer.invoke(IPC.AZURE_SPEECH.SAVE, config),
+    disable: () => ipcRenderer.invoke(IPC.AZURE_SPEECH.DISABLE),
+    test: (config) => ipcRenderer.invoke(IPC.AZURE_SPEECH.TEST, config),
+    mintToken: () => ipcRenderer.invoke(IPC.AZURE_SPEECH.MINT_TOKEN),
+    onChanged: (callback) => createIpcListener(ipcRenderer, IPC.AZURE_SPEECH.CHANGED, callback),
+  },
   genesis: {
     getDefaultPath: () => ipcRenderer.invoke(IPC.GENESIS.GET_DEFAULT_PATH),
     pickPath: () => ipcRenderer.invoke(IPC.GENESIS.PICK_PATH),

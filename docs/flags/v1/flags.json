@@ -5,12 +5,14 @@
     "stable": {
       "switchboardRelay": false,
       "byoLlm": false,
-      "chamberCopilot": false
+      "chamberCopilot": false,
+      "azureSpeech": false
     },
     "insiders": {
       "switchboardRelay": true,
       "byoLlm": true,
-      "chamberCopilot": true
+      "chamberCopilot": true,
+      "azureSpeech": true
     }
   }
 }

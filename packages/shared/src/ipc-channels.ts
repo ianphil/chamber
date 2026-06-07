@@ -96,6 +96,14 @@ export const IPC = {
     RESTART_AGENTS: 'byoLlm:restartAgents',
     CHANGED: 'byoLlm:changed',
   },
+  AZURE_SPEECH: {
+    GET: 'azureSpeech:get',
+    SAVE: 'azureSpeech:save',
+    DISABLE: 'azureSpeech:disable',
+    TEST: 'azureSpeech:test',
+    MINT_TOKEN: 'azureSpeech:mintToken',
+    CHANGED: 'azureSpeech:changed',
+  },
   CHATROOM: {
     SEND: 'chatroom:send',
     HISTORY: 'chatroom:history',

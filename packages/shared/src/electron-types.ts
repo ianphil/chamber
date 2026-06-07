@@ -28,6 +28,10 @@ import type {
   AgentProfileAvatarSaveRequest,
   AgentProfileSaveRequest,
   AgentProfileSaveResult,
+  AzureSpeechConfig,
+  AzureSpeechSaveResult,
+  AzureSpeechTestResult,
+  AzureSpeechToken,
   ByoLlmConfig,
   ByoLlmProbeResult,
   ByoLlmSaveResult,
@@ -173,6 +177,14 @@ export interface ElectronAPI {
     probe: (config: ByoLlmConfig) => Promise<ByoLlmProbeResult>;
     restartAgents: () => Promise<{ success: boolean; restartedCount: number; error?: string }>;
     onChanged: (callback: (config: ByoLlmConfig | null) => void) => () => void;
+  };
+  azureSpeech: {
+    get: () => Promise<AzureSpeechConfig | null>;
+    save: (config: AzureSpeechConfig) => Promise<AzureSpeechSaveResult>;
+    disable: () => Promise<AzureSpeechSaveResult>;
+    test: (config: AzureSpeechConfig) => Promise<AzureSpeechTestResult>;
+    mintToken: () => Promise<AzureSpeechToken | null>;
+    onChanged: (callback: (config: AzureSpeechConfig | null) => void) => () => void;
   };
   window: {
     minimize: () => void;

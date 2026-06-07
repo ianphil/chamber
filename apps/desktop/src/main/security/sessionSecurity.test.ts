@@ -10,14 +10,14 @@ interface FakeWebRequest {
 }
 interface FakeSession {
   webRequest: FakeWebRequest;
-  setPermissionRequestHandler: (cb: (wc: unknown, permission: string, callback: (allow: boolean) => void) => void) => void;
-  setPermissionCheckHandler: (cb: (wc: unknown, permission: string) => boolean) => void;
+  setPermissionRequestHandler: (cb: (wc: unknown, permission: string, callback: (allow: boolean) => void, details?: unknown) => void) => void;
+  setPermissionCheckHandler: (cb: (wc: unknown, permission: string, origin?: string, details?: unknown) => boolean) => void;
 }
 
 function fakeSession() {
   let headersHandler: ((details: { responseHeaders?: Record<string, string[]>; resourceType?: string }, callback: (response: { responseHeaders?: Record<string, string[]> }) => void) => void) | null = null;
-  let permissionRequestHandler: ((wc: unknown, permission: string, callback: (allow: boolean) => void) => void) | null = null;
-  let permissionCheckHandler: ((wc: unknown, permission: string) => boolean) | null = null;
+  let permissionRequestHandler: ((wc: unknown, permission: string, callback: (allow: boolean) => void, details?: unknown) => void) | null = null;
+  let permissionCheckHandler: ((wc: unknown, permission: string, origin?: string, details?: unknown) => boolean) | null = null;
 
   const session: FakeSession = {
     webRequest: {
@@ -33,13 +33,13 @@ function fakeSession() {
       if (!headersHandler) throw new Error('onHeadersReceived not registered');
       return new Promise((resolve) => headersHandler!(details, resolve));
     },
-    invokePermissionRequest(permission: string): Promise<boolean> {
+    invokePermissionRequest(permission: string, details?: unknown): Promise<boolean> {
       if (!permissionRequestHandler) throw new Error('setPermissionRequestHandler not called');
-      return new Promise((resolve) => permissionRequestHandler!({}, permission, resolve));
+      return new Promise((resolve) => permissionRequestHandler!({}, permission, resolve, details));
     },
-    invokePermissionCheck(permission: string): boolean {
+    invokePermissionCheck(permission: string, details?: unknown): boolean {
       if (!permissionCheckHandler) throw new Error('setPermissionCheckHandler not called');
-      return permissionCheckHandler({}, permission);
+      return permissionCheckHandler({}, permission, '', details);
     },
   };
 }
@@ -87,6 +87,13 @@ describe('buildContentSecurityPolicy', () => {
     expect(csp).not.toMatch(/connect-src [^;]*api\.github\.com/);
     expect(csp).not.toMatch(/connect-src [^;]*api\.githubcopilot\.com/);
     expect(csp).not.toMatch(/connect-src [^;]*[^.]github\.com/);
+  });
+
+  it('allows the Azure Speech STT/TTS endpoints in connect-src for the renderer Speech SDK', () => {
+    const csp = buildContentSecurityPolicy('production');
+    expect(csp).toMatch(/connect-src [^;]*wss:\/\/\*\.stt\.speech\.microsoft\.com/);
+    expect(csp).toMatch(/connect-src [^;]*wss:\/\/\*\.tts\.speech\.microsoft\.com/);
+    expect(csp).toMatch(/connect-src [^;]*https:\/\/\*\.api\.cognitive\.microsoft\.com/);
   });
 });
 
@@ -171,11 +178,36 @@ describe('installPermissionHandlers', () => {
     expect(fake.invokePermissionCheck('notifications')).toBe(true);
   });
 
-  it('denies media, geolocation, midi, and other non-allowlisted permissions', async () => {
+  it('allows microphone capture (audio media) when the voice feature is enabled', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { isAudioCaptureEnabled: () => true });
+
+    expect(await fake.invokePermissionRequest('media', { mediaTypes: ['audio'] })).toBe(true);
+    expect(fake.invokePermissionCheck('media', { mediaType: 'audio' })).toBe(true);
+  });
+
+  it('denies microphone capture when the voice feature is disabled (default)', async () => {
     const fake = fakeSession();
     installPermissionHandlers(fake.session as never);
 
-    for (const permission of ['media', 'geolocation', 'midi', 'pointerLock', 'fullscreen', 'clipboard-read']) {
+    expect(await fake.invokePermissionRequest('media', { mediaTypes: ['audio'] })).toBe(false);
+    expect(fake.invokePermissionCheck('media', { mediaType: 'audio' })).toBe(false);
+  });
+
+  it('denies camera capture (video media) even when the voice feature is enabled', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { isAudioCaptureEnabled: () => true });
+
+    expect(await fake.invokePermissionRequest('media', { mediaTypes: ['video'] })).toBe(false);
+    expect(await fake.invokePermissionRequest('media', { mediaTypes: ['audio', 'video'] })).toBe(false);
+    expect(fake.invokePermissionCheck('media', { mediaType: 'video' })).toBe(false);
+  });
+
+  it('denies geolocation, midi, and other non-allowlisted permissions', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { isAudioCaptureEnabled: () => true });
+
+    for (const permission of ['geolocation', 'midi', 'pointerLock', 'fullscreen', 'clipboard-read']) {
       expect(await fake.invokePermissionRequest(permission)).toBe(false);
       expect(fake.invokePermissionCheck(permission)).toBe(false);
     }

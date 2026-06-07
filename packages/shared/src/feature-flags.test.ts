@@ -21,6 +21,7 @@ describe('feature flags', () => {
       switchboardRelay: true,
       byoLlm: true,
       chamberCopilot: true,
+      azureSpeech: true,
     });
   });
 
@@ -33,6 +34,7 @@ describe('feature flags', () => {
       switchboardRelay: true,
       byoLlm: true,
       chamberCopilot: true,
+      azureSpeech: true,
     });
   });
 
@@ -43,11 +45,13 @@ describe('feature flags', () => {
         switchboardRelay: false,
         byoLlm: true,
         chamberCopilot: false,
+        azureSpeech: false,
       },
     })).toEqual({
       switchboardRelay: false,
       byoLlm: true,
       chamberCopilot: false,
+      azureSpeech: false,
     });
   });
 
@@ -67,6 +71,7 @@ describe('feature flags', () => {
       switchboardRelay: true,
       byoLlm: false,
       chamberCopilot: false,
+      azureSpeech: false,
     });
   });
 
@@ -76,15 +81,15 @@ describe('feature flags', () => {
       updatedAt: '2026-05-17T21:00:00Z',
       ignored: true,
       channels: {
-        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false },
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, futureFlag: true },
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, azureSpeech: false },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, azureSpeech: true, futureFlag: true },
       },
     })).toEqual({
       version: 1,
       updatedAt: '2026-05-17T21:00:00Z',
       channels: {
         stable: DEFAULT_APP_FEATURE_FLAGS,
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, azureSpeech: true },
       },
     });
   });
@@ -104,7 +109,7 @@ describe('feature flags', () => {
       updatedAt: '2026-05-17T21:00:00Z',
       channels: {
         stable: DEFAULT_APP_FEATURE_FLAGS,
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, azureSpeech: true },
       },
     });
   });

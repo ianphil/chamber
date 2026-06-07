@@ -72,6 +72,7 @@ import {
   SQLiteLedgerStore,
   setSqliteDatabase,
   ByoLlmStore,
+  AzureSpeechStore,
   buildProviderConfig,
   createByoLlmModelsProvider,
   probeEndpoint,
@@ -107,6 +108,7 @@ import { setupToolsIPC } from './main/ipc/tools';
 import { setupTasksIPC } from './main/ipc/tasks';
 import { setupAuthIPC } from './main/ipc/auth';
 import { setupByoLlmIPC } from './main/ipc/byoLlm';
+import { setupAzureSpeechIPC } from './main/ipc/azureSpeech';
 import { setupA2AIPC } from './main/ipc/a2a';
 import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
@@ -222,6 +224,7 @@ let agentCardRegistry: AgentCardRegistry;
 let taskManager: TaskManager;
 let byoLlmStore: ByoLlmStore;
 let cachedByoLlmConfig: import('@chamber/shared/types').ByoLlmConfig | null = null;
+let azureSpeechStore: AzureSpeechStore;
 let mindManager: MindManager;
 let mindProfileService: MindProfileService;
 let userProfileService: UserProfileService;
@@ -327,6 +330,7 @@ async function initializeRuntime(): Promise<void> {
   const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
   const turnQueue = new TurnQueue();
   byoLlmStore = new ByoLlmStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA, credentials: credentialStore });
+  azureSpeechStore = new AzureSpeechStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA, credentials: credentialStore });
   mindManager = new MindManager(
     clientFactory,
     identityLoader,
@@ -763,7 +767,9 @@ app.on('ready', async () => {
   }
 
   installContentSecurityPolicy(session.defaultSession, app.isPackaged ? 'production' : 'development');
-  installPermissionHandlers(session.defaultSession);
+  installPermissionHandlers(session.defaultSession, {
+    isAudioCaptureEnabled: () => appFeatureFlags.azureSpeech,
+  });
 
   cleanupLegacySquirrelInstall({ isPackaged: app.isPackaged })
     .then((result) => {
@@ -835,6 +841,9 @@ app.on('ready', async () => {
   setupByoLlmIPC(byoLlmStore, mindManager, {
     featureEnabled: appFeatureFlags.byoLlm,
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },
+  });
+  setupAzureSpeechIPC(azureSpeechStore, {
+    featureEnabled: appFeatureFlags.azureSpeech,
   });
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,
