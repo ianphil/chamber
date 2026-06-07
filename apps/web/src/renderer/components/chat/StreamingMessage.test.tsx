@@ -30,6 +30,7 @@ describe('StreamingMessage', () => {
     const block = makeToolCallBlock({ toolName: 'read_file', status: 'running' });
     render(<StreamingMessage blocks={[block]} />);
     expect(screen.getByText(/Tool calls \(1\)/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Tool calls \(1\)/ }));
     expect(screen.getByText('read_file')).toBeTruthy();
   });
 
@@ -38,6 +39,7 @@ describe('StreamingMessage', () => {
     render(<StreamingMessage blocks={[block]} />);
     expect(screen.getByText(/Work log \(1\)/)).toBeTruthy();
     expect(screen.queryByText(/detail-only-line/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Work log \(1\)/ }));
     fireEvent.click(screen.getByRole('button', { name: /Thought/ }));
     expect(screen.getByText(/detail-only-line/)).toBeTruthy();
   });

@@ -31,6 +31,7 @@ export function WorkEntryRow({ entry, autoExpand = false }: Props) {
   const { Icon, iconClass } = iconAndTone(entry);
   const heading = headingFor(entry);
   const preview = entry.preview;
+  const isReasoning = entry.kind === 'reasoning';
 
   return (
     <div className="rounded-md">
@@ -53,9 +54,21 @@ export function WorkEntryRow({ entry, autoExpand = false }: Props) {
           )}
         />
         <Icon className={cn('h-3.5 w-3.5 shrink-0', iconClass)} />
-        <span className="shrink-0 font-mono font-medium text-foreground/90">{heading}</span>
+        <span
+          className={cn(
+            'shrink-0 font-medium',
+            isReasoning ? 'italic text-muted-foreground/80' : 'font-mono text-foreground/90',
+          )}
+        >
+          {heading}
+        </span>
         {preview && (
-          <span className="ml-1 min-w-0 flex-1 truncate font-mono text-muted-foreground/70">
+          <span
+            className={cn(
+              'ml-1 min-w-0 flex-1 truncate text-muted-foreground/70',
+              isReasoning ? 'italic' : 'font-mono',
+            )}
+          >
             {preview}
           </span>
         )}
@@ -112,7 +125,7 @@ function iconAndTone(entry: WorkEntry): { Icon: ReturnType<typeof iconForToolNam
   const Icon = iconForToolName(entry.toolName);
   const iconClass =
     entry.status === 'error'
-      ? 'text-destructive-foreground'
+      ? 'text-destructive'
       : entry.status === 'running'
         ? 'text-genesis'
         : 'text-foreground/80';
@@ -125,7 +138,7 @@ function StatusGlyph({ status }: { status: 'running' | 'done' | 'error' }) {
   }
   if (status === 'error') {
     return (
-      <X className="h-3 w-3 shrink-0 text-destructive-foreground" aria-label="error" />
+      <X className="h-3 w-3 shrink-0 text-destructive" aria-label="error" />
     );
   }
   return <Check className="h-3 w-3 shrink-0 text-emerald-400/80" aria-label="done" />;
@@ -163,9 +176,9 @@ function permissionOutcomeLabel(outcome: PermissionOutcome): string {
 function EntryDetail({ entry }: { entry: WorkEntry }) {
   if (entry.kind === 'reasoning') {
     return (
-      <pre className="whitespace-pre-wrap break-words border-l-2 border-border px-3 py-1.5 text-[11px] leading-relaxed font-mono text-muted-foreground/70">
+      <div className="whitespace-pre-wrap break-words border-l-2 border-border/70 pl-3 py-0.5 text-[12px] italic leading-relaxed text-muted-foreground/75">
         {entry.block.content}
-      </pre>
+      </div>
     );
   }
   if (entry.kind === 'permission') {
@@ -189,7 +202,7 @@ function EntryDetail({ entry }: { entry: WorkEntry }) {
         </pre>
       )}
       {entry.block.error && (
-        <p className="px-3 py-2 text-xs text-destructive-foreground">{entry.block.error}</p>
+        <p className="px-3 py-2 text-xs text-destructive">{entry.block.error}</p>
       )}
     </div>
   );

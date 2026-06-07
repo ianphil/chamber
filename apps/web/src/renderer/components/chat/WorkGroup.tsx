@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { WorkEntryRow } from './WorkEntryRow';
 import {
@@ -18,6 +19,11 @@ interface Props {
 }
 
 export function WorkGroup({ entries, isActive = false }: Props) {
+  // Match the common chatbot pattern: the work log is expanded while the mind
+  // is actively working (so progress is visible) and collapses to a one-line
+  // summary once the turn is done. Read isActive once on mount so a group the
+  // user has manually toggled is never yanked open or shut by a later restream.
+  const [collapsed, setCollapsed] = useState(!isActive);
   const [isExpanded, setIsExpanded] = useState(false);
   const { visible, hiddenCount } = truncateWorkEntries(entries, isExpanded);
   const label = workGroupLabel(entries);
@@ -27,14 +33,39 @@ export function WorkGroup({ entries, isActive = false }: Props) {
   // output is streaming in before the next block arrives, should still show
   // live output.
   const lastRunningToolId = findLastRunningToolId(entries);
+  const running = hasRunningTool(entries);
 
   return (
-    <div className="my-2 rounded-xl border border-border/50 bg-card/30 px-2 py-1.5">
-      <div className="mb-1 flex items-center justify-between gap-2 px-1">
-        <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
-          {label} ({entries.length})
-        </p>
-        {hasOverflow && (
+    <div
+      className={cn(
+        'my-2 rounded-xl border px-2 py-1.5 transition-colors',
+        running ? 'border-genesis/40 bg-genesis/5' : 'border-border bg-card/50',
+      )}
+    >
+      <div className="flex items-center justify-between gap-2 px-1">
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          aria-expanded={!collapsed}
+          className={cn(
+            'flex items-center gap-1.5 rounded text-[11px] uppercase tracking-[0.14em]',
+            running ? 'text-genesis' : 'text-muted-foreground',
+            'hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          )}
+        >
+          {collapsed ? (
+            <ChevronRight size={11} aria-hidden />
+          ) : (
+            <ChevronDown size={11} aria-hidden />
+          )}
+          {running && (
+            <Loader2 size={11} className="animate-spin text-genesis" aria-hidden />
+          )}
+          <span>
+            {label} ({entries.length})
+          </span>
+        </button>
+        {!collapsed && hasOverflow && (
           <button
             type="button"
             onClick={() => setIsExpanded((v) => !v)}
@@ -47,15 +78,17 @@ export function WorkGroup({ entries, isActive = false }: Props) {
           </button>
         )}
       </div>
-      <div className="space-y-0.5">
-        {visible.map((entry) => (
-          <WorkEntryRow
-            key={entry.id}
-            entry={entry}
-            autoExpand={isActive && entry.id === lastRunningToolId}
-          />
-        ))}
-      </div>
+      {!collapsed && (
+        <div className="mt-1 space-y-0.5">
+          {visible.map((entry) => (
+            <WorkEntryRow
+              key={entry.id}
+              entry={entry}
+              autoExpand={isActive && entry.id === lastRunningToolId}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
