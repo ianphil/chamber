@@ -11,5 +11,10 @@ interface Window {
     getAppBranding?: () => Promise<{ name: string; version: string }>;
     confirm?: (message: string) => Promise<boolean>;
     setTheme?: (theme: 'light' | 'dark') => Promise<void>;
+    window?: {
+      minimize: () => void;
+      maximize: () => void;
+      close: () => void;
+    };
   };
 }

@@ -97,7 +97,7 @@ export function A2ARelayView() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
         <header className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
-            <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-3 text-purple-300">
+            <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-3 text-purple-600 dark:text-purple-300">
               <RadioTower size={28} />
             </div>
             <div>
@@ -149,7 +149,7 @@ export function A2ARelayView() {
                   </div>
                 )}
                 {error && (
-                  <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-200">
+                  <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-700 dark:text-red-200">
                     {error}
                   </div>
                 )}
@@ -162,7 +162,7 @@ export function A2ARelayView() {
                     {connected ? 'Reconnect' : 'Connect'}
                   </button>
                   <button
-                    className="inline-flex items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/10 px-4 py-2 text-sm font-semibold text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/10 px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={busy || !connected}
                     onClick={disconnect}
                   >
@@ -201,7 +201,7 @@ export function A2ARelayView() {
               </CardContent>
             </Card>
 
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-100">
+            <div className="rounded-xl border border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
               <strong>Safety note:</strong> static tokens are for local/private relays. Cloud Switchboard should use Microsoft Entra interactive auth.
             </div>
           </main>
@@ -233,7 +233,7 @@ export function A2ARelayView() {
 
             <Card>
               <CardContent className="flex items-start gap-3 pt-4 text-sm text-muted-foreground">
-                <ShieldCheck className="mt-0.5 shrink-0 text-green-300" size={18} />
+                <ShieldCheck className="mt-0.5 shrink-0 text-green-600 dark:text-green-300" size={18} />
                 <span>Relay tokens are not persisted by this view yet. Saved profiles should use Chamber credentials.</span>
               </CardContent>
             </Card>
@@ -248,8 +248,8 @@ function StatusBadge({ status }: { status: A2ARelayStatus }) {
   const connected = status.state === 'connected';
   const busy = status.state === 'connecting' || status.state === 'disconnecting';
   return (
-    <Badge className={`w-fit gap-2 ${connected ? 'border-green-500/30 bg-green-500/10 text-green-200' : busy ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-border bg-muted text-muted-foreground'}`} variant="outline">
-      <span className={`h-2 w-2 rounded-full ${connected ? 'bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.9)]' : busy ? 'bg-amber-400' : 'bg-muted-foreground'}`} />
+    <Badge className={`w-fit gap-2 ${connected ? 'border-genesis/30 bg-genesis/10 text-genesis' : busy ? 'border-warning/30 bg-warning/10 text-warning-foreground dark:text-warning' : 'border-border bg-muted text-muted-foreground'}`} variant="outline">
+      <span className={`h-2 w-2 rounded-full ${connected ? 'bg-genesis shadow-[0_0_12px_var(--color-genesis)]' : busy ? 'bg-warning' : 'bg-muted-foreground'}`} />
       {status.state}
     </Badge>
   );
@@ -261,7 +261,7 @@ function Field({ label, value, onChange, hint, type = 'text' }: { label: string;
     <div className="block">
       <label className="text-sm font-medium text-muted-foreground" htmlFor={id}>{label}</label>
       <input
-        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-purple-400"
+        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
         id={id}
         onChange={(event) => onChange(event.target.value)}
         type={type}
@@ -278,7 +278,7 @@ function SelectField({ label, value, onChange, options }: { label: string; value
     <div className="block">
       <label className="text-sm font-medium text-muted-foreground" htmlFor={id}>{label}</label>
       <select
-        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-purple-400"
+        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
         id={id}
         onChange={(event) => onChange(event.target.value)}
         value={value}

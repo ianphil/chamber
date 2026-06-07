@@ -5,8 +5,20 @@ type Handler<T extends AppAction['type']> = (
   action: Extract<AppAction, { type: T }>,
 ) => Partial<AppState> | AppState;
 
-function setActiveView(_state: AppState, action: Extract<AppAction, { type: 'SET_ACTIVE_VIEW' }>): Partial<AppState> {
-  return { activeView: action.payload };
+function setActiveView(state: AppState, action: Extract<AppAction, { type: 'SET_ACTIVE_VIEW' }>): Partial<AppState> {
+  const next = action.payload;
+  if (next === state.activeView) return { activeView: next };
+  // Track the previous built-in view so a lens header can offer a back
+  // button. Going TO a lens (non-built-in) saves where we came from; going
+  // BACK to a built-in clears it. The activity bar's built-ins are: chat,
+  // chatroom, settings, a2a-relay -- everything else is a discovered lens
+  // (LensView is `'chat' | string` with no enum we can rely on).
+  const BUILT_INS = new Set(['chat', 'chatroom', 'settings', 'a2a-relay']);
+  const goingToLens = !BUILT_INS.has(next);
+  if (goingToLens) {
+    return { activeView: next, previousView: state.activeView };
+  }
+  return { activeView: next, previousView: null };
 }
 
 function setFeatureFlags(

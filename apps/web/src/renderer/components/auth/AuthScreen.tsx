@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
+import { Check, Copy } from 'lucide-react';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
-import { TypeWriter } from '../genesis/TypeWriter';
 
 interface Props {
   onAuthenticated: () => void;
@@ -11,6 +11,17 @@ export function AuthScreen({ onAuthenticated }: Props) {
   const [userCode, setUserCode] = useState('');
   const [login, setLogin] = useState('');
   const [error, setError] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  const handleCopyCode = () => {
+    if (!userCode) return;
+    void navigator.clipboard?.writeText(userCode).then(() => {
+      setCodeCopied(true);
+      window.setTimeout(() => setCodeCopied(false), 1500);
+    }).catch(() => {
+      // Clipboard may be unavailable; silently ignore.
+    });
+  };
 
   const handleSignIn = async () => {
     setStage('waiting');
@@ -58,20 +69,23 @@ export function AuthScreen({ onAuthenticated }: Props) {
 
         <div>
           <h1 className="text-2xl font-semibold mb-2">Chamber</h1>
-          <TypeWriter
-            text="To operate, I need access to GitHub Copilot."
-            speed={30}
-            className="text-muted-foreground"
-          />
+          <p className="text-muted-foreground text-sm">
+            Sign in with your GitHub account to get started.
+          </p>
         </div>
 
         {stage === 'idle' && (
-          <button
-            onClick={handleSignIn}
-            className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
-          >
-            Sign in with GitHub
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={handleSignIn}
+              className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
+            >
+              Sign in with GitHub
+            </button>
+            <p className="text-xs text-muted-foreground/80">
+              Requires an active GitHub Copilot subscription.
+            </p>
+          </div>
         )}
 
         {stage === 'waiting' && (
@@ -79,10 +93,30 @@ export function AuthScreen({ onAuthenticated }: Props) {
             {userCode ? (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Enter this code at <span className="text-foreground font-medium">github.com/login/device</span>
+                  Enter this code at{' '}
+                  <a
+                    href="https://github.com/login/device"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-foreground font-medium underline-offset-2 hover:underline"
+                  >
+                    github.com/login/device
+                  </a>
                 </p>
-                <div className="font-mono text-3xl font-bold tracking-widest text-foreground">
-                  {userCode}
+                <div className="flex items-center justify-center gap-2">
+                  <div className="font-mono text-3xl font-bold tracking-widest text-foreground">
+                    {userCode}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    aria-label={codeCopied ? 'Code copied' : 'Copy code'}
+                    title={codeCopied ? 'Copied' : 'Copy code'}
+                    className="ml-1 flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {codeCopied ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+                    {codeCopied ? 'Copied' : 'Copy'}
+                  </button>
                 </div>
               </>
             ) : (
@@ -97,7 +131,7 @@ export function AuthScreen({ onAuthenticated }: Props) {
 
         {stage === 'done' && (
           <div className="space-y-4 animate-in fade-in duration-500">
-            <div className="text-green-500 text-lg">✓ Authenticated{login ? ` as @${login}` : ''}</div>
+            <div className="text-genesis text-lg">✓ Authenticated{login ? ` as @${login}` : ''}</div>
           </div>
         )}
 

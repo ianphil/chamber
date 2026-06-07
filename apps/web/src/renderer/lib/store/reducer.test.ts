@@ -747,6 +747,26 @@ describe('appReducer', () => {
     expect(state.activeView).toBe('briefing-1');
   });
 
+  it('SET_ACTIVE_VIEW records previousView when navigating into a lens', () => {
+    const onChat = appReducer(initialState, { type: 'SET_ACTIVE_VIEW', payload: 'chat' });
+    const onLens = appReducer(onChat, { type: 'SET_ACTIVE_VIEW', payload: 'briefing-1' });
+    expect(onLens.activeView).toBe('briefing-1');
+    expect(onLens.previousView).toBe('chat');
+  });
+
+  it('SET_ACTIVE_VIEW clears previousView when returning to a built-in view', () => {
+    const onLens = appReducer({ ...initialState, activeView: 'briefing-1', previousView: 'chat' }, { type: 'SET_ACTIVE_VIEW', payload: 'settings' });
+    expect(onLens.activeView).toBe('settings');
+    expect(onLens.previousView).toBeNull();
+  });
+
+  it('SET_ACTIVE_VIEW to the current view leaves previousView untouched', () => {
+    const start = { ...initialState, activeView: 'briefing-1' as const, previousView: 'chat' as const };
+    const state = appReducer(start, { type: 'SET_ACTIVE_VIEW', payload: 'briefing-1' });
+    expect(state.activeView).toBe('briefing-1');
+    expect(state.previousView).toBe('chat');
+  });
+
   it('SET_FEATURE_FLAGS updates feature flags', () => {
     const state = appReducer(initialState, {
       type: 'SET_FEATURE_FLAGS',

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import {
   buildContentSecurityPolicy,
   installContentSecurityPolicy,
@@ -87,6 +90,19 @@ describe('buildContentSecurityPolicy', () => {
     expect(csp).not.toMatch(/connect-src [^;]*api\.github\.com/);
     expect(csp).not.toMatch(/connect-src [^;]*api\.githubcopilot\.com/);
     expect(csp).not.toMatch(/connect-src [^;]*[^.]github\.com/);
+  });
+
+  it('allows the index.html inline theme-init script by its current sha256 hash in both modes', () => {
+    const html = readFileSync(
+      fileURLToPath(new URL('../../../../web/index.html', import.meta.url)),
+      'utf8',
+    );
+    const match = html.match(/<script>([\s\S]*?)<\/script>/);
+    if (!match) throw new Error('index.html inline theme-init script not found');
+    const hash = createHash('sha256').update(match[1], 'utf8').digest('base64');
+    const expected = `'sha256-${hash}'`;
+    expect(buildContentSecurityPolicy('development')).toContain(expected);
+    expect(buildContentSecurityPolicy('production')).toContain(expected);
   });
 });
 

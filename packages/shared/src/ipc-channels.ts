@@ -137,6 +137,7 @@ export const IPC = {
   DESKTOP: {
     GET_BRANDING: 'desktop:getBranding',
     CONFIRM: 'desktop:confirm',
+    SET_THEME: 'desktop:setTheme',
   },
   E2E: {
     IS_ENABLED: 'e2e:is-enabled',

@@ -165,6 +165,7 @@ contextBridge.exposeInMainWorld('desktop', {
   openMindWindow: (mindId: string) => ipcRenderer.invoke(IPC.MIND.OPEN_WINDOW, mindId),
   getAppBranding: () => ipcRenderer.invoke(IPC.DESKTOP.GET_BRANDING),
   confirm: (message: string) => ipcRenderer.invoke(IPC.DESKTOP.CONFIRM, message),
+  setTheme: (theme: 'light' | 'dark') => ipcRenderer.invoke(IPC.DESKTOP.SET_THEME, theme),
   window: {
     minimize: () => ipcRenderer.send(IPC.WINDOW.MINIMIZE),
     maximize: () => ipcRenderer.send(IPC.WINDOW.MAXIMIZE),

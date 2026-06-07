@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, session, shell, Notification, type MessageBoxOptions, type NativeImage, type Tray as ElectronTray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, session, shell, Notification, type MessageBoxOptions, type NativeImage, type Tray as ElectronTray } from 'electron';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -699,19 +699,26 @@ const drainPendingProtocolUrls = (): void => {
 };
 
 const createWindow = () => {
+  // The Windows app menu (File / Edit / View / Window) is OS chrome that
+  // doesn't match the in-app design. We rely on the in-app activity bar
+  // + context menu instead, so hide it globally.
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 600,
     minHeight: 400,
-    titleBarStyle: 'hiddenInset',
-    titleBarOverlay: process.platform === 'win32' ? {
-      color: '#09090b',
-      symbolColor: '#fafafa',
-      height: 36,
-    } : undefined,
+    // Windows: frameless + custom HTML titlebar (drawn by the renderer).
+    // macOS: keep the inset traffic-light buttons so the window feels native;
+    // the renderer leaves a top spacer to clear them.
+    frame: process.platform === 'darwin',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     icon: windowIcon,
-    backgroundColor: '#09090b',
+    backgroundColor: '#ffffff',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -848,15 +855,25 @@ app.on('ready', async () => {
   // Errors are logged in ToolsService and surface via tools:list later.
   reconcileMarketplaceTools();
 
-  // Window controls
-  ipcMain.on(IPC.WINDOW.MINIMIZE, () => mainWindow?.minimize());
-  ipcMain.on(IPC.WINDOW.MAXIMIZE, () => {
-    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
-    else mainWindow?.maximize();
+  // Window controls. The custom titlebar renders in the main window AND every
+  // popout window, so these must act on the window that sent the event -- not a
+  // hardcoded mainWindow. Targeting mainWindow made a popout's close button hide
+  // the whole app (close-to-tray) and leak the popout's windowByMind entry,
+  // which then blocked re-popping that mind out.
+  ipcMain.on(IPC.WINDOW.MINIMIZE, (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
+  ipcMain.on(IPC.WINDOW.MAXIMIZE, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win?.isMaximized()) win.unmaximize();
+    else win?.maximize();
   });
-  ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
+  ipcMain.on(IPC.WINDOW.CLOSE, (event) => BrowserWindow.fromWebContents(event.sender)?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
   ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => appFeatureFlags);
+  ipcMain.handle(IPC.DESKTOP.SET_THEME, () => {
+    // The Windows window is frameless and the titlebar is drawn entirely in
+    // the renderer, so there's no native overlay to repaint. Kept as a
+    // no-op so the renderer can call it unconditionally.
+  });
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {

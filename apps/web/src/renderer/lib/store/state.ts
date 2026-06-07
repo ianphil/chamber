@@ -47,6 +47,12 @@ export interface AppState {
   availableModels: ModelInfo[];
   selectedModel: string | null;
   activeView: LensView;
+  /**
+   * The view the user was on before navigating into a lens. Lets the
+   * lens header render a back button instead of forcing a trip through
+   * the activity bar to return. Null when the user is on a built-in.
+   */
+  previousView: LensView | null;
   featureFlags: AppFeatureFlags;
   discoveredViews: LensViewManifest[];
   showLanding: boolean;
@@ -130,6 +136,7 @@ export const initialState: AppState = {
   availableModels: [],
   selectedModel: null,
   activeView: 'chat',
+  previousView: null,
   featureFlags: DEFAULT_APP_FEATURE_FLAGS,
   discoveredViews: [],
   showLanding: false,

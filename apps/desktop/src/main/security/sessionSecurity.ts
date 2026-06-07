@@ -26,11 +26,19 @@ const COMMON_DIRECTIVES = [
 const CONNECT_SRC =
   "connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*";
 
+// sha256 of the inline theme-init <script> in apps/web/index.html. That script
+// resolves the stored/system theme before first paint to avoid a light/dark
+// flash, so it must run inline (a deferred module script paints too late).
+// 'self' alone blocks it in both modes; allow exactly this one script by hash.
+// INVARIANT: if the inline script changes, recompute this hash or the theme
+// flash returns. sessionSecurity.test.ts pins it against index.html.
+const THEME_INIT_SCRIPT_HASH = "'sha256-AUm0KqVrGXLR/Qiq2JcOTfKhJCyRoAhNDwHbn7hMFWE='";
+
 export function buildContentSecurityPolicy(mode: SecurityMode): string {
   const scriptSrc =
     mode === 'development'
-      ? "script-src 'self' 'unsafe-eval'"
-      : "script-src 'self'";
+      ? `script-src 'self' 'unsafe-eval' ${THEME_INIT_SCRIPT_HASH}`
+      : `script-src 'self' ${THEME_INIT_SCRIPT_HASH}`;
 
   return [...COMMON_DIRECTIVES, scriptSrc, CONNECT_SRC].join('; ');
 }
