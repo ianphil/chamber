@@ -39,6 +39,7 @@ const electronAPI: ElectronAPI = {
     pickAvatarImage: () => ipcRenderer.invoke('mindProfile:pickAvatarImage'),
     saveAvatar: (request) => ipcRenderer.invoke('mindProfile:saveAvatar', request),
     removeAvatar: (mindId) => ipcRenderer.invoke('mindProfile:removeAvatar', mindId),
+    setAccentColor: (mindId, color) => ipcRenderer.invoke('mindProfile:setAccentColor', mindId, color),
     restart: (mindId) => ipcRenderer.invoke('mindProfile:restart', mindId),
   },
   lens: {

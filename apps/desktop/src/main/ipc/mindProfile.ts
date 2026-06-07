@@ -74,6 +74,10 @@ export function setupMindProfileIPC(profileService: MindProfileService, mindMana
     return profileService.removeAvatar(mindId);
   });
 
+  ipcMain.handle('mindProfile:setAccentColor', async (_event, mindId: string, color: string | null) => {
+    return profileService.setAccentColor(mindId, color);
+  });
+
   ipcMain.handle('mindProfile:restart', async (_event, mindId: string) => {
     return mindManager.reloadMind(mindId);
   });

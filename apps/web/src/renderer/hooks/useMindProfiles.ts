@@ -23,6 +23,7 @@ export function useMindProfiles(minds: MindContext[]) {
                 mindId: mind.mindId,
                 displayName: mind.identity.name,
                 avatarDataUrl: null,
+                accentColor: null,
               },
             });
             return;
@@ -33,6 +34,7 @@ export function useMindProfiles(minds: MindContext[]) {
               mindId: mind.mindId,
               displayName: profile.displayName,
               avatarDataUrl: profile.avatarDataUrl,
+              accentColor: profile.accentColor,
             },
           });
         } catch (error) {
@@ -44,6 +46,7 @@ export function useMindProfiles(minds: MindContext[]) {
               mindId: mind.mindId,
               displayName: mind.identity.name,
               avatarDataUrl: null,
+              accentColor: null,
             },
           });
         }

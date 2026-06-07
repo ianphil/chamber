@@ -105,6 +105,56 @@ describe('MindProfileService', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('defaults the accent color to null when none is stored', () => {
+    const { root, service } = createProfileFixture();
+    try {
+      expect(service.getProfile('mind-1').accentColor).toBeNull();
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('persists and reads back a chosen accent color', () => {
+    const { root, service } = createProfileFixture();
+    try {
+      const result = service.setAccentColor('mind-1', '#3B82F6');
+
+      expect(result.success).toBe(true);
+      expect(service.getProfile('mind-1').accentColor).toBe('#3b82f6');
+      expect(fs.readFileSync(path.join(root, '.chamber', 'accent-color'), 'utf-8')).toBe('#3b82f6');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('clears the accent color when set to null', () => {
+    const { root, service } = createProfileFixture();
+    try {
+      service.setAccentColor('mind-1', '#10b981');
+      const result = service.setAccentColor('mind-1', null);
+
+      expect(result.success).toBe(true);
+      expect(service.getProfile('mind-1').accentColor).toBeNull();
+      expect(fs.existsSync(path.join(root, '.chamber', 'accent-color'))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an invalid accent color and leaves any prior value intact', () => {
+    const { root, service } = createProfileFixture();
+    try {
+      service.setAccentColor('mind-1', '#abcdef');
+      const result = service.setAccentColor('mind-1', 'not-a-color');
+
+      if (result.success) throw new Error('Expected invalid accent color to fail');
+      expect(result.error).toContain('hex');
+      expect(service.getProfile('mind-1').accentColor).toBe('#abcdef');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 function createProfileFixture() {

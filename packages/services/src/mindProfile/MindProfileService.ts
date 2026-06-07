@@ -14,7 +14,9 @@ import type { IdentityLoader } from '../chat/IdentityLoader';
 import type { AvatarNormalizer, MindProfileMindProvider } from './types';
 
 const AVATAR_RELATIVE_PATH = path.join('.chamber', 'avatar.png');
+const ACCENT_COLOR_RELATIVE_PATH = path.join('.chamber', 'accent-color');
 const MAX_PROFILE_FILE_BYTES = 512_000;
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 export class MindProfileService {
   constructor(
@@ -28,6 +30,7 @@ export class MindProfileService {
     const identity = this.identityLoader.load(mindPath);
     const displayName = identity?.name ?? path.basename(mindPath);
     const avatarPath = path.join(mindPath, AVATAR_RELATIVE_PATH);
+    const accentPath = path.join(mindPath, ACCENT_COLOR_RELATIVE_PATH);
 
     return {
       mindId,
@@ -35,10 +38,34 @@ export class MindProfileService {
       displayName,
       folderName: path.basename(mindPath),
       avatarDataUrl: readAvatarDataUrl(avatarPath),
+      accentColor: readAccentColor(accentPath),
       soul: this.readProfileFile(mindPath, 'soul', 'SOUL.md'),
       agentFiles: this.listAgentFiles(mindPath),
       needsRestart,
     };
+  }
+
+  setAccentColor(mindId: string, color: string | null): AgentProfileActionResult {
+    const mindPath = this.requireMindPath(mindId);
+    const accentPath = path.join(mindPath, ACCENT_COLOR_RELATIVE_PATH);
+
+    if (color === null) {
+      if (fs.existsSync(accentPath)) fs.rmSync(accentPath, { force: true });
+      return { success: true, profile: this.getProfile(mindId) };
+    }
+
+    const normalized = color.trim().toLowerCase();
+    if (!HEX_COLOR_PATTERN.test(normalized)) {
+      return {
+        success: false,
+        error: 'Agent color must be a #rrggbb hex value.',
+        profile: this.getProfile(mindId),
+      };
+    }
+
+    fs.mkdirSync(path.dirname(accentPath), { recursive: true });
+    fs.writeFileSync(accentPath, normalized, 'utf-8');
+    return { success: true, profile: this.getProfile(mindId) };
   }
 
   async saveFile(request: AgentProfileSaveRequest): Promise<AgentProfileSaveResult> {
@@ -228,6 +255,12 @@ function readAvatarDataUrl(avatarPath: string): string | null {
   if (!fs.existsSync(avatarPath)) return null;
   const data = fs.readFileSync(avatarPath);
   return `data:image/png;base64,${data.toString('base64')}`;
+}
+
+function readAccentColor(accentPath: string): string | null {
+  if (!fs.existsSync(accentPath)) return null;
+  const raw = fs.readFileSync(accentPath, 'utf-8').trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(raw) ? raw : null;
 }
 
 function assertEditableProfilePath(mindPath: string, targetPath: string): void {

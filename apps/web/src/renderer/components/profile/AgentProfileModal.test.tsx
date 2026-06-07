@@ -101,6 +101,7 @@ function makeProfile(overrides?: Partial<AgentProfile>): AgentProfile {
     displayName: 'Moneypenny',
     folderName: 'moneypenny',
     avatarDataUrl: null,
+    accentColor: null,
     soul: {
       kind: 'soul',
       label: 'SOUL.md',

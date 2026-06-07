@@ -138,6 +138,7 @@ export function mockElectronAPI(): ElectronAPI {
         displayName: 'Test',
         folderName: 'test',
         avatarDataUrl: null,
+        accentColor: null,
         soul: { kind: 'soul', label: 'SOUL.md', relativePath: 'SOUL.md', content: '# Test\n', exists: true, mtimeMs: 1 },
         agentFiles: [{ kind: 'agent', label: 'test.agent.md', relativePath: '.github\\agents\\test.agent.md', content: '# Test agent\n', exists: true, mtimeMs: 2 }],
         needsRestart: false,
@@ -148,6 +149,7 @@ export function mockElectronAPI(): ElectronAPI {
         displayName: 'Test',
         folderName: 'test',
         avatarDataUrl: null,
+        accentColor: null,
         soul: { kind: 'soul', label: 'SOUL.md', relativePath: 'SOUL.md', content: '# Test\n', exists: true, mtimeMs: 3 },
         agentFiles: [{ kind: 'agent', label: 'test.agent.md', relativePath: '.github\\agents\\test.agent.md', content: '# Test agent\n', exists: true, mtimeMs: 2 }],
         needsRestart: true,
@@ -155,6 +157,7 @@ export function mockElectronAPI(): ElectronAPI {
       pickAvatarImage: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       saveAvatar: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       removeAvatar: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
+      setAccentColor: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
       restart: vi.fn().mockResolvedValue({ mindId: 'test-1234', mindPath: 'C:\\test', identity: { name: 'Test', systemMessage: '' }, status: 'ready' }),
     },
     userProfile: {

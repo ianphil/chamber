@@ -181,6 +181,12 @@ export interface AgentProfile {
   displayName: string;
   folderName: string;
   avatarDataUrl: string | null;
+  /**
+   * User-chosen accent color as a `#rrggbb` hex string, or null to fall back
+   * to the index-based palette. Drives the agent's pill, avatar fallback,
+   * message accent, and typing-indicator color everywhere it appears.
+   */
+  accentColor: string | null;
   soul: AgentProfileFile;
   agentFiles: AgentProfileFile[];
   needsRestart: boolean;
@@ -420,6 +426,8 @@ export interface LensViewManifest {
   id: string;
   name: string;
   icon: string;
+  /** Optional one-line description shown in catalogs and the About panel. */
+  description?: string;
   view: 'form' | 'table' | 'briefing' | 'status-board' | 'list' | 'monitor' | 'detail' | 'timeline' | 'editor' | 'canvas';
   source: string;
   schema?: Record<string, unknown>;

@@ -85,6 +85,7 @@ export interface ElectronAPI {
     pickAvatarImage: () => Promise<AgentProfileAvatarPickResult>;
     saveAvatar: (request: AgentProfileAvatarSaveRequest) => Promise<AgentProfileActionResult>;
     removeAvatar: (mindId: string) => Promise<AgentProfileActionResult>;
+    setAccentColor: (mindId: string, color: string | null) => Promise<AgentProfileActionResult>;
     restart: (mindId: string) => Promise<MindContext>;
   };
   lens: {

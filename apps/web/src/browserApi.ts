@@ -176,6 +176,7 @@ export function installBrowserApi(): void {
       pickAvatarImage: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
       saveAvatar: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
       removeAvatar: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
+      setAccentColor: async () => ({ success: false, error: 'Agent profiles are desktop-only in browser mode.' }),
       restart: async () => {
         throw new Error('Agent profiles are desktop-only in browser mode.');
       },
