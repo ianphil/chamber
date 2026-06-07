@@ -95,6 +95,7 @@
   "dependencies": {
     "@azure/msal-node": "^5.2.0",
     "@azure/msal-node-extensions": "^5.2.0",
+    "@fontsource-variable/inter": "^5.2.8",
     "better-sqlite3": "12.10.0",
     "chamber-copilot": "0.5.11",
     "class-variance-authority": "^0.7.1",

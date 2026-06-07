@@ -7,38 +7,164 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-background: oklch(0.145 0.008 260);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.195 0.015 260);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.145 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.255 0.015 260);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.255 0.015 260);
-  --color-muted-foreground: oklch(0.708 0.01 260);
-  --color-accent: oklch(0.255 0.015 260);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.637 0.237 25.331);
-  --color-border: oklch(0.25 0.012 260);
-  --color-input: oklch(0.255 0.015 260);
-  --color-ring: oklch(0.556 0 0);
-  --color-genesis: oklch(0.72 0.15 160);
-  --color-genesis-foreground: oklch(0.985 0 0);
+  /* Default (light) palette. Dark theme overrides via the .dark variant
+   * below. The palette is monochrome with one reserved brand accent
+   * (genesis). Secondary text uses a genuinely muted foreground so the
+   * secondary tier (timestamps, placeholders, helper text) recedes from
+   * primary body copy. Reserve pure foreground for primary content. */
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.15 0 0);
+  /* Cards sit slightly off-white so they read against the pure-white app
+   * background; the border picks up just enough warmth to be visible
+   * without looking like a hard line. */
+  --color-card: oklch(0.985 0.003 260);
+  --color-card-foreground: oklch(0.15 0 0);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.15 0 0);
+  --color-primary: oklch(0.15 0 0);
+  --color-primary-foreground: oklch(1 0 0);
+  --color-secondary: oklch(0.95 0.005 260);
+  --color-secondary-foreground: oklch(0.15 0 0);
+  --color-muted: oklch(0.95 0.005 260);
+  --color-muted-foreground: oklch(0.46 0.01 260);
+  --color-accent: oklch(0.92 0.008 260);
+  --color-accent-foreground: oklch(0.15 0 0);
+  /* Interaction surfaces. `hover` is a neutral wash that stays perceivable
+   * against both the card and the app background; `selected` is a slightly
+   * stronger neutral wash so the current item reads as "chosen" rather than
+   * merely hovered. Pairing selected fills with a genesis left-bar gives a
+   * Fluent / Linear-grade selection language that is legible in both themes. */
+  --color-hover: oklch(0.945 0.006 260);
+  --color-selected: oklch(0.92 0.008 260);
+  --color-selected-foreground: oklch(0.15 0 0);
+  --color-destructive: oklch(0.55 0.2 25);
+  --color-destructive-foreground: oklch(1 0 0);
+  /* Borders need to be visible against both the card and the background.
+   * Previously oklch(0.9) which disappeared on white. */
+  --color-border: oklch(0.82 0.008 260);
+  --color-input: oklch(0.95 0.005 260);
+  --color-ring: oklch(0.5 0 0);
+  --color-genesis: oklch(0.55 0.16 160);
+  --color-genesis-foreground: oklch(1 0 0);
+  /* Warning is the one amber reserved for "busy / running" status. Pair with
+   * genesis (ready/online) and destructive (error) for the full status set. */
+  --color-warning: oklch(0.72 0.15 75);
+  --color-warning-foreground: oklch(0.2 0.03 75);
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
   --radius-xl: 0.75rem;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Material-grade elevation, light theme. Layered soft shadows read as
+   * clean lifted surfaces against the white app background. These power
+   * `shadow-xs|sm|md|lg` utilities and the `.bg-card` elevation below.
+   * Dark theme zeroes these out (contrasting card color carries depth). */
+  --shadow-xs: 0 1px 2px 0 oklch(0.15 0 0 / 0.06);
+  --shadow-sm: 0 1px 2px 0 oklch(0.15 0 0 / 0.06), 0 1px 3px 0 oklch(0.15 0 0 / 0.08);
+  --shadow-md: 0 2px 4px -1px oklch(0.15 0 0 / 0.07), 0 4px 10px -2px oklch(0.15 0 0 / 0.09);
+  --shadow-lg: 0 4px 6px -2px oklch(0.15 0 0 / 0.06), 0 12px 24px -4px oklch(0.15 0 0 / 0.12);
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:where(.dark) {
+  /* Deep night: dark, but light enough that the blue ambient aurora
+   * (.app-ambient) reads through as a faint glow rather than crushing to flat
+   * black. A touch of blue chroma in the base reinforces the tint. This is
+   * the base color the radial-gradient auroras layer over. */
+  --color-background: oklch(0.11 0.013 260);
+  --color-foreground: oklch(1 0 0);
+  --color-card: oklch(0.195 0.015 260);
+  --color-card-foreground: oklch(1 0 0);
+  --color-popover: oklch(0.145 0 0);
+  --color-popover-foreground: oklch(1 0 0);
+  --color-primary: oklch(1 0 0);
+  --color-primary-foreground: oklch(0.205 0 0);
+  --color-secondary: oklch(0.255 0.015 260);
+  --color-secondary-foreground: oklch(1 0 0);
+  --color-muted: oklch(0.255 0.015 260);
+  --color-muted-foreground: oklch(0.68 0.012 260);
+  --color-accent: oklch(0.255 0.015 260);
+  --color-accent-foreground: oklch(1 0 0);
+  --color-hover: oklch(0.275 0.016 260);
+  --color-selected: oklch(0.30 0.012 260);
+  --color-selected-foreground: oklch(1 0 0);
+  /* Mirror light mode: destructive is the readable red used for text, icons,
+   * borders, and solid-button backgrounds; its foreground is white. A bright
+   * red (not the old L=0.396 surface red) keeps `text-destructive` legible on
+   * the dark card and avoids red-on-red on solid destructive buttons. */
+  --color-destructive: oklch(0.637 0.237 25.331);
+  --color-destructive-foreground: oklch(1 0 0);
+  --color-border: oklch(0.205 0.012 260);
+  --color-input: oklch(0.255 0.015 260);
+  --color-ring: oklch(0.556 0 0);
+  --color-genesis: oklch(0.72 0.15 160);
+  --color-genesis-foreground: oklch(1 0 0);
+  --color-warning: oklch(0.78 0.14 75);
+  --color-warning-foreground: oklch(0.18 0.03 75);
+  /* Dark surfaces lean on contrasting card color, not cast shadows. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: 0 4px 12px -2px oklch(0 0 0 / 0.5);
+  --shadow-lg: 0 12px 28px -6px oklch(0 0 0 / 0.6);
 }
 
 body {
   font-family: var(--font-sans);
   overflow: hidden;
+  /* Crisper glyph edges (matters most on 1x displays and macOS). */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Inter's single-story a/g (cv11) + stylistic set read better at UI sizes;
+   * tabular figures keep counts, timestamps, and stat numbers from shifting. */
+  font-feature-settings: "cv11", "ss01";
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+}
+
+/* Typesetting niceties (Chromium-supported in Electron 41). `balance`
+ * evens out multi-line headings so titles don't leave a lone trailing
+ * word; `pretty` prevents orphans/widows in running paragraphs. */
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+/* Smooth day/night swap. The `.theme-switching` class is added by the
+ * useTheme hook for 450ms when toggling (matching THEME_MS), so the color
+ * crossfade only happens during the swap itself and doesn't slow down hovers
+ * the rest of the time. */
+html.theme-switching,
+html.theme-switching body,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  /* box-shadow is deliberately NOT animated here: it isn't GPU-composited, so
+   * crossfading it on every element repaints each frame across all panels and
+   * starves the canvas requestAnimationFrame, which reads as stutter. The few
+   * elements whose shadow change is actually noticeable (surface panels/cards)
+   * opt back into a box-shadow crossfade in the scoped rule below. */
+  transition-property: background-color, border-color, color, fill, stroke !important;
+  transition-duration: 450ms !important;
+  /* easeInOutCubic -- the cubic-bezier equivalent of the canvas `easeInOut`
+   * (ambientScene.ts) so the WebGL background and the CSS surfaces advance
+   * along the exact same curve and never appear to lag one another. */
+  transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1) !important;
+}
+
+/* box-shadow is intentionally excluded from the universal rule above (it isn't
+ * GPU-composited, so crossfading it on *every* element starves the canvas rAF).
+ * But the surface panels/cards carry a heavy layered drop shadow in light mode
+ * and an inset-only shadow in dark, so snapping that shadow while the colors
+ * crossfade reads as jarring. Crossfade box-shadow on just this bounded set of
+ * elements -- on the same curve/duration -- so the depth fades in lockstep with
+ * the color swap without the per-frame repaint cost of doing it everywhere. */
+html.theme-switching .surface-panel,
+html.theme-switching .surface-card {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 450ms !important;
+  transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1) !important;
 }
 
 .titlebar-drag {
@@ -49,24 +175,256 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
+  background: oklch(0.55 0.005 260 / 0.06);
+  border-radius: 10px;
+}
+.dark ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.35 0 0);
-  border-radius: 3px;
+  background: oklch(0.5 0.005 260 / 0.55);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 10px;
+  transition: background-color 160ms ease;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.45 0 0);
+  background: oklch(0.35 0.005 260 / 0.75);
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.45 0.01 260 / 0.45);
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.65 0.012 260 / 0.85);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* In light mode, plain borders on cards still feel flat. Lift cards with a
+ * soft layered shadow so they read as clean elevated surfaces. Dark mode
+ * skips this -- the contrasting card color carries the elevation. */
+.bg-card {
+  box-shadow: var(--shadow-sm);
+}
+.dark .bg-card {
+  box-shadow: none;
+}
+
+/* ----------------------------------------------------------------------
+ * Ambient depth + lit surfaces
+ *
+ * The flat single-tone background reads as an admin tool. These primitives
+ * add the "lit from above" depth that premium AI products (Linear, Vercel,
+ * Raycast) use: a faint aurora behind the whole window plus a top sheen +
+ * hairline highlight on every panel. Tuned to stay subtle and legible in
+ * both themes.
+ * ------------------------------------------------------------------- */
+
+/* Fixed, non-interactive aurora behind the whole app. Shows through the
+ * gaps between shell panels and as a soft halo at the window's top edge. */
+.app-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 520px at 12% -8%, oklch(0.55 0.16 260 / 0.05), transparent 60%),
+    radial-gradient(1000px 640px at 105% -6%, oklch(0.6 0.13 255 / 0.045), transparent 58%);
+}
+.dark .app-ambient {
+  background:
+    radial-gradient(1100px 540px at 10% -10%, oklch(0.72 0.15 260 / 0.16), transparent 60%),
+    radial-gradient(1000px 720px at 112% -12%, oklch(0.62 0.13 260 / 0.11), transparent 58%);
+}
+
+/* Premium panel surface: a soft top-down sheen plus an inset hairline
+ * highlight along the top edge, so the card looks lit rather than printed.
+ * Layer this on top of `bg-card` / `bg-background` panels. */
+.surface-panel {
+  background-image: linear-gradient(to bottom, oklch(1 0 0 / 0.025), transparent 96px);
+  /* Light mode: card and page are both near-white, so a 1px token shadow
+   * vanishes. Use a soft layered lift with enough spread + opacity to read
+   * against the light background. */
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.04),
+    0 2px 5px 0 oklch(0.2 0.02 260 / 0.12),
+    0 16px 42px -9px oklch(0.2 0.02 260 / 0.24);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.dark .surface-panel {
+  background-image: linear-gradient(to bottom, oklch(1 0 0 / 0.025), transparent 120px);
+  /* Floating glass: the showcase lifts its panels with a large soft drop
+   * shadow (0 20px 60px rgba(0,0,0,0.45)) so they read as hovering over the
+   * ambient background rather than printed on it. The inset hairline keeps
+   * the lit top edge. Opacity/blur of the panel itself is unchanged. */
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.045),
+    0 20px 60px oklch(0 0 0 / 0.45);
+}
+
+/* Interactive premium card: same lit surface, with a neutral lift on
+ * hover. Use for stat cards, starter prompts, and other clickable tiles. */
+.surface-card {
+  background-image: linear-gradient(to bottom, oklch(1 0 0 / 0.02), transparent 80px);
+  /* In light mode the lit inset alone reads flat and the card sits on a
+   * near-white page, so pair it with a soft layered drop shadow that has
+   * enough spread + opacity to be visible. Dark mode keeps inset-only since
+   * the contrasting card color carries the depth. */
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.04),
+    0 1px 3px 0 oklch(0.2 0.02 260 / 0.10),
+    0 11px 29px -8px oklch(0.2 0.02 260 / 0.19);
+  transition: border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease, background-color 160ms ease;
+}
+.dark .surface-card {
+  background-image: linear-gradient(to bottom, oklch(1 0 0 / 0.03), transparent 80px);
+  box-shadow: inset 0 1px 0 0 oklch(1 0 0 / 0.05);
+}
+.surface-card-hover:hover {
+  border-color: oklch(0.55 0.02 260 / 0.45);
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.06),
+    0 6px 20px -8px oklch(0.55 0.02 260 / 0.35);
+}
+.dark .surface-card-hover:hover {
+  border-color: oklch(0.72 0.02 260 / 0.5);
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.08),
+    0 8px 28px -10px oklch(0.72 0.02 260 / 0.4);
+}
+
+/* Soft genesis glow ring -- avatars and accent marks. */
+.glow-genesis {
+  box-shadow:
+    0 0 0 1px oklch(0.55 0.16 160 / 0.25),
+    0 4px 16px -2px oklch(0.55 0.16 160 / 0.4);
+}
+.dark .glow-genesis {
+  box-shadow:
+    0 0 0 1px oklch(0.72 0.15 160 / 0.3),
+    0 6px 22px -4px oklch(0.72 0.15 160 / 0.5);
+}
+
+/* Composer focus halo: a calm neutral ring + outer glow when the input is
+ * active, so the primary action surface feels alive. */
+.focus-halo:focus-within {
+  border-color: oklch(0.55 0.02 260 / 0.6) !important;
+  box-shadow:
+    0 0 0 1px oklch(0.55 0.02 260 / 0.35),
+    0 8px 30px -10px oklch(0.55 0.02 260 / 0.4);
+}
+.dark .focus-halo:focus-within {
+  border-color: oklch(0.72 0.02 260 / 0.55) !important;
+  box-shadow:
+    0 0 0 1px oklch(0.72 0.02 260 / 0.4),
+    0 10px 36px -12px oklch(0.72 0.02 260 / 0.45);
+}
+
+/* Selection color is a neutral wash so highlights don't look like
+ * raw OS chrome bleeding into the app. */
+::selection {
+  background: oklch(0.72 0.02 260 / 0.35);
+  color: var(--color-foreground);
+}
+
+/* Message + panel entry animation. Kept short + subtle so nothing feels
+ * laggy; respects prefers-reduced-motion. */
+@keyframes chamber-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chamber-fade-in {
+  animation: chamber-fade-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* View transition: keyed remount on the ViewRouter wrapper restarts this
+ * animation when the user switches activity-bar destinations. Slightly
+ * snappier than message fade-ins so the swap doesn't feel laggy. */
+@keyframes view-enter {
+  from { opacity: 0; transform: translateY(2px) scale(0.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.view-enter {
+  animation: view-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Send "launch": the message the user just sent rises into the transcript
+ * from just above the composer, so pressing Send feels like it propels the
+ * message into place. One-shot, slightly longer than the generic fade so the
+ * travel reads. Neutralized under prefers-reduced-motion below. */
+@keyframes chamber-launch {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chamber-launch {
+  animation: chamber-launch 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Streaming caret: a crisp typing cursor that blinks while tokens arrive,
+ * rather than a soft opacity pulse that reads as a fade. steps() gives a hard
+ * on/off blink. Settles solid under prefers-reduced-motion because the element's
+ * default opacity is 1 and the global rule below zeroes the animation. */
+@keyframes chamber-caret {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0.18; }
+  100% { opacity: 1; }
+}
+.chamber-caret {
+  animation: chamber-caret 1s steps(1, end) infinite;
+}
+
+/* Orchestration topology: a small glow segment travels along an active
+ * connector to show the direction of collaboration (fan-out, pipeline,
+ * hand-off, etc.). The track stays static; only this segment moves.
+ * Neutralized under prefers-reduced-motion by the global rule below. */
+@keyframes chamber-travel-y {
+  from { transform: translateY(-120%); }
+  to { transform: translateY(120%); }
+}
+@keyframes chamber-travel-x {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(120%); }
+}
+.chamber-travel-y { animation: chamber-travel-y 1100ms linear infinite; }
+.chamber-travel-x { animation: chamber-travel-x 1100ms linear infinite; }
+
+/* Voice listening orb: a slow, calm breath that is visually distinct from the
+ * faster `animate-pulse` used for the speaking state. Settles solid under
+ * prefers-reduced-motion via the global rule below. */
+@keyframes voice-orb-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+.voice-orb-breathe { animation: voice-orb-breathe 2400ms ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chamber-fade-in,
+  .chamber-launch,
+  .voice-orb-breathe,
+  .view-enter { animation: none; }
+  *, *::before, *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
 }
 
 .prose pre {
-  background: oklch(0.205 0 0);
+  background: oklch(0.95 0.005 260);
   border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
   overflow-x: auto;
+}
+.dark .prose pre {
+  background: oklch(0.205 0 0);
 }
 .prose pre code {
   background: transparent;
@@ -82,10 +440,13 @@ body {
 .prose :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.875em;
-  background: oklch(0.205 0 0);
+  background: oklch(0.95 0.005 260);
   padding: 0.125rem 0.375rem;
   border-radius: var(--radius-sm);
   font-weight: inherit;
+}
+.dark .prose :not(pre) > code {
+  background: oklch(0.205 0 0);
 }
 .prose :not(pre) > code::before,
 .prose :not(pre) > code::after {
