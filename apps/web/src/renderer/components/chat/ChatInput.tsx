@@ -15,6 +15,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../ui/popover';
+import { TooltipFor } from '../ui/tooltip';
+import { Smile } from 'lucide-react';
 import {
   Command,
   CommandList,
@@ -424,7 +426,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   return (
     <div className="border-t border-border px-4 py-3">
       <div className="max-w-3xl mx-auto">
-        <div className="relative flex flex-col bg-secondary rounded-xl px-4 py-3 gap-2">
+        <div className="focus-halo relative flex flex-col bg-secondary rounded-xl px-4 py-3 gap-2 border border-border transition-[border-color,box-shadow] duration-200">
           <textarea
             ref={textareaRef}
             value={input}
@@ -441,6 +443,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               isComposingRef.current = false;
             }}
             placeholder={placeholder ?? (disabled ? 'Select a mind directory to start…' : 'Message your agent… (paste an image to attach)')}
+            aria-label="Message your agent"
             disabled={disabled}
             rows={1}
             className="w-full bg-transparent text-sm resize-none outline-none placeholder:text-muted-foreground disabled:opacity-50 overflow-y-auto"
@@ -462,9 +465,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                       e.preventDefault();
                     }}
                     onClick={() => setEmojiOpen((v) => !v)}
-                    className="h-6 w-6 shrink-0 rounded-md text-base text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent flex items-center justify-center"
+                    className="h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent flex items-center justify-center"
                   >
-                    😀
+                    <Smile className="w-4 h-4" />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent
@@ -491,13 +494,13 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                   <SelectTrigger className="h-6 w-auto gap-1.5 border-none bg-transparent px-0 text-xs text-muted-foreground shadow-none hover:text-foreground focus:ring-0">
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" side="top" sideOffset={8} align="start" collisionPadding={12}>
                     {availableModels.map((model) => {
                       const key = modelSelectionKeyFromModel(model);
                       return (
                         <SelectItem key={key} value={key} className="text-xs">
                           {model.name}
-                          {model.provider === 'byo' ? <span className="ml-2 rounded bg-emerald-700/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">Local</span> : null}
+                          {model.provider === 'byo' ? <span className="ml-2 rounded bg-genesis/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-genesis">Local</span> : null}
                         </SelectItem>
                       );
                     })}
@@ -510,34 +513,43 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               )}
             </div>
 
-            <button
-              onClick={isStreaming ? onStop : handleSubmit}
-              disabled={disabled && !isStreaming}
-              aria-label={isStreaming ? 'Stop streaming (Escape)' : 'Send message'}
-              className={cn(
-                'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
-                isStreaming
-                  ? 'bg-destructive-foreground text-background hover:opacity-80'
-                  : canSubmit
-                    ? 'bg-primary text-primary-foreground hover:opacity-80'
-                    : 'bg-muted text-muted-foreground'
-              )}
-            >
-              {isStreaming ? (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                  <rect x="2" y="2" width="10" height="10" rx="1" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="7" y1="12" x2="7" y2="2" />
-                  <polyline points="3,6 7,2 11,6" />
-                </svg>
-              )}
-            </button>
+            <TooltipFor label={isStreaming ? 'Stop streaming (Esc)' : (canSubmit ? 'Send message (Enter)' : 'Type a message to send')}>
+              <button
+                onClick={isStreaming ? onStop : handleSubmit}
+                disabled={isStreaming ? false : !canSubmit}
+                aria-label={isStreaming ? 'Stop streaming (Escape)' : 'Send message'}
+                className={cn(
+                  'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center',
+                  'transition-[background-color,color,transform,box-shadow] duration-150',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary',
+                  'active:scale-95',
+                  isStreaming
+                    ? 'bg-destructive text-destructive-foreground hover:opacity-80'
+                    : canSubmit
+                      ? 'bg-genesis text-genesis-foreground hover:bg-genesis hover:scale-[1.06] hover:shadow-[0_2px_8px_oklch(0.55_0.16_160/0.35)]'
+                      : 'bg-muted text-muted-foreground cursor-not-allowed'
+                )}
+              >
+                {isStreaming ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                    <rect x="2" y="2" width="10" height="10" rx="1" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="7" y1="12" x2="7" y2="2" />
+                    <polyline points="3,6 7,2 11,6" />
+                  </svg>
+                )}
+              </button>
+            </TooltipFor>
           </div>
         </div>
 
         <p className="text-xs text-muted-foreground text-center mt-2">
+          <span className="opacity-70">
+            {isStreaming ? 'Esc to stop' : 'Enter to send · Shift+Enter for newline'}
+          </span>
+          <span className="mx-2 opacity-30">·</span>
           AI agents can make mistakes. Verify important information.
         </p>
       </div>
