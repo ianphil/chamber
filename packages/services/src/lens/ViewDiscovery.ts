@@ -242,11 +242,16 @@ function parseLensViewManifest(value: unknown, id: string, basePath: string): Le
   if (!isSafeRelativeSource(value.source)) return null;
   if (value.view === 'canvas' && !isHtmlSource(value.source)) return null;
 
+  const description = typeof value.description === 'string' && value.description.trim().length > 0
+    ? value.description.trim()
+    : undefined;
+
   return {
     ...value,
     id,
     name: value.name,
     icon: value.icon,
+    description,
     view: value.view,
     source: value.source,
     _basePath: basePath,

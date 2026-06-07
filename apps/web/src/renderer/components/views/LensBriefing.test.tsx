@@ -15,8 +15,8 @@ describe('LensBriefing', () => {
     const data = { count: 42 };
     render(<LensBriefing data={data} />);
     const el = screen.getByText('42');
-    expect(el.className).toContain('text-2xl');
-    expect(el.className).toContain('font-bold');
+    expect(el.className).toContain('text-3xl');
+    expect(el.className).toContain('font-semibold');
   });
 
   it('schema titles override key names', () => {

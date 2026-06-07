@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { LensViewManifest } from '@chamber/shared/types';
-import { RefreshCw, Send } from 'lucide-react';
+import { RefreshCw, Send, Sparkles } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Logger } from '../../lib/logger';
 import { LensBriefing } from './LensBriefing';
@@ -11,6 +11,7 @@ import { LensTimeline } from './LensTimeline';
 import { LensEditor } from './LensEditor';
 import { LensForm } from './LensForm';
 import { CanvasLensView } from './CanvasLensView';
+import { Skeleton } from '../ui/skeleton';
 
 interface Props {
   view: LensViewManifest;
@@ -41,6 +42,7 @@ export function LensViewRenderer({ view }: Props) {
 
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInput, setActionInput] = useState('');
   const mountedRef = useRef(true);
@@ -71,6 +73,7 @@ export function LensViewRenderer({ view }: Props) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load view data');
       } finally {
         if (!cancelled && pendingRefresh) setLoading(false);
+        if (!cancelled) setInitializing(false);
       }
     };
     load();
@@ -109,25 +112,26 @@ export function LensViewRenderer({ view }: Props) {
   }, [view.id, actionInput, loading]);
 
   const isWideView = view.view === 'table' || view.view === 'status-board' || view.view === 'timeline';
+  const isProseView = view.view === 'detail';
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-6">
-      {/* Wide views (table/status-board/timeline) fill the pane.
-          Prose views cap at max-w-2xl so paragraphs stay readable. */}
-      <div className={cn('mx-auto w-full space-y-6', isWideView ? 'max-w-none' : 'max-w-2xl')}>
+      {/* Wide views (table/status-board/timeline) fill the pane. Detail is
+          running prose, so cap it at the ~65ch reading measure; other views
+          (form/briefing/editor) stay at max-w-2xl for their grids. */}
+      <div className={cn('mx-auto w-full space-y-6', isWideView ? 'max-w-none' : isProseView ? 'max-w-prose' : 'max-w-2xl')}>
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">{view.name}</h2>
-            <p className="text-sm text-muted-foreground">{view.view} view</p>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight truncate">{view.name}</h2>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">{view.view} view</p>
           </div>
           {view.prompt && (
             <button
               onClick={handleRefresh}
               disabled={loading}
               className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors',
-                'bg-secondary hover:bg-accent text-muted-foreground hover:text-foreground',
+                'surface-card surface-card-hover flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border bg-card text-muted-foreground hover:text-foreground',
                 loading && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -145,7 +149,10 @@ export function LensViewRenderer({ view }: Props) {
         )}
 
         {/* Content */}
-        {data ? (
+        {initializing && !data && !error ? (
+          <LensViewSkeleton wide={isWideView} />
+        ) : data ? (
+          <div className="chamber-fade-in">
           <LensViewContent view={view} data={data} onAction={async (action) => {
             setLoading(true);
             try {
@@ -157,17 +164,40 @@ export function LensViewRenderer({ view }: Props) {
               setLoading(false);
             }
           }} />
+          </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <p className="text-muted-foreground text-sm">
-              {view.prompt ? 'No data yet. Click Refresh to populate.' : 'No data available.'}
-            </p>
+          <div className="surface-card rounded-xl border border-border bg-card px-6 py-10 text-center flex flex-col items-center">
+            <div className="h-11 w-11 rounded-xl bg-primary flex items-center justify-center mb-4">
+              <Sparkles size={18} className="text-primary-foreground" />
+            </div>
+            {view.prompt ? (
+              <>
+                <p className="text-sm font-medium text-foreground">No data yet</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                  {view.description || 'Generate this view to populate it with live data from the mind.'}
+                </p>
+                <button
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className={cn(
+                    'mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    'bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.99]',
+                    loading && 'opacity-50 cursor-not-allowed',
+                  )}
+                >
+                  <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
+                  {loading ? 'Generating…' : 'Generate'}
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No data available.</p>
+            )}
           </div>
         )}
 
         {/* Action input — write-back via agent */}
         {data && (
-          <div className="flex items-center gap-2">
+          <div className="focus-halo flex items-center gap-2 bg-secondary rounded-xl border border-border px-2 py-1.5 transition-[border-color,box-shadow] duration-200">
             <input
               type="text"
               value={actionInput}
@@ -175,15 +205,15 @@ export function LensViewRenderer({ view }: Props) {
               onKeyDown={(e) => { if (e.key === 'Enter') handleAction(); }}
               placeholder="Ask the agent to modify this view…"
               disabled={loading}
-              className="flex-1 bg-secondary rounded-lg px-3 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+              className="flex-1 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
             <button
               onClick={handleAction}
               disabled={loading || !actionInput.trim()}
               className={cn(
-                'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+                'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all',
                 actionInput.trim() && !loading
-                  ? 'bg-primary text-primary-foreground hover:opacity-80'
+                  ? 'bg-primary text-primary-foreground hover:opacity-90'
                   : 'bg-muted text-muted-foreground'
               )}
             >
@@ -191,6 +221,32 @@ export function LensViewRenderer({ view }: Props) {
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Initial-load placeholder for a Lens view. Reserves the content area while
+ * the first `getViewData` call resolves so the pane doesn't flash the empty
+ * "No data yet" state before real content arrives. Generic card+rows shape
+ * works for every view kind; `wide` widens the rows for table-style views.
+ */
+function LensViewSkeleton({ wide }: { wide?: boolean }) {
+  return (
+    <div className="space-y-4" data-testid="lens-view-skeleton" aria-busy="true">
+      <div className="surface-card rounded-xl border border-border bg-card p-5 space-y-3">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className={cn('h-3', wide ? 'w-[90%]' : 'w-[70%]')} />
+      </div>
+      <div className="surface-card rounded-xl border border-border bg-card p-5 space-y-3">
+        {Array.from({ length: wide ? 5 : 3 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 flex-1" />
+          </div>
+        ))}
       </div>
     </div>
   );

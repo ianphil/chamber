@@ -419,6 +419,8 @@ export interface LensViewManifest {
   id: string;
   name: string;
   icon: string;
+  /** Optional one-line description shown in catalogs and the About panel. */
+  description?: string;
   view: 'form' | 'table' | 'briefing' | 'status-board' | 'list' | 'monitor' | 'detail' | 'timeline' | 'editor' | 'canvas';
   source: string;
   schema?: Record<string, unknown>;
