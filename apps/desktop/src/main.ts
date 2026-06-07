@@ -60,6 +60,7 @@ import {
   MindManager,
   MindProfileService,
   MindScaffold,
+  MindSkillDiscovery,
   TaskManager,
   TaskLedger,
   ChildProcessRunner,
@@ -857,6 +858,13 @@ app.on('ready', async () => {
   ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
   ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => appFeatureFlags);
+  const skillDiscovery = new MindSkillDiscovery();
+  ipcMain.handle(IPC.SKILLS.LIST_FOR_MIND, (_event, mindId: string) => {
+    if (typeof mindId !== 'string') return [];
+    const mind = mindManager.getMind(mindId);
+    if (!mind) return [];
+    return skillDiscovery.list(mind.mindPath);
+  });
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {

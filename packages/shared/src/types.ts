@@ -1,4 +1,5 @@
 export type { A2AIncomingPayload } from './a2a-types';
+export type { SkillManifest } from './skill-types';
 
 // Shared types across main, preload, and renderer processes
 

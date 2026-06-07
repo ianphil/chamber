@@ -373,6 +373,10 @@ export function installBrowserApi(): void {
       // can install/uninstall freely.
       onStartupProgress: () => noopUnsubscribe,
     },
+    skills: {
+      // Web host has no on-disk mind directory to scan.
+      listForMind: async () => [],
+    },
   };
   window.electronAPI = api;
   if (!window.desktop) {
