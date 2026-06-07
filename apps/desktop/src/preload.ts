@@ -142,6 +142,9 @@ const electronAPI: ElectronAPI = {
     getFeatureFlags: () => ipcRenderer.invoke(IPC.APP.GET_FEATURE_FLAGS),
     onStartupProgress: (callback) => createIpcListener(ipcRenderer, IPC.APP.STARTUP_PROGRESS, callback),
   },
+  skills: {
+    listForMind: (mindId: string) => ipcRenderer.invoke(IPC.SKILLS.LIST_FOR_MIND, mindId),
+  },
 };
 
 if (ipcRenderer.sendSync(IPC.E2E.IS_ENABLED) === true) {

@@ -148,6 +148,9 @@ export const IPC = {
     GET_FEATURE_FLAGS: 'app:getFeatureFlags',
     STARTUP_PROGRESS: 'app:startupProgress',
   },
+  SKILLS: {
+    LIST_FOR_MIND: 'skills:listForMind',
+  },
 } as const;
 
 type IpcNamespace = typeof IPC;

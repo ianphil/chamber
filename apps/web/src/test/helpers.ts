@@ -347,6 +347,9 @@ export function mockElectronAPI(): ElectronAPI {
       getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false }),
       onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     },
+    skills: {
+      listForMind: vi.fn().mockResolvedValue([]),
+    },
   };
 }
 
