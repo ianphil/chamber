@@ -2,6 +2,7 @@
 // Vite handles these at build time; TS needs the module shapes to type-check.
 
 declare module '*.css';
+declare module '@fontsource-variable/inter';
 
 interface Window {
   desktop?: {
@@ -9,5 +10,6 @@ interface Window {
     openMindWindow: (mindId: string) => Promise<void>;
     getAppBranding?: () => Promise<{ name: string; version: string }>;
     confirm?: (message: string) => Promise<boolean>;
+    setTheme?: (theme: 'light' | 'dark') => Promise<void>;
   };
 }
