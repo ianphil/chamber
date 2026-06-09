@@ -102,6 +102,7 @@ const MVP_SERVER_RESOURCE = './apps/server/dist';
 const baseExtraResource = [
   './resources/node',
   './resources/copilot-runtime',
+  './resources/voice-runtime',
   './resources/sharp-runtime',
   './resources/acp-runtime',
   './resources/msal-runtime',
@@ -113,7 +114,9 @@ const baseExtraResource = [
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime}/**/*',
+      // foundry-local-sdk loads native prebuilds at runtime; those files must
+      // stay outside app.asar or packaged voice dictation cannot start.
+      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime,foundry-local-sdk}/**/*',
     },
     executableName: 'chamber',
     icon: APP_ICON_PATH,
