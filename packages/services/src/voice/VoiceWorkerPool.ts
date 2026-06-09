@@ -55,6 +55,10 @@ export class VoiceWorkerPool {
     engine: null,
     installer: null,
   };
+  private readonly suppressNextExit: Record<WorkerRole, boolean> = {
+    engine: false,
+    installer: false,
+  };
   private workers: Record<WorkerRole, VoiceWorkerLike | null> = {
     engine: null,
     installer: null,
@@ -103,6 +107,20 @@ export class VoiceWorkerPool {
 
   sendInstaller(req: VoiceWorkerRpcRequest): Promise<VoiceWorkerRpcResponse> {
     return this.send('installer', req);
+  }
+
+  async cancelInstaller(): Promise<void> {
+    this.clearRestartTimer('installer');
+    this.rejectPending('installer', new Error('Voice installer worker cancelled'));
+    const worker = this.workers.installer;
+    this.workers.installer = null;
+    if (worker) {
+      this.suppressNextExit.installer = true;
+      await worker.terminate();
+    }
+    if (!this.stopping && !this.workers.installer) {
+      this.workers.installer = this.createWorker('installer');
+    }
   }
 
   onEngineEvent(cb: (event: TranscriptionEvent) => void): () => void {
@@ -167,6 +185,10 @@ export class VoiceWorkerPool {
   private handleWorkerExit(role: WorkerRole, code: number): void {
     this.workers[role] = null;
     this.rejectPending(role, new Error(`Voice ${role} worker exited unexpectedly with code ${code}`));
+    if (this.suppressNextExit[role]) {
+      this.suppressNextExit[role] = false;
+      return;
+    }
     if (this.stopping) return;
 
     this.crashCounts[role] += 1;
