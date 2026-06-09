@@ -3,6 +3,8 @@ export type {
   VoiceWorkerRpcRequest,
   VoiceWorkerRpcResponse,
 } from '@chamber/shared/voice-types';
+import type { TranscriptionEvent, VoiceWorkerRpcRequest, VoiceWorkerRpcResponse } from '@chamber/shared/voice-types';
+import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 
 /**
  * Chamber keeps the renderer/main RPC verb named `end` so UI and service code
@@ -15,3 +17,42 @@ export type {
  * terminating and replacing the installer worker.
  */
 export const VOICE_WORKER_PROTOCOL_NOTES = 'voice-worker-protocol-notes';
+
+export interface VoiceWorkerPort {
+  postMessage(message: VoiceWorkerRpcResponse | TranscriptionEvent): void;
+}
+
+export function isVoiceWorkerRpcRequest(message: unknown): message is VoiceWorkerRpcRequest {
+  if (!isRecord(message)) return false;
+  return typeof message.requestId === 'string' && typeof message.verb === 'string';
+}
+
+export function postWorkerSuccess(
+  port: VoiceWorkerPort,
+  request: VoiceWorkerRpcRequest,
+  payload: Partial<Extract<VoiceWorkerRpcResponse, { readonly ok: true }>> = {},
+): void {
+  port.postMessage({
+    requestId: request.requestId,
+    verb: request.verb,
+    ok: true,
+    ...payload,
+  });
+}
+
+export function postWorkerError(port: VoiceWorkerPort, request: VoiceWorkerRpcRequest, err: unknown): void {
+  port.postMessage({
+    requestId: request.requestId,
+    verb: request.verb,
+    ok: false,
+    error: getErrorMessage(err),
+  });
+}
+
+export function postTranscriptionEvent(port: VoiceWorkerPort, event: TranscriptionEvent): void {
+  port.postMessage(event);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

@@ -17,6 +17,7 @@ import type { VoiceDictationStore } from './VoiceDictationStore';
 
 export interface VoiceWorkerPoolPort {
   sendInstaller(req: VoiceWorkerRpcRequest): Promise<VoiceWorkerRpcResponse>;
+  cancelInstaller?(): Promise<void>;
 }
 
 export interface VoiceDictationServiceOptions {
@@ -81,20 +82,32 @@ export class VoiceDictationService {
     };
   }
 
-  async downloadModel(modelId: string): Promise<void> {
+  async downloadModel(modelId: string, progressCb?: (status: VoiceModelStatus) => void): Promise<void> {
     assertKnownModel(modelId);
     if (!this.workerPool) {
       throw new Error('Voice worker pool is unavailable');
     }
+    progressCb?.({ id: VOICE_DICTATION_MODEL_ID, status: 'downloading' });
     const response = await this.workerPool.sendInstaller({
       requestId: randomUUID(),
       verb: 'downloadModel',
       modelId,
     });
     assertRpcSucceeded(response);
+    if (response.status) progressCb?.(response.status);
   }
 
-  async startSession(sessionId: string): Promise<void> {
+  async cancelDownload(modelId: string): Promise<void> {
+    assertKnownModel(modelId);
+    if (!this.workerPool?.cancelInstaller) {
+      throw new Error('Voice model download cancellation is unavailable');
+    }
+    await this.workerPool.cancelInstaller();
+    this.emitConfigChanged(await this.store.load());
+  }
+
+  async startSession(sessionId: string, modelId?: string): Promise<void> {
+    void modelId;
     if (this.activeSessionId) {
       throw new Error('A voice dictation session is already active');
     }
