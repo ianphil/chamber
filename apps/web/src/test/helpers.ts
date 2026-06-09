@@ -224,7 +224,7 @@ export function mockElectronAPI(): ElectronAPI {
       appendAudio: vi.fn().mockResolvedValue(undefined),
       endSession: vi.fn().mockResolvedValue(undefined),
       testMic: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
-      onChanged: vi.fn().mockReturnValue(vi.fn()),
+      onConfigChanged: vi.fn().mockReturnValue(vi.fn()),
       onModelProgress: vi.fn().mockReturnValue(vi.fn()),
       onTranscript: vi.fn().mockReturnValue(vi.fn()),
     },
