@@ -36,10 +36,11 @@ describe('ElectronAPI contract', () => {
     expectTypeOf<ElectronAPI['a2a']['relayDisconnect']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['onRelayStateChanged']>().toBeFunction();
     expectTypeOf<ElectronAPI['voice']['getConfig']>().toBeFunction();
-    expectTypeOf<ElectronAPI['voice']['startSession']>().parameter(0).toEqualTypeOf<string>();
+    expectTypeOf<ElectronAPI['voice']['onConfigChanged']>().toBeFunction();
+    expectTypeOf<ElectronAPI['voice']['startSession']>().parameter(0).toEqualTypeOf<{ readonly sessionId: string; readonly deviceId?: string | null; readonly modelId?: string }>();
     expectTypeOf<ElectronAPI['voice']['appendAudio']>().toBeFunction();
-    expectTypeOf<ElectronAPI['voice']['appendAudio']>().parameter(0).toEqualTypeOf<string>();
-    expectTypeOf<ElectronAPI['voice']['endSession']>().parameter(0).toEqualTypeOf<string>();
+    expectTypeOf<ElectronAPI['voice']['appendAudio']>().parameter(0).toEqualTypeOf<{ readonly sessionId: string; readonly chunk: Uint8Array }>();
+    expectTypeOf<ElectronAPI['voice']['endSession']>().parameter(0).toEqualTypeOf<{ readonly sessionId: string }>();
     expectTypeOf<ElectronAPI['voice']['onTranscript']>().toBeFunction();
     expectTypeOf<ElectronAPI['app']['getFeatureFlags']>().toBeFunction();
   });

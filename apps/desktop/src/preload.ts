@@ -72,18 +72,18 @@ const electronAPI: ElectronAPI = {
   voice: {
     getConfig: () => ipcRenderer.invoke(IPC.VOICE.GET_CONFIG),
     saveConfig: (config) => ipcRenderer.invoke(IPC.VOICE.SAVE_CONFIG, config),
+    onConfigChanged: (callback) => createIpcListener(ipcRenderer, IPC.VOICE.CHANGED, callback),
     getPermissionState: () => ipcRenderer.invoke(IPC.VOICE.GET_PERMISSION_STATE),
     openMicPreferences: () => ipcRenderer.invoke(IPC.VOICE.OPEN_MIC_PREFERENCES),
     getModelStatus: (modelId) => ipcRenderer.invoke(IPC.VOICE.GET_MODEL_STATUS, modelId),
     downloadModel: (modelId) => ipcRenderer.invoke(IPC.VOICE.DOWNLOAD_MODEL, modelId),
     cancelDownload: (modelId) => ipcRenderer.invoke(IPC.VOICE.CANCEL_DOWNLOAD, modelId),
-    startSession: (sessionId, modelId) => ipcRenderer.invoke(IPC.VOICE.START_SESSION, sessionId, modelId),
-    appendAudio: (sessionId, pcm) => ipcRenderer.invoke(IPC.VOICE.APPEND_AUDIO, sessionId, pcm),
-    endSession: (sessionId) => ipcRenderer.invoke(IPC.VOICE.END_SESSION, sessionId),
-    testMic: () => ipcRenderer.invoke(IPC.VOICE.TEST_MIC),
-    onChanged: (callback) => createIpcListener(ipcRenderer, IPC.VOICE.CHANGED, callback),
+    startSession: (payload) => ipcRenderer.invoke(IPC.VOICE.START_SESSION, payload),
+    appendAudio: (payload) => ipcRenderer.invoke(IPC.VOICE.APPEND_AUDIO, payload),
+    endSession: (payload) => ipcRenderer.invoke(IPC.VOICE.END_SESSION, payload),
     onModelProgress: (callback) => createIpcListener(ipcRenderer, IPC.VOICE.MODEL_PROGRESS, callback),
     onTranscript: (callback) => createIpcListener(ipcRenderer, IPC.VOICE.TRANSCRIPT, callback),
+    testMic: () => ipcRenderer.invoke(IPC.VOICE.TEST_MIC),
   },
   genesis: {
     getDefaultPath: () => ipcRenderer.invoke(IPC.GENESIS.GET_DEFAULT_PATH),
@@ -173,6 +173,14 @@ if (ipcRenderer.sendSync(IPC.E2E.IS_ENABLED) === true) {
     },
     completeLoginStub: async (payload: { success?: boolean; login?: string }) => {
       await ipcRenderer.invoke(IPC.E2E.AUTH_COMPLETE_LOGIN, payload);
+    },
+    voice: {
+      setFakeProvider: async () => {
+        await ipcRenderer.invoke(IPC.E2E.VOICE_SET_FAKE_PROVIDER);
+      },
+      emitTranscript: async (payload) => {
+        await ipcRenderer.invoke(IPC.E2E.VOICE_EMIT_TRANSCRIPT, payload);
+      },
     },
   };
 }

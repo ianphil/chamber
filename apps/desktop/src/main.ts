@@ -71,11 +71,16 @@ import {
   TurnQueue,
   UserProfileService,
   ViewDiscovery,
+  VoiceDictationService,
+  VoiceDictationStore,
+  VoiceWorkerPool,
   SQLiteLedgerStore,
   setSqliteDatabase,
   ByoLlmStore,
   buildProviderConfig,
   createByoLlmModelsProvider,
+  FakeTranscriptionProvider,
+  FoundryTranscriptionProvider,
   probeEndpoint,
   redactUrlCredentials,
   configureSdkRuntimeLayout,
@@ -115,6 +120,7 @@ import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
 import { setupUserProfileIPC } from './main/ipc/userProfile';
 import { setupSkillsIPC } from './main/ipc/skills';
+import { setupVoiceIPC } from './main/ipc/voice';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -124,6 +130,7 @@ import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
 import { FeatureFlagService } from './main/services/featureFlags/FeatureFlagService';
+import { ElectronPermissionInspector } from './main/voice/PermissionInspector';
 import type sharpModule from 'sharp';
 
 if (started) {
@@ -247,6 +254,7 @@ async function getActiveGitHubToken(): Promise<string | null> {
   return entry?.password ?? null;
 }
 let updaterService: UpdaterService;
+let voiceWorkerPool: VoiceWorkerPool | null = null;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
 const ttasksStoresByMindPath = new Map<string, SqliteStore>();
 
@@ -549,7 +557,11 @@ const requestQuit = () => {
   mindManager.shutdown()
     .then(() => {
       updaterService.stop();
-      return Promise.allSettled([a2aRelayModeService.disconnect(), stopMvpServer()]);
+      return Promise.allSettled([
+        a2aRelayModeService.disconnect(),
+        stopMvpServer(),
+        voiceWorkerPool?.stop() ?? Promise.resolve(),
+      ]);
     })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
@@ -625,6 +637,10 @@ function stopMvpServer(): Promise<void> {
     });
     child.kill();
   });
+}
+
+function resolveVoiceWorkerEntry(fileName: 'engineWorker.js' | 'installerWorker.js'): string {
+  return path.join(__dirname, 'voiceWorker', fileName);
 }
 
 const showMainWindow = () => {
@@ -871,6 +887,25 @@ app.on('ready', async () => {
     featureEnabled: appFeatureFlags.byoLlm,
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },
   });
+  if (appFeatureFlags.voiceDictation === true) {
+    const voiceStore = new VoiceDictationStore();
+    const permissions = new ElectronPermissionInspector();
+    const engineWorkerPath = resolveVoiceWorkerEntry('engineWorker.js');
+    const installerWorkerPath = resolveVoiceWorkerEntry('installerWorker.js');
+    const workerPool = new VoiceWorkerPool({ engineWorkerPath, installerWorkerPath });
+    workerPool.start();
+    voiceWorkerPool = workerPool;
+    const provider = process.env.CHAMBER_E2E_VOICE_FAKE === '1'
+      ? new FakeTranscriptionProvider()
+      : new FoundryTranscriptionProvider(workerPool);
+    const voiceService = new VoiceDictationService({
+      store: voiceStore,
+      provider,
+      permissions,
+      workerPool,
+    });
+    setupVoiceIPC(voiceService, { featureEnabled: true, e2eEnabled: process.env.CHAMBER_E2E === '1' });
+  }
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,
     configStore: configService,
@@ -984,6 +1019,10 @@ app.on('will-quit', () => {
   if (automationBridgeStop) {
     void automationBridgeStop().catch(() => { /* noop */ });
     automationBridgeStop = null;
+  }
+  if (voiceWorkerPool) {
+    void voiceWorkerPool.stop().catch(() => { /* noop */ });
+    voiceWorkerPool = null;
   }
 });
 
