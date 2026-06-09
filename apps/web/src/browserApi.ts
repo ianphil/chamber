@@ -252,6 +252,7 @@ export function installBrowserApi(): void {
     voice: {
       getConfig: async () => null,
       saveConfig: async () => unavailable('voice dictation config'),
+      onConfigChanged: () => noopUnsubscribe,
       getPermissionState: async () => 'unsupported',
       openMicPreferences: async () => unavailable('voice dictation microphone preferences'),
       getModelStatus: async (modelId) => ({ id: modelId as 'nemotron-speech-streaming-en-0.6b', status: 'error', errorMessage: 'Voice dictation is desktop-only in browser mode.' }),
@@ -261,7 +262,6 @@ export function installBrowserApi(): void {
       appendAudio: async () => unavailable('voice dictation audio append'),
       endSession: async () => unavailable('voice dictation session end'),
       testMic: async () => ({ success: false, error: 'Voice dictation is desktop-only in browser mode.' }),
-      onChanged: () => noopUnsubscribe,
       onModelProgress: () => noopUnsubscribe,
       onTranscript: () => noopUnsubscribe,
     },
