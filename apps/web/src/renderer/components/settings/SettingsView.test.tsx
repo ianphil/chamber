@@ -90,7 +90,7 @@ describe('SettingsView', () => {
 
   it('shows Local & Custom LLM settings when BYO LLM is feature-flagged on', async () => {
     render(
-      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false } }}>
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false, voiceDictation: false } }}>
         <SettingsView />
       </AppStateProvider>,
     );

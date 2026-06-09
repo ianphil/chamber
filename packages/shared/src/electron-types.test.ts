@@ -35,6 +35,12 @@ describe('ElectronAPI contract', () => {
     expectTypeOf<ElectronAPI['a2a']['relayConnect']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['relayDisconnect']>().toBeFunction();
     expectTypeOf<ElectronAPI['a2a']['onRelayStateChanged']>().toBeFunction();
+    expectTypeOf<ElectronAPI['voice']['getConfig']>().toBeFunction();
+    expectTypeOf<ElectronAPI['voice']['startSession']>().parameter(0).toEqualTypeOf<string>();
+    expectTypeOf<ElectronAPI['voice']['appendAudio']>().toBeFunction();
+    expectTypeOf<ElectronAPI['voice']['appendAudio']>().parameter(0).toEqualTypeOf<string>();
+    expectTypeOf<ElectronAPI['voice']['endSession']>().parameter(0).toEqualTypeOf<string>();
+    expectTypeOf<ElectronAPI['voice']['onTranscript']>().toBeFunction();
     expectTypeOf<ElectronAPI['app']['getFeatureFlags']>().toBeFunction();
   });
 

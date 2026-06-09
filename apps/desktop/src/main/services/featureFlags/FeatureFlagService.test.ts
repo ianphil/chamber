@@ -9,12 +9,14 @@ const DEV_FLAGS: AppFeatureFlags = {
   switchboardRelay: true,
   byoLlm: false,
   chamberCopilot: true,
+  voiceDictation: false,
 };
 
 const REMOTE_FLAGS: AppFeatureFlags = {
   switchboardRelay: true,
   byoLlm: true,
   chamberCopilot: false,
+  voiceDictation: true,
 };
 
 describe('FeatureFlagService', () => {

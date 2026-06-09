@@ -22,6 +22,13 @@ import type { ChatroomAPI } from './chatroom-types';
 import type { AppFeatureFlags } from './feature-flags';
 import type { CancelOutcome, LedgerRecord, LedgerStatus } from './ledger';
 import type {
+  TranscriptionEvent,
+  VoiceDictationConfig,
+  VoiceMicTestResult,
+  VoiceModelStatus,
+  VoicePermissionState,
+} from './voice-types';
+import type {
   AgentProfile,
   AgentProfileActionResult,
   AgentProfileAvatarPickResult,
@@ -174,6 +181,22 @@ export interface ElectronAPI {
     probe: (config: ByoLlmConfig) => Promise<ByoLlmProbeResult>;
     restartAgents: () => Promise<{ success: boolean; restartedCount: number; error?: string }>;
     onChanged: (callback: (config: ByoLlmConfig | null) => void) => () => void;
+  };
+  voice: {
+    getConfig: () => Promise<VoiceDictationConfig | null>;
+    saveConfig: (config: VoiceDictationConfig) => Promise<void>;
+    getPermissionState: () => Promise<VoicePermissionState>;
+    openMicPreferences: () => Promise<void>;
+    getModelStatus: (modelId: string) => Promise<VoiceModelStatus>;
+    downloadModel: (modelId: string) => Promise<void>;
+    cancelDownload: (modelId: string) => Promise<void>;
+    startSession: (sessionId: string, modelId?: string) => Promise<void>;
+    appendAudio: (sessionId: string, pcm: Uint8Array) => Promise<void>;
+    endSession: (sessionId: string) => Promise<void>;
+    testMic: () => Promise<VoiceMicTestResult>;
+    onChanged: (callback: (config: VoiceDictationConfig | null) => void) => () => void;
+    onModelProgress: (callback: (status: VoiceModelStatus) => void) => () => void;
+    onTranscript: (callback: (event: TranscriptionEvent) => void) => () => void;
   };
   window: {
     minimize: () => void;
