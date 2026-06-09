@@ -14,6 +14,7 @@ import {
 } from '../ui/select';
 import { AddAccountModal } from './AddAccountModal';
 import { LocalLlmSettingsSection } from './LocalLlmSettingsSection';
+import { VoiceDictationSettingsSection } from './VoiceDictationSettingsSection';
 
 const ADD_ACCOUNT_VALUE = '__add-account__';
 
@@ -408,6 +409,7 @@ export function SettingsView() {
       </section>
 
       {featureFlags.byoLlm ? <LocalLlmSettingsSection /> : null}
+      {featureFlags.voiceDictation ? <VoiceDictationSettingsSection /> : null}
 
       <AddAccountModal
         open={addAccountOpen}
