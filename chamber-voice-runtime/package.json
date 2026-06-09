@@ -1,0 +1,13 @@
+{
+  "name": "chamber-voice-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned packaged runtime for Chamber voice dictation",
+  "//": "This pin must match the root package.json foundry-local-sdk dependency.",
+  "dependencies": {
+    "foundry-local-sdk": "1.1.0"
+  },
+  "overrides": {
+    "foundry-local-sdk": "$foundry-local-sdk"
+  }
+}

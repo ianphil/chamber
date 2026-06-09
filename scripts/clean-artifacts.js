@@ -13,6 +13,7 @@ const GENERATED_PATHS = [
   'test-results',
   path.join('resources', 'node'),
   path.join('resources', 'copilot-runtime'),
+  path.join('resources', 'voice-runtime'),
   path.join('resources', 'sharp-runtime'),
   path.join('node_modules', '.vite'),
   path.join('apps', 'server', 'node_modules', '.vite'),

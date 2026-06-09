@@ -14,7 +14,11 @@ describe('packaging scripts', () => {
       const script = packageJson.scripts[scriptName];
 
       expect(script).toContain('npm --workspace @chamber/server run build');
+      expect(script).toContain('node scripts/prepare-voice-runtime.js');
       expect(script.indexOf('npm --workspace @chamber/server run build')).toBeLessThan(
+        script.indexOf('electron-forge')
+      );
+      expect(script.indexOf('node scripts/prepare-voice-runtime.js')).toBeLessThan(
         script.indexOf('electron-forge')
       );
     }
