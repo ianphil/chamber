@@ -172,6 +172,10 @@ export interface ElectronAPI {
     emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;
     emitAuthProgress: (payload: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => Promise<void>;
     completeLoginStub: (payload: { success?: boolean; login?: string }) => Promise<void>;
+    voice?: {
+      setFakeProvider: () => Promise<void>;
+      emitTranscript: (payload?: E2EVoiceTranscriptPayload) => Promise<void>;
+    };
   };
   byoLlm: {
     get: () => Promise<ByoLlmConfig | null>;
@@ -184,16 +188,16 @@ export interface ElectronAPI {
   voice: {
     getConfig: () => Promise<VoiceDictationConfig | null>;
     saveConfig: (config: VoiceDictationConfig) => Promise<void>;
+    onConfigChanged: (callback: (config: VoiceDictationConfig | null) => void) => () => void;
     getPermissionState: () => Promise<VoicePermissionState>;
     openMicPreferences: () => Promise<void>;
     getModelStatus: (modelId: string) => Promise<VoiceModelStatus>;
     downloadModel: (modelId: string) => Promise<void>;
     cancelDownload: (modelId: string) => Promise<void>;
-    startSession: (sessionId: string, modelId?: string) => Promise<void>;
-    appendAudio: (sessionId: string, pcm: Uint8Array) => Promise<void>;
-    endSession: (sessionId: string) => Promise<void>;
+    startSession: (payload: VoiceStartSessionPayload) => Promise<void>;
+    appendAudio: (payload: VoiceAppendAudioPayload) => Promise<void>;
+    endSession: (payload: VoiceEndSessionPayload) => Promise<void>;
     testMic: () => Promise<VoiceMicTestResult>;
-    onChanged: (callback: (config: VoiceDictationConfig | null) => void) => () => void;
     onModelProgress: (callback: (status: VoiceModelStatus) => void) => () => void;
     onTranscript: (callback: (event: TranscriptionEvent) => void) => () => void;
   };
@@ -211,6 +215,27 @@ export interface ElectronAPI {
      */
     onStartupProgress: (callback: (event: StartupProgressEvent) => void) => () => void;
   };
+}
+
+export interface VoiceStartSessionPayload {
+  readonly sessionId: string;
+  readonly deviceId?: string | null;
+  readonly modelId?: string;
+}
+
+export interface VoiceAppendAudioPayload {
+  readonly sessionId: string;
+  readonly chunk: Uint8Array;
+}
+
+export interface VoiceEndSessionPayload {
+  readonly sessionId: string;
+}
+
+export interface E2EVoiceTranscriptPayload {
+  readonly type?: TranscriptionEvent['type'];
+  readonly text?: string;
+  readonly message?: string;
 }
 
 declare global {
