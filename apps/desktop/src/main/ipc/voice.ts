@@ -186,7 +186,7 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
         IPC.VOICE.START_SESSION,
         startSessionSchema,
         normalizeStartSessionPayload(rawRequestOrSessionId, rawModelId, rawDeviceId),
-      );
+      ) as VoiceStartSessionRequest;
       addTranscriptTarget(request.sessionId, event.sender);
       try {
         await voiceService.startSession(request.sessionId, request.modelId);
@@ -200,9 +200,11 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
 
   ipcMain.handle(IPC.VOICE.APPEND_AUDIO, async (_event, rawPayloadOrSessionId: unknown, rawChunk?: unknown): Promise<void> => {
     requireFeatureEnabled();
-    const { sessionId, chunk } = parseIpcArgs(IPC.VOICE.APPEND_AUDIO, appendAudioSchema, {
-      ...normalizeAppendAudioPayload(rawPayloadOrSessionId, rawChunk),
-    });
+    const { sessionId, chunk } = parseIpcArgs(
+      IPC.VOICE.APPEND_AUDIO,
+      appendAudioSchema,
+      normalizeAppendAudioPayload(rawPayloadOrSessionId, rawChunk),
+    );
     await voiceService.appendAudio(sessionId, chunk);
   });
 
