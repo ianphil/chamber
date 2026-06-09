@@ -67,6 +67,21 @@ describe('IPC channel constants', () => {
     expect(IPC.BYO_LLM.RESTART_AGENTS).toBe('byoLlm:restartAgents');
     expect(IPC.BYO_LLM.CHANGED).toBe('byoLlm:changed');
 
+    expect(IPC.VOICE.GET_CONFIG).toBe('voice:getConfig');
+    expect(IPC.VOICE.SAVE_CONFIG).toBe('voice:saveConfig');
+    expect(IPC.VOICE.CHANGED).toBe('voice:changed');
+    expect(IPC.VOICE.GET_PERMISSION_STATE).toBe('voice:getPermissionState');
+    expect(IPC.VOICE.OPEN_MIC_PREFERENCES).toBe('voice:openMicPreferences');
+    expect(IPC.VOICE.GET_MODEL_STATUS).toBe('voice:getModelStatus');
+    expect(IPC.VOICE.DOWNLOAD_MODEL).toBe('voice:downloadModel');
+    expect(IPC.VOICE.CANCEL_DOWNLOAD).toBe('voice:cancelDownload');
+    expect(IPC.VOICE.MODEL_PROGRESS).toBe('voice:modelProgress');
+    expect(IPC.VOICE.START_SESSION).toBe('voice:startSession');
+    expect(IPC.VOICE.APPEND_AUDIO).toBe('voice:appendAudio');
+    expect(IPC.VOICE.END_SESSION).toBe('voice:endSession');
+    expect(IPC.VOICE.TRANSCRIPT).toBe('voice:transcript');
+    expect(IPC.VOICE.TEST_MIC).toBe('voice:testMic');
+
     expect(IPC.CHATROOM.SEND).toBe('chatroom:send');
     expect(IPC.CHATROOM.HISTORY).toBe('chatroom:history');
     expect(IPC.CHATROOM.TASK_LEDGER).toBe('chatroom:task-ledger');
@@ -108,6 +123,8 @@ describe('IPC channel constants', () => {
     expect(IPC.E2E.A2A_INCOMING).toBe('e2e:a2a:incoming');
     expect(IPC.E2E.AUTH_EMIT_PROGRESS).toBe('e2e:auth:emit-progress');
     expect(IPC.E2E.AUTH_COMPLETE_LOGIN).toBe('e2e:auth:complete-login');
+    expect(IPC.E2E.VOICE_SET_FAKE_PROVIDER).toBe('e2e:voice:setFakeProvider');
+    expect(IPC.E2E.VOICE_EMIT_TRANSCRIPT).toBe('e2e:voice:emitTranscript');
 
     expect(IPC.APP.STARTUP_PROGRESS).toBe('app:startupProgress');
   });
@@ -116,6 +133,7 @@ describe('IPC channel constants', () => {
     expectTypeOf<typeof IPC.CHAT.SEND>().toEqualTypeOf<'chat:send'>();
     expectTypeOf<'chat:send'>().toMatchTypeOf<IpcChannel>();
     expectTypeOf<'byoLlm:save'>().toMatchTypeOf<IpcChannel>();
+    expectTypeOf<'voice:startSession'>().toMatchTypeOf<IpcChannel>();
     expectTypeOf<'chatroom:set-orchestration'>().toMatchTypeOf<IpcChannel>();
     // Sanity: an unrelated string is not assignable to IpcChannel.
     expectTypeOf<'not:a:channel'>().not.toMatchTypeOf<IpcChannel>();
