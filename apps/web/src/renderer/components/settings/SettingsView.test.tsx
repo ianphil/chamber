@@ -10,12 +10,23 @@ import { AppStateProvider } from '../../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
 // Settings is now tabbed. Tests that assert on Account / Marketplaces /
-// Local LLM content must first activate that tab (the Profile tab is the
+// feature-specific content must first activate that tab (the Profile tab is the
 // default). Profile-tab tests don't need this helper.
-function gotoTab(label: 'Profile' | 'Account' | 'Marketplaces' | 'Local LLM') {
+function gotoTab(label: 'Profile' | 'Account' | 'Marketplaces' | 'Local LLM' | 'Voice dictation') {
   const nav = screen.getByRole('navigation', { name: /settings sections/i });
   fireEvent.click(within(nav).getByRole('button', { name: label }));
 }
+
+vi.mock('./VoiceDictationSettingsSection', async () => {
+  const React = await import('react');
+  return {
+    VoiceDictationSettingsSection: () => React.createElement(
+      'section',
+      { 'data-testid': 'voice-dictation-settings-section' },
+      'Voice dictation',
+    ),
+  };
+});
 
 describe('SettingsView', () => {
   let api: ReturnType<typeof mockElectronAPI>;
@@ -98,6 +109,26 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /local & custom llm/i })).toBeTruthy();
     });
+  });
+
+  it('hides Voice dictation settings when voice dictation is feature-flagged off', async () => {
+    render(
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false } }}>
+        <SettingsView />
+      </AppStateProvider>,
+    );
+    await screen.findByRole('heading', { name: /settings/i });
+    expect(screen.queryByTestId('voice-dictation-settings-section')).toBeNull();
+  });
+
+  it('shows Voice dictation settings when voice dictation is feature-flagged on', async () => {
+    render(
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: true } }}>
+        <SettingsView />
+      </AppStateProvider>,
+    );
+    gotoTab('Voice dictation');
+    expect(await screen.findByTestId('voice-dictation-settings-section')).toBeTruthy();
   });
 
   it('renders an Account section heading', async () => {
