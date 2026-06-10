@@ -104,6 +104,7 @@ const e2eModelStatusSchema = z
   .object({
     id: z.literal(VOICE_DICTATION_MODEL_ID),
     status: z.enum(['not-downloaded', 'downloading', 'ready', 'error']),
+    percent: z.number().optional(),
     sizeBytes: z.number().optional(),
     downloadedAt: z.string().optional(),
     errorMessage: z.string().optional(),

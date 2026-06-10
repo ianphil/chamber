@@ -174,22 +174,8 @@ function permissionTone(state: VoicePermissionState | null): 'neutral' | 'succes
 }
 
 function getDownloadProgressPercent(status: VoiceModelStatus | null): number | null {
-  if (!status) return null;
-  const statusWithProgress = status as VoiceModelStatus & {
-    readonly progress?: unknown;
-    readonly downloadPercent?: unknown;
-    readonly percent?: unknown;
-  };
-  const raw =
-    typeof statusWithProgress.progress === 'number'
-      ? statusWithProgress.progress
-      : typeof statusWithProgress.downloadPercent === 'number'
-        ? statusWithProgress.downloadPercent
-        : typeof statusWithProgress.percent === 'number'
-          ? statusWithProgress.percent
-          : null;
-  if (raw === null || !Number.isFinite(raw)) return null;
-  return Math.max(0, Math.min(100, Math.round(raw)));
+  if (!status || typeof status.percent !== 'number' || !Number.isFinite(status.percent)) return null;
+  return Math.max(0, Math.min(100, Math.round(status.percent)));
 }
 
 function modelStatusLabel(status: VoiceModelStatus | null): string {

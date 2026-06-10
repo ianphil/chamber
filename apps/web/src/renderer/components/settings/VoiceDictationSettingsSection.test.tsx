@@ -130,8 +130,8 @@ describe('VoiceDictationSettingsSection', () => {
     (api.voice.getModelStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: VOICE_DICTATION_MODEL_ID,
       status: 'downloading',
-      progress: 10,
-    } as VoiceModelStatus);
+      percent: 10,
+    });
     (api.voice.onModelProgress as ReturnType<typeof vi.fn>).mockImplementation((callback: (status: VoiceModelStatus) => void) => {
       emitProgress = callback;
       return vi.fn();
@@ -148,8 +148,8 @@ describe('VoiceDictationSettingsSection', () => {
       progressCallback({
         id: VOICE_DICTATION_MODEL_ID,
         status: 'downloading',
-        progress: 64,
-      } as VoiceModelStatus);
+        percent: 64,
+      });
     });
 
     expect(await screen.findByText('Downloading 64%')).toBeTruthy();

@@ -6,6 +6,8 @@ import {
   VOICE_DICTATION_MODEL_ID,
   type TranscriptionEvent,
   type VoiceDictationConfig,
+  type VoiceInstallerEvent,
+  type VoiceModelStatus,
   type VoicePermissionState,
   type VoiceWorkerRpcRequest,
 } from '@chamber/shared/voice-types';
@@ -137,6 +139,47 @@ describe('VoiceDictationService', () => {
     });
 
     await expect(service.downloadModel(VOICE_DICTATION_MODEL_ID)).rejects.toThrow(/download failed/i);
+  });
+
+  it('forwards model download progress from worker events', async () => {
+    let progressListener: ((event: VoiceInstallerEvent) => void) | null = null;
+    const unsubscribe = vi.fn();
+    const sendInstaller = vi.fn(async (request: VoiceWorkerRpcRequest) => {
+      progressListener?.({
+        type: 'modelProgress',
+        modelId: VOICE_DICTATION_MODEL_ID,
+        percent: 42,
+        sizeBytes: 1024,
+      });
+      return {
+        requestId: request.requestId,
+        verb: request.verb,
+        ok: true as const,
+        status: { id: VOICE_DICTATION_MODEL_ID, status: 'ready' as const, sizeBytes: 1024 },
+      };
+    });
+    const service = new VoiceDictationService({
+      store,
+      provider: new FakeTranscriptionProvider(),
+      permissions,
+      workerPool: {
+        sendInstaller,
+        onInstallerEvent: (listener) => {
+          progressListener = listener;
+          return unsubscribe;
+        },
+      },
+    });
+    const statuses: VoiceModelStatus[] = [];
+
+    await service.downloadModel(VOICE_DICTATION_MODEL_ID, (status) => statuses.push(status));
+
+    expect(statuses).toEqual([
+      { id: VOICE_DICTATION_MODEL_ID, status: 'downloading' },
+      { id: VOICE_DICTATION_MODEL_ID, status: 'downloading', percent: 42, sizeBytes: 1024 },
+      { id: VOICE_DICTATION_MODEL_ID, status: 'ready', sizeBytes: 1024 },
+    ]);
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
   it('testMic captures the fake final transcript without sending chat text', async () => {
