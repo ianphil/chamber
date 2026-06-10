@@ -299,6 +299,13 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     pushToTalk: voiceConfig?.pushToTalk ?? true,
     onFinalTranscript: (text) => insertAtCaret(`${text} `),
   });
+  const voiceButtonTitle = modelStatus.status !== 'ready'
+    ? VOICE_MODEL_NOT_READY_TOOLTIP
+    : voice.state === 'listening'
+      ? 'Click to stop dictation'
+      : disabled
+        ? undefined
+        : 'Click to start dictation · Alt+Shift+V';
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData?.items ?? []);
@@ -569,7 +576,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                     else void Promise.resolve(voice.start()).catch(() => undefined);
                   }}
                   disabled={!voiceEnabled || disabled || modelStatus.status !== 'ready'}
-                  title={voiceEnabled && modelStatus.status !== 'ready' ? VOICE_MODEL_NOT_READY_TOOLTIP : undefined}
+                  title={voiceButtonTitle}
                   className={cn(
                     'h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent flex items-center justify-center',
                     voice.state === 'listening' && 'text-red-500',
