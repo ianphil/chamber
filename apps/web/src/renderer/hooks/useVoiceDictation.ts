@@ -9,7 +9,7 @@ import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { startMicCapture, type MicCaptureSession } from '../lib/audio/captureMic';
 import { chunkPcm16Bytes, downsampleFloat32, float32ToPcm16, pcm16ToBytes } from '../lib/audio/pcm16Encoder';
 
-export type VoiceDictationState = 'idle' | 'listening' | 'error';
+export type VoiceDictationState = 'idle' | 'starting' | 'listening' | 'stopping' | 'error';
 
 export interface UseVoiceDictationOptions {
   enabled: boolean;
@@ -35,6 +35,14 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
   const optionsRef = useRef(options);
   const sessionIdRef = useRef<string | null>(null);
   const captureRef = useRef<MicCaptureSession | null>(null);
+  // Mirror of `state` accessible from event-handler/IPC callbacks without
+  // forcing them to re-bind whenever state changes. Used by start() to gate
+  // against re-entrant calls fired while stop() is mid-flight.
+  const stateRef = useRef<VoiceDictationState>('idle');
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     optionsRef.current = options;
@@ -83,7 +91,10 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
   const stop = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) return;
-    sessionIdRef.current = null;
+    // Keep sessionIdRef populated until cleanup completes so a re-click on
+    // start() during the await chain is rejected — otherwise the Foundry
+    // provider on main can still be ending while we fire a new startSession.
+    setState('stopping');
 
     const capture = captureRef.current;
     captureRef.current = null;
@@ -102,6 +113,7 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
       if (!captureError) captureError = err;
     }
 
+    sessionIdRef.current = null;
     if (captureError) {
       setError(getErrorMessage(captureError));
       setState('error');
@@ -111,8 +123,14 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
   }, []);
 
   const start = useCallback(async () => {
-    if (!optionsRef.current.enabled || sessionIdRef.current) return;
+    if (!optionsRef.current.enabled) return;
+    // Reject re-entrant start: only fire when fully idle. This blocks the
+    // "double-click while stop is mid-flight" path that previously caused
+    // `Foundry transcription provider is already started` on main.
+    if (sessionIdRef.current) return;
+    if (stateRef.current !== 'idle' && stateRef.current !== 'error') return;
     setError(null);
+    setState('starting');
 
     const nextPermission = await window.electronAPI.voice.getPermissionState();
     setPermission(nextPermission);
