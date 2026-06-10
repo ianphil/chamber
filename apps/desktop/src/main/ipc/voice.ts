@@ -18,6 +18,9 @@ export interface VoiceIpcOptions {
   featureEnabled?: boolean;
   /** When true, the e2e fake provider hooks are exposed. */
   e2eEnabled?: boolean;
+  e2ePermissionOverride?: {
+    setState(state: VoicePermissionState | null): void;
+  };
 }
 
 interface VoiceStartSessionRequest {
@@ -34,7 +37,7 @@ interface VoiceIpcServicePort {
   getModelStatus(modelId: string): Promise<VoiceModelStatus>;
   downloadModel(modelId: string, progressCb?: (status: VoiceModelStatus) => void): Promise<void>;
   cancelDownload(modelId: string): Promise<void>;
-  startSession(sessionId: string, modelId?: string): Promise<void>;
+  startSession(request: VoiceStartSessionRequest | string, legacyModelId?: string): Promise<void>;
   appendAudio(sessionId: string, chunk: Uint8Array): Promise<void>;
   endSession(sessionId: string): Promise<void>;
   testMic(): Promise<VoiceMicTestResult>;
@@ -93,12 +96,30 @@ const e2eTranscriptSchema = z
   .strict()
   .optional();
 
+const e2ePermissionStateSchema = z
+  .enum(['granted', 'denied', 'not-determined', 'restricted', 'unsupported'])
+  .nullable();
+
+const e2eModelStatusSchema = z
+  .object({
+    id: z.literal(VOICE_DICTATION_MODEL_ID),
+    status: z.enum(['not-downloaded', 'downloading', 'ready', 'error']),
+    sizeBytes: z.number().optional(),
+    downloadedAt: z.string().optional(),
+    errorMessage: z.string().optional(),
+  })
+  .strict()
+  .nullable();
+
 export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcOptions = {}): void {
   const featureEnabled = options.featureEnabled ?? true;
   const voiceService = service as unknown as VoiceIpcServicePort;
   const transcriptTargets = new Map<string, Set<WebContents>>();
   const transcriptUnsubscribes = new Map<string, () => void>();
   let activeSessionId: string | null = null;
+  let e2eModelStatusOverride: VoiceModelStatus | null = null;
+  let e2eStartedCount = 0;
+  let e2eEndedCount = 0;
 
   function requireFeatureEnabled(): void {
     if (!featureEnabled) {
@@ -161,6 +182,9 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
   ipcMain.handle(IPC.VOICE.GET_MODEL_STATUS, async (_event, rawModelId: unknown): Promise<VoiceModelStatus> => {
     requireFeatureEnabled();
     const modelId = parseIpcArgs(IPC.VOICE.GET_MODEL_STATUS, modelIdSchema, rawModelId);
+    if (e2eModelStatusOverride && modelId === e2eModelStatusOverride.id) {
+      return e2eModelStatusOverride;
+    }
     return voiceService.getModelStatus(modelId);
   });
 
@@ -189,8 +213,9 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
       ) as VoiceStartSessionRequest;
       addTranscriptTarget(request.sessionId, event.sender);
       try {
-        await voiceService.startSession(request.sessionId, request.modelId);
+        await voiceService.startSession(request);
         activeSessionId = request.sessionId;
+        e2eStartedCount += 1;
       } catch (err) {
         removeTranscriptSession(request.sessionId);
         throw err;
@@ -217,6 +242,7 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
     );
     try {
       await voiceService.endSession(sessionId);
+      e2eEndedCount += 1;
     } finally {
       removeTranscriptSession(sessionId);
     }
@@ -241,6 +267,30 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
       const payload = parseIpcArgs(IPC.E2E.VOICE_EMIT_TRANSCRIPT, e2eTranscriptSchema, rawPayload);
       forwardTranscript(activeSessionId, createE2ETranscriptEvent(activeSessionId, payload));
     });
+
+    ipcMain.handle(IPC.E2E.VOICE_SET_PERMISSION_STATE, async (_event, rawState: unknown): Promise<void> => {
+      requireFeatureEnabled();
+      const state = parseIpcArgs(IPC.E2E.VOICE_SET_PERMISSION_STATE, e2ePermissionStateSchema, rawState);
+      options.e2ePermissionOverride?.setState(state);
+    });
+
+    ipcMain.handle(IPC.E2E.VOICE_SET_MODEL_STATUS, async (_event, rawStatus: unknown): Promise<void> => {
+      requireFeatureEnabled();
+      e2eModelStatusOverride = parseIpcArgs(IPC.E2E.VOICE_SET_MODEL_STATUS, e2eModelStatusSchema, rawStatus) as VoiceModelStatus | null;
+      if (e2eModelStatusOverride) {
+        broadcastModelProgress(e2eModelStatusOverride);
+      }
+    });
+
+    ipcMain.handle(IPC.E2E.VOICE_GET_SESSION_STATE, async (): Promise<{
+      activeSessionId: string | null;
+      startedCount: number;
+      endedCount: number;
+    }> => ({
+      activeSessionId,
+      startedCount: e2eStartedCount,
+      endedCount: e2eEndedCount,
+    }));
   }
 }
 
@@ -273,6 +323,12 @@ function normalizeEndSessionPayload(rawPayloadOrSessionId: unknown): unknown {
 function broadcastConfigChanged(config: VoiceDictationConfig | null): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(IPC.VOICE.CHANGED, config);
+  }
+}
+
+function broadcastModelProgress(status: VoiceModelStatus): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(IPC.VOICE.MODEL_PROGRESS, status);
   }
 }
 

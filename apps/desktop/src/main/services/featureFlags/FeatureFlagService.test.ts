@@ -116,6 +116,7 @@ describe('FeatureFlagService', () => {
       switchboardRelay: true,
       byoLlm: true,
       chamberCopilot: true,
+      voiceDictation: true,
     });
     expect(fetched).toBe(false);
   });

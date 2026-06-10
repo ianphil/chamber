@@ -175,6 +175,9 @@ export interface ElectronAPI {
     voice?: {
       setFakeProvider: () => Promise<void>;
       emitTranscript: (payload?: E2EVoiceTranscriptPayload) => Promise<void>;
+      setPermissionState: (state: VoicePermissionState | null) => Promise<void>;
+      setModelStatus: (status: VoiceModelStatus | null) => Promise<void>;
+      getSessionState: () => Promise<E2EVoiceSessionState>;
     };
   };
   byoLlm: {
@@ -236,6 +239,12 @@ export interface E2EVoiceTranscriptPayload {
   readonly type?: TranscriptionEvent['type'];
   readonly text?: string;
   readonly message?: string;
+}
+
+export interface E2EVoiceSessionState {
+  readonly activeSessionId: string | null;
+  readonly startedCount: number;
+  readonly endedCount: number;
 }
 
 declare global {

@@ -178,6 +178,13 @@ if (ipcRenderer.sendSync(IPC.E2E.IS_ENABLED) === true) {
       emitTranscript: async (payload) => {
         await ipcRenderer.invoke(IPC.E2E.VOICE_EMIT_TRANSCRIPT, payload);
       },
+      setPermissionState: async (state) => {
+        await ipcRenderer.invoke(IPC.E2E.VOICE_SET_PERMISSION_STATE, state);
+      },
+      setModelStatus: async (status) => {
+        await ipcRenderer.invoke(IPC.E2E.VOICE_SET_MODEL_STATUS, status);
+      },
+      getSessionState: () => ipcRenderer.invoke(IPC.E2E.VOICE_GET_SESSION_STATE),
     },
   };
 }

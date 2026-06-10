@@ -106,8 +106,16 @@ export class VoiceDictationService {
     this.emitConfigChanged(await this.store.load());
   }
 
-  async startSession(sessionId: string, modelId?: string): Promise<void> {
+  async startSession(
+    request: { sessionId: string; deviceId?: string | null; modelId?: string } | string,
+    legacyModelId?: string,
+  ): Promise<void> {
+    // Accept either the new object form or the legacy positional (sessionId, modelId) form.
+    const { sessionId, deviceId, modelId } = typeof request === 'string'
+      ? { sessionId: request, deviceId: undefined, modelId: legacyModelId }
+      : { sessionId: request.sessionId, deviceId: request.deviceId ?? undefined, modelId: request.modelId };
     void modelId;
+    void deviceId;
     if (this.activeSessionId) {
       throw new Error('A voice dictation session is already active');
     }
