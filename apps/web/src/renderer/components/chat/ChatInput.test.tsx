@@ -230,6 +230,7 @@ describe('ChatInput', () => {
       const mic = await renderWithMic();
 
       expect((mic as HTMLButtonElement).disabled).toBe(false);
+      expect(mic.getAttribute('title')).toBe('Click to start dictation · Alt+Shift+V');
       expect(screen.queryByText('Listening…')).toBeNull();
       fireEvent.click(mic);
       expect(voiceHookMock.start).toHaveBeenCalledOnce();
@@ -240,6 +241,9 @@ describe('ChatInput', () => {
 
       await renderWithMic();
 
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Dictate message' }).getAttribute('title')).toBe('Click to stop dictation');
+      });
       expect(screen.getByText('Listening…')).toBeTruthy();
     });
 
