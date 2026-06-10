@@ -578,6 +578,12 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                   <Mic className={cn('h-4 w-4', voice.state === 'listening' && 'animate-pulse')} />
                 </button>
               ) : null}
+              {voiceEnabled && voice.state === 'listening' ? (
+                <span role="status" className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  Listening…
+                </span>
+              ) : null}
 
               {availableModels.length > 0 ? (
                 <Select

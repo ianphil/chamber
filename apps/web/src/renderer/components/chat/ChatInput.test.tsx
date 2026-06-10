@@ -230,8 +230,17 @@ describe('ChatInput', () => {
       const mic = await renderWithMic();
 
       expect((mic as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.queryByText('Listening…')).toBeNull();
       fireEvent.click(mic);
       expect(voiceHookMock.start).toHaveBeenCalledOnce();
+    });
+
+    it('shows a listening indicator while voice dictation is active', async () => {
+      voiceHookMock.state = 'listening';
+
+      await renderWithMic();
+
+      expect(screen.getByText('Listening…')).toBeTruthy();
     });
 
     it('inserts final transcript text at the caret without submitting', async () => {
