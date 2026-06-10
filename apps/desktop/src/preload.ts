@@ -76,7 +76,10 @@ const electronAPI: ElectronAPI = {
     getPermissionState: () => ipcRenderer.invoke(IPC.VOICE.GET_PERMISSION_STATE),
     openMicPreferences: () => ipcRenderer.invoke(IPC.VOICE.OPEN_MIC_PREFERENCES),
     getModelStatus: (modelId) => ipcRenderer.invoke(IPC.VOICE.GET_MODEL_STATUS, modelId),
-    downloadModel: (modelId) => ipcRenderer.invoke(IPC.VOICE.DOWNLOAD_MODEL, modelId),
+    downloadModel: (modelId, options) => ipcRenderer.invoke(
+      IPC.VOICE.DOWNLOAD_MODEL,
+      options ? { modelId, ...options } : modelId,
+    ),
     cancelDownload: (modelId) => ipcRenderer.invoke(IPC.VOICE.CANCEL_DOWNLOAD, modelId),
     startSession: (payload) => ipcRenderer.invoke(IPC.VOICE.START_SESSION, payload),
     appendAudio: (payload) => ipcRenderer.invoke(IPC.VOICE.APPEND_AUDIO, payload),

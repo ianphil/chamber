@@ -24,6 +24,7 @@ import type { CancelOutcome, LedgerRecord, LedgerStatus } from './ledger';
 import type {
   TranscriptionEvent,
   VoiceDictationConfig,
+  VoiceDownloadModelOptions,
   VoiceMicTestResult,
   VoiceModelStatus,
   VoicePermissionState,
@@ -195,7 +196,7 @@ export interface ElectronAPI {
     getPermissionState: () => Promise<VoicePermissionState>;
     openMicPreferences: () => Promise<void>;
     getModelStatus: (modelId: string) => Promise<VoiceModelStatus>;
-    downloadModel: (modelId: string) => Promise<void>;
+    downloadModel: (modelId: string, options?: VoiceDownloadModelOptions) => Promise<void>;
     cancelDownload: (modelId: string) => Promise<void>;
     startSession: (payload: VoiceStartSessionPayload) => Promise<void>;
     appendAudio: (payload: VoiceAppendAudioPayload) => Promise<void>;

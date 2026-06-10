@@ -335,12 +335,16 @@ export function VoiceDictationSettingsSection() {
       if (modelStatus?.status === 'downloading') {
         await window.electronAPI.voice.cancelDownload(VOICE_DICTATION_MODEL_ID);
       } else {
+        const forceRedownload = modelStatus?.status === 'ready';
         setModelStatus((current) => ({
           id: VOICE_DICTATION_MODEL_ID,
           status: 'downloading',
           ...(current?.sizeBytes ? { sizeBytes: current.sizeBytes } : {}),
         }));
-        await window.electronAPI.voice.downloadModel(VOICE_DICTATION_MODEL_ID);
+        await window.electronAPI.voice.downloadModel(
+          VOICE_DICTATION_MODEL_ID,
+          forceRedownload ? { forceRedownload: true } : undefined,
+        );
       }
       const refreshed = await window.electronAPI.voice.getModelStatus(VOICE_DICTATION_MODEL_ID);
       setModelStatus(refreshed);

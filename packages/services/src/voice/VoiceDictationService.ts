@@ -4,6 +4,7 @@ import {
   VOICE_DICTATION_MODEL_ID,
   type TranscriptionEvent,
   type VoiceDictationConfig,
+  type VoiceDownloadModelOptions,
   type VoiceInstallerEvent,
   type VoiceMicTestResult,
   type VoiceModelStatus,
@@ -84,7 +85,11 @@ export class VoiceDictationService {
     };
   }
 
-  async downloadModel(modelId: string, progressCb?: (status: VoiceModelStatus) => void): Promise<void> {
+  async downloadModel(
+    modelId: string,
+    progressCb?: (status: VoiceModelStatus) => void,
+    options: VoiceDownloadModelOptions = {},
+  ): Promise<void> {
     assertKnownModel(modelId);
     if (!this.workerPool) {
       throw new Error('Voice worker pool is unavailable');
@@ -104,6 +109,7 @@ export class VoiceDictationService {
         requestId: randomUUID(),
         verb: 'downloadModel',
         modelId,
+        ...(options.forceRedownload === true ? { forceRedownload: true } : {}),
       });
       assertRpcSucceeded(response);
       if (response.status) progressCb?.(response.status);

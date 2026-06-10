@@ -141,6 +141,29 @@ describe('VoiceDictationService', () => {
     await expect(service.downloadModel(VOICE_DICTATION_MODEL_ID)).rejects.toThrow(/download failed/i);
   });
 
+  it('passes force redownload requests through to the worker pool', async () => {
+    const sendInstaller = vi.fn(async (request: VoiceWorkerRpcRequest) => ({
+      requestId: request.requestId,
+      verb: request.verb,
+      ok: true as const,
+      status: { id: VOICE_DICTATION_MODEL_ID, status: 'ready' as const },
+    }));
+    const service = new VoiceDictationService({
+      store,
+      provider: new FakeTranscriptionProvider(),
+      permissions,
+      workerPool: { sendInstaller },
+    });
+
+    await service.downloadModel(VOICE_DICTATION_MODEL_ID, undefined, { forceRedownload: true });
+
+    expect(sendInstaller).toHaveBeenCalledWith(expect.objectContaining({
+      verb: 'downloadModel',
+      modelId: VOICE_DICTATION_MODEL_ID,
+      forceRedownload: true,
+    }));
+  });
+
   it('forwards model download progress from worker events', async () => {
     let progressListener: ((event: VoiceInstallerEvent) => void) | null = null;
     const unsubscribe = vi.fn();

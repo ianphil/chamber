@@ -158,6 +158,21 @@ describe('VoiceDictationSettingsSection', () => {
     expect(screen.getByRole('progressbar', { name: /model download progress/i }).getAttribute('aria-valuenow')).toBe('64');
   });
 
+  it('forces a model redownload when the cached model is ready', async () => {
+    (api.voice.getModelStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: VOICE_DICTATION_MODEL_ID,
+      status: 'ready',
+    });
+
+    render(<VoiceDictationSettingsSection />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Redownload' }));
+
+    await waitFor(() => {
+      expect(api.voice.downloadModel).toHaveBeenCalledWith(VOICE_DICTATION_MODEL_ID, { forceRedownload: true });
+    });
+  });
+
   it('shows denied microphone permission state with preferences action', async () => {
     (api.voice.getPermissionState as ReturnType<typeof vi.fn>).mockResolvedValue('denied');
 
