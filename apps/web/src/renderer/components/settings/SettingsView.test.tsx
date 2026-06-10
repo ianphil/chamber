@@ -9,6 +9,17 @@ import { SettingsView } from './SettingsView';
 import { AppStateProvider } from '../../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
+vi.mock('./VoiceDictationSettingsSection', async () => {
+  const React = await import('react');
+  return {
+    VoiceDictationSettingsSection: () => React.createElement(
+      'section',
+      { 'data-testid': 'voice-dictation-settings-section' },
+      'Voice dictation',
+    ),
+  };
+});
+
 describe('SettingsView', () => {
   let api: ReturnType<typeof mockElectronAPI>;
 
@@ -79,13 +90,32 @@ describe('SettingsView', () => {
 
   it('shows Local & Custom LLM settings when BYO LLM is feature-flagged on', async () => {
     render(
-      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false } }}>
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false, voiceDictation: false } }}>
         <SettingsView />
       </AppStateProvider>,
     );
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /local & custom llm/i })).toBeTruthy();
     });
+  });
+
+  it('hides Voice dictation settings when voice dictation is feature-flagged off', async () => {
+    render(
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false } }}>
+        <SettingsView />
+      </AppStateProvider>,
+    );
+    await screen.findByRole('heading', { name: /settings/i });
+    expect(screen.queryByTestId('voice-dictation-settings-section')).toBeNull();
+  });
+
+  it('shows Voice dictation settings when voice dictation is feature-flagged on', async () => {
+    render(
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: true } }}>
+        <SettingsView />
+      </AppStateProvider>,
+    );
+    expect(await screen.findByTestId('voice-dictation-settings-section')).toBeTruthy();
   });
 
   it('renders an Account section heading', async () => {

@@ -209,6 +209,25 @@ export function mockElectronAPI(): ElectronAPI {
       restartAgents: vi.fn().mockResolvedValue({ success: true, restartedCount: 0 }),
       onChanged: vi.fn().mockReturnValue(vi.fn()),
     },
+    voice: {
+      getConfig: vi.fn().mockResolvedValue(null),
+      saveConfig: vi.fn().mockResolvedValue(undefined),
+      getPermissionState: vi.fn().mockResolvedValue('unsupported'),
+      openMicPreferences: vi.fn().mockResolvedValue(undefined),
+      getModelStatus: vi.fn().mockResolvedValue({
+        id: 'nemotron-speech-streaming-en-0.6b',
+        status: 'not-downloaded',
+      }),
+      downloadModel: vi.fn().mockResolvedValue(undefined),
+      cancelDownload: vi.fn().mockResolvedValue(undefined),
+      startSession: vi.fn().mockResolvedValue(undefined),
+      appendAudio: vi.fn().mockResolvedValue(undefined),
+      endSession: vi.fn().mockResolvedValue(undefined),
+      testMic: vi.fn().mockResolvedValue({ success: false, error: 'not stubbed' }),
+      onConfigChanged: vi.fn().mockReturnValue(vi.fn()),
+      onModelProgress: vi.fn().mockReturnValue(vi.fn()),
+      onTranscript: vi.fn().mockReturnValue(vi.fn()),
+    },
     genesis: {
       getDefaultPath: vi.fn().mockResolvedValue('C:\\Users\\test\\agents'),
       pickPath: vi.fn().mockResolvedValue(null),
@@ -344,7 +363,7 @@ export function mockElectronAPI(): ElectronAPI {
       close: vi.fn(),
     },
     app: {
-      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false }),
+      getFeatureFlags: vi.fn().mockResolvedValue({ switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false }),
       onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     },
   };
@@ -373,4 +392,3 @@ export function installElectronAPI(api?: ElectronAPI): ElectronAPI {
   Object.defineProperty(window, 'electronAPI', { value: mock, writable: true, configurable: true });
   return mock;
 }
-

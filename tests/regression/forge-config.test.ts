@@ -92,12 +92,22 @@ describe('forge config', () => {
       // These resources are always required for the packaged app.
       expect(extraResource).toContain('./resources/node');
       expect(extraResource).toContain('./resources/copilot-runtime');
+      expect(extraResource).toContain('./resources/voice-runtime');
       expect(extraResource).toContain('./resources/sqlite-runtime');
       expect(extraResource).toContain('./node_modules/keytar');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/managed-skills');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/lens-skill');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/ttasks-skill');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/automation-skill');
+    });
+
+    it('unpacks Foundry Local native prebuilds required by packaged voice dictation', async () => {
+      const config = await loadForgeConfig();
+      const unpack = config.packagerConfig?.asar && typeof config.packagerConfig.asar === 'object'
+        ? config.packagerConfig.asar.unpack
+        : '';
+
+      expect(unpack).toContain('foundry-local-sdk');
     });
   });
 });

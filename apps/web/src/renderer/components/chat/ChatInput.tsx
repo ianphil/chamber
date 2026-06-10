@@ -1,8 +1,12 @@
 import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { Mic } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
+import { VOICE_DICTATION_MODEL_ID, type VoiceDictationConfig, type VoiceModelStatus } from '@chamber/shared/voice-types';
 import type { ModelInfo, ChatImageAttachment } from '@chamber/shared/types';
+import { useAppState } from '../../lib/store';
+import { useVoiceDictation } from '../../hooks/useVoiceDictation';
 import {
   Select,
   SelectContent,
@@ -52,6 +56,11 @@ const SHORTCODE_POPOVER_GAP = 4;
 const SHORTCODE_POPOVER_MARGIN = 8;
 const SHORTCODE_POPOVER_MAX_HEIGHT = 240;
 const SHORTCODE_POPOVER_MIN_WIDTH = 220;
+const VOICE_MODEL_NOT_READY_TOOLTIP = 'Download the dictation model in Settings → Voice dictation';
+const DEFAULT_VOICE_MODEL_STATUS: VoiceModelStatus = {
+  id: VOICE_DICTATION_MODEL_ID,
+  status: 'not-downloaded',
+};
 
 // Boundary-aware shortcode detector. Matches a `:foo` token at the caret
 // where:
@@ -155,6 +164,7 @@ function getShortcodePopoverPlacement(anchor: ShortcodeAnchor): ShortcodePopover
 }
 
 export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder, value, onValueChange }: Props) {
+  const { featureFlags } = useAppState();
   const isControlled = value !== undefined;
   const [internalInput, setInternalInput] = useState('');
   const input = isControlled ? value : internalInput;
@@ -169,6 +179,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   const [shortcodeResults, setShortcodeResults] = useState<EmojiRecord[]>([]);
   const [shortcodeIndex, setShortcodeIndex] = useState(0);
   const [shortcodeAnchor, setShortcodeAnchor] = useState<ShortcodeAnchor | null>(null);
+  const [isComposingForVoice, setIsComposingForVoice] = useState(false);
+  const [voiceConfig, setVoiceConfig] = useState<VoiceDictationConfig | null>(null);
+  const [modelStatus, setModelStatus] = useState<VoiceModelStatus>(DEFAULT_VOICE_MODEL_STATUS);
   const isComposingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pastedSeq = useRef(0);
@@ -229,6 +242,68 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
       resize(textareaRef.current);
     });
   }, [resize, setInput]);
+
+  useEffect(() => {
+    if (!featureFlags.voiceDictation) {
+      setVoiceConfig(null);
+      return;
+    }
+
+    let cancelled = false;
+    window.electronAPI.voice.getConfig().then((config) => {
+      if (!cancelled) setVoiceConfig(config);
+    }).catch(() => {
+      if (!cancelled) setVoiceConfig(null);
+    });
+    const unsubscribe = window.electronAPI.voice.onConfigChanged((config) => {
+      if (!cancelled) setVoiceConfig(config);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [featureFlags.voiceDictation]);
+
+  useEffect(() => {
+    if (!featureFlags.voiceDictation || !voiceConfig?.model.id) {
+      setModelStatus(DEFAULT_VOICE_MODEL_STATUS);
+      return;
+    }
+
+    let cancelled = false;
+    const modelId = voiceConfig.model.id;
+    window.electronAPI.voice.getModelStatus(modelId).then((status) => {
+      if (!cancelled) setModelStatus(status);
+    }).catch(() => {
+      if (!cancelled) setModelStatus(DEFAULT_VOICE_MODEL_STATUS);
+    });
+    const unsubscribe = window.electronAPI.voice.onModelProgress((status) => {
+      if (!cancelled && status.id === modelId) setModelStatus(status);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [featureFlags.voiceDictation, voiceConfig?.model.id]);
+
+  const voiceEnabled = featureFlags.voiceDictation && voiceConfig?.enabled === true;
+  const voiceModelReady = modelStatus.status === 'ready';
+  const pttEnabled = voiceEnabled && !disabled && voiceModelReady && !shortcodeMatch && !isComposingForVoice;
+  const voice = useVoiceDictation({
+    enabled: pttEnabled,
+    shortcut: voiceConfig?.shortcut ?? '',
+    pushToTalk: voiceConfig?.pushToTalk ?? true,
+    onFinalTranscript: (text) => insertAtCaret(`${text} `),
+  });
+  const voiceButtonTitle = modelStatus.status !== 'ready'
+    ? VOICE_MODEL_NOT_READY_TOOLTIP
+    : voice.state === 'listening'
+      ? 'Click to stop dictation'
+      : disabled
+        ? undefined
+        : 'Click to start dictation · Alt+Shift+V';
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData?.items ?? []);
@@ -435,10 +510,12 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
             onBlur={updateSelectionRef}
             onCompositionStart={() => {
               isComposingRef.current = true;
+              setIsComposingForVoice(true);
               closeShortcode();
             }}
             onCompositionEnd={() => {
               isComposingRef.current = false;
+              setIsComposingForVoice(false);
             }}
             placeholder={placeholder ?? (disabled ? 'Select a mind directory to start…' : 'Message your agent… (paste an image to attach)')}
             disabled={disabled}
@@ -481,6 +558,36 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
                   </Suspense>
                 </PopoverContent>
               </Popover>
+
+              {voiceEnabled ? (
+                <button
+                  type="button"
+                  aria-label="Dictate message"
+                  aria-pressed={voice.state === 'listening'}
+                  onMouseDown={(e) => {
+                    updateSelectionRef();
+                    e.preventDefault();
+                  }}
+                  onClick={() => {
+                    if (voice.state === 'listening') void Promise.resolve(voice.stop()).catch(() => undefined);
+                    else void Promise.resolve(voice.start()).catch(() => undefined);
+                  }}
+                  disabled={!voiceEnabled || disabled || modelStatus.status !== 'ready'}
+                  title={voiceButtonTitle}
+                  className={cn(
+                    'h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent flex items-center justify-center',
+                    voice.state === 'listening' && 'text-red-500',
+                  )}
+                >
+                  <Mic className={cn('h-4 w-4', voice.state === 'listening' && 'animate-pulse')} />
+                </button>
+              ) : null}
+              {voiceEnabled && voice.state === 'listening' ? (
+                <span role="status" className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  Listening…
+                </span>
+              ) : null}
 
               {availableModels.length > 0 ? (
                 <Select

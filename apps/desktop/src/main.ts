@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import started from 'electron-squirrel-startup';
-import { DEFAULT_APP_FEATURE_FLAGS, IPC } from '@chamber/shared';
+import { DEFAULT_APP_FEATURE_FLAGS, IPC, type VoicePermissionState } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
 import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
 
@@ -69,11 +69,17 @@ import {
   TurnQueue,
   UserProfileService,
   ViewDiscovery,
+  VoiceDictationService,
+  VoiceDictationStore,
+  VoiceWorkerPool,
   SQLiteLedgerStore,
   setSqliteDatabase,
   ByoLlmStore,
   buildProviderConfig,
   createByoLlmModelsProvider,
+  FakeTranscriptionProvider,
+  FoundryTranscriptionProvider,
+  type PermissionInspector,
   probeEndpoint,
   redactUrlCredentials,
   configureSdkRuntimeLayout,
@@ -112,6 +118,7 @@ import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
 import { setupUserProfileIPC } from './main/ipc/userProfile';
+import { setupVoiceIPC } from './main/ipc/voice';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -121,6 +128,7 @@ import { UpdaterService } from './main/updater/UpdaterService';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
 import { FeatureFlagService } from './main/services/featureFlags/FeatureFlagService';
+import { ElectronPermissionInspector } from './main/voice/PermissionInspector';
 import type sharpModule from 'sharp';
 
 if (started) {
@@ -132,6 +140,10 @@ if (process.env.CHAMBER_E2E_CDP_PORT) {
 }
 if (process.env.CHAMBER_E2E_USER_DATA) {
   app.setPath('userData', process.env.CHAMBER_E2E_USER_DATA);
+}
+if (process.env.CHAMBER_E2E_VOICE_FAKE === '1') {
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
 const hasSingleInstanceLock = process.env.CHAMBER_DISABLE_SINGLE_INSTANCE_LOCK === '1' || app.requestSingleInstanceLock();
@@ -235,8 +247,32 @@ let automationBridgeStop: (() => Promise<void>) | null = null;
 let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
 let updaterService: UpdaterService;
+let voiceWorkerPool: VoiceWorkerPool | null = null;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
 const ttasksStoresByMindPath = new Map<string, SqliteStore>();
+
+class E2EVoicePermissionInspector implements PermissionInspector {
+  private overrideState: VoicePermissionState | null;
+
+  constructor(
+    private readonly delegate: PermissionInspector,
+    initialOverride: VoicePermissionState | null,
+  ) {
+    this.overrideState = initialOverride;
+  }
+
+  setState(state: VoicePermissionState | null): void {
+    this.overrideState = state;
+  }
+
+  async getState(): Promise<VoicePermissionState> {
+    return this.overrideState ?? this.delegate.getState();
+  }
+
+  openPreferences(): Promise<void> {
+    return this.delegate.openPreferences?.() ?? Promise.resolve();
+  }
+}
 
 const createTaskLedger = (mindPath: string): TaskLedger => {
   const existing = taskLedgersByMindPath.get(mindPath);
@@ -521,7 +557,11 @@ const requestQuit = () => {
   mindManager.shutdown()
     .then(() => {
       updaterService.stop();
-      return Promise.allSettled([a2aRelayModeService.disconnect(), stopMvpServer()]);
+      return Promise.allSettled([
+        a2aRelayModeService.disconnect(),
+        stopMvpServer(),
+        voiceWorkerPool?.stop() ?? Promise.resolve(),
+      ]);
     })
     .catch(() => { /* noop */ })
     .finally(() => app.quit());
@@ -597,6 +637,13 @@ function stopMvpServer(): Promise<void> {
     });
     child.kill();
   });
+}
+
+function resolveVoiceWorkerEntry(fileName: 'voiceWorker.js'): string {
+  // Vite electron-forge plugin emits all `target: 'main'` entries flat into
+  // `.vite/build/`, so the workers live alongside main.js / preload.js — not
+  // in a `voiceWorker/` subfolder.
+  return path.join(__dirname, fileName);
 }
 
 const showMainWindow = () => {
@@ -836,6 +883,35 @@ app.on('ready', async () => {
     featureEnabled: appFeatureFlags.byoLlm,
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },
   });
+  if (appFeatureFlags.voiceDictation === true) {
+    const voiceStore = new VoiceDictationStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA });
+    const electronPermissions = new ElectronPermissionInspector();
+    const e2ePermissionOverride = process.env.CHAMBER_E2E === '1'
+      ? new E2EVoicePermissionInspector(
+        electronPermissions,
+        process.env.CHAMBER_E2E_VOICE_FAKE === '1' ? 'granted' : null,
+      )
+      : null;
+    const permissions = e2ePermissionOverride ?? electronPermissions;
+    const voiceWorkerPath = resolveVoiceWorkerEntry('voiceWorker.js');
+    const workerPool = new VoiceWorkerPool({ voiceWorkerPath });
+    workerPool.start();
+    voiceWorkerPool = workerPool;
+    const provider = process.env.CHAMBER_E2E_VOICE_FAKE === '1'
+      ? new FakeTranscriptionProvider()
+      : new FoundryTranscriptionProvider(workerPool);
+    const voiceService = new VoiceDictationService({
+      store: voiceStore,
+      provider,
+      permissions,
+      workerPool,
+    });
+    setupVoiceIPC(voiceService, {
+      featureEnabled: true,
+      e2eEnabled: process.env.CHAMBER_E2E === '1',
+      ...(e2ePermissionOverride ? { e2ePermissionOverride } : {}),
+    });
+  }
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,
     configStore: configService,
@@ -949,6 +1025,10 @@ app.on('will-quit', () => {
   if (automationBridgeStop) {
     void automationBridgeStop().catch(() => { /* noop */ });
     automationBridgeStop = null;
+  }
+  if (voiceWorkerPool) {
+    void voiceWorkerPool.stop().catch(() => { /* noop */ });
+    voiceWorkerPool = null;
   }
 });
 

@@ -11,16 +11,16 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "node scripts/check-sdk-versions.js && electron-forge start",
-    "package": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && electron-forge package",
+    "start": "node scripts/check-sdk-versions.js && node scripts/check-voice-sdk-version.js && electron-forge start",
+    "package": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge package",
     "make": "npm run make:builder",
-    "make:forge": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && electron-forge make",
+    "make:forge": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge make",
     "make:builder": "npm run package && node scripts/prepare-builder-prepackaged.js && electron-builder --win nsis --x64 --prepackaged out/Chamber-win32-x64 --config config/electron-builder.config.cjs --publish never",
     "make:builder:mac": "npm run package && node scripts/prepare-builder-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && node scripts/sign-macos-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && node scripts/notarize-macos-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && electron-builder --mac --$(node -p \"process.arch\") --prepackaged out/Chamber-darwin-$(node -p \"process.arch\")/Chamber.app --config config/electron-builder.config.cjs --publish never",
     "make:mac": "npm run make:builder:mac",
     "make:sandbox": "npm run make && node scripts/sandbox-test.js",
     "sandbox": "node scripts/sandbox-test.js",
-    "publish": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && electron-forge publish",
+    "publish": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge publish",
     "lint": "tsc --noEmit && eslint . && npm run deps:check && npm run lint:yaml && npm run lint:md",
     "lint:md": "markdownlint-cli2 \"**/*.md\" \"#**/node_modules/**\" \"#resources\" \"#chamber-*-runtime/**\" \"#dist\" \"#out\" \"#coverage\" \"#test-results\" \"#.vite\" \"#.cache\" \"#.working-memory\" \"#CHANGELOG.md\"",
     "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\" \"#**/node_modules/**\" \"#resources\" \"#chamber-*-runtime/**\" \"#dist\" \"#out\" \"#coverage\" \"#test-results\" \"#.vite\" \"#.cache\" \"#.working-memory\" \"#CHANGELOG.md\"",
@@ -43,6 +43,7 @@
     "smoke:a2a-relay": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 --headed tests/e2e/electron/a2a-relay-roundtrip.spec.ts",
     "smoke:byo-llm": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 tests/e2e/electron/byo-llm-settings.spec.ts",
     "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js",
+    "smoke:voice-runtime": "node scripts/voice-runtime-smoke.js",
     "smoke:automation": "node scripts/prepare-automation-runtime.js && node scripts/run-automation-smoke.js"
   },
   "keywords": [],
@@ -104,6 +105,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "electron-updater": "^6.8.3",
     "emojibase-data": "^17.0.0",
+    "foundry-local-sdk": "1.1.0",
     "frimousse": "^0.3.0",
     "highlight.js": "^11.11.1",
     "hono": "^4.12.15",
@@ -125,6 +127,7 @@
       "@electron/fuses": "$@electron/fuses"
     },
     "@github/copilot": "$@github/copilot",
+    "foundry-local-sdk": "$foundry-local-sdk",
     "@electron/rebuild": "^4.0.4",
     "tmp": "^0.2.5",
     "yauzl": "^3.3.1"

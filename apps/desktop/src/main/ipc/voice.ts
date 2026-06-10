@@ -1,0 +1,434 @@
+import { BrowserWindow, ipcMain, type WebContents } from 'electron';
+import { z } from 'zod';
+
+import {
+  IPC,
+  parseIpcArgs,
+  VOICE_DICTATION_MODEL_ID,
+  VOICE_MAX_APPEND_CHUNK_BYTES,
+  type TranscriptionEvent,
+  type VoiceDictationConfig,
+  type VoiceDownloadModelOptions,
+  type VoiceMicTestResult,
+  type VoiceModelStatus,
+  type VoicePermissionState,
+} from '@chamber/shared';
+import { FAKE_SENTINEL_TRANSCRIPT, FakeTranscriptionProvider, type VoiceDictationService } from '@chamber/services';
+
+export interface VoiceIpcOptions {
+  featureEnabled?: boolean;
+  /** When true, the e2e fake provider hooks are exposed. */
+  e2eEnabled?: boolean;
+  e2ePermissionOverride?: {
+    setState(state: VoicePermissionState | null): void;
+  };
+}
+
+interface VoiceStartSessionRequest {
+  readonly sessionId: string;
+  readonly deviceId?: string | null;
+  readonly modelId?: string;
+}
+
+interface VoiceDownloadModelRequest {
+  readonly modelId: string;
+  readonly forceRedownload?: boolean;
+}
+
+interface VoiceIpcServicePort {
+  getConfig(): Promise<VoiceDictationConfig | null>;
+  saveConfig(config: VoiceDictationConfig): Promise<void>;
+  getPermissionState(): Promise<VoicePermissionState>;
+  openPreferences(): Promise<void>;
+  getModelStatus(modelId: string): Promise<VoiceModelStatus>;
+  downloadModel(modelId: string, progressCb?: (status: VoiceModelStatus) => void, options?: VoiceDownloadModelOptions): Promise<void>;
+  cancelDownload(modelId: string): Promise<void>;
+  startSession(request: VoiceStartSessionRequest | string, legacyModelId?: string): Promise<void>;
+  appendAudio(sessionId: string, chunk: Uint8Array): Promise<void>;
+  endSession(sessionId: string): Promise<void>;
+  testMic(): Promise<VoiceMicTestResult>;
+  subscribeTranscript(cb: (event: TranscriptionEvent) => void): () => void;
+  setProviderForTesting?(provider: FakeTranscriptionProvider): void | Promise<void>;
+}
+
+const nonEmptyStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, { message: 'must be a non-empty string' });
+
+const optionalNonEmptyStringSchema = nonEmptyStringSchema.optional();
+
+const modelIdSchema = nonEmptyStringSchema;
+
+const configSchema = z
+  .object({
+    enabled: z.boolean(),
+    inputDeviceId: z.string().nullable(),
+    shortcut: z.string(),
+    pushToTalk: z.boolean(),
+    model: z
+      .object({
+        id: z.literal(VOICE_DICTATION_MODEL_ID),
+        downloadedAt: z.string().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const startSessionSchema = z
+  .object({
+    sessionId: nonEmptyStringSchema,
+    deviceId: nonEmptyStringSchema.nullable().optional(),
+    modelId: optionalNonEmptyStringSchema,
+  })
+  .strict();
+
+const downloadModelSchema = z
+  .object({
+    modelId: modelIdSchema,
+    forceRedownload: z.boolean().optional(),
+  })
+  .strict();
+
+const appendAudioSchema = z
+  .object({
+    sessionId: nonEmptyStringSchema,
+    chunk: z
+      .custom<Uint8Array>((value) => value instanceof Uint8Array, { message: 'must be a Uint8Array' })
+      .refine((chunk) => chunk.byteLength <= VOICE_MAX_APPEND_CHUNK_BYTES, {
+        message: `must be at most ${VOICE_MAX_APPEND_CHUNK_BYTES} bytes`,
+      }),
+  })
+  .strict();
+
+const e2eTranscriptSchema = z
+  .object({
+    type: z.enum(['partial', 'final', 'error', 'sessionStarted', 'sessionEnded']).optional(),
+    text: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .strict()
+  .optional();
+
+const e2ePermissionStateSchema = z
+  .enum(['granted', 'denied', 'not-determined', 'restricted', 'unsupported'])
+  .nullable();
+
+const e2eModelStatusSchema = z
+  .object({
+    id: z.literal(VOICE_DICTATION_MODEL_ID),
+    status: z.enum(['not-downloaded', 'downloading', 'ready', 'error']),
+    percent: z.number().optional(),
+    sizeBytes: z.number().optional(),
+    downloadedAt: z.string().optional(),
+    errorMessage: z.string().optional(),
+  })
+  .strict()
+  .nullable();
+
+export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcOptions = {}): void {
+  const featureEnabled = options.featureEnabled ?? true;
+  const voiceService = service as unknown as VoiceIpcServicePort;
+  const transcriptTargets = new Map<string, Set<WebContents>>();
+  const transcriptUnsubscribes = new Map<string, () => void>();
+  // Tracks the WebContents that originally invoked startSession so subsequent
+  // append/end RPCs from a non-owner are rejected.
+  const sessionOwners = new Map<string, number>();
+  let activeSessionId: string | null = null;
+  let e2eModelStatusOverride: VoiceModelStatus | null = null;
+  let e2eStartedCount = 0;
+  let e2eEndedCount = 0;
+
+  function requireFeatureEnabled(): void {
+    if (!featureEnabled) {
+      throw new Error(featureUnavailableMessage());
+    }
+  }
+
+  function addTranscriptTarget(sessionId: string, webContents: WebContents): void {
+    const targets = transcriptTargets.get(sessionId) ?? new Set<WebContents>();
+    targets.add(webContents);
+    transcriptTargets.set(sessionId, targets);
+    // Prune the target if its WebContents is destroyed (window closed/crash).
+    webContents.once('destroyed', () => {
+      targets.delete(webContents);
+      if (targets.size === 0) {
+        transcriptUnsubscribes.get(sessionId)?.();
+        transcriptUnsubscribes.delete(sessionId);
+        transcriptTargets.delete(sessionId);
+      }
+    });
+
+    if (!transcriptUnsubscribes.has(sessionId)) {
+      const unsubscribe = voiceService.subscribeTranscript((event) => {
+        if (event.sessionId !== sessionId) return;
+        forwardTranscript(sessionId, event);
+      });
+      transcriptUnsubscribes.set(sessionId, unsubscribe);
+    }
+  }
+
+  function removeTranscriptSession(sessionId: string): void {
+    transcriptUnsubscribes.get(sessionId)?.();
+    transcriptUnsubscribes.delete(sessionId);
+    transcriptTargets.delete(sessionId);
+    sessionOwners.delete(sessionId);
+    if (activeSessionId === sessionId) activeSessionId = null;
+  }
+
+  function forwardTranscript(sessionId: string, event: TranscriptionEvent): void {
+    const targets = transcriptTargets.get(sessionId);
+    if (!targets) return;
+    const payload = { ...event, sessionId };
+    for (const target of targets) {
+      if (target.isDestroyed()) {
+        targets.delete(target);
+        continue;
+      }
+      try {
+        target.send(IPC.VOICE.TRANSCRIPT, payload);
+      } catch {
+        // best-effort — drop the target if send fails
+        targets.delete(target);
+      }
+    }
+    if (targets.size === 0) {
+      transcriptUnsubscribes.get(sessionId)?.();
+      transcriptUnsubscribes.delete(sessionId);
+      transcriptTargets.delete(sessionId);
+    }
+  }
+
+  function assertSessionOwner(sessionId: string, senderId: number): void {
+    const owner = sessionOwners.get(sessionId);
+    if (owner !== undefined && owner !== senderId) {
+      throw new Error(`Voice session ${sessionId} is owned by a different renderer`);
+    }
+  }
+
+  ipcMain.handle(IPC.VOICE.GET_CONFIG, async (): Promise<VoiceDictationConfig | null> => {
+    if (!featureEnabled) return null;
+    return voiceService.getConfig();
+  });
+
+  ipcMain.handle(IPC.VOICE.SAVE_CONFIG, async (_event, rawConfig: unknown): Promise<void> => {
+    requireFeatureEnabled();
+    const config = parseIpcArgs(IPC.VOICE.SAVE_CONFIG, configSchema, rawConfig) as VoiceDictationConfig;
+    await voiceService.saveConfig(config);
+    broadcastConfigChanged(config);
+  });
+
+  ipcMain.handle(IPC.VOICE.GET_PERMISSION_STATE, async (): Promise<VoicePermissionState> => {
+    requireFeatureEnabled();
+    return voiceService.getPermissionState();
+  });
+
+  ipcMain.handle(IPC.VOICE.OPEN_MIC_PREFERENCES, async (): Promise<void> => {
+    requireFeatureEnabled();
+    await voiceService.openPreferences();
+  });
+
+  ipcMain.handle(IPC.VOICE.GET_MODEL_STATUS, async (_event, rawModelId: unknown): Promise<VoiceModelStatus> => {
+    requireFeatureEnabled();
+    const modelId = parseIpcArgs(IPC.VOICE.GET_MODEL_STATUS, modelIdSchema, rawModelId);
+    if (e2eModelStatusOverride && modelId === e2eModelStatusOverride.id) {
+      return e2eModelStatusOverride;
+    }
+    return voiceService.getModelStatus(modelId);
+  });
+
+  ipcMain.handle(IPC.VOICE.DOWNLOAD_MODEL, async (event, rawRequestOrModelId: unknown): Promise<void> => {
+    requireFeatureEnabled();
+    const { modelId, forceRedownload } = parseIpcArgs(
+      IPC.VOICE.DOWNLOAD_MODEL,
+      downloadModelSchema,
+      normalizeDownloadModelPayload(rawRequestOrModelId),
+    ) as VoiceDownloadModelRequest;
+    const progressCb = (status: VoiceModelStatus) => {
+      event.sender.send(IPC.VOICE.MODEL_PROGRESS, status);
+    };
+    if (forceRedownload === undefined) {
+      await voiceService.downloadModel(modelId, progressCb);
+    } else {
+      await voiceService.downloadModel(modelId, progressCb, { forceRedownload });
+    }
+  });
+
+  ipcMain.handle(IPC.VOICE.CANCEL_DOWNLOAD, async (_event, rawModelId: unknown): Promise<void> => {
+    requireFeatureEnabled();
+    const modelId = parseIpcArgs(IPC.VOICE.CANCEL_DOWNLOAD, modelIdSchema, rawModelId);
+    await voiceService.cancelDownload(modelId);
+  });
+
+  ipcMain.handle(
+    IPC.VOICE.START_SESSION,
+    async (event, rawRequestOrSessionId: unknown, rawModelId?: unknown, rawDeviceId?: unknown): Promise<void> => {
+      requireFeatureEnabled();
+      const request = parseIpcArgs(
+        IPC.VOICE.START_SESSION,
+        startSessionSchema,
+        normalizeStartSessionPayload(rawRequestOrSessionId, rawModelId, rawDeviceId),
+      ) as VoiceStartSessionRequest;
+      addTranscriptTarget(request.sessionId, event.sender);
+      sessionOwners.set(request.sessionId, event.sender.id);
+      try {
+        await voiceService.startSession(request);
+        activeSessionId = request.sessionId;
+        e2eStartedCount += 1;
+      } catch (err) {
+        removeTranscriptSession(request.sessionId);
+        throw err;
+      }
+    },
+  );
+
+  ipcMain.handle(IPC.VOICE.APPEND_AUDIO, async (event, rawPayloadOrSessionId: unknown, rawChunk?: unknown): Promise<void> => {
+    requireFeatureEnabled();
+    const { sessionId, chunk } = parseIpcArgs(
+      IPC.VOICE.APPEND_AUDIO,
+      appendAudioSchema,
+      normalizeAppendAudioPayload(rawPayloadOrSessionId, rawChunk),
+    );
+    assertSessionOwner(sessionId, event.sender.id);
+    await voiceService.appendAudio(sessionId, chunk);
+  });
+
+  ipcMain.handle(IPC.VOICE.END_SESSION, async (event, rawPayloadOrSessionId: unknown): Promise<void> => {
+    requireFeatureEnabled();
+    const sessionId = parseIpcArgs(
+      IPC.VOICE.END_SESSION,
+      nonEmptyStringSchema,
+      normalizeEndSessionPayload(rawPayloadOrSessionId),
+    );
+    assertSessionOwner(sessionId, event.sender.id);
+    try {
+      await voiceService.endSession(sessionId);
+      e2eEndedCount += 1;
+    } finally {
+      removeTranscriptSession(sessionId);
+    }
+  });
+
+  ipcMain.handle(IPC.VOICE.TEST_MIC, async (): Promise<VoiceMicTestResult> => {
+    requireFeatureEnabled();
+    if (options.e2eEnabled === true && e2eModelStatusOverride) {
+      const permissionState = await voiceService.getPermissionState();
+      if (permissionState !== 'granted') {
+        return { success: false, error: `Cannot test microphone: microphone permission is ${permissionState}` };
+      }
+      if (e2eModelStatusOverride.status === 'ready') return { success: true };
+      return {
+        success: false,
+        error: e2eModelStatusOverride.errorMessage ?? 'Download the voice dictation model before testing the microphone.',
+      };
+    }
+    return voiceService.testMic();
+  });
+
+  if (options.e2eEnabled === true) {
+    ipcMain.handle(IPC.E2E.VOICE_SET_FAKE_PROVIDER, async (): Promise<void> => {
+      requireFeatureEnabled();
+      await voiceService.setProviderForTesting?.(new FakeTranscriptionProvider());
+    });
+
+    ipcMain.handle(IPC.E2E.VOICE_EMIT_TRANSCRIPT, async (_event, rawPayload?: unknown): Promise<void> => {
+      requireFeatureEnabled();
+      if (!activeSessionId) {
+        throw new Error('No active voice dictation session');
+      }
+      const payload = parseIpcArgs(IPC.E2E.VOICE_EMIT_TRANSCRIPT, e2eTranscriptSchema, rawPayload);
+      forwardTranscript(activeSessionId, createE2ETranscriptEvent(activeSessionId, payload));
+    });
+
+    ipcMain.handle(IPC.E2E.VOICE_SET_PERMISSION_STATE, async (_event, rawState: unknown): Promise<void> => {
+      requireFeatureEnabled();
+      const state = parseIpcArgs(IPC.E2E.VOICE_SET_PERMISSION_STATE, e2ePermissionStateSchema, rawState);
+      options.e2ePermissionOverride?.setState(state);
+    });
+
+    ipcMain.handle(IPC.E2E.VOICE_SET_MODEL_STATUS, async (_event, rawStatus: unknown): Promise<void> => {
+      requireFeatureEnabled();
+      e2eModelStatusOverride = parseIpcArgs(IPC.E2E.VOICE_SET_MODEL_STATUS, e2eModelStatusSchema, rawStatus) as VoiceModelStatus | null;
+      if (e2eModelStatusOverride) {
+        broadcastModelProgress(e2eModelStatusOverride);
+      }
+    });
+
+    ipcMain.handle(IPC.E2E.VOICE_GET_SESSION_STATE, async (): Promise<{
+      activeSessionId: string | null;
+      startedCount: number;
+      endedCount: number;
+    }> => ({
+      activeSessionId,
+      startedCount: e2eStartedCount,
+      endedCount: e2eEndedCount,
+    }));
+  }
+}
+
+function normalizeStartSessionPayload(
+  rawRequestOrSessionId: unknown,
+  rawModelId: unknown,
+  rawDeviceId: unknown,
+): unknown {
+  if (isRecord(rawRequestOrSessionId)) return rawRequestOrSessionId;
+  return {
+    sessionId: rawRequestOrSessionId,
+    ...(typeof rawModelId !== 'undefined' ? { modelId: rawModelId } : {}),
+    ...(typeof rawDeviceId !== 'undefined' ? { deviceId: rawDeviceId } : {}),
+  };
+}
+
+function normalizeDownloadModelPayload(rawRequestOrModelId: unknown): unknown {
+  if (isRecord(rawRequestOrModelId)) return rawRequestOrModelId;
+  return { modelId: rawRequestOrModelId };
+}
+
+function normalizeAppendAudioPayload(rawPayloadOrSessionId: unknown, rawChunk: unknown): unknown {
+  if (isRecord(rawPayloadOrSessionId)) return rawPayloadOrSessionId;
+  return {
+    sessionId: rawPayloadOrSessionId,
+    chunk: rawChunk,
+  };
+}
+
+function normalizeEndSessionPayload(rawPayloadOrSessionId: unknown): unknown {
+  if (isRecord(rawPayloadOrSessionId)) return rawPayloadOrSessionId.sessionId;
+  return rawPayloadOrSessionId;
+}
+
+function broadcastConfigChanged(config: VoiceDictationConfig | null): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(IPC.VOICE.CHANGED, config);
+  }
+}
+
+function broadcastModelProgress(status: VoiceModelStatus): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(IPC.VOICE.MODEL_PROGRESS, status);
+  }
+}
+
+function featureUnavailableMessage(): string {
+  return 'Voice dictation is unavailable in this release channel';
+}
+
+function createE2ETranscriptEvent(
+  sessionId: string,
+  payload: z.infer<typeof e2eTranscriptSchema>,
+): TranscriptionEvent {
+  const type = payload?.type ?? 'final';
+  if (type === 'partial') {
+    return { type, sessionId, text: payload?.text ?? 'hello chamber' };
+  }
+  if (type === 'error') {
+    return { type, sessionId, message: payload?.message ?? 'Fake voice dictation error' };
+  }
+  if (type === 'sessionStarted' || type === 'sessionEnded') {
+    return { type, sessionId };
+  }
+  return { type: 'final', sessionId, text: payload?.text ?? FAKE_SENTINEL_TRANSCRIPT, isFinal: true };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
