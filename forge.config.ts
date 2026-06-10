@@ -180,6 +180,16 @@ const config: ForgeConfig = {
           config: 'apps/desktop/vite.preload.config.ts',
           target: 'preload',
         },
+        {
+          entry: 'apps/desktop/src/main/voiceWorker/engineWorker.ts',
+          config: 'apps/desktop/vite.voiceWorker.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'apps/desktop/src/main/voiceWorker/installerWorker.ts',
+          config: 'apps/desktop/vite.voiceWorker.config.ts',
+          target: 'main',
+        },
       ],
       renderer: [
         {

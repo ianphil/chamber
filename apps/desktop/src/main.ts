@@ -640,7 +640,10 @@ function stopMvpServer(): Promise<void> {
 }
 
 function resolveVoiceWorkerEntry(fileName: 'engineWorker.js' | 'installerWorker.js'): string {
-  return path.join(__dirname, 'voiceWorker', fileName);
+  // Vite electron-forge plugin emits all `target: 'main'` entries flat into
+  // `.vite/build/`, so the workers live alongside main.js / preload.js — not
+  // in a `voiceWorker/` subfolder.
+  return path.join(__dirname, fileName);
 }
 
 const showMainWindow = () => {
