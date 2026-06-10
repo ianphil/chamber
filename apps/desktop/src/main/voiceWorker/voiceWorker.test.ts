@@ -38,9 +38,14 @@ function findRecord(messages: unknown[], predicate: (message: Record<string, unk
 function createModel(session: Record<string, unknown>) {
   return {
     alias: 'nemotron-speech-streaming-en-0.6b',
-    info: { fileSizeMb: 12 },
+    info: { fileSizeMb: 12, sizeInBytes: 13 * 1024 * 1024 },
     isCached: true,
     load: vi.fn(async () => undefined),
+    download: vi.fn(async (onProgress?: (progress: number) => void) => {
+      onProgress?.(50);
+      onProgress?.(100);
+    }),
+    removeFromCache: vi.fn(),
     createAudioClient: vi.fn(() => ({
       createLiveTranscriptionSession: vi.fn(() => session),
     })),
@@ -49,10 +54,10 @@ function createModel(session: Record<string, unknown>) {
 
 async function importWorker() {
   vi.resetModules();
-  return import('./engineWorker');
+  return import('./voiceWorker');
 }
 
-describe('engineWorker', () => {
+describe('voiceWorker', () => {
   beforeEach(() => {
     foundry.createAsync.mockReset();
   });
@@ -63,9 +68,9 @@ describe('engineWorker', () => {
     const manager = { catalog: { getModel: vi.fn(async () => model) } };
     foundry.createAsync.mockResolvedValue(manager);
     const port = createPort();
-    const { handleEngineRequest } = await importWorker();
+    const { handleVoiceWorkerRequest } = await importWorker();
 
-    await handleEngineRequest({ requestId: 'select-1', verb: 'selectModel', modelId: 'nemotron-speech-streaming-en-0.6b' }, port);
+    await handleVoiceWorkerRequest({ requestId: 'select-1', verb: 'selectModel', modelId: 'nemotron-speech-streaming-en-0.6b' }, port);
 
     expect(foundry.createAsync).toHaveBeenCalledWith({ appName: 'Chamber', logLevel: 'info' });
     expect(manager.catalog.getModel).toHaveBeenCalledWith('nemotron-speech-streaming-en-0.6b');
@@ -78,8 +83,73 @@ describe('engineWorker', () => {
         status: {
           id: 'nemotron-speech-streaming-en-0.6b',
           status: 'ready',
-          sizeBytes: 12 * 1024 * 1024,
+          sizeBytes: 13 * 1024 * 1024,
+          downloadedAt: expect.any(String),
         },
+      },
+    ]);
+  });
+
+  it('downloads a model and posts progress events from the same Foundry manager', async () => {
+    const session = {};
+    const model = createModel(session);
+    const manager = { catalog: { getModel: vi.fn(async () => model) } };
+    foundry.createAsync.mockResolvedValue(manager);
+    const port = createPort();
+    const { handleVoiceWorkerRequest } = await importWorker();
+
+    await handleVoiceWorkerRequest({
+      requestId: 'download-1',
+      verb: 'downloadModel',
+      modelId: 'nemotron-speech-streaming-en-0.6b',
+    }, port);
+
+    expect(foundry.createAsync).toHaveBeenCalledTimes(1);
+    expect(model.download).toHaveBeenCalledWith(expect.any(Function));
+    expect(port.messages).toEqual([
+      { type: 'modelProgress', modelId: 'nemotron-speech-streaming-en-0.6b', percent: 50, sizeBytes: 13 * 1024 * 1024 },
+      { type: 'modelProgress', modelId: 'nemotron-speech-streaming-en-0.6b', percent: 100, sizeBytes: 13 * 1024 * 1024 },
+      {
+        requestId: 'download-1',
+        verb: 'downloadModel',
+        ok: true,
+        status: expect.objectContaining({
+          id: 'nemotron-speech-streaming-en-0.6b',
+          status: 'ready',
+          sizeBytes: 13 * 1024 * 1024,
+        }),
+      },
+    ]);
+  });
+
+  it('returns cached model status on refresh even before download starts', async () => {
+    const session = {};
+    const model = createModel(session);
+    const manager = { catalog: { getModel: vi.fn(async () => model) } };
+    foundry.createAsync.mockResolvedValue(manager);
+    const port = createPort();
+    const { handleVoiceWorkerRequest } = await importWorker();
+
+    await handleVoiceWorkerRequest({ requestId: 'refresh-1', verb: 'refresh' }, port);
+
+    expect(manager.catalog.getModel).toHaveBeenCalledWith('nemotron-speech-streaming-en-0.6b');
+    expect(port.messages).toEqual([
+      {
+        requestId: 'refresh-1',
+        verb: 'refresh',
+        ok: true,
+        status: expect.objectContaining({
+          id: 'nemotron-speech-streaming-en-0.6b',
+          status: 'ready',
+          sizeBytes: 13 * 1024 * 1024,
+        }),
+        statuses: [
+          expect.objectContaining({
+            id: 'nemotron-speech-streaming-en-0.6b',
+            status: 'ready',
+            sizeBytes: 13 * 1024 * 1024,
+          }),
+        ],
       },
     ]);
   });
@@ -101,9 +171,9 @@ describe('engineWorker', () => {
     const manager = { catalog: { getModel: vi.fn(async () => model) } };
     foundry.createAsync.mockResolvedValue(manager);
     const port = createPort();
-    const { handleEngineRequest } = await importWorker();
+    const { handleVoiceWorkerRequest } = await importWorker();
 
-    await handleEngineRequest({
+    await handleVoiceWorkerRequest({
       requestId: 'start-1',
       verb: 'start',
       sessionId: 'session-1',
@@ -142,16 +212,16 @@ describe('engineWorker', () => {
     const manager = { catalog: { getModel: vi.fn(async () => model) } };
     foundry.createAsync.mockResolvedValue(manager);
     const port = createPort();
-    const { handleEngineRequest } = await importWorker();
+    const { handleVoiceWorkerRequest } = await importWorker();
 
-    await handleEngineRequest({
+    await handleVoiceWorkerRequest({
       requestId: 'start-1',
       verb: 'start',
       sessionId: 'session-1',
       modelId: 'nemotron-speech-streaming-en-0.6b',
     }, port);
-    await handleEngineRequest({ requestId: 'append-1', verb: 'append', sessionId: 'session-1', pcm }, port);
-    await handleEngineRequest({ requestId: 'end-1', verb: 'end', sessionId: 'session-1' }, port);
+    await handleVoiceWorkerRequest({ requestId: 'append-1', verb: 'append', sessionId: 'session-1', pcm }, port);
+    await handleVoiceWorkerRequest({ requestId: 'end-1', verb: 'end', sessionId: 'session-1' }, port);
 
     expect(session.append).toHaveBeenCalledWith(pcm);
     expect(session.stop).toHaveBeenCalledTimes(1);
@@ -163,9 +233,9 @@ describe('engineWorker', () => {
 
   it('returns RPC errors for stale session appends', async () => {
     const port = createPort();
-    const { handleEngineRequest } = await importWorker();
+    const { handleVoiceWorkerRequest } = await importWorker();
 
-    await handleEngineRequest({ requestId: 'append-1', verb: 'append', sessionId: 'missing-session', pcm: new Uint8Array() }, port);
+    await handleVoiceWorkerRequest({ requestId: 'append-1', verb: 'append', sessionId: 'missing-session', pcm: new Uint8Array() }, port);
 
     expect(port.messages).toContainEqual({
       type: 'error',

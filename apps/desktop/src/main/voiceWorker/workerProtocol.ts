@@ -1,9 +1,15 @@
 export type {
+  VoiceInstallerEvent,
   TranscriptionEvent,
   VoiceWorkerRpcRequest,
   VoiceWorkerRpcResponse,
 } from '@chamber/shared/voice-types';
-import type { TranscriptionEvent, VoiceWorkerRpcRequest, VoiceWorkerRpcResponse } from '@chamber/shared/voice-types';
+import type {
+  TranscriptionEvent,
+  VoiceInstallerEvent,
+  VoiceWorkerRpcRequest,
+  VoiceWorkerRpcResponse,
+} from '@chamber/shared/voice-types';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 
 /**
@@ -12,14 +18,14 @@ import { getErrorMessage } from '@chamber/shared/getErrorMessage';
  * implementation maps that verb to `LiveAudioTranscriptionSession.stop()`
  * followed by `dispose()` because the SDK does not expose an `end()` method.
  *
- * `cancelDownload` is intentionally not a worker RPC verb in Phase A. Foundry's
- * model download API has no abort handle, so Phase B cancels downloads by
- * terminating and replacing the installer worker.
+ * `cancelDownload` is intentionally not a worker RPC verb. Foundry's model
+ * download API has no abort handle, so Chamber cancels downloads by terminating
+ * and replacing the single voice worker.
  */
 export const VOICE_WORKER_PROTOCOL_NOTES = 'voice-worker-protocol-notes';
 
 export interface VoiceWorkerPort {
-  postMessage(message: VoiceWorkerRpcResponse | TranscriptionEvent): void;
+  postMessage(message: VoiceWorkerRpcResponse | TranscriptionEvent | VoiceInstallerEvent): void;
 }
 
 export function isVoiceWorkerRpcRequest(message: unknown): message is VoiceWorkerRpcRequest {
@@ -50,6 +56,10 @@ export function postWorkerError(port: VoiceWorkerPort, request: VoiceWorkerRpcRe
 }
 
 export function postTranscriptionEvent(port: VoiceWorkerPort, event: TranscriptionEvent): void {
+  port.postMessage(event);
+}
+
+export function postInstallerEvent(port: VoiceWorkerPort, event: VoiceInstallerEvent): void {
   port.postMessage(event);
 }
 

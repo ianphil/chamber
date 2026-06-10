@@ -667,7 +667,7 @@ function stopMvpServer(): Promise<void> {
   });
 }
 
-function resolveVoiceWorkerEntry(fileName: 'engineWorker.js' | 'installerWorker.js'): string {
+function resolveVoiceWorkerEntry(fileName: 'voiceWorker.js'): string {
   // Vite electron-forge plugin emits all `target: 'main'` entries flat into
   // `.vite/build/`, so the workers live alongside main.js / preload.js — not
   // in a `voiceWorker/` subfolder.
@@ -928,9 +928,8 @@ app.on('ready', async () => {
       )
       : null;
     const permissions = e2ePermissionOverride ?? electronPermissions;
-    const engineWorkerPath = resolveVoiceWorkerEntry('engineWorker.js');
-    const installerWorkerPath = resolveVoiceWorkerEntry('installerWorker.js');
-    const workerPool = new VoiceWorkerPool({ engineWorkerPath, installerWorkerPath });
+    const voiceWorkerPath = resolveVoiceWorkerEntry('voiceWorker.js');
+    const workerPool = new VoiceWorkerPool({ voiceWorkerPath });
     workerPool.start();
     voiceWorkerPool = workerPool;
     const provider = process.env.CHAMBER_E2E_VOICE_FAKE === '1'

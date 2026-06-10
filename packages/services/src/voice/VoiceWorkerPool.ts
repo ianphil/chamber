@@ -1,6 +1,11 @@
 import { Worker } from 'node:worker_threads';
 
-import type { TranscriptionEvent, VoiceWorkerRpcRequest, VoiceWorkerRpcResponse } from '@chamber/shared/voice-types';
+import type {
+  TranscriptionEvent,
+  VoiceInstallerEvent,
+  VoiceWorkerRpcRequest,
+  VoiceWorkerRpcResponse,
+} from '@chamber/shared/voice-types';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 
 export interface VoiceWorkerLike {
@@ -17,8 +22,7 @@ export interface VoiceWorkerPoolScheduler {
 }
 
 export interface VoiceWorkerPoolOptions {
-  readonly engineWorkerPath: string;
-  readonly installerWorkerPath: string;
+  readonly voiceWorkerPath: string;
   readonly workerFactory?: (workerPath: string) => VoiceWorkerLike;
   readonly scheduler?: VoiceWorkerPoolScheduler;
   readonly restartBackoffMs?: number;
@@ -36,13 +40,13 @@ const DEFAULT_RESTART_BACKOFF_MS = 250;
 const DEFAULT_MAX_RESTART_BACKOFF_MS = 5_000;
 
 export class VoiceWorkerPool {
-  private readonly engineWorkerPath: string;
-  private readonly installerWorkerPath: string;
+  private readonly voiceWorkerPath: string;
   private readonly workerFactory: (workerPath: string) => VoiceWorkerLike;
   private readonly scheduler: VoiceWorkerPoolScheduler;
   private readonly restartBackoffMs: number;
   private readonly maxRestartBackoffMs: number;
   private readonly engineEvents = new Set<(event: TranscriptionEvent) => void>();
+  private readonly installerEvents = new Set<(event: VoiceInstallerEvent) => void>();
   private readonly pending: Record<WorkerRole, Map<string, PendingRequest>> = {
     engine: new Map(),
     installer: new Map(),
@@ -51,23 +55,13 @@ export class VoiceWorkerPool {
     engine: 0,
     installer: 0,
   };
-  private readonly restartTimers: Record<WorkerRole, unknown | null> = {
-    engine: null,
-    installer: null,
-  };
-  private readonly suppressNextExit: Record<WorkerRole, boolean> = {
-    engine: false,
-    installer: false,
-  };
-  private workers: Record<WorkerRole, VoiceWorkerLike | null> = {
-    engine: null,
-    installer: null,
-  };
+  private restartTimer: unknown | null = null;
+  private suppressNextExit = false;
+  private worker: VoiceWorkerLike | null = null;
   private stopping = false;
 
   constructor(options: VoiceWorkerPoolOptions) {
-    this.engineWorkerPath = options.engineWorkerPath;
-    this.installerWorkerPath = options.installerWorkerPath;
+    this.voiceWorkerPath = options.voiceWorkerPath;
     this.workerFactory = options.workerFactory ?? ((workerPath) => new Worker(workerPath) as VoiceWorkerLike);
     this.scheduler = options.scheduler ?? {
       setTimeout: (callback, delay) => setTimeout(callback, delay),
@@ -79,26 +73,20 @@ export class VoiceWorkerPool {
 
   start(): void {
     this.stopping = false;
-    if (!this.workers.engine) {
-      this.workers.engine = this.createWorker('engine');
-    }
-    if (!this.workers.installer) {
-      this.workers.installer = this.createWorker('installer');
+    if (!this.worker) {
+      this.worker = this.createWorker();
     }
   }
 
   async stop(): Promise<void> {
     this.stopping = true;
-    this.clearRestartTimer('engine');
-    this.clearRestartTimer('installer');
+    this.clearRestartTimer();
     this.rejectPending('engine', new Error('Voice engine worker stopped'));
     this.rejectPending('installer', new Error('Voice installer worker stopped'));
 
-    const workers = [this.workers.engine, this.workers.installer].filter((worker): worker is VoiceWorkerLike => worker !== null);
-    this.workers = { engine: null, installer: null };
-    await Promise.all(workers.map(async (worker) => {
-      await worker.terminate();
-    }));
+    const worker = this.worker;
+    this.worker = null;
+    if (worker) await worker.terminate();
   }
 
   sendEngine(req: VoiceWorkerRpcRequest): Promise<VoiceWorkerRpcResponse> {
@@ -110,16 +98,17 @@ export class VoiceWorkerPool {
   }
 
   async cancelInstaller(): Promise<void> {
-    this.clearRestartTimer('installer');
+    this.clearRestartTimer();
+    this.rejectPending('engine', new Error('Voice worker cancelled'));
     this.rejectPending('installer', new Error('Voice installer worker cancelled'));
-    const worker = this.workers.installer;
-    this.workers.installer = null;
+    const worker = this.worker;
+    this.worker = null;
     if (worker) {
-      this.suppressNextExit.installer = true;
+      this.suppressNextExit = true;
       await worker.terminate();
     }
-    if (!this.stopping && !this.workers.installer) {
-      this.workers.installer = this.createWorker('installer');
+    if (!this.stopping && !this.worker) {
+      this.worker = this.createWorker();
     }
   }
 
@@ -127,6 +116,13 @@ export class VoiceWorkerPool {
     this.engineEvents.add(cb);
     return () => {
       this.engineEvents.delete(cb);
+    };
+  }
+
+  onInstallerEvent(cb: (event: VoiceInstallerEvent) => void): () => void {
+    this.installerEvents.add(cb);
+    return () => {
+      this.installerEvents.delete(cb);
     };
   }
 
@@ -148,12 +144,12 @@ export class VoiceWorkerPool {
   };
 
   private send(role: WorkerRole, req: VoiceWorkerRpcRequest): Promise<VoiceWorkerRpcResponse> {
-    const worker = this.workers[role];
+    const worker = this.worker;
     if (!worker) {
-      return Promise.reject(new Error(`Voice ${role} worker is not started`));
+      return Promise.reject(new Error('Voice worker is not started'));
     }
-    if (this.pending[role].has(req.requestId)) {
-      return Promise.reject(new Error(`Duplicate voice ${role} worker request: ${req.requestId}`));
+    if (this.pending.engine.has(req.requestId) || this.pending.installer.has(req.requestId)) {
+      return Promise.reject(new Error(`Duplicate voice worker request: ${req.requestId}`));
     }
 
     if (this.inflightCount[role] === 0) {
@@ -168,9 +164,9 @@ export class VoiceWorkerPool {
 
     // Slow path: chain after the in-flight queue.
     const next = this.sendQueues[role].then(() => {
-      const w = this.workers[role];
+      const w = this.worker;
       if (!w) {
-        return Promise.reject(new Error(`Voice ${role} worker is not started`));
+        return Promise.reject(new Error('Voice worker is not started'));
       }
       this.inflightCount[role] += 1;
       return this.dispatch(role, w, req).finally(() => {
@@ -197,61 +193,75 @@ export class VoiceWorkerPool {
     });
   }
 
-  private createWorker(role: WorkerRole): VoiceWorkerLike {
-    const workerPath = role === 'engine' ? this.engineWorkerPath : this.installerWorkerPath;
-    const worker = this.workerFactory(workerPath);
-    worker.on('message', (message) => this.handleMessage(role, message));
-    worker.on('error', (error) => this.handleWorkerError(role, error));
-    worker.on('exit', (code) => this.handleWorkerExit(role, code));
+  private createWorker(): VoiceWorkerLike {
+    const worker = this.workerFactory(this.voiceWorkerPath);
+    worker.on('message', (message) => this.handleMessage(message));
+    worker.on('error', (error) => this.handleWorkerError(error));
+    worker.on('exit', (code) => this.handleWorkerExit(code));
     return worker;
   }
 
-  private handleMessage(role: WorkerRole, message: unknown): void {
+  private handleMessage(message: unknown): void {
     if (isVoiceWorkerRpcResponse(message)) {
+      const role = this.findPendingRole(message.requestId);
+      if (!role) return;
       const pending = this.pending[role].get(message.requestId);
       if (!pending) return;
       this.pending[role].delete(message.requestId);
       pending.resolve(message);
       return;
     }
-    if (role === 'engine' && isTranscriptionEvent(message)) {
+    if (isTranscriptionEvent(message)) {
       for (const listener of this.engineEvents) {
+        listener(message);
+      }
+      return;
+    }
+    if (isVoiceInstallerEvent(message)) {
+      for (const listener of this.installerEvents) {
         listener(message);
       }
     }
   }
 
-  private handleWorkerError(role: WorkerRole, error: Error): void {
-    this.rejectPending(role, new Error(`Voice ${role} worker failed: ${error.message}`, { cause: error }));
+  private findPendingRole(requestId: string): WorkerRole | null {
+    if (this.pending.engine.has(requestId)) return 'engine';
+    if (this.pending.installer.has(requestId)) return 'installer';
+    return null;
   }
 
-  private handleWorkerExit(role: WorkerRole, code: number): void {
-    this.workers[role] = null;
-    this.rejectPending(role, new Error(`Voice ${role} worker exited unexpectedly with code ${code}`));
-    if (this.suppressNextExit[role]) {
-      this.suppressNextExit[role] = false;
+  private handleWorkerError(error: Error): void {
+    this.rejectAllPending(new Error(`Voice worker failed: ${error.message}`, { cause: error }));
+  }
+
+  private handleWorkerExit(code: number): void {
+    this.worker = null;
+    this.rejectAllPending(new Error(`Voice worker exited unexpectedly with code ${code}`));
+    if (this.suppressNextExit) {
+      this.suppressNextExit = false;
       return;
     }
     if (this.stopping) return;
 
-    this.crashCounts[role] += 1;
+    this.crashCounts.engine += 1;
+    this.crashCounts.installer += 1;
     const delay = Math.min(
-      this.restartBackoffMs * (2 ** Math.max(0, this.crashCounts[role] - 1)),
+      this.restartBackoffMs * (2 ** Math.max(0, Math.max(this.crashCounts.engine, this.crashCounts.installer) - 1)),
       this.maxRestartBackoffMs,
     );
-    this.restartTimers[role] = this.scheduler.setTimeout(() => {
-      this.restartTimers[role] = null;
-      if (!this.stopping && !this.workers[role]) {
-        this.workers[role] = this.createWorker(role);
+    this.restartTimer = this.scheduler.setTimeout(() => {
+      this.restartTimer = null;
+      if (!this.stopping && !this.worker) {
+        this.worker = this.createWorker();
       }
     }, delay);
   }
 
-  private clearRestartTimer(role: WorkerRole): void {
-    const handle = this.restartTimers[role];
+  private clearRestartTimer(): void {
+    const handle = this.restartTimer;
     if (handle === null) return;
     this.scheduler.clearTimeout(handle);
-    this.restartTimers[role] = null;
+    this.restartTimer = null;
   }
 
   private rejectPending(role: WorkerRole, error: Error): void {
@@ -259,6 +269,11 @@ export class VoiceWorkerPool {
       pending.reject(error);
     }
     this.pending[role].clear();
+  }
+
+  private rejectAllPending(error: Error): void {
+    this.rejectPending('engine', error);
+    this.rejectPending('installer', error);
   }
 }
 
@@ -279,6 +294,13 @@ function isTranscriptionEvent(message: unknown): message is TranscriptionEvent {
     return typeof message.message === 'string';
   }
   return message.type === 'sessionStarted' || message.type === 'sessionEnded';
+}
+
+function isVoiceInstallerEvent(message: unknown): message is VoiceInstallerEvent {
+  return isRecord(message)
+    && message.type === 'modelProgress'
+    && typeof message.modelId === 'string'
+    && typeof message.percent === 'number';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

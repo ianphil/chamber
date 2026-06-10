@@ -15,6 +15,7 @@ export type VoiceModelLifecycleStatus = 'not-downloaded' | 'downloading' | 'read
 export interface VoiceModelStatus {
   readonly id: VoiceDictationModelId;
   readonly status: VoiceModelLifecycleStatus;
+  readonly percent?: number;
   readonly sizeBytes?: number;
   readonly downloadedAt?: string;
   readonly errorMessage?: string;
@@ -74,6 +75,14 @@ interface VoiceWorkerRpcResponseBase {
 export type VoiceWorkerRpcResponse =
   | (VoiceWorkerRpcResponseBase & { readonly ok: true; readonly status?: VoiceModelStatus; readonly statuses?: VoiceModelStatus[] })
   | (VoiceWorkerRpcResponseBase & { readonly ok: false; readonly error: string });
+
+export type VoiceInstallerEvent =
+  | {
+    readonly type: 'modelProgress';
+    readonly modelId: VoiceDictationModelId;
+    readonly percent: number;
+    readonly sizeBytes?: number;
+  };
 
 export type VoiceMicTestResult =
   | { readonly success: true; readonly transcript: string }

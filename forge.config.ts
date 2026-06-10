@@ -181,12 +181,7 @@ const config: ForgeConfig = {
           target: 'preload',
         },
         {
-          entry: 'apps/desktop/src/main/voiceWorker/engineWorker.ts',
-          config: 'apps/desktop/vite.voiceWorker.config.ts',
-          target: 'main',
-        },
-        {
-          entry: 'apps/desktop/src/main/voiceWorker/installerWorker.ts',
+          entry: 'apps/desktop/src/main/voiceWorker/voiceWorker.ts',
           config: 'apps/desktop/vite.voiceWorker.config.ts',
           target: 'main',
         },
