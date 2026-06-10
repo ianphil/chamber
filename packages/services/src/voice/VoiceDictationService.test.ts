@@ -182,13 +182,65 @@ describe('VoiceDictationService', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
-  it('testMic captures the fake final transcript without sending chat text', async () => {
+  it('testMic checks permission and model readiness without opening a transcription session', async () => {
     const provider = new FakeTranscriptionProvider({ clock: (callback) => callback() });
-    const service = new VoiceDictationService({ store, provider, permissions });
+    const sendInstaller = vi.fn(async (request: VoiceWorkerRpcRequest) => ({
+      requestId: request.requestId,
+      verb: request.verb,
+      ok: true as const,
+      status: { id: VOICE_DICTATION_MODEL_ID, status: 'ready' as const },
+    }));
+    const service = new VoiceDictationService({
+      store,
+      provider,
+      permissions,
+      workerPool: { sendInstaller },
+    });
+    const startSpy = vi.spyOn(provider, 'start');
+
+    await expect(service.testMic()).resolves.toEqual({ success: true });
+    expect(startSpy).not.toHaveBeenCalled();
+    expect(sendInstaller).toHaveBeenCalledWith(expect.objectContaining({ verb: 'refresh' }));
+  });
+
+  it('testMic returns clear readiness failures', async () => {
+    permissions.getState = vi.fn<() => Promise<VoicePermissionState>>(async () => 'not-determined');
+    const service = new VoiceDictationService({
+      store,
+      provider: new FakeTranscriptionProvider(),
+      permissions,
+      workerPool: {
+        sendInstaller: vi.fn(async (request: VoiceWorkerRpcRequest) => ({
+          requestId: request.requestId,
+          verb: request.verb,
+          ok: true as const,
+          status: { id: VOICE_DICTATION_MODEL_ID, status: 'ready' as const },
+        })),
+      },
+    });
 
     await expect(service.testMic()).resolves.toEqual({
-      success: true,
-      transcript: FAKE_SENTINEL_TRANSCRIPT,
+      success: false,
+      error: 'Cannot test microphone: microphone permission is not-determined',
+    });
+
+    permissions.getState = vi.fn<() => Promise<VoicePermissionState>>(async () => 'granted');
+    const notReadyService = new VoiceDictationService({
+      store,
+      provider: new FakeTranscriptionProvider(),
+      permissions,
+      workerPool: {
+        sendInstaller: vi.fn(async (request: VoiceWorkerRpcRequest) => ({
+          requestId: request.requestId,
+          verb: request.verb,
+          ok: true as const,
+          status: { id: VOICE_DICTATION_MODEL_ID, status: 'not-downloaded' as const },
+        })),
+      },
+    });
+    await expect(notReadyService.testMic()).resolves.toEqual({
+      success: false,
+      error: 'Download the voice dictation model before testing the microphone.',
     });
   });
 });

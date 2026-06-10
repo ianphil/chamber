@@ -98,13 +98,12 @@ describe('VoiceDictationSettingsSection', () => {
   it('shows a passing microphone test result', async () => {
     (api.voice.testMic as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: true,
-      transcript: 'hello chamber',
     });
     render(<VoiceDictationSettingsSection />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Test mic' }));
 
-    expect(await screen.findByText(/Microphone test passed: “hello chamber”/i)).toBeTruthy();
+    expect(await screen.findByText('Microphone test passed')).toBeTruthy();
   });
 
   it('saves config when push-to-talk changes', async () => {

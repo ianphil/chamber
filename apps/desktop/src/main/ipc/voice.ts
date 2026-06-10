@@ -288,6 +288,17 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
 
   ipcMain.handle(IPC.VOICE.TEST_MIC, async (): Promise<VoiceMicTestResult> => {
     requireFeatureEnabled();
+    if (options.e2eEnabled === true && e2eModelStatusOverride) {
+      const permissionState = await voiceService.getPermissionState();
+      if (permissionState !== 'granted') {
+        return { success: false, error: `Cannot test microphone: microphone permission is ${permissionState}` };
+      }
+      if (e2eModelStatusOverride.status === 'ready') return { success: true };
+      return {
+        success: false,
+        error: e2eModelStatusOverride.errorMessage ?? 'Download the voice dictation model before testing the microphone.',
+      };
+    }
     return voiceService.testMic();
   });
 
