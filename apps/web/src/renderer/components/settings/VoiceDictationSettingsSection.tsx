@@ -426,14 +426,14 @@ export function VoiceDictationSettingsSection() {
         </SettingsRow>
 
         <SettingsRow
-          title="Push-to-talk"
-          description={config.pushToTalk ? 'Hold the shortcut to talk.' : 'Press once to start, then press again to stop.'}
+          title="Keyboard shortcut behavior"
+          description="Hold the keyboard shortcut to talk while pressed, or press it once to toggle dictation on and off. The mic button always toggles on click."
         >
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">
-              {config.pushToTalk ? 'Hold-to-talk' : 'Press-to-toggle'}
+              {config.pushToTalk ? 'Hold to talk' : 'Press to toggle'}
             </span>
-            <ToggleSwitch checked={config.pushToTalk} label="Push-to-talk" onToggle={handlePushToTalkToggle} />
+            <ToggleSwitch checked={config.pushToTalk} label="Keyboard shortcut behavior" onToggle={handlePushToTalkToggle} />
           </div>
         </SettingsRow>
 

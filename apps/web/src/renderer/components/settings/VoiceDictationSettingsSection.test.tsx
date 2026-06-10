@@ -65,7 +65,9 @@ describe('VoiceDictationSettingsSection', () => {
     expect(screen.getByText('Microphone permissions')).toBeTruthy();
     expect(screen.getAllByText('Test mic').length).toBeGreaterThan(0);
     expect(screen.getByText('Shortcut')).toBeTruthy();
-    expect(screen.getByText('Push-to-talk')).toBeTruthy();
+    expect(screen.getByText('Keyboard shortcut behavior')).toBeTruthy();
+    expect(screen.getByText('Hold the keyboard shortcut to talk while pressed, or press it once to toggle dictation on and off. The mic button always toggles on click.')).toBeTruthy();
+    expect(screen.getByText('Hold to talk')).toBeTruthy();
     expect(screen.getByText('Transcription model')).toBeTruthy();
   });
 
@@ -109,7 +111,7 @@ describe('VoiceDictationSettingsSection', () => {
   it('saves config when push-to-talk changes', async () => {
     render(<VoiceDictationSettingsSection />);
 
-    const toggle = await screen.findByRole('switch', { name: 'Push-to-talk' });
+    const toggle = await screen.findByRole('switch', { name: 'Keyboard shortcut behavior' });
     await waitFor(() => {
       expect(toggle.getAttribute('aria-checked')).toBe('true');
     });
@@ -122,6 +124,7 @@ describe('VoiceDictationSettingsSection', () => {
         shortcut: 'Alt+Shift+V',
       }));
     });
+    expect(screen.getByText('Press to toggle')).toBeTruthy();
   });
 
   it('updates the model download progress bar from onModelProgress events', async () => {
