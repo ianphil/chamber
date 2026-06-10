@@ -50,7 +50,9 @@ export default [
           project: ['./tsconfig.json', './apps/*/tsconfig.json', './packages/*/tsconfig.json'],
         },
       },
-      'import-x/core-modules': ['electron'],
+      // `virtual:chamber-plugin` is a Vite virtual module resolved at build time;
+      // treat it as always-resolvable so import-x does not flag the import.
+      'import-x/core-modules': ['electron', 'virtual:chamber-plugin'],
     },
     rules: {
       ...importX.flatConfigs.recommended.rules,

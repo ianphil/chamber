@@ -319,6 +319,12 @@ export interface AppConfig {
   installedTools?: InstalledTool[];
   a2aRelayBaseUrl?: string;
   a2aRelayAuthMode?: 'static' | 'interactive';
+  /**
+   * Optional specifier (package name or absolute path) for a trusted Chamber
+   * main-process plugin loaded at startup. Overridable via the `CHAMBER_PLUGIN`
+   * environment variable. See PluginHost.
+   */
+  chamberPlugin?: string;
 }
 
 interface InstalledToolBase {

@@ -3,6 +3,12 @@
 
 declare module '*.css';
 
+declare module 'virtual:chamber-plugin' {
+  import type { ChamberRendererPlugin } from '@chamber/plugin-api';
+  const plugin: ChamberRendererPlugin;
+  export default plugin;
+}
+
 interface Window {
   desktop?: {
     pickFolder: () => Promise<string | null>;

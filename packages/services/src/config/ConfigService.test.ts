@@ -103,6 +103,35 @@ describe('ConfigService', () => {
       }));
     });
 
+    it('preserves a trimmed chamberPlugin specifier', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        chamberPlugin: '  @genesis/chamber-enterprise  ',
+      }));
+
+      expect(svc.load()).toEqual(expect.objectContaining({
+        chamberPlugin: '@genesis/chamber-enterprise',
+      }));
+    });
+
+    it('drops a non-string or blank chamberPlugin specifier', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        version: 2,
+        minds: [],
+        activeMindId: null,
+        activeLogin: null,
+        theme: 'dark',
+        chamberPlugin: 123,
+      }));
+
+      expect(svc.load()).toEqual(DEFAULT_CONFIG);
+      expect(svc.load().chamberPlugin).toBeUndefined();
+    });
+
     it('drops the legacy chamber-copilot user config flag', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
         version: 2,

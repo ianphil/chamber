@@ -87,6 +87,9 @@ export class ConfigService {
       ...(raw.a2aRelayAuthMode === 'static' || raw.a2aRelayAuthMode === 'interactive'
         ? { a2aRelayAuthMode: raw.a2aRelayAuthMode }
         : {}),
+      ...(typeof raw.chamberPlugin === 'string' && raw.chamberPlugin.trim().length > 0
+        ? { chamberPlugin: raw.chamberPlugin.trim() }
+        : {}),
     });
   }
 

@@ -5,6 +5,7 @@ import { LandingScreen } from './LandingScreen';
 import { GenesisFlow } from './GenesisFlow';
 import { ChamberLoadingScreen } from './ChamberLoadingScreen';
 import { selectPreferredMind } from '../../lib/mindSelection';
+import { useChamberPlugin } from '../../lib/plugin/ChamberPluginContext';
 
 interface Props {
   children: React.ReactNode;
@@ -13,6 +14,8 @@ interface Props {
 export function GenesisGate({ children }: Props) {
   const { minds, showLanding, mindsChecked, runtimePhase, switchingAccountLogin } = useAppState();
   const dispatch = useAppDispatch();
+  const plugin = useChamberPlugin();
+  const Onboarding = plugin.onboarding ?? GenesisFlow;
   const [mode, setMode] = useState<'idle' | 'genesis'>('idle');
   const [openExistingError, setOpenExistingError] = useState<string | null>(null);
 
@@ -44,11 +47,11 @@ export function GenesisGate({ children }: Props) {
   const hasMinds = minds.length > 0;
   const showGate = showLanding || !hasMinds;
 
-  // If in genesis flow, show it
+  // If in genesis flow, show it (a plugin may override the built-in flow)
   if (mode === 'genesis') {
     return (
       <>
-        <GenesisFlow onComplete={() => {
+        <Onboarding onComplete={() => {
           setMode('idle');
           dispatch({ type: 'HIDE_LANDING' });
         }} />

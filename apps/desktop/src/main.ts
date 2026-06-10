@@ -118,6 +118,7 @@ import { wireLifecycleEvents } from './main/wireLifecycleEvents';
 import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
 import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
+import { PluginHost } from './main/plugin/PluginHost';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
 import { FeatureFlagService } from './main/services/featureFlags/FeatureFlagService';
@@ -868,6 +869,19 @@ app.on('ready', async () => {
         })
       : 0;
     return choice === 1;
+  });
+
+  // --- Optional trusted plugin (e.g. enterprise onboarding override) ---
+  // Loaded after Chamber's own services and IPC adapters are wired. PluginHost
+  // logs and swallows any failure so a misbehaving plugin never blocks boot.
+  const pluginLog = Logger.create('plugin');
+  await new PluginHost(
+    (specifier) => import(specifier),
+    (level, message, ...args) => pluginLog[level](message, ...args),
+  ).load(configService.load().chamberPlugin ?? process.env.CHAMBER_PLUGIN, {
+    appVersion: app.getVersion(),
+    userDataPath: appPaths.userData,
+    log: (level, message, ...args) => pluginLog[level](message, ...args),
   });
 
   // Create window first (don't block on restore)
