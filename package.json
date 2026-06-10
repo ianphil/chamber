@@ -43,6 +43,7 @@
     "smoke:a2a-relay": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 --headed tests/e2e/electron/a2a-relay-roundtrip.spec.ts",
     "smoke:byo-llm": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 tests/e2e/electron/byo-llm-settings.spec.ts",
     "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js",
+    "smoke:voice-runtime": "node scripts/voice-runtime-smoke.js",
     "smoke:automation": "node scripts/prepare-automation-runtime.js && node scripts/run-automation-smoke.js"
   },
   "keywords": [],
