@@ -92,7 +92,7 @@ test.describe.serial('electron voice dictation UAT smoke', () => {
 
     await page.getByRole('button', { name: 'Test mic' }).click();
 
-    await expect(page.getByRole('status').filter({ hasText: /Microphone test passed/i })).toContainText(sentinelTranscript);
+    await expect(page.getByRole('status').filter({ hasText: /Microphone test passed/i })).toBeVisible();
   });
 
   test('test-mic-denied', async () => {

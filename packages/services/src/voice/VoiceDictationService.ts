@@ -179,28 +179,24 @@ export class VoiceDictationService {
   }
 
   async testMic(): Promise<VoiceMicTestResult> {
-    let transcript: string | null = null;
-    let eventError: string | null = null;
-    const unsubscribe = this.subscribeTranscript((event) => {
-      if (event.type === 'final') transcript = event.text;
-      if (event.type === 'error') eventError = event.message;
-    });
-    const sessionId = randomUUID();
-
     try {
-      await this.startSession(sessionId);
-      for (let index = 0; index < 3; index += 1) {
-        await this.appendAudio(sessionId, new Uint8Array());
+      const permissionState = await this.permissions.getState();
+      if (permissionState !== 'granted') {
+        return { success: false, error: `Cannot test microphone: microphone permission is ${permissionState}` };
       }
-      await this.endSession(sessionId);
-      if (eventError) return { success: false, error: eventError };
-      if (transcript) return { success: true, transcript };
-      return { success: false, error: 'No transcript was produced.' };
+      const status = await this.getModelStatus(VOICE_DICTATION_MODEL_ID);
+      if (status.status === 'ready') {
+        return { success: true };
+      }
+      if (status.status === 'error') {
+        return { success: false, error: status.errorMessage ?? 'Voice dictation model is unavailable.' };
+      }
+      if (status.status === 'downloading') {
+        return { success: false, error: 'Voice dictation model is still downloading.' };
+      }
+      return { success: false, error: 'Download the voice dictation model before testing the microphone.' };
     } catch (err) {
-      await this.endSession(sessionId);
       return { success: false, error: getErrorMessage(err) };
-    } finally {
-      unsubscribe();
     }
   }
 

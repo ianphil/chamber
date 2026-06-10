@@ -85,5 +85,5 @@ export type VoiceInstallerEvent =
   };
 
 export type VoiceMicTestResult =
-  | { readonly success: true; readonly transcript: string }
+  | { readonly success: true; readonly transcript?: string }
   | { readonly success: false; readonly error: string };
