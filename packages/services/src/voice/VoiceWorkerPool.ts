@@ -134,6 +134,19 @@ export class VoiceWorkerPool {
     return { ...this.crashCounts };
   }
 
+  // Per-role FIFO chain so lifecycle RPCs (selectModel/start/append/end)
+  // cannot interleave under rapid PTT release or burst appends. The first
+  // queued send still dispatches synchronously so callers and tests observe
+  // immediate postMessage; subsequent sends wait for the prior to settle.
+  private readonly sendQueues: Record<WorkerRole, Promise<unknown>> = {
+    engine: Promise.resolve(),
+    installer: Promise.resolve(),
+  };
+  private readonly inflightCount: Record<WorkerRole, number> = {
+    engine: 0,
+    installer: 0,
+  };
+
   private send(role: WorkerRole, req: VoiceWorkerRpcRequest): Promise<VoiceWorkerRpcResponse> {
     const worker = this.workers[role];
     if (!worker) {
@@ -143,6 +156,36 @@ export class VoiceWorkerPool {
       return Promise.reject(new Error(`Duplicate voice ${role} worker request: ${req.requestId}`));
     }
 
+    if (this.inflightCount[role] === 0) {
+      // Fast path: nothing in flight, dispatch synchronously.
+      this.inflightCount[role] += 1;
+      const promise = this.dispatch(role, worker, req).finally(() => {
+        this.inflightCount[role] -= 1;
+      });
+      this.sendQueues[role] = promise.catch(() => undefined);
+      return promise;
+    }
+
+    // Slow path: chain after the in-flight queue.
+    const next = this.sendQueues[role].then(() => {
+      const w = this.workers[role];
+      if (!w) {
+        return Promise.reject(new Error(`Voice ${role} worker is not started`));
+      }
+      this.inflightCount[role] += 1;
+      return this.dispatch(role, w, req).finally(() => {
+        this.inflightCount[role] -= 1;
+      });
+    });
+    this.sendQueues[role] = next.catch(() => undefined);
+    return next;
+  }
+
+  private dispatch(
+    role: WorkerRole,
+    worker: VoiceWorkerLike,
+    req: VoiceWorkerRpcRequest,
+  ): Promise<VoiceWorkerRpcResponse> {
     return new Promise((resolve, reject) => {
       this.pending[role].set(req.requestId, { resolve, reject });
       try {

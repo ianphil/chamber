@@ -116,6 +116,9 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
   const voiceService = service as unknown as VoiceIpcServicePort;
   const transcriptTargets = new Map<string, Set<WebContents>>();
   const transcriptUnsubscribes = new Map<string, () => void>();
+  // Tracks the WebContents that originally invoked startSession so subsequent
+  // append/end RPCs from a non-owner are rejected.
+  const sessionOwners = new Map<string, number>();
   let activeSessionId: string | null = null;
   let e2eModelStatusOverride: VoiceModelStatus | null = null;
   let e2eStartedCount = 0;
@@ -131,6 +134,15 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
     const targets = transcriptTargets.get(sessionId) ?? new Set<WebContents>();
     targets.add(webContents);
     transcriptTargets.set(sessionId, targets);
+    // Prune the target if its WebContents is destroyed (window closed/crash).
+    webContents.once('destroyed', () => {
+      targets.delete(webContents);
+      if (targets.size === 0) {
+        transcriptUnsubscribes.get(sessionId)?.();
+        transcriptUnsubscribes.delete(sessionId);
+        transcriptTargets.delete(sessionId);
+      }
+    });
 
     if (!transcriptUnsubscribes.has(sessionId)) {
       const unsubscribe = voiceService.subscribeTranscript((event) => {
@@ -145,6 +157,7 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
     transcriptUnsubscribes.get(sessionId)?.();
     transcriptUnsubscribes.delete(sessionId);
     transcriptTargets.delete(sessionId);
+    sessionOwners.delete(sessionId);
     if (activeSessionId === sessionId) activeSessionId = null;
   }
 
@@ -153,7 +166,28 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
     if (!targets) return;
     const payload = { ...event, sessionId };
     for (const target of targets) {
-      target.send(IPC.VOICE.TRANSCRIPT, payload);
+      if (target.isDestroyed()) {
+        targets.delete(target);
+        continue;
+      }
+      try {
+        target.send(IPC.VOICE.TRANSCRIPT, payload);
+      } catch {
+        // best-effort — drop the target if send fails
+        targets.delete(target);
+      }
+    }
+    if (targets.size === 0) {
+      transcriptUnsubscribes.get(sessionId)?.();
+      transcriptUnsubscribes.delete(sessionId);
+      transcriptTargets.delete(sessionId);
+    }
+  }
+
+  function assertSessionOwner(sessionId: string, senderId: number): void {
+    const owner = sessionOwners.get(sessionId);
+    if (owner !== undefined && owner !== senderId) {
+      throw new Error(`Voice session ${sessionId} is owned by a different renderer`);
     }
   }
 
@@ -212,6 +246,7 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
         normalizeStartSessionPayload(rawRequestOrSessionId, rawModelId, rawDeviceId),
       ) as VoiceStartSessionRequest;
       addTranscriptTarget(request.sessionId, event.sender);
+      sessionOwners.set(request.sessionId, event.sender.id);
       try {
         await voiceService.startSession(request);
         activeSessionId = request.sessionId;
@@ -223,23 +258,25 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
     },
   );
 
-  ipcMain.handle(IPC.VOICE.APPEND_AUDIO, async (_event, rawPayloadOrSessionId: unknown, rawChunk?: unknown): Promise<void> => {
+  ipcMain.handle(IPC.VOICE.APPEND_AUDIO, async (event, rawPayloadOrSessionId: unknown, rawChunk?: unknown): Promise<void> => {
     requireFeatureEnabled();
     const { sessionId, chunk } = parseIpcArgs(
       IPC.VOICE.APPEND_AUDIO,
       appendAudioSchema,
       normalizeAppendAudioPayload(rawPayloadOrSessionId, rawChunk),
     );
+    assertSessionOwner(sessionId, event.sender.id);
     await voiceService.appendAudio(sessionId, chunk);
   });
 
-  ipcMain.handle(IPC.VOICE.END_SESSION, async (_event, rawPayloadOrSessionId: unknown): Promise<void> => {
+  ipcMain.handle(IPC.VOICE.END_SESSION, async (event, rawPayloadOrSessionId: unknown): Promise<void> => {
     requireFeatureEnabled();
     const sessionId = parseIpcArgs(
       IPC.VOICE.END_SESSION,
       nonEmptyStringSchema,
       normalizeEndSessionPayload(rawPayloadOrSessionId),
     );
+    assertSessionOwner(sessionId, event.sender.id);
     try {
       await voiceService.endSession(sessionId);
       e2eEndedCount += 1;

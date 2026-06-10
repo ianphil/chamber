@@ -378,15 +378,21 @@ async function installChatSendSpy(page: Page): Promise<{ messages: () => Promise
       void _attachments;
       captured.push(message);
     };
-    Object.defineProperty(api.chat, 'send', {
+
+    // contextBridge freezes the bridged surface, so we cannot redefine
+    // `api.chat.send` directly. Shadow `electronAPI.chat` on `window` with a
+    // mutable copy that proxies the original except for `send`.
+    const mutableChat = { ...api.chat, send: replacement };
+    Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       writable: true,
-      value: replacement,
+      value: { ...api, chat: mutableChat },
     });
-    if (api.chat.send !== replacement) {
+
+    if (window.electronAPI.chat.send !== replacement) {
       throw new Error('Unable to install e2e chat.send spy');
     }
-    api.conversationHistory.list = async (mindId: string) => {
+    window.electronAPI.conversationHistory.list = async (mindId: string) => {
       try {
         return await originalList(mindId);
       } catch {
