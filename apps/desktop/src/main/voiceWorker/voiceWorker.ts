@@ -176,20 +176,72 @@ async function startSession(sessionId: string, modelId: string, port: VoiceWorke
   }
 
   const model = state.modelId === modelId && state.model ? state.model : await selectModel(modelId);
-  const audioClient = createAudioClient(model);
-  const session = audioClient.createLiveTranscriptionSession();
-  session.settings.sampleRate = 16_000;
-  session.settings.channels = 1;
-  session.settings.bitsPerSample = 16;
+  const session = await openLiveSession(model);
   state.session = session;
   state.sessionId = sessionId;
-  await session.start();
   postTranscriptionEvent(port, { type: 'sessionStarted', sessionId });
   state.streamLoop = streamTranscriptionEvents(session, sessionId, port);
 }
 
 function createAudioClient(model: IModel): AudioClient {
   return model.createAudioClient();
+}
+
+async function openLiveSession(model: IModel): Promise<LiveAudioTranscriptionSession> {
+  const session = createConfiguredLiveSession(model);
+  try {
+    await session.start();
+    return session;
+  } catch (err) {
+    await session.dispose().catch(() => undefined);
+    const staleHandle = parseAlreadyActiveAudioStreamHandle(err);
+    if (!staleHandle) throw err;
+
+    await recoverFoundryAudioStream(model, staleHandle);
+    const retrySession = createConfiguredLiveSession(model);
+    try {
+      await retrySession.start();
+      return retrySession;
+    } catch (retryErr) {
+      await retrySession.dispose().catch(() => undefined);
+      throw new Error(
+        `Failed to start voice dictation after clearing stale Foundry audio stream ${staleHandle}: ${getErrorMessage(retryErr)}`,
+        { cause: retryErr },
+      );
+    }
+  }
+}
+
+function createConfiguredLiveSession(model: IModel): LiveAudioTranscriptionSession {
+  const audioClient = createAudioClient(model);
+  const session = audioClient.createLiveTranscriptionSession();
+  session.settings.sampleRate = 16_000;
+  session.settings.channels = 1;
+  session.settings.bitsPerSample = 16;
+  return session;
+}
+
+async function recoverFoundryAudioStream(model: IModel, sessionHandle: string): Promise<void> {
+  const cleanupSession = createConfiguredLiveSession(model);
+  const recoverableSession = cleanupSession as unknown as {
+    sessionHandle: string;
+    started: boolean;
+    stopped: boolean;
+    stop(): Promise<void>;
+    dispose(): Promise<void>;
+  };
+  recoverableSession.sessionHandle = sessionHandle;
+  recoverableSession.started = true;
+  recoverableSession.stopped = false;
+  await recoverableSession.stop().catch(() => undefined);
+  await recoverableSession.dispose().catch(() => undefined);
+}
+
+function parseAlreadyActiveAudioStreamHandle(err: unknown): string | null {
+  const message = getErrorMessage(err);
+  if (!/streaming session is already active/i.test(message)) return null;
+  const match = /\(handle:\s*(audio-stream-[^)]+)\)/i.exec(message);
+  return match?.[1] ?? null;
 }
 
 async function appendAudio(sessionId: string, pcm: Uint8Array): Promise<void> {

@@ -35,7 +35,8 @@ function findRecord(messages: unknown[], predicate: (message: Record<string, unk
   ));
 }
 
-function createModel(session: Record<string, unknown>) {
+function createModel(sessionOrSessions: Record<string, unknown> | Record<string, unknown>[]) {
+  const sessions = Array.isArray(sessionOrSessions) ? [...sessionOrSessions] : [sessionOrSessions];
   return {
     alias: 'nemotron-speech-streaming-en-0.6b',
     info: { fileSizeMb: 12, sizeInBytes: 13 * 1024 * 1024 },
@@ -47,7 +48,7 @@ function createModel(session: Record<string, unknown>) {
     }),
     removeFromCache: vi.fn(),
     createAudioClient: vi.fn(() => ({
-      createLiveTranscriptionSession: vi.fn(() => session),
+      createLiveTranscriptionSession: vi.fn(() => sessions.shift() ?? sessionOrSessions),
     })),
   };
 }
@@ -192,6 +193,107 @@ describe('voiceWorker', () => {
       isFinal: true,
     });
     expect(findRecord(port.messages, (message) => message.requestId === 'start-1')).toMatchObject({ verb: 'start', ok: true });
+  });
+
+  it('clears worker session state when Foundry start fails before retrying later', async () => {
+    async function* stream() {
+      yield* [];
+    }
+    const failedSession = {
+      settings: {},
+      start: vi.fn(async () => {
+        throw new Error('microphone unavailable');
+      }),
+      dispose: vi.fn(async () => undefined),
+      getStream: vi.fn(() => stream()),
+    };
+    const retrySession = {
+      settings: {},
+      start: vi.fn(async () => undefined),
+      append: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+      dispose: vi.fn(async () => undefined),
+      getStream: vi.fn(() => stream()),
+    };
+    const model = createModel([failedSession, retrySession]);
+    const manager = { catalog: { getModel: vi.fn(async () => model) } };
+    foundry.createAsync.mockResolvedValue(manager);
+    const port = createPort();
+    const { handleVoiceWorkerRequest } = await importWorker();
+
+    await handleVoiceWorkerRequest({
+      requestId: 'start-1',
+      verb: 'start',
+      sessionId: 'session-1',
+      modelId: 'nemotron-speech-streaming-en-0.6b',
+    }, port);
+    await handleVoiceWorkerRequest({
+      requestId: 'start-2',
+      verb: 'start',
+      sessionId: 'session-2',
+      modelId: 'nemotron-speech-streaming-en-0.6b',
+    }, port);
+
+    expect(failedSession.dispose).toHaveBeenCalledTimes(1);
+    expect(port.messages).toContainEqual({
+      type: 'error',
+      sessionId: 'session-1',
+      message: 'microphone unavailable',
+    });
+    expect(port.messages).toContainEqual({ requestId: 'start-1', verb: 'start', ok: false, error: 'microphone unavailable' });
+    expect(port.messages).toContainEqual({ type: 'sessionStarted', sessionId: 'session-2' });
+    expect(port.messages).toContainEqual({ requestId: 'start-2', verb: 'start', ok: true });
+  });
+
+  it('stops an orphan Foundry audio stream handle and retries start once', async () => {
+    async function* stream() {
+      yield* [];
+    }
+    const failedSession = {
+      settings: {},
+      start: vi.fn(async () => {
+        throw new Error("Command 'audio_stream_start' failed: System.InvalidOperationException: A streaming session is already active (handle: audio-stream-a1ea6402619b400fb28f2f7e372021b6). Stop the current session before starting a new one.");
+      }),
+      dispose: vi.fn(async () => undefined),
+      getStream: vi.fn(() => stream()),
+    };
+    const cleanupSession = {
+      settings: {},
+      stop: vi.fn(async () => undefined),
+      dispose: vi.fn(async () => undefined),
+      getStream: vi.fn(() => stream()),
+    };
+    const retrySession = {
+      settings: {},
+      start: vi.fn(async () => undefined),
+      append: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+      dispose: vi.fn(async () => undefined),
+      getStream: vi.fn(() => stream()),
+    };
+    const model = createModel([failedSession, cleanupSession, retrySession]);
+    const manager = { catalog: { getModel: vi.fn(async () => model) } };
+    foundry.createAsync.mockResolvedValue(manager);
+    const port = createPort();
+    const { handleVoiceWorkerRequest } = await importWorker();
+
+    await handleVoiceWorkerRequest({
+      requestId: 'start-1',
+      verb: 'start',
+      sessionId: 'session-1',
+      modelId: 'nemotron-speech-streaming-en-0.6b',
+    }, port);
+
+    expect(failedSession.dispose).toHaveBeenCalledTimes(1);
+    expect(cleanupSession.stop).toHaveBeenCalledTimes(1);
+    expect(cleanupSession).toMatchObject({
+      sessionHandle: 'audio-stream-a1ea6402619b400fb28f2f7e372021b6',
+      started: true,
+      stopped: false,
+    });
+    expect(retrySession.start).toHaveBeenCalledTimes(1);
+    expect(port.messages).toContainEqual({ type: 'sessionStarted', sessionId: 'session-1' });
+    expect(port.messages).toContainEqual({ requestId: 'start-1', verb: 'start', ok: true });
   });
 
   it('appends PCM data and maps end to stop plus dispose', async () => {
