@@ -1,7 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { TranscriptionEvent, VoiceWorkerRpcRequest, VoiceWorkerRpcResponse } from '@chamber/shared/voice-types';
+import type {
+  TranscriptionEvent,
+  VoiceInstallerEvent,
+  VoiceWorkerRpcRequest,
+  VoiceWorkerRpcResponse,
+} from '@chamber/shared/voice-types';
 import { VoiceWorkerPool, type VoiceWorkerLike, type VoiceWorkerPoolScheduler } from './VoiceWorkerPool';
 
 class FakeWorker extends EventEmitter implements VoiceWorkerLike {
@@ -12,7 +17,7 @@ class FakeWorker extends EventEmitter implements VoiceWorkerLike {
     this.posted.push(message);
   }
 
-  emitMessage(message: VoiceWorkerRpcResponse | TranscriptionEvent): void {
+  emitMessage(message: VoiceWorkerRpcResponse | TranscriptionEvent | VoiceInstallerEvent): void {
     this.emit('message', message);
   }
 
@@ -40,15 +45,14 @@ function createScheduler(): VoiceWorkerPoolScheduler & { runNext(): void; delays
 }
 
 describe('VoiceWorkerPool', () => {
-  it('starts engine and installer workers and resolves RPC responses', async () => {
+  it('starts one worker and resolves engine and installer RPC responses', async () => {
     const workers: FakeWorker[] = [];
     const pool = new VoiceWorkerPool({
-      engineWorkerPath: 'engine.js',
-      installerWorkerPath: 'installer.js',
+      voiceWorkerPath: 'voiceWorker.js',
       workerFactory: (workerPath) => {
         const worker = new FakeWorker();
         workers.push(worker);
-        expect(workerPath).toMatch(/^(engine|installer)\.js$/);
+        expect(workerPath).toBe('voiceWorker.js');
         return worker;
       },
     });
@@ -59,11 +63,11 @@ describe('VoiceWorkerPool', () => {
     const engineResponse = pool.sendEngine(engineRequest);
     const installerResponse = pool.sendInstaller(installerRequest);
 
-    expect(workers[0].posted).toEqual([engineRequest]);
-    expect(workers[1].posted).toEqual([installerRequest]);
+    expect(workers).toHaveLength(1);
+    expect(workers[0].posted).toEqual([engineRequest, installerRequest]);
 
     workers[0].emitMessage({ requestId: 'engine-1', verb: 'refresh', ok: true, statuses: [] });
-    workers[1].emitMessage({ requestId: 'installer-1', verb: 'installRuntime', ok: true });
+    workers[0].emitMessage({ requestId: 'installer-1', verb: 'installRuntime', ok: true });
 
     await expect(engineResponse).resolves.toEqual({ requestId: 'engine-1', verb: 'refresh', ok: true, statuses: [] });
     await expect(installerResponse).resolves.toEqual({ requestId: 'installer-1', verb: 'installRuntime', ok: true });
@@ -72,9 +76,8 @@ describe('VoiceWorkerPool', () => {
   it('forwards engine transcript events until unsubscribed', () => {
     const engine = new FakeWorker();
     const pool = new VoiceWorkerPool({
-      engineWorkerPath: 'engine.js',
-      installerWorkerPath: 'installer.js',
-      workerFactory: (workerPath) => (workerPath === 'engine.js' ? engine : new FakeWorker()),
+      voiceWorkerPath: 'voiceWorker.js',
+      workerFactory: () => engine,
     });
     const events: TranscriptionEvent[] = [];
 
@@ -87,12 +90,28 @@ describe('VoiceWorkerPool', () => {
     expect(events).toEqual([{ type: 'partial', sessionId: 'session-1', text: 'hello chamber' }]);
   });
 
+  it('forwards installer progress events until unsubscribed', () => {
+    const worker = new FakeWorker();
+    const pool = new VoiceWorkerPool({
+      voiceWorkerPath: 'voiceWorker.js',
+      workerFactory: () => worker,
+    });
+    const events: VoiceInstallerEvent[] = [];
+
+    pool.start();
+    const unsubscribe = pool.onInstallerEvent((event) => events.push(event));
+    worker.emitMessage({ type: 'modelProgress', modelId: 'nemotron-speech-streaming-en-0.6b', percent: 42 });
+    unsubscribe();
+    worker.emitMessage({ type: 'modelProgress', modelId: 'nemotron-speech-streaming-en-0.6b', percent: 99 });
+
+    expect(events).toEqual([{ type: 'modelProgress', modelId: 'nemotron-speech-streaming-en-0.6b', percent: 42 }]);
+  });
+
   it('restarts a crashed worker with bounded backoff and surfaces crash counts', () => {
     const scheduler = createScheduler();
     const workers: FakeWorker[] = [];
     const pool = new VoiceWorkerPool({
-      engineWorkerPath: 'engine.js',
-      installerWorkerPath: 'installer.js',
+      voiceWorkerPath: 'voiceWorker.js',
       workerFactory: () => {
         const worker = new FakeWorker();
         workers.push(worker);
@@ -105,21 +124,20 @@ describe('VoiceWorkerPool', () => {
 
     pool.start();
     workers[0].emitExit(1);
-    expect(pool.getCrashCounts()).toEqual({ engine: 1, installer: 0 });
+    expect(pool.getCrashCounts()).toEqual({ engine: 1, installer: 1 });
     expect(scheduler.delays).toEqual([10]);
 
     scheduler.runNext();
-    workers[2].emitExit(1);
-    expect(pool.getCrashCounts()).toEqual({ engine: 2, installer: 0 });
+    workers[1].emitExit(1);
+    expect(pool.getCrashCounts()).toEqual({ engine: 2, installer: 2 });
     expect(scheduler.delays).toEqual([10, 15]);
   });
 
   it('rejects pending requests when a worker exits unexpectedly', async () => {
     const engine = new FakeWorker();
     const pool = new VoiceWorkerPool({
-      engineWorkerPath: 'engine.js',
-      installerWorkerPath: 'installer.js',
-      workerFactory: (workerPath) => (workerPath === 'engine.js' ? engine : new FakeWorker()),
+      voiceWorkerPath: 'voiceWorker.js',
+      workerFactory: () => engine,
       scheduler: createScheduler(),
     });
 
@@ -127,15 +145,14 @@ describe('VoiceWorkerPool', () => {
     const pending = pool.sendEngine({ requestId: 'engine-1', verb: 'refresh' });
     engine.emitExit(1);
 
-    await expect(pending).rejects.toThrow(/engine worker exited/i);
+    await expect(pending).rejects.toThrow(/voice worker exited/i);
   });
 
   it('terminates workers without scheduling restarts', async () => {
     const scheduler = createScheduler();
-    const workers = [new FakeWorker(), new FakeWorker()];
+    const workers = [new FakeWorker()];
     const pool = new VoiceWorkerPool({
-      engineWorkerPath: 'engine.js',
-      installerWorkerPath: 'installer.js',
+      voiceWorkerPath: 'voiceWorker.js',
       workerFactory: () => workers.shift() ?? new FakeWorker(),
       scheduler,
     });

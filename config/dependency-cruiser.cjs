@@ -28,7 +28,7 @@ module.exports = {
     {
       name: 'foundry-local-sdk-only-in-voice-workers',
       severity: 'error',
-      from: { pathNot: '^apps/desktop/src/main/voiceWorker/(engineWorker|installerWorker)\\.ts$' },
+      from: { pathNot: '^apps/desktop/src/main/voiceWorker/voiceWorker\\.ts$' },
       to: { path: '^foundry-local-sdk' },
       comment: 'Foundry Local SDK is only loaded inside the voice worker threads. Renderer / services / shared must talk to it via the VoiceWorkerPool RPC.',
     },
