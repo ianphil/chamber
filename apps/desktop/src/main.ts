@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import started from 'electron-squirrel-startup';
-import { DEFAULT_APP_FEATURE_FLAGS, IPC } from '@chamber/shared';
+import { DEFAULT_APP_FEATURE_FLAGS, IPC, type VoicePermissionState } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
 import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
 
@@ -81,6 +81,7 @@ import {
   createByoLlmModelsProvider,
   FakeTranscriptionProvider,
   FoundryTranscriptionProvider,
+  type PermissionInspector,
   probeEndpoint,
   redactUrlCredentials,
   configureSdkRuntimeLayout,
@@ -142,6 +143,10 @@ if (process.env.CHAMBER_E2E_CDP_PORT) {
 }
 if (process.env.CHAMBER_E2E_USER_DATA) {
   app.setPath('userData', process.env.CHAMBER_E2E_USER_DATA);
+}
+if (process.env.CHAMBER_E2E_VOICE_FAKE === '1') {
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
 const hasSingleInstanceLock = process.env.CHAMBER_DISABLE_SINGLE_INSTANCE_LOCK === '1' || app.requestSingleInstanceLock();
@@ -257,6 +262,29 @@ let updaterService: UpdaterService;
 let voiceWorkerPool: VoiceWorkerPool | null = null;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
 const ttasksStoresByMindPath = new Map<string, SqliteStore>();
+
+class E2EVoicePermissionInspector implements PermissionInspector {
+  private overrideState: VoicePermissionState | null;
+
+  constructor(
+    private readonly delegate: PermissionInspector,
+    initialOverride: VoicePermissionState | null,
+  ) {
+    this.overrideState = initialOverride;
+  }
+
+  setState(state: VoicePermissionState | null): void {
+    this.overrideState = state;
+  }
+
+  async getState(): Promise<VoicePermissionState> {
+    return this.overrideState ?? this.delegate.getState();
+  }
+
+  openPreferences(): Promise<void> {
+    return this.delegate.openPreferences?.() ?? Promise.resolve();
+  }
+}
 
 const createTaskLedger = (mindPath: string): TaskLedger => {
   const existing = taskLedgersByMindPath.get(mindPath);
@@ -888,8 +916,15 @@ app.on('ready', async () => {
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },
   });
   if (appFeatureFlags.voiceDictation === true) {
-    const voiceStore = new VoiceDictationStore();
-    const permissions = new ElectronPermissionInspector();
+    const voiceStore = new VoiceDictationStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA });
+    const electronPermissions = new ElectronPermissionInspector();
+    const e2ePermissionOverride = process.env.CHAMBER_E2E === '1'
+      ? new E2EVoicePermissionInspector(
+        electronPermissions,
+        process.env.CHAMBER_E2E_VOICE_FAKE === '1' ? 'granted' : null,
+      )
+      : null;
+    const permissions = e2ePermissionOverride ?? electronPermissions;
     const engineWorkerPath = resolveVoiceWorkerEntry('engineWorker.js');
     const installerWorkerPath = resolveVoiceWorkerEntry('installerWorker.js');
     const workerPool = new VoiceWorkerPool({ engineWorkerPath, installerWorkerPath });
@@ -904,7 +939,11 @@ app.on('ready', async () => {
       permissions,
       workerPool,
     });
-    setupVoiceIPC(voiceService, { featureEnabled: true, e2eEnabled: process.env.CHAMBER_E2E === '1' });
+    setupVoiceIPC(voiceService, {
+      featureEnabled: true,
+      e2eEnabled: process.env.CHAMBER_E2E === '1',
+      ...(e2ePermissionOverride ? { e2ePermissionOverride } : {}),
+    });
   }
   setupA2AIPC(a2aEventBus, agentCardRegistry, taskManager, {
     relayModeService: a2aRelayModeService,

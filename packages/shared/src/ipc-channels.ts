@@ -161,6 +161,9 @@ export const IPC = {
     AUTH_COMPLETE_LOGIN: 'e2e:auth:complete-login',
     VOICE_SET_FAKE_PROVIDER: 'e2e:voice:setFakeProvider',
     VOICE_EMIT_TRANSCRIPT: 'e2e:voice:emitTranscript',
+    VOICE_SET_PERMISSION_STATE: 'e2e:voice:setPermissionState',
+    VOICE_SET_MODEL_STATUS: 'e2e:voice:setModelStatus',
+    VOICE_GET_SESSION_STATE: 'e2e:voice:getSessionState',
   },
   APP: {
     GET_FEATURE_FLAGS: 'app:getFeatureFlags',
