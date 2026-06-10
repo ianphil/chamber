@@ -66,7 +66,7 @@ export async function handleVoiceWorkerRequest(request: VoiceWorkerRpcRequest, p
         return;
       }
       case 'downloadModel': {
-        const status = await downloadModel(request.modelId, port);
+        const status = await downloadModel(request.modelId, port, request.forceRedownload === true);
         postWorkerSuccess(port, request, { status });
         return;
       }
@@ -130,8 +130,11 @@ async function selectModel(modelId: string): Promise<IModel> {
   return model;
 }
 
-async function downloadModel(modelId: string, port: VoiceWorkerPort): Promise<VoiceModelStatus> {
+async function downloadModel(modelId: string, port: VoiceWorkerPort, forceRedownload = false): Promise<VoiceModelStatus> {
   const model = await getModel(modelId);
+  if (forceRedownload) {
+    await model.removeFromCache();
+  }
   await model.download((progress) => {
     postInstallerEvent(port, {
       type: 'modelProgress',

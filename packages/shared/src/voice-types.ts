@@ -34,6 +34,10 @@ export interface VoiceDictationConfig {
   readonly model: VoiceDictationModelConfig;
 }
 
+export interface VoiceDownloadModelOptions {
+  readonly forceRedownload?: boolean;
+}
+
 export type TranscriptionEvent =
   | { readonly type: 'partial'; readonly sessionId: string; readonly text: string; readonly isFinal?: false }
   | { readonly type: 'final'; readonly sessionId: string; readonly text: string; readonly isFinal?: true }
@@ -59,7 +63,7 @@ interface VoiceWorkerRpcRequestBase {
 export type VoiceWorkerRpcRequest =
   | (VoiceWorkerRpcRequestBase & { readonly verb: 'setEnabled'; readonly enabled: boolean })
   | (VoiceWorkerRpcRequestBase & { readonly verb: 'selectModel'; readonly modelId: string })
-  | (VoiceWorkerRpcRequestBase & { readonly verb: 'downloadModel'; readonly modelId: string })
+  | (VoiceWorkerRpcRequestBase & { readonly verb: 'downloadModel'; readonly modelId: string; readonly forceRedownload?: boolean })
   | (VoiceWorkerRpcRequestBase & { readonly verb: 'deleteModel'; readonly modelId: string })
   | (VoiceWorkerRpcRequestBase & { readonly verb: 'installRuntime' })
   | (VoiceWorkerRpcRequestBase & { readonly verb: 'refresh' })

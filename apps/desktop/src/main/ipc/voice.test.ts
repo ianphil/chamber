@@ -11,6 +11,7 @@ import { IPC, VOICE_DICTATION_MODEL_ID, VOICE_MAX_APPEND_CHUNK_BYTES } from '@ch
 import type {
   TranscriptionEvent,
   VoiceDictationConfig,
+  VoiceDownloadModelOptions,
   VoiceMicTestResult,
   VoiceModelStatus,
   VoicePermissionState,
@@ -34,7 +35,7 @@ interface MockVoiceService {
   readonly openPreferences: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly getModelStatus: ReturnType<typeof vi.fn<(modelId: string) => Promise<VoiceModelStatus>>>;
   readonly downloadModel: ReturnType<
-    typeof vi.fn<(modelId: string, progressCb?: (status: VoiceModelStatus) => void) => Promise<void>>
+    typeof vi.fn<(modelId: string, progressCb?: (status: VoiceModelStatus) => void, options?: VoiceDownloadModelOptions) => Promise<void>>
   >;
   readonly cancelDownload: ReturnType<typeof vi.fn<(modelId: string) => Promise<void>>>;
   readonly startSession: ReturnType<
@@ -149,6 +150,23 @@ describe('setupVoiceIPC', () => {
 
     expect(service.downloadModel).toHaveBeenCalledWith(VOICE_DICTATION_MODEL_ID, expect.any(Function));
     expect(sender.send).toHaveBeenCalledWith(IPC.VOICE.MODEL_PROGRESS, readyStatus);
+  });
+
+  it('accepts force redownload model download requests', async () => {
+    const service = createMockService();
+    const sender = createWebContents();
+    setupVoiceIPC(service as unknown as VoiceDictationService);
+
+    await invokeWithSender(IPC.VOICE.DOWNLOAD_MODEL, sender, {
+      modelId: VOICE_DICTATION_MODEL_ID,
+      forceRedownload: true,
+    });
+
+    expect(service.downloadModel).toHaveBeenCalledWith(
+      VOICE_DICTATION_MODEL_ID,
+      expect.any(Function),
+      { forceRedownload: true },
+    );
   });
 
   it('starts sessions with a validated payload and forwards matching transcripts', async () => {

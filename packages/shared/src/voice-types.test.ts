@@ -4,6 +4,7 @@ import type {
   TranscriptionEvent,
   VoiceDictationConfig,
   VoiceDictationModelConfig,
+  VoiceDownloadModelOptions,
   VoiceModelStatus,
   VoicePermissionState,
   VoiceWorkerRpcRequest,
@@ -61,6 +62,8 @@ describe('voice shared types', () => {
     >();
     expectTypeOf<{ requestId: string; verb: 'append'; sessionId: string; pcm: Uint8Array }>().toMatchTypeOf<VoiceWorkerRpcRequest>();
     expectTypeOf<{ requestId: string; verb: 'end'; sessionId: string }>().toMatchTypeOf<VoiceWorkerRpcRequest>();
+    expectTypeOf<{ requestId: string; verb: 'downloadModel'; modelId: string; forceRedownload: true }>().toMatchTypeOf<VoiceWorkerRpcRequest>();
+    expectTypeOf<VoiceDownloadModelOptions>().toEqualTypeOf<{ readonly forceRedownload?: boolean }>();
     expectTypeOf<{ requestId: string; verb: 'downloadModel'; ok: true }>().toMatchTypeOf<VoiceWorkerRpcResponse>();
     expectTypeOf<{ requestId: string; verb: 'refresh'; ok: false; error: string }>().toMatchTypeOf<VoiceWorkerRpcResponse>();
   });

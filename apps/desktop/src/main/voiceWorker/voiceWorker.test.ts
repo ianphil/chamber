@@ -123,6 +123,26 @@ describe('voiceWorker', () => {
     ]);
   });
 
+  it('removes cached models before forced redownloads', async () => {
+    const session = {};
+    const model = createModel(session);
+    const manager = { catalog: { getModel: vi.fn(async () => model) } };
+    foundry.createAsync.mockResolvedValue(manager);
+    const port = createPort();
+    const { handleVoiceWorkerRequest } = await importWorker();
+
+    await handleVoiceWorkerRequest({
+      requestId: 'download-1',
+      verb: 'downloadModel',
+      modelId: 'nemotron-speech-streaming-en-0.6b',
+      forceRedownload: true,
+    }, port);
+
+    expect(model.removeFromCache).toHaveBeenCalledTimes(1);
+    expect(model.download).toHaveBeenCalledTimes(1);
+    expect(model.removeFromCache.mock.invocationCallOrder[0]).toBeLessThan(model.download.mock.invocationCallOrder[0]);
+  });
+
   it('returns cached model status on refresh even before download starts', async () => {
     const session = {};
     const model = createModel(session);

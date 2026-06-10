@@ -8,6 +8,7 @@ import {
   VOICE_MAX_APPEND_CHUNK_BYTES,
   type TranscriptionEvent,
   type VoiceDictationConfig,
+  type VoiceDownloadModelOptions,
   type VoiceMicTestResult,
   type VoiceModelStatus,
   type VoicePermissionState,
@@ -29,13 +30,18 @@ interface VoiceStartSessionRequest {
   readonly modelId?: string;
 }
 
+interface VoiceDownloadModelRequest {
+  readonly modelId: string;
+  readonly forceRedownload?: boolean;
+}
+
 interface VoiceIpcServicePort {
   getConfig(): Promise<VoiceDictationConfig | null>;
   saveConfig(config: VoiceDictationConfig): Promise<void>;
   getPermissionState(): Promise<VoicePermissionState>;
   openPreferences(): Promise<void>;
   getModelStatus(modelId: string): Promise<VoiceModelStatus>;
-  downloadModel(modelId: string, progressCb?: (status: VoiceModelStatus) => void): Promise<void>;
+  downloadModel(modelId: string, progressCb?: (status: VoiceModelStatus) => void, options?: VoiceDownloadModelOptions): Promise<void>;
   cancelDownload(modelId: string): Promise<void>;
   startSession(request: VoiceStartSessionRequest | string, legacyModelId?: string): Promise<void>;
   appendAudio(sessionId: string, chunk: Uint8Array): Promise<void>;
@@ -73,6 +79,13 @@ const startSessionSchema = z
     sessionId: nonEmptyStringSchema,
     deviceId: nonEmptyStringSchema.nullable().optional(),
     modelId: optionalNonEmptyStringSchema,
+  })
+  .strict();
+
+const downloadModelSchema = z
+  .object({
+    modelId: modelIdSchema,
+    forceRedownload: z.boolean().optional(),
   })
   .strict();
 
@@ -223,12 +236,21 @@ export function setupVoiceIPC(service: VoiceDictationService, options: VoiceIpcO
     return voiceService.getModelStatus(modelId);
   });
 
-  ipcMain.handle(IPC.VOICE.DOWNLOAD_MODEL, async (event, rawModelId: unknown): Promise<void> => {
+  ipcMain.handle(IPC.VOICE.DOWNLOAD_MODEL, async (event, rawRequestOrModelId: unknown): Promise<void> => {
     requireFeatureEnabled();
-    const modelId = parseIpcArgs(IPC.VOICE.DOWNLOAD_MODEL, modelIdSchema, rawModelId);
-    await voiceService.downloadModel(modelId, (status) => {
+    const { modelId, forceRedownload } = parseIpcArgs(
+      IPC.VOICE.DOWNLOAD_MODEL,
+      downloadModelSchema,
+      normalizeDownloadModelPayload(rawRequestOrModelId),
+    ) as VoiceDownloadModelRequest;
+    const progressCb = (status: VoiceModelStatus) => {
       event.sender.send(IPC.VOICE.MODEL_PROGRESS, status);
-    });
+    };
+    if (forceRedownload === undefined) {
+      await voiceService.downloadModel(modelId, progressCb);
+    } else {
+      await voiceService.downloadModel(modelId, progressCb, { forceRedownload });
+    }
   });
 
   ipcMain.handle(IPC.VOICE.CANCEL_DOWNLOAD, async (_event, rawModelId: unknown): Promise<void> => {
@@ -354,6 +376,11 @@ function normalizeStartSessionPayload(
     ...(typeof rawModelId !== 'undefined' ? { modelId: rawModelId } : {}),
     ...(typeof rawDeviceId !== 'undefined' ? { deviceId: rawDeviceId } : {}),
   };
+}
+
+function normalizeDownloadModelPayload(rawRequestOrModelId: unknown): unknown {
+  if (isRecord(rawRequestOrModelId)) return rawRequestOrModelId;
+  return { modelId: rawRequestOrModelId };
 }
 
 function normalizeAppendAudioPayload(rawPayloadOrSessionId: unknown, rawChunk: unknown): unknown {
