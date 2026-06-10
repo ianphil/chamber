@@ -4,6 +4,7 @@ import {
   VOICE_DICTATION_MODEL_ID,
   type TranscriptionEvent,
   type VoiceDictationConfig,
+  type VoiceInstallerEvent,
   type VoiceMicTestResult,
   type VoiceModelStatus,
   type VoicePermissionState,
@@ -17,6 +18,7 @@ import type { VoiceDictationStore } from './VoiceDictationStore';
 
 export interface VoiceWorkerPoolPort {
   sendInstaller(req: VoiceWorkerRpcRequest): Promise<VoiceWorkerRpcResponse>;
+  onInstallerEvent?(cb: (event: VoiceInstallerEvent) => void): () => void;
   cancelInstaller?(): Promise<void>;
 }
 
@@ -88,17 +90,33 @@ export class VoiceDictationService {
       throw new Error('Voice worker pool is unavailable');
     }
     progressCb?.({ id: VOICE_DICTATION_MODEL_ID, status: 'downloading' });
-    const response = await this.workerPool.sendInstaller({
-      requestId: randomUUID(),
-      verb: 'downloadModel',
-      modelId,
+    const unsubscribe = this.workerPool.onInstallerEvent?.((event) => {
+      if (event.type !== 'modelProgress' || event.modelId !== modelId) return;
+      progressCb?.({
+        id: VOICE_DICTATION_MODEL_ID,
+        status: 'downloading',
+        percent: event.percent,
+        ...(event.sizeBytes !== undefined ? { sizeBytes: event.sizeBytes } : {}),
+      });
     });
-    assertRpcSucceeded(response);
-    if (response.status) progressCb?.(response.status);
+    try {
+      const response = await this.workerPool.sendInstaller({
+        requestId: randomUUID(),
+        verb: 'downloadModel',
+        modelId,
+      });
+      assertRpcSucceeded(response);
+      if (response.status) progressCb?.(response.status);
+    } finally {
+      unsubscribe?.();
+    }
   }
 
   async cancelDownload(modelId: string): Promise<void> {
     assertKnownModel(modelId);
+    if (this.activeSessionId) {
+      throw new Error('Cannot cancel a voice model download while voice dictation is active');
+    }
     if (!this.workerPool?.cancelInstaller) {
       throw new Error('Voice model download cancellation is unavailable');
     }
