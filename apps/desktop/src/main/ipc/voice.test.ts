@@ -21,7 +21,10 @@ import { FAKE_SENTINEL_TRANSCRIPT } from '@chamber/services';
 type IpcHandler = (event: { sender: MockWebContents }, ...args: unknown[]) => Promise<unknown>;
 
 interface MockWebContents {
+  readonly id: number;
   readonly send: ReturnType<typeof vi.fn>;
+  readonly once: ReturnType<typeof vi.fn>;
+  readonly isDestroyed: ReturnType<typeof vi.fn>;
 }
 
 interface MockVoiceService {
@@ -325,8 +328,15 @@ function createMockService(): MockVoiceService {
   };
 }
 
+let nextMockWebContentsId = 1;
+
 function createWebContents(): MockWebContents {
-  return { send: vi.fn() };
+  return {
+    id: nextMockWebContentsId++,
+    send: vi.fn(),
+    once: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+  };
 }
 
 function registeredChannels(): string[] {

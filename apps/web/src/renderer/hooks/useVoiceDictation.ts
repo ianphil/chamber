@@ -88,15 +88,26 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
     const capture = captureRef.current;
     captureRef.current = null;
 
+    let captureError: unknown = null;
     try {
       await capture?.stop();
-      await window.electronAPI.voice.endSession({ sessionId });
-      setState('idle');
     } catch (err) {
-      setError(getErrorMessage(err));
-      setState('error');
-      throw err;
+      captureError = err;
     }
+
+    try {
+      await window.electronAPI.voice.endSession({ sessionId });
+    } catch (err) {
+      // endSession failure is reported but we still want to clear UI state.
+      if (!captureError) captureError = err;
+    }
+
+    if (captureError) {
+      setError(getErrorMessage(captureError));
+      setState('error');
+      return;
+    }
+    setState('idle');
   }, []);
 
   const start = useCallback(async () => {
@@ -122,7 +133,11 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
       await window.electronAPI.voice.startSession({ sessionId, modelId });
       const capture = await startMicCapture({
         deviceId: config?.inputDeviceId ?? undefined,
-        onFrame: (frame) => appendFrame(sessionId, frame),
+        onFrame: (frame) => { void appendFrame(sessionId, frame).catch((err) => {
+          // Append failure: stop the session so we don't leak it.
+          setError(getErrorMessage(err));
+          void stop().catch(() => undefined);
+        }); },
       });
       captureRef.current = capture;
     } catch (err) {
@@ -135,7 +150,7 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
       setState('error');
       throw err;
     }
-  }, []);
+  }, [stop]);
 
   useEffect(() => {
     if (!options.enabled || !options.shortcut.trim()) return;
@@ -166,6 +181,14 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
     };
   }, [options.enabled, options.pushToTalk, options.shortcut, start, stop]);
 
+  // Tear down when disabled flips false mid-session (Blocking #2).
+  useEffect(() => {
+    if (options.enabled) return;
+    if (sessionIdRef.current) {
+      void stop().catch(() => undefined);
+    }
+  }, [options.enabled, stop]);
+
   useEffect(() => {
     return () => {
       const sessionId = sessionIdRef.current;
@@ -180,12 +203,13 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
   return { state, start, stop, error, permission, __currentSessionId: sessionIdRef.current };
 }
 
-function appendFrame(sessionId: string, frame: Float32Array): void {
+async function appendFrame(sessionId: string, frame: Float32Array): Promise<void> {
   const downsampled = downsampleFloat32(frame, 48_000, 16_000);
   const pcm = float32ToPcm16(downsampled);
   const bytes = pcm16ToBytes(pcm);
+  // Await each chunk so backpressure propagates to the worklet onmessage loop.
   for (const chunk of chunkPcm16Bytes(bytes, VOICE_MAX_APPEND_CHUNK_BYTES)) {
-    void window.electronAPI.voice.appendAudio({ sessionId, chunk });
+    await window.electronAPI.voice.appendAudio({ sessionId, chunk });
   }
 }
 
