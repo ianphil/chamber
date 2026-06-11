@@ -112,6 +112,7 @@ export interface ElectronAPI {
     listTemplates: () => Promise<GenesisMindTemplate[]>;
     create: (config: { name: string; role: string; voice: string; voiceDescription: string; basePath: string }) => Promise<{ success: boolean; mindId?: string; mindPath?: string; error?: string }>;
     createFromTemplate: (request: { templateId: string; marketplaceId?: string; basePath: string }) => Promise<{ success: boolean; mindId?: string; mindPath?: string; error?: string }>;
+    seedDocument: (mindId: string, content: string) => Promise<{ success: boolean; error?: string }>;
     onProgress: (callback: (progress: { step: string; detail: string }) => void) => () => void;
   };
   marketplace: {

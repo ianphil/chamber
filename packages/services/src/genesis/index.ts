@@ -9,6 +9,7 @@ export { GenesisMindTemplateMarketplaceCatalog } from './GenesisMindTemplateMark
 export { GenesisMindTemplateInstaller } from './GenesisMindTemplateInstaller';
 export { MarketplaceRegistryService } from './MarketplaceRegistryService';
 export type { GenesisMindTemplateInstallRequest } from './GenesisMindTemplateInstaller';
+export { seedOnboardingDocument, ONBOARDING_DOCUMENT_RELATIVE_PATH } from './seedOnboardingDocument';
 export type {
   GenesisMindTemplate,
   GenesisMindTemplateMarketplaceResult,

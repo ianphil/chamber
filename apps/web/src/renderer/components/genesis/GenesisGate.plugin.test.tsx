@@ -24,6 +24,27 @@ function EnterpriseOnboarding({ onComplete }: OnboardingProps) {
   );
 }
 
+// Onboarding surface that exercises the createMind capability, then completes.
+function CreatingOnboarding({ onComplete, createMind }: OnboardingProps) {
+  const [result, setResult] = React.useState<string>('');
+  return (
+    <button
+      data-testid="creating-onboarding"
+      onClick={async () => {
+        const res = await createMind({
+          templateId: 'pulse',
+          marketplaceId: 'genesis-minds-enterprise',
+          seedDocument: '# Soul Code\n\nseed',
+        });
+        setResult(res.success ? `ok:${res.mindId}` : `err:${res.error}`);
+        if (res.success) onComplete();
+      }}
+    >
+      {result || 'create'}
+    </button>
+  );
+}
+
 const firstRunState = { minds: [], mindsChecked: true };
 
 async function startNewAgent() {
@@ -66,5 +87,46 @@ describe('GenesisGate plugin onboarding', () => {
 
     expect(screen.getByTestId('enterprise-onboarding')).toBeTruthy();
     expect(screen.queryByTestId('default-genesis-flow')).toBeNull();
+  });
+
+  it('provides createMind: installs the template, seeds the document, and selects the new mind', async () => {
+    const api = installElectronAPI();
+    const createdMind = {
+      mindId: 'pulse-9999',
+      mindPath: 'C:\\agents\\pulse',
+      identity: { name: 'Pulse', systemMessage: '# Pulse' },
+      status: 'ready' as const,
+    };
+    (api.genesis.createFromTemplate as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      mindId: createdMind.mindId,
+      mindPath: createdMind.mindPath,
+    });
+    (api.genesis.seedDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+    (api.mind.list as ReturnType<typeof vi.fn>).mockResolvedValue([createdMind]);
+
+    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: CreatingOnboarding };
+
+    render(
+      <ChamberPluginProvider plugin={plugin}>
+        <AppStateProvider testInitialState={firstRunState}>
+          <GenesisGate><div>App</div></GenesisGate>
+        </AppStateProvider>
+      </ChamberPluginProvider>,
+    );
+
+    await startNewAgent();
+    fireEvent.click(screen.getByTestId('creating-onboarding'));
+
+    await waitFor(() => {
+      expect(api.genesis.createFromTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({ templateId: 'pulse', marketplaceId: 'genesis-minds-enterprise' }),
+      );
+    });
+    expect(api.genesis.seedDocument).toHaveBeenCalledWith('pulse-9999', '# Soul Code\n\nseed');
+    // After a successful create the gate completes and reveals the app.
+    await waitFor(() => {
+      expect(screen.getByText('App')).toBeTruthy();
+    });
   });
 });

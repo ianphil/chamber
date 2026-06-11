@@ -63,6 +63,7 @@ export const IPC = {
     LIST_TEMPLATES: 'genesis:listTemplates',
     CREATE: 'genesis:create',
     CREATE_FROM_TEMPLATE: 'genesis:createFromTemplate',
+    SEED_DOCUMENT: 'genesis:seedDocument',
     PROGRESS: 'genesis:progress',
   },
   MARKETPLACE: {

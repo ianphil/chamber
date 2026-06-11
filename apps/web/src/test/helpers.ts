@@ -215,6 +215,7 @@ export function mockElectronAPI(): ElectronAPI {
       listTemplates: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue({ success: true }),
       createFromTemplate: vi.fn().mockResolvedValue({ success: true }),
+      seedDocument: vi.fn().mockResolvedValue({ success: true }),
       onProgress: vi.fn().mockReturnValue(vi.fn()),
     },
     marketplace: {

@@ -1,5 +1,7 @@
 export type {
   ChamberRendererPlugin,
+  OnboardingMindRequest,
+  OnboardingMindResult,
   OnboardingProps,
   OnboardingProvider,
 } from './renderer-plugin';

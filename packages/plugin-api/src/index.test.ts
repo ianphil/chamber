@@ -5,6 +5,8 @@ import {
   type ChamberMainPlugin,
   type ChamberRendererPlugin,
   type MainPluginContext,
+  type OnboardingMindRequest,
+  type OnboardingMindResult,
   type OnboardingProps,
   type OnboardingProvider,
   type PluginLogLevel,
@@ -37,6 +39,24 @@ describe('plugin API contracts', () => {
 
   it('renderer onboarding is optional', () => {
     expectTypeOf<ChamberRendererPlugin['onboarding']>().toEqualTypeOf<OnboardingProvider | undefined>();
+  });
+
+  it('OnboardingProps exposes a createMind capability returning a result promise', () => {
+    expectTypeOf<OnboardingProps['createMind']>().toEqualTypeOf<
+      (request: OnboardingMindRequest) => Promise<OnboardingMindResult>
+    >();
+  });
+
+  it('OnboardingMindRequest requires a templateId and allows optional marketplace + seed', () => {
+    expectTypeOf<OnboardingMindRequest['templateId']>().toEqualTypeOf<string>();
+    expectTypeOf<OnboardingMindRequest['marketplaceId']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<OnboardingMindRequest['seedDocument']>().toEqualTypeOf<string | undefined>();
+  });
+
+  it('OnboardingMindResult reports success with an optional mind id or error', () => {
+    expectTypeOf<OnboardingMindResult['success']>().toEqualTypeOf<boolean>();
+    expectTypeOf<OnboardingMindResult['mindId']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<OnboardingMindResult['error']>().toEqualTypeOf<string | undefined>();
   });
 
   it('main context carries version, data path, and a leveled logger', () => {

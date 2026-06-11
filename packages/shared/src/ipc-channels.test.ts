@@ -48,6 +48,7 @@ describe('IPC channel constants', () => {
     expect(IPC.GENESIS.LIST_TEMPLATES).toBe('genesis:listTemplates');
     expect(IPC.GENESIS.CREATE).toBe('genesis:create');
     expect(IPC.GENESIS.CREATE_FROM_TEMPLATE).toBe('genesis:createFromTemplate');
+    expect(IPC.GENESIS.SEED_DOCUMENT).toBe('genesis:seedDocument');
     expect(IPC.GENESIS.PROGRESS).toBe('genesis:progress');
 
     expect(IPC.MARKETPLACE.LIST_GENESIS_REGISTRIES).toBe('marketplace:listGenesisRegistries');

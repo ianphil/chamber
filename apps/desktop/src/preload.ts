@@ -75,6 +75,7 @@ const electronAPI: ElectronAPI = {
     listTemplates: () => ipcRenderer.invoke(IPC.GENESIS.LIST_TEMPLATES),
     create: (config) => ipcRenderer.invoke(IPC.GENESIS.CREATE, config),
     createFromTemplate: (request) => ipcRenderer.invoke(IPC.GENESIS.CREATE_FROM_TEMPLATE, request),
+    seedDocument: (mindId, content) => ipcRenderer.invoke(IPC.GENESIS.SEED_DOCUMENT, { mindId, content }),
     onProgress: (callback) => createIpcListener(ipcRenderer, IPC.GENESIS.PROGRESS, callback),
   },
   marketplace: {

@@ -9,6 +9,7 @@ import {
   MindManager,
   MindScaffold,
   bootstrapMindCapabilities,
+  seedOnboardingDocument,
   type GenesisConfig,
   type GenesisMindTemplate,
   type GenesisMindTemplateInstallRequest,
@@ -27,6 +28,13 @@ const createFromTemplateSchema = z
     templateId: z.string().min(1, 'must be a non-empty string'),
     marketplaceId: z.string().min(1, 'must be a non-empty string when provided').optional(),
     basePath: z.string().min(1, 'must be a non-empty string'),
+  })
+  .strict();
+
+const seedDocumentSchema = z
+  .object({
+    mindId: z.string().min(1, 'must be a non-empty string'),
+    content: z.string().min(1, 'must be a non-empty string'),
   })
   .strict();
 
@@ -101,6 +109,23 @@ export function setupGenesisIPC(
       const message = getErrorMessage(err);
       if (win) win.webContents.send(IPC.GENESIS.PROGRESS, { step: 'error', detail: message });
       return { success: false, error: message };
+    }
+  });
+
+  // Seed an onboarding document (e.g. a generated Soul Code) into a created
+  // mind. The destination path is owned by Chamber (see seedOnboardingDocument);
+  // the renderer supplies only the mind id and content.
+  ipcMain.handle(IPC.GENESIS.SEED_DOCUMENT, async (_event, rawArgs: unknown) => {
+    const { mindId, content } = parseIpcArgs(IPC.GENESIS.SEED_DOCUMENT, seedDocumentSchema, rawArgs);
+    const mindPath = mindManager.getMind(mindId)?.mindPath;
+    if (!mindPath) {
+      return { success: false, error: `Mind ${mindId} not found` };
+    }
+    try {
+      seedOnboardingDocument(mindPath, content);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
     }
   });
 }

@@ -255,6 +255,7 @@ export function installBrowserApi(): void {
       listTemplates: async () => [],
       create: async () => ({ success: false, error: 'Genesis setup is desktop-only in browser mode.' }),
       createFromTemplate: async () => ({ success: false, error: 'Genesis template install is desktop-only in browser mode.' }),
+      seedDocument: async () => ({ success: false, error: 'Genesis onboarding is desktop-only in browser mode.' }),
       onProgress: () => noopUnsubscribe,
     },
     marketplace: {
