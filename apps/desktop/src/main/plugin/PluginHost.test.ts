@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { pathToFileURL } from 'node:url';
 import { PluginHost } from './PluginHost';
 import type { ChamberMainPlugin, MainPluginContext, PluginLogLevel } from '@chamber/plugin-api';
 
@@ -83,6 +84,33 @@ describe('PluginHost', () => {
 
     expect(result).toBeNull();
     expect(entries.some((e) => e.level === 'error')).toBe(true);
+  });
+
+  it('normalizes absolute file-system paths to file:// URLs before dynamic import', async () => {
+    const registerMain = vi.fn();
+    const plugin: ChamberMainPlugin = { id: 'abs-path-plugin', registerMain };
+    const importModule = vi.fn(async () => ({ default: plugin }));
+    const host = new PluginHost(importModule, () => {});
+    const absolute = process.platform === 'win32'
+      ? 'C:\\Users\\dev\\plugins\\enterprise\\main.js'
+      : '/opt/chamber/plugins/enterprise/main.js';
+
+    const result = await host.load(absolute, makeContext());
+
+    expect(importModule).toHaveBeenCalledWith(pathToFileURL(absolute).href);
+    expect(registerMain).toHaveBeenCalledTimes(1);
+    expect(result).toBe(plugin);
+  });
+
+  it('passes bare package specifiers through unchanged so npm resolution still works', async () => {
+    const registerMain = vi.fn();
+    const plugin: ChamberMainPlugin = { id: 'pkg-plugin', registerMain };
+    const importModule = vi.fn(async () => ({ default: plugin }));
+    const host = new PluginHost(importModule, () => {});
+
+    await host.load('@chamber/enterprise', makeContext());
+
+    expect(importModule).toHaveBeenCalledWith('@chamber/enterprise');
   });
 
   it('logs and swallows when registerMain rejects', async () => {

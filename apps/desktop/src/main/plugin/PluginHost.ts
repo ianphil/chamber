@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { ChamberMainPlugin, MainPluginContext, PluginLogLevel } from '@chamber/plugin-api';
 
 /** Dynamically imports a module by specifier. Injected so tests can supply fakes. */
@@ -30,7 +32,9 @@ function asMainPlugin(module: unknown): ChamberMainPlugin | null {
  *
  * The plugin is resolved by dynamic import of a build-time-trusted specifier
  * (package name or absolute path), kept deliberately narrow so the security
- * boundary stays auditable.
+ * boundary stays auditable. Absolute file-system paths are normalized to
+ * `file://` URLs before dynamic import because Node's ESM loader rejects raw
+ * absolute paths (notably Windows drive-letter paths like `C:\foo\bar.js`).
  */
 export class PluginHost {
   constructor(
@@ -43,8 +47,9 @@ export class PluginHost {
     if (!target) {
       return null;
     }
+    const resolved = path.isAbsolute(target) ? pathToFileURL(target).href : target;
     try {
-      const loaded = await this.importModule(target);
+      const loaded = await this.importModule(resolved);
       const plugin = asMainPlugin(loaded);
       if (!plugin) {
         this.log('warn', `Chamber plugin "${target}" did not export a valid main plugin; ignoring.`);
