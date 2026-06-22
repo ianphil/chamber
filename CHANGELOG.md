@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Add chamber:a2a ttasks runtime support** — Adds a chamber:a2a custom task type, production A2A bridge wiring, durable ttasks persistence, and invariants for the runtime contract.
+- **Add the Chamber Plugin SPI for onboarding override** -- A workspace-internal contract (`@chamber/plugin-api`) lets a trusted, opt-in plugin replace Chamber's built-in Genesis onboarding with no plugin-specific code in Chamber. The renderer seam resolves the `virtual:chamber-plugin` module (default no-op, or the `CHAMBER_PLUGIN_RENDERER` entry); the main seam dynamic-imports an optional plugin named by the `chamberPlugin` config field or `CHAMBER_PLUGIN`, calling `registerMain` once after services are wired and swallowing failures so a broken plugin never blocks boot. Plugins describe intent through Chamber-owned capabilities (`createMind`, optional seeding to `.chamber/onboarding.md`, `serveOnboardingCanvas`) and are trusted code, not sandboxed. See `ai-docs/plugin-spi.md`.
 
 
 

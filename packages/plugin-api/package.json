@@ -1,6 +1,7 @@
 {
   "name": "@chamber/plugin-api",
   "version": "0.31.0",
+  "description": "Chamber Plugin SPI contract (types only). Workspace-internal: consumed in source by Chamber and by trusted plugin packages built within the Chamber workspace; not published to npm.",
   "private": true,
   "type": "module",
   "exports": {
