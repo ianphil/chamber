@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Add chamber:a2a ttasks runtime support** — Adds a chamber:a2a custom task type, production A2A bridge wiring, durable ttasks persistence, and invariants for the runtime contract.
+- **WebGL ambient background** — Full-viewport day/night gradient that crossfades on theme change and gently breathes the genesis aurora while agents are working; the render loop parks when idle and falls back to a static CSS gradient when WebGL is unavailable, honoring prefers-reduced-motion.
 
 
 
