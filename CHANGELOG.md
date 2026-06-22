@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Add chamber:a2a ttasks runtime support** — Adds a chamber:a2a custom task type, production A2A bridge wiring, durable ttasks persistence, and invariants for the runtime contract.
+- **Azure Speech voice (dictation + hands-free)** — Optional Azure Speech voice subsystem behind a feature flag: microphone dictation into the composer and a hands-free conversation mode (speech-to-text and text-to-speech). The subscription key lives only in the OS keychain via keytar; the renderer authenticates with short-lived issued tokens, never the key.
 
 
 

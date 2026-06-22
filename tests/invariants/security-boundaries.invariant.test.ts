@@ -73,6 +73,12 @@ describe('security boundary invariants', () => {
       path.join(repoRoot, 'apps', 'server', 'src', 'privileged-protocol.ts'),
       path.join(repoRoot, 'packages', 'services', 'src', 'auth', 'AuthService.ts'),
       path.join(repoRoot, 'packages', 'services', 'src', 'byo-llm', 'ByoLlmStore.ts'),
+      // AzureSpeechStore writes the Azure Speech subscription key only through the
+      // keytar-backed CredentialStore port. Its JSON config is key-stripped
+      // (stripKey + coerce never persist apiKey) and the renderer receives only
+      // short-lived issued tokens, never the key. Reviewed 2026-06-22 as a
+      // compliant credential writer, same boundary contract as ByoLlmStore.
+      path.join(repoRoot, 'packages', 'services', 'src', 'azure-speech', 'AzureSpeechStore.ts'),
       path.join(repoRoot, 'packages', 'services', 'src', 'ports.ts'),
     ]);
     const violations = productionFiles.flatMap((filePath) => {
