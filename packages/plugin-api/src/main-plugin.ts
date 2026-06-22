@@ -4,7 +4,12 @@ export type PluginLogLevel = 'info' | 'warn' | 'error';
 /**
  * Capabilities Chamber hands to a main-process plugin during startup. The
  * surface is intentionally small and grows only as concrete override needs are
- * proven, keeping the security boundary auditable.
+ * proven, so the trusted-plugin handoff stays easy to audit.
+ *
+ * This is a default-narrow handoff, not a sandbox: a main-process plugin is
+ * trusted code loaded by dynamic import and runs with Chamber's full
+ * main-process privileges. It can reach Node and Electron on its own; this
+ * context only hands it Chamber's blessed entry points for the common case.
  */
 export interface MainPluginContext {
   /** Chamber's application version (`app.getVersion()`). */

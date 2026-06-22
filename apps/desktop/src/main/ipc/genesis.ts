@@ -112,9 +112,9 @@ export function setupGenesisIPC(
     }
   });
 
-  // Seed an onboarding document (e.g. a generated Soul Code) into a created
-  // mind. The destination path is owned by Chamber (see seedOnboardingDocument);
-  // the renderer supplies only the mind id and content.
+  // Seed an onboarding document into a created mind. The destination path is
+  // owned by Chamber (see seedOnboardingDocument); the renderer supplies only
+  // the mind id and content.
   ipcMain.handle(IPC.GENESIS.SEED_DOCUMENT, async (_event, rawArgs: unknown) => {
     const { mindId, content } = parseIpcArgs(IPC.GENESIS.SEED_DOCUMENT, seedDocumentSchema, rawArgs);
     const mindPath = mindManager.getMind(mindId)?.mindPath;

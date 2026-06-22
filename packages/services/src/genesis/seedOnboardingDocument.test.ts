@@ -15,11 +15,11 @@ describe('seedOnboardingDocument', () => {
     fs.rmSync(mindDir, { recursive: true, force: true });
   });
 
-  it('writes the document to .chamber/soul-code.md inside the mind directory', () => {
-    seedOnboardingDocument(mindDir, '# Soul Code\n\nhello');
+  it('writes the document to .chamber/onboarding.md inside the mind directory', () => {
+    seedOnboardingDocument(mindDir, '# Onboarding\n\nhello');
     const written = path.join(mindDir, ONBOARDING_DOCUMENT_RELATIVE_PATH);
     expect(fs.existsSync(written)).toBe(true);
-    expect(fs.readFileSync(written, 'utf-8')).toBe('# Soul Code\n\nhello');
+    expect(fs.readFileSync(written, 'utf-8')).toBe('# Onboarding\n\nhello');
   });
 
   it('creates the .chamber directory when missing', () => {

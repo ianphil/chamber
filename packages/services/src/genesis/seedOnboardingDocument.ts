@@ -5,15 +5,16 @@ import * as path from 'node:path';
  * Fixed, Chamber-owned location for an onboarding document inside a mind. It is
  * non-destructive (templates do not ship this file) and namespaced under
  * `.chamber/`, consistent with other Chamber-managed mind artifacts such as
- * `.chamber/avatar.png`.
+ * `.chamber/avatar.png`. Chamber writes this file on request but does not read
+ * it back; a plugin's own template or agent is responsible for consuming it.
  */
-export const ONBOARDING_DOCUMENT_RELATIVE_PATH = path.join('.chamber', 'soul-code.md');
+export const ONBOARDING_DOCUMENT_RELATIVE_PATH = path.join('.chamber', 'onboarding.md');
 
 const MAX_SEED_BYTES = 256_000;
 
 /**
- * Writes an onboarding document (e.g. a generated Soul Code) into a mind
- * directory at the fixed `ONBOARDING_DOCUMENT_RELATIVE_PATH`.
+ * Writes an onboarding document into a mind directory at the fixed
+ * `ONBOARDING_DOCUMENT_RELATIVE_PATH`.
  *
  * The destination is owned by Chamber, not the caller: callers supply only the
  * content, so there is no path-traversal surface. The escape and symlink checks

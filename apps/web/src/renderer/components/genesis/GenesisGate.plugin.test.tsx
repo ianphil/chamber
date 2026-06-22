@@ -34,7 +34,7 @@ function CreatingOnboarding({ onComplete, createMind }: OnboardingProps) {
         const res = await createMind({
           templateId: 'pulse',
           marketplaceId: 'genesis-minds-enterprise',
-          seedDocument: '# Soul Code\n\nseed',
+          seedDocument: '# Onboarding\n\nseed',
         });
         setResult(res.success ? `ok:${res.mindId}` : `err:${res.error}`);
         if (res.success) onComplete();
@@ -123,7 +123,7 @@ describe('GenesisGate plugin onboarding', () => {
         expect.objectContaining({ templateId: 'pulse', marketplaceId: 'genesis-minds-enterprise' }),
       );
     });
-    expect(api.genesis.seedDocument).toHaveBeenCalledWith('pulse-9999', '# Soul Code\n\nseed');
+    expect(api.genesis.seedDocument).toHaveBeenCalledWith('pulse-9999', '# Onboarding\n\nseed');
     // After a successful create the gate completes and reveals the app.
     await waitFor(() => {
       expect(screen.getByText('App')).toBeTruthy();

@@ -30,11 +30,15 @@ function asMainPlugin(module: unknown): ChamberMainPlugin | null {
  * plugin can never block Chamber boot. When no specifier is configured this is a
  * no-op.
  *
- * The plugin is resolved by dynamic import of a build-time-trusted specifier
- * (package name or absolute path), kept deliberately narrow so the security
- * boundary stays auditable. Absolute file-system paths are normalized to
- * `file://` URLs before dynamic import because Node's ESM loader rejects raw
- * absolute paths (notably Windows drive-letter paths like `C:\foo\bar.js`).
+ * The plugin is resolved by dynamic import of a trusted specifier (package name
+ * or absolute path) taken from Chamber's config or the `CHAMBER_PLUGIN` env var.
+ * This is a fully trusted load: the plugin runs with Chamber's full main-process
+ * privileges, so the trust controls are that it is opt-in (nothing loads unless
+ * an operator configures a specifier) and that the handoff context is
+ * deliberately narrow, not that the plugin is contained. Absolute file-system
+ * paths are normalized to `file://` URLs before dynamic import because Node's ESM
+ * loader rejects raw absolute paths (notably Windows drive-letter paths like
+ * `C:\foo\bar.js`).
  */
 export class PluginHost {
   constructor(
