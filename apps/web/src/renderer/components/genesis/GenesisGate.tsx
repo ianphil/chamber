@@ -1,5 +1,4 @@
-import React, { useCallback, useState } from 'react';
-import type { OnboardingMindRequest, OnboardingMindResult } from '@chamber/plugin-api';
+import React, { useState } from 'react';
 import { useAppState, useAppDispatch } from '../../lib/store';
 import { MacTitlebarDrag } from '../layout/MacTitlebarDrag';
 import { LandingScreen } from './LandingScreen';
@@ -7,6 +6,7 @@ import { GenesisFlow } from './GenesisFlow';
 import { ChamberLoadingScreen } from './ChamberLoadingScreen';
 import { selectPreferredMind } from '../../lib/mindSelection';
 import { useChamberPlugin } from '../../lib/plugin/ChamberPluginContext';
+import { useCreateMind } from '../../hooks/useCreateMind';
 
 interface Props {
   children: React.ReactNode;
@@ -20,44 +20,9 @@ export function GenesisGate({ children }: Props) {
   const [mode, setMode] = useState<'idle' | 'genesis'>('idle');
   const [openExistingError, setOpenExistingError] = useState<string | null>(null);
 
-  // Implementation of the plugin onboarding's `createMind` capability. Chamber
-  // owns all Electron access here: install the template, optionally seed the
-  // onboarding document, then select the new mind. The plugin only describes
-  // what it wants and decides when to call onComplete.
-  const createMind = useCallback(async (request: OnboardingMindRequest): Promise<OnboardingMindResult> => {
-    try {
-      const basePath = await window.electronAPI.genesis.getDefaultPath();
-      const result = await window.electronAPI.genesis.createFromTemplate({
-        templateId: request.templateId,
-        marketplaceId: request.marketplaceId,
-        basePath,
-      });
-      if (!result.success || !result.mindId) {
-        return { success: false, error: result.error ?? 'Failed to create agent.' };
-      }
-
-      // The mind now exists and is the active mind in the main process. Seeding
-      // the optional document is best-effort: a failure must not strand the new
-      // mind, so we record it as non-fatal and still sync the renderer to the
-      // main process below.
-      let seedError: string | undefined;
-      if (request.seedDocument && request.seedDocument.trim()) {
-        const seeded = await window.electronAPI.genesis.seedDocument(result.mindId, request.seedDocument);
-        if (!seeded.success) {
-          seedError = seeded.error ?? 'Failed to seed onboarding document.';
-        }
-      }
-
-      const loadedMinds = await window.electronAPI.mind.list();
-      dispatch({ type: 'SET_MINDS', payload: loadedMinds });
-      const mindToSelect = selectPreferredMind(loadedMinds, { mindId: result.mindId, mindPath: result.mindPath });
-      if (mindToSelect) dispatch({ type: 'SET_ACTIVE_MIND', payload: mindToSelect.mindId });
-      dispatch({ type: 'NEW_CONVERSATION' });
-      return { success: true, mindId: result.mindId, seedError };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to create agent.' };
-    }
-  }, [dispatch]);
+  // The plugin onboarding's `createMind` capability. Chamber owns all Electron
+  // access; the plugin only describes intent and decides when to call onComplete.
+  const createMind = useCreateMind();
 
   // Popout windows skip the gate entirely
   const params = new URLSearchParams(window.location.search);

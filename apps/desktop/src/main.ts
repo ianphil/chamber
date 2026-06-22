@@ -119,6 +119,7 @@ import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
 import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
 import { PluginHost } from './main/plugin/PluginHost';
+import type { PluginLogLevel } from '@chamber/plugin-api';
 import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNormalizer';
 import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
 import { FeatureFlagService } from './main/services/featureFlags/FeatureFlagService';
@@ -871,17 +872,25 @@ app.on('ready', async () => {
     return choice === 1;
   });
 
-  // --- Optional trusted plugin (e.g. enterprise onboarding override) ---
+  // --- Optional trusted plugin (e.g. a custom onboarding override) ---
   // Loaded after Chamber's own services and IPC adapters are wired. PluginHost
   // logs and swallows any failure so a misbehaving plugin never blocks boot.
   const pluginLog = Logger.create('plugin');
+  // Explicit dispatch keeps PluginLogLevel decoupled from the logger's method
+  // names, so adding a level to the contract can never silently throw on a
+  // missing method. Defined once and shared by the host and the plugin context.
+  const emitPluginLog = (level: PluginLogLevel, message: string, ...args: unknown[]): void => {
+    if (level === 'error') pluginLog.error(message, ...args);
+    else if (level === 'warn') pluginLog.warn(message, ...args);
+    else pluginLog.info(message, ...args);
+  };
   await new PluginHost(
     (specifier) => import(specifier),
-    (level, message, ...args) => pluginLog[level](message, ...args),
+    emitPluginLog,
   ).load(configService.load().chamberPlugin ?? process.env.CHAMBER_PLUGIN, {
     appVersion: app.getVersion(),
     userDataPath: appPaths.userData,
-    log: (level, message, ...args) => pluginLog[level](message, ...args),
+    log: emitPluginLog,
   });
 
   // Create window first (don't block on restore)

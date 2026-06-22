@@ -18,9 +18,9 @@ vi.mock('./GenesisFlow', () => ({
   ),
 }));
 
-function EnterpriseOnboarding({ onComplete }: OnboardingProps) {
+function PluginOnboarding({ onComplete }: OnboardingProps) {
   return (
-    <button data-testid="enterprise-onboarding" onClick={onComplete}>enterprise onboarding</button>
+    <button data-testid="plugin-onboarding" onClick={onComplete}>plugin onboarding</button>
   );
 }
 
@@ -32,8 +32,8 @@ function CreatingOnboarding({ onComplete, createMind }: OnboardingProps) {
       data-testid="creating-onboarding"
       onClick={async () => {
         const res = await createMind({
-          templateId: 'pulse',
-          marketplaceId: 'genesis-minds-enterprise',
+          templateId: 'example-template',
+          marketplaceId: 'example-marketplace',
           seedDocument: '# Onboarding\n\nseed',
         });
         setResult(res.success ? `ok:${res.mindId}` : `err:${res.error}`);
@@ -69,11 +69,11 @@ describe('GenesisGate plugin onboarding', () => {
     await startNewAgent();
 
     expect(screen.getByTestId('default-genesis-flow')).toBeTruthy();
-    expect(screen.queryByTestId('enterprise-onboarding')).toBeNull();
+    expect(screen.queryByTestId('plugin-onboarding')).toBeNull();
   });
 
   it('renders the plugin onboarding in place of the built-in flow when provided', async () => {
-    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: EnterpriseOnboarding };
+    const plugin: ChamberRendererPlugin = { id: 'example', onboarding: PluginOnboarding };
 
     render(
       <ChamberPluginProvider plugin={plugin}>
@@ -85,16 +85,16 @@ describe('GenesisGate plugin onboarding', () => {
 
     await startNewAgent();
 
-    expect(screen.getByTestId('enterprise-onboarding')).toBeTruthy();
+    expect(screen.getByTestId('plugin-onboarding')).toBeTruthy();
     expect(screen.queryByTestId('default-genesis-flow')).toBeNull();
   });
 
   it('provides createMind: installs the template, seeds the document, and selects the new mind', async () => {
     const api = installElectronAPI();
     const createdMind = {
-      mindId: 'pulse-9999',
-      mindPath: 'C:\\agents\\pulse',
-      identity: { name: 'Pulse', systemMessage: '# Pulse' },
+      mindId: 'mind-9999',
+      mindPath: 'C:\\agents\\example',
+      identity: { name: 'Example', systemMessage: '# Example' },
       status: 'ready' as const,
     };
     (api.genesis.createFromTemplate as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -105,7 +105,7 @@ describe('GenesisGate plugin onboarding', () => {
     (api.genesis.seedDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
     (api.mind.list as ReturnType<typeof vi.fn>).mockResolvedValue([createdMind]);
 
-    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: CreatingOnboarding };
+    const plugin: ChamberRendererPlugin = { id: 'example', onboarding: CreatingOnboarding };
 
     render(
       <ChamberPluginProvider plugin={plugin}>
@@ -120,10 +120,10 @@ describe('GenesisGate plugin onboarding', () => {
 
     await waitFor(() => {
       expect(api.genesis.createFromTemplate).toHaveBeenCalledWith(
-        expect.objectContaining({ templateId: 'pulse', marketplaceId: 'genesis-minds-enterprise' }),
+        expect.objectContaining({ templateId: 'example-template', marketplaceId: 'example-marketplace' }),
       );
     });
-    expect(api.genesis.seedDocument).toHaveBeenCalledWith('pulse-9999', '# Onboarding\n\nseed');
+    expect(api.genesis.seedDocument).toHaveBeenCalledWith('mind-9999', '# Onboarding\n\nseed');
     // After a successful create the gate completes and reveals the app.
     await waitFor(() => {
       expect(screen.getByText('App')).toBeTruthy();
@@ -143,7 +143,7 @@ describe('GenesisGate plugin onboarding', () => {
         <button
           data-testid="failing-onboarding"
           onClick={async () => {
-            const res = await createMind({ templateId: 'pulse' });
+            const res = await createMind({ templateId: 'example-template' });
             captured.push(res);
             if (res.success) onComplete();
           }}
@@ -152,7 +152,7 @@ describe('GenesisGate plugin onboarding', () => {
         </button>
       );
     }
-    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: FailingOnboarding };
+    const plugin: ChamberRendererPlugin = { id: 'example', onboarding: FailingOnboarding };
 
     render(
       <ChamberPluginProvider plugin={plugin}>
@@ -179,9 +179,9 @@ describe('GenesisGate plugin onboarding', () => {
   it('keeps the new mind and reports a non-fatal seedError when document seeding fails', async () => {
     const api = installElectronAPI();
     const createdMind = {
-      mindId: 'pulse-9999',
-      mindPath: 'C:\\agents\\pulse',
-      identity: { name: 'Pulse', systemMessage: '# Pulse' },
+      mindId: 'mind-9999',
+      mindPath: 'C:\\agents\\example',
+      identity: { name: 'Example', systemMessage: '# Example' },
       status: 'ready' as const,
     };
     (api.genesis.createFromTemplate as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -198,7 +198,7 @@ describe('GenesisGate plugin onboarding', () => {
         <button
           data-testid="seed-failing-onboarding"
           onClick={async () => {
-            const res = await createMind({ templateId: 'pulse', seedDocument: '# Onboarding\n\nseed' });
+            const res = await createMind({ templateId: 'example-template', seedDocument: '# Onboarding\n\nseed' });
             captured.push(res);
             if (res.success) onComplete();
           }}
@@ -207,7 +207,7 @@ describe('GenesisGate plugin onboarding', () => {
         </button>
       );
     }
-    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: SeedFailingOnboarding };
+    const plugin: ChamberRendererPlugin = { id: 'example', onboarding: SeedFailingOnboarding };
 
     render(
       <ChamberPluginProvider plugin={plugin}>
@@ -225,9 +225,9 @@ describe('GenesisGate plugin onboarding', () => {
     await waitFor(() => {
       expect(screen.getByText('App')).toBeTruthy();
     });
-    expect(api.genesis.seedDocument).toHaveBeenCalledWith('pulse-9999', '# Onboarding\n\nseed');
+    expect(api.genesis.seedDocument).toHaveBeenCalledWith('mind-9999', '# Onboarding\n\nseed');
     expect(api.mind.list).toHaveBeenCalled();
     expect(captured).toHaveLength(1);
-    expect(captured[0]).toMatchObject({ success: true, mindId: 'pulse-9999', seedError: 'disk full' });
+    expect(captured[0]).toMatchObject({ success: true, mindId: 'mind-9999', seedError: 'disk full' });
   });
 });
