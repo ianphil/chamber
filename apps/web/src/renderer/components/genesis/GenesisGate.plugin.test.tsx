@@ -4,7 +4,7 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { ChamberRendererPlugin, OnboardingProps } from '@chamber/plugin-api';
+import type { ChamberRendererPlugin, OnboardingProps, OnboardingMindResult } from '@chamber/plugin-api';
 import { GenesisGate } from './GenesisGate';
 import { AppStateProvider } from '../../lib/store';
 import { ChamberPluginProvider } from '../../lib/plugin/ChamberPluginContext';
@@ -128,5 +128,106 @@ describe('GenesisGate plugin onboarding', () => {
     await waitFor(() => {
       expect(screen.getByText('App')).toBeTruthy();
     });
+  });
+
+  it('returns failure and leaves the gate open when template install fails', async () => {
+    const api = installElectronAPI();
+    (api.genesis.createFromTemplate as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: 'install failed',
+    });
+
+    const captured: OnboardingMindResult[] = [];
+    function FailingOnboarding({ onComplete, createMind }: OnboardingProps) {
+      return (
+        <button
+          data-testid="failing-onboarding"
+          onClick={async () => {
+            const res = await createMind({ templateId: 'pulse' });
+            captured.push(res);
+            if (res.success) onComplete();
+          }}
+        >
+          create
+        </button>
+      );
+    }
+    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: FailingOnboarding };
+
+    render(
+      <ChamberPluginProvider plugin={plugin}>
+        <AppStateProvider testInitialState={firstRunState}>
+          <GenesisGate><div>App</div></GenesisGate>
+        </AppStateProvider>
+      </ChamberPluginProvider>,
+    );
+
+    await startNewAgent();
+    fireEvent.click(screen.getByTestId('failing-onboarding'));
+
+    await waitFor(() => {
+      expect(captured).toHaveLength(1);
+    });
+    expect(captured[0]).toMatchObject({ success: false, error: 'install failed' });
+    // No mind was created, so the renderer is never synced and the gate stays open.
+    expect(api.genesis.seedDocument).not.toHaveBeenCalled();
+    expect(api.mind.list).not.toHaveBeenCalled();
+    expect(screen.queryByText('App')).toBeNull();
+    expect(screen.getByTestId('failing-onboarding')).toBeTruthy();
+  });
+
+  it('keeps the new mind and reports a non-fatal seedError when document seeding fails', async () => {
+    const api = installElectronAPI();
+    const createdMind = {
+      mindId: 'pulse-9999',
+      mindPath: 'C:\\agents\\pulse',
+      identity: { name: 'Pulse', systemMessage: '# Pulse' },
+      status: 'ready' as const,
+    };
+    (api.genesis.createFromTemplate as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      mindId: createdMind.mindId,
+      mindPath: createdMind.mindPath,
+    });
+    (api.genesis.seedDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ success: false, error: 'disk full' });
+    (api.mind.list as ReturnType<typeof vi.fn>).mockResolvedValue([createdMind]);
+
+    const captured: OnboardingMindResult[] = [];
+    function SeedFailingOnboarding({ onComplete, createMind }: OnboardingProps) {
+      return (
+        <button
+          data-testid="seed-failing-onboarding"
+          onClick={async () => {
+            const res = await createMind({ templateId: 'pulse', seedDocument: '# Onboarding\n\nseed' });
+            captured.push(res);
+            if (res.success) onComplete();
+          }}
+        >
+          create
+        </button>
+      );
+    }
+    const plugin: ChamberRendererPlugin = { id: 'enterprise', onboarding: SeedFailingOnboarding };
+
+    render(
+      <ChamberPluginProvider plugin={plugin}>
+        <AppStateProvider testInitialState={firstRunState}>
+          <GenesisGate><div>App</div></GenesisGate>
+        </AppStateProvider>
+      </ChamberPluginProvider>,
+    );
+
+    await startNewAgent();
+    fireEvent.click(screen.getByTestId('seed-failing-onboarding'));
+
+    // Despite the seed failure the mind is created, the renderer is synced, and
+    // onboarding completes; the failure is surfaced as a non-fatal seedError.
+    await waitFor(() => {
+      expect(screen.getByText('App')).toBeTruthy();
+    });
+    expect(api.genesis.seedDocument).toHaveBeenCalledWith('pulse-9999', '# Onboarding\n\nseed');
+    expect(api.mind.list).toHaveBeenCalled();
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({ success: true, mindId: 'pulse-9999', seedError: 'disk full' });
   });
 });

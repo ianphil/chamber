@@ -35,18 +35,25 @@ export function GenesisGate({ children }: Props) {
       if (!result.success || !result.mindId) {
         return { success: false, error: result.error ?? 'Failed to create agent.' };
       }
+
+      // The mind now exists and is the active mind in the main process. Seeding
+      // the optional document is best-effort: a failure must not strand the new
+      // mind, so we record it as non-fatal and still sync the renderer to the
+      // main process below.
+      let seedError: string | undefined;
       if (request.seedDocument && request.seedDocument.trim()) {
         const seeded = await window.electronAPI.genesis.seedDocument(result.mindId, request.seedDocument);
         if (!seeded.success) {
-          return { success: false, mindId: result.mindId, error: seeded.error ?? 'Failed to seed onboarding document.' };
+          seedError = seeded.error ?? 'Failed to seed onboarding document.';
         }
       }
+
       const loadedMinds = await window.electronAPI.mind.list();
       dispatch({ type: 'SET_MINDS', payload: loadedMinds });
       const mindToSelect = selectPreferredMind(loadedMinds, { mindId: result.mindId, mindPath: result.mindPath });
       if (mindToSelect) dispatch({ type: 'SET_ACTIVE_MIND', payload: mindToSelect.mindId });
       dispatch({ type: 'NEW_CONVERSATION' });
-      return { success: true, mindId: result.mindId };
+      return { success: true, mindId: result.mindId, seedError };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to create agent.' };
     }

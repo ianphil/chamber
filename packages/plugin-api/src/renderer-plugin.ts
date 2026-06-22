@@ -20,13 +20,28 @@ export interface OnboardingMindRequest {
   readonly seedDocument?: string;
 }
 
-/** Result of an onboarding mind-creation request. */
+/**
+ * Result of an onboarding mind-creation request.
+ *
+ * `success` reflects whether a usable mind was created and selected. Seeding the
+ * optional onboarding document is best-effort: when the mind is created but the
+ * document fails to seed, the result is still `success: true` with the new
+ * `mindId`, and `seedError` carries the non-fatal reason so the surface can warn
+ * the user while still completing. `success: false` means no mind was created
+ * and the onboarding gate stays open.
+ */
 export interface OnboardingMindResult {
   readonly success: boolean;
-  /** Id of the created mind, present on success. */
+  /** Id of the created mind, present whenever a mind was created. */
   readonly mindId?: string;
-  /** Human-readable failure reason, present on failure. */
+  /** Human-readable reason the mind could not be created, present on failure. */
   readonly error?: string;
+  /**
+   * Non-fatal reason the optional onboarding document could not be seeded. Only
+   * present when `success` is `true`: the mind exists and is selected, but the
+   * document was not written.
+   */
+  readonly seedError?: string;
 }
 
 /**

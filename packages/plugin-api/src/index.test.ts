@@ -53,10 +53,11 @@ describe('plugin API contracts', () => {
     expectTypeOf<OnboardingMindRequest['seedDocument']>().toEqualTypeOf<string | undefined>();
   });
 
-  it('OnboardingMindResult reports success with an optional mind id or error', () => {
+  it('OnboardingMindResult reports success with an optional mind id, error, or seedError', () => {
     expectTypeOf<OnboardingMindResult['success']>().toEqualTypeOf<boolean>();
     expectTypeOf<OnboardingMindResult['mindId']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<OnboardingMindResult['error']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<OnboardingMindResult['seedError']>().toEqualTypeOf<string | undefined>();
   });
 
   it('main context carries version, data path, and a leveled logger', () => {
