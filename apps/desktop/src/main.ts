@@ -37,6 +37,7 @@ import {
   AuthService,
   CanvasService,
   ChamberCopilotService,
+  listStoredGitHubCredentials,
   ChatroomService,
   ChatService,
   ConfigService,
@@ -276,7 +277,17 @@ async function initializeRuntime(): Promise<void> {
   }).initialize();
 
   const chamberToolsBinDir = getChamberToolsBinDir();
-  const clientFactory = new CopilotClientFactory({ toolsBinDir: chamberToolsBinDir });
+  const clientFactory = new CopilotClientFactory({
+    toolsBinDir: chamberToolsBinDir,
+    getGitHubToken: async () => {
+      const stored = await listStoredGitHubCredentials(credentialStore);
+      const active = configService.load().activeLogin;
+      const entry = active
+        ? stored.find((c) => c.login === active)
+        : stored[0];
+      return entry?.password ?? null;
+    },
+  });
   void clientFactory.preloadSdk().catch((err: unknown) => {
     log.warn('SDK preload failed (non-fatal — first createClient will retry):', err);
   });
