@@ -378,6 +378,54 @@ describe('ChamberCopilotService', () => {
     expect(failingConnection.stop).not.toHaveBeenCalled();
   });
 
+  it('resetAuthState keeps a fresh prewarmed store available through a mind reload', async () => {
+    const { service, connection } = buildHarness();
+
+    await service.activateMind('mind-1', '/tmp/mind-1');
+    await service.resetAuthState();
+    await service.releaseMind('mind-1');
+
+    expect(connection.stop).toHaveBeenCalledOnce();
+    expect(service.getToolsForMind('mind-2', '/tmp/mind-2').map((tool) => tool.name)).toContain('cli_delegate');
+
+    await service.activateMind('mind-2', '/tmp/mind-2');
+    await service.releaseMind('mind-2');
+
+    expect(connection.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('resetAuthState invalidates an in-flight prewarm so stale auth cannot win the race', async () => {
+    const staleConnection = new FakeAcpConnection();
+    let resolveStaleStart: (() => void) | undefined;
+    staleConnection.start = vi.fn(() => new Promise<void>((resolve) => {
+      resolveStaleStart = () => {
+        staleConnection.isStarted = true;
+        resolve();
+      };
+    }));
+    const freshConnection = new FakeAcpConnection();
+    const connectionFactory = vi.fn()
+      .mockReturnValueOnce(staleConnection as unknown as AcpConnection)
+      .mockReturnValueOnce(freshConnection as unknown as AcpConnection);
+    const service = new ChamberCopilotService({
+      connectionFactory,
+      jobStoreFactory: () => new FakeJobStore() as unknown as JobStore,
+      toolFactory: () => [makeStubTool('cli_delegate')],
+    });
+
+    const prewarm = service.prewarm();
+    await Promise.resolve();
+    const reset = service.resetAuthState();
+    await Promise.resolve();
+    resolveStaleStart?.();
+
+    await Promise.all([prewarm, reset]);
+
+    expect(staleConnection.stop).toHaveBeenCalledOnce();
+    expect(freshConnection.start).toHaveBeenCalledOnce();
+    expect(service.getToolsForMind('mind-1', '/tmp/mind-1').map((tool) => tool.name)).toEqual(['cli_delegate']);
+  });
+
   describe('connectionsByMode (yolo posture)', () => {
     it('rejects passing both connectionFactory and connectionsByMode at the same time', () => {
       const safe = vi.fn(() => new FakeAcpConnection() as unknown as AcpConnection);

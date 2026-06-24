@@ -76,6 +76,8 @@ export class ChamberCopilotService implements ChamberToolProvider {
   private connections: StartedConnections | null = null;
   private store: JobStore | null = null;
   private startPromise: Promise<void> | null = null;
+  private startEpoch = 0;
+  private retainStartedWhileIdle = false;
 
   constructor(options: ChamberCopilotServiceOptions) {
     this.connectionFactories = resolveFactories(options);
@@ -110,6 +112,7 @@ export class ChamberCopilotService implements ChamberToolProvider {
       return;
     }
     this.activeMinds.add(mindId);
+    this.retainStartedWhileIdle = false;
     this.mindPaths.set(mindId, mindPath);
     // Eagerly create the per-mind scoped store so that a getToolsForMind
     // call before activation returns [], and after activation always
@@ -147,16 +150,17 @@ export class ChamberCopilotService implements ChamberToolProvider {
     if (scoped) {
       await scoped.releaseAll();
     }
-    if (this.activeMinds.size === 0) {
+    if (this.activeMinds.size === 0 && !this.retainStartedWhileIdle) {
       await this.shutdown();
     }
   }
 
   async resetAuthState(): Promise<void> {
+    this.startEpoch += 1;
+    this.startPromise = null;
+    this.retainStartedWhileIdle = true;
     await this.shutdown();
-    if (this.activeMinds.size > 0) {
-      await this.ensureStarted();
-    }
+    await this.ensureStarted();
   }
 
   private getOrCreateScopedStore(mindId: string, mindPath = this.mindPaths.get(mindId)): MindScopedJobs {
@@ -181,7 +185,8 @@ export class ChamberCopilotService implements ChamberToolProvider {
     if (this.startPromise) {
       return this.startPromise;
     }
-    this.startPromise = this.startInternal();
+    const epoch = this.startEpoch;
+    this.startPromise = this.startInternal(epoch);
     try {
       await this.startPromise;
     } finally {
@@ -189,7 +194,7 @@ export class ChamberCopilotService implements ChamberToolProvider {
     }
   }
 
-  private async startInternal(): Promise<void> {
+  private async startInternal(epoch: number): Promise<void> {
     // Safe MUST start successfully. A safe-start failure is fatal for the
     // service: without the safe connection chamber-copilot cannot serve
     // any delegated jobs (yolo alone is rejected at JobStore construction).
@@ -199,6 +204,10 @@ export class ChamberCopilotService implements ChamberToolProvider {
     } catch (error) {
       log.error('Failed to start chamber-copilot safe AcpConnection', error);
       throw error;
+    }
+    if (epoch !== this.startEpoch) {
+      await this.stopOne(safe, 'safe');
+      return;
     }
 
     // Yolo is best-effort. If wiring it fails (CLI permission denied,
@@ -212,6 +221,11 @@ export class ChamberCopilotService implements ChamberToolProvider {
         const yoloCandidate = this.connectionFactories.yolo();
         await yoloCandidate.start();
         yolo = yoloCandidate;
+        if (epoch !== this.startEpoch) {
+          await this.stopOne(safe, 'safe');
+          await this.stopOne(yolo, 'yolo');
+          return;
+        }
       } catch (error) {
         log.error(
           'chamber-copilot yolo AcpConnection failed to start; running in safe-only mode',
