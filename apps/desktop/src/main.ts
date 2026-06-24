@@ -311,7 +311,7 @@ async function initializeRuntime(): Promise<void> {
     saveActiveLogin,
     userAgent,
   );
-  scaffold = new MindScaffold();
+  scaffold = new MindScaffold(githubRegistryClient, clientFactory);
   genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
   genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
   marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
@@ -851,7 +851,9 @@ app.on('ready', async () => {
       return mindPath ? createTaskLedger(mindPath) : undefined;
     },
   });
-  setupAuthIPC(authService, mindManager);
+  setupAuthIPC(authService, mindManager, async () => {
+    await chamberCopilotService?.resetAuthState();
+  });
   setupByoLlmIPC(byoLlmStore, mindManager, {
     featureEnabled: appFeatureFlags.byoLlm,
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },

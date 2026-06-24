@@ -152,6 +152,13 @@ export class ChamberCopilotService implements ChamberToolProvider {
     }
   }
 
+  async resetAuthState(): Promise<void> {
+    await this.shutdown();
+    if (this.activeMinds.size > 0) {
+      await this.ensureStarted();
+    }
+  }
+
   private getOrCreateScopedStore(mindId: string, mindPath = this.mindPaths.get(mindId)): MindScopedJobs {
     let scoped = this.scopedStores.get(mindId);
     if (!scoped) {

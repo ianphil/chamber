@@ -61,6 +61,13 @@ async function getActiveGitHubToken(): Promise<string | null> {
     : stored[0];
   return entry?.password ?? null;
 }
+async function reloadMindsAfterAuthChange(context: string): Promise<void> {
+  try {
+    await mindManager.reloadAllMinds();
+  } catch (error) {
+    log.error(`Failed to reload minds after ${context}:`, error);
+  }
+}
 const viewDiscovery = new ViewDiscovery();
 const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
@@ -135,6 +142,7 @@ const productionContext: ChamberCtx = createServerContext({
     const result = await authService.startLogin({ onProgress });
     if (result.success && result.login) {
       authService.setActiveLogin(result.login);
+      await reloadMindsAfterAuthChange('login');
     }
     return result;
   },
@@ -144,8 +152,12 @@ const productionContext: ChamberCtx = createServerContext({
       throw new Error(`Account ${login} is not available`);
     }
     authService.setActiveLogin(login);
+    await reloadMindsAfterAuthChange('account switch');
   },
-  logoutAuth: () => authService.logout(),
+  logoutAuth: async () => {
+    await authService.logout();
+    await reloadMindsAfterAuthChange('logout');
+  },
   listChamberTools: () => configService.load().installedTools ?? [],
   saveAttachment: notImplemented('saveAttachment'),
   sendChat: ({ mindId, message, messageId, model, attachments }) =>

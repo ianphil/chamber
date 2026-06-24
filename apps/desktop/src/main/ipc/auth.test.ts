@@ -56,16 +56,18 @@ describe('setupAuthIPC', () => {
     const fakeAuth = createFakeAuth();
     const fakeMindManager = createFakeMindManager();
     fakeAuth.listAccounts = vi.fn().mockResolvedValue([{ login: 'alice' }, { login: 'bob' }]);
+    const onAuthStateChanged = vi.fn().mockResolvedValue(undefined);
 
     const mockSend = vi.fn();
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: { send: mockSend } }] as never);
 
-    setupAuthIPC(fakeAuth, fakeMindManager);
+    setupAuthIPC(fakeAuth, fakeMindManager, onAuthStateChanged);
 
     const switchCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:switchAccount');
     await switchCall![1]({} as never, 'bob');
 
     expect(fakeAuth.setActiveLogin).toHaveBeenCalledWith('bob');
+    expect(onAuthStateChanged).toHaveBeenCalled();
     expect(fakeMindManager.reloadAllMinds).toHaveBeenCalled();
     expect(mockSend).toHaveBeenNthCalledWith(1, 'auth:accountSwitchStarted', { login: 'bob' });
     expect(mockSend).toHaveBeenNthCalledWith(2, 'auth:accountSwitched', { login: 'bob' });
@@ -85,17 +87,19 @@ describe('setupAuthIPC', () => {
     const fakeAuth = createFakeAuth();
     const fakeMindManager = createFakeMindManager();
     fakeAuth.startLogin = vi.fn().mockResolvedValue({ success: true, login: 'alice' });
+    const onAuthStateChanged = vi.fn().mockResolvedValue(undefined);
 
     const mockSend = vi.fn();
     vi.mocked(BrowserWindow.fromWebContents).mockReturnValue({ webContents: { send: mockSend } } as never);
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: { send: mockSend } }] as never);
 
-    setupAuthIPC(fakeAuth, fakeMindManager);
+    setupAuthIPC(fakeAuth, fakeMindManager, onAuthStateChanged);
 
     const startLoginCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:startLogin');
     await expect(startLoginCall![1]({ sender: {} } as never, ...([] as unknown[]))).resolves.toEqual({ success: true, login: 'alice' });
 
     expect(fakeAuth.setActiveLogin).toHaveBeenCalledWith('alice');
+    expect(onAuthStateChanged).toHaveBeenCalled();
     expect(fakeMindManager.reloadAllMinds).toHaveBeenCalled();
     expect(mockSend).toHaveBeenNthCalledWith(1, 'auth:accountSwitchStarted', { login: 'alice' });
     expect(mockSend).toHaveBeenNthCalledWith(2, 'auth:accountSwitched', { login: 'alice' });
@@ -106,16 +110,18 @@ describe('setupAuthIPC', () => {
     const fakeMindManager = createFakeMindManager();
     fakeMindManager.reloadAllMinds = vi.fn().mockRejectedValue(new Error('disk failure')) as never;
     fakeAuth.listAccounts = vi.fn().mockResolvedValue([{ login: 'alice' }]);
+    const onAuthStateChanged = vi.fn().mockResolvedValue(undefined);
 
     const mockSend = vi.fn();
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: { send: mockSend } }] as never);
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(vi.fn());
-    setupAuthIPC(fakeAuth, fakeMindManager);
+    setupAuthIPC(fakeAuth, fakeMindManager, onAuthStateChanged);
 
     const switchCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:switchAccount');
     await switchCall![1]({} as never, 'alice');
 
+    expect(onAuthStateChanged).toHaveBeenCalled();
     expect(mockSend).toHaveBeenCalledWith('auth:accountSwitched', { login: 'alice' });
     consoleSpy.mockRestore();
   });
@@ -123,6 +129,7 @@ describe('setupAuthIPC', () => {
   it('auth:logout handler calls authService.logout, reloads minds, and broadcasts to all windows', async () => {
     const fakeAuth = createFakeAuth();
     const fakeMindManager = createFakeMindManager();
+    const onAuthStateChanged = vi.fn().mockResolvedValue(undefined);
     const mockSend = vi.fn();
     const mockWindows = [
       { webContents: { send: mockSend } },
@@ -130,7 +137,7 @@ describe('setupAuthIPC', () => {
     ];
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(mockWindows as never);
 
-    setupAuthIPC(fakeAuth, fakeMindManager);
+    setupAuthIPC(fakeAuth, fakeMindManager, onAuthStateChanged);
 
     // Find and invoke the auth:logout handler
     const logoutCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:logout');
@@ -138,6 +145,7 @@ describe('setupAuthIPC', () => {
     await logoutCall![1]({} as never, ...([] as unknown[]));
 
     expect(fakeAuth.logout).toHaveBeenCalled();
+    expect(onAuthStateChanged).toHaveBeenCalled();
     expect(fakeMindManager.reloadAllMinds).toHaveBeenCalled();
     expect(mockSend).toHaveBeenCalledWith('auth:loggedOut');
     expect(mockSend).toHaveBeenCalledTimes(2);

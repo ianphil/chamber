@@ -29,6 +29,7 @@ function broadcast(
 export function setupAuthIPC(
   authService: AuthService,
   mindManager: MindManager,
+  onAuthStateChanged: () => Promise<void> = async () => undefined,
 ): void {
 
   ipcMain.handle(IPC.AUTH.GET_STATUS, async () => {
@@ -52,6 +53,19 @@ export function setupAuthIPC(
   // a network roundtrip or external browser launch.
   let e2eStartLoginResolver: ((value: { success: boolean; login?: string }) => void) | null = null;
 
+  const reloadMindsAfterAuthChange = async (context: string): Promise<void> => {
+    try {
+      await onAuthStateChanged();
+    } catch (err) {
+      log.error(`Failed to refresh auth-bound services after ${context}:`, err);
+    }
+    try {
+      await mindManager.reloadAllMinds();
+    } catch (err) {
+      log.error(`Failed to reload minds after ${context}:`, err);
+    }
+  };
+
   ipcMain.handle(IPC.AUTH.START_LOGIN, async (event) => {
     if (E2E_ENABLED) {
       // Resolve any prior pending stub before starting a new one.
@@ -65,11 +79,7 @@ export function setupAuthIPC(
       if (result.success && result.login) {
         authService.setActiveLogin(result.login);
         broadcast(IPC.AUTH.ACCOUNT_SWITCH_STARTED, { login: result.login });
-        try {
-          await mindManager.reloadAllMinds();
-        } catch (err) {
-          log.error('Failed to reload minds after e2e login:', err);
-        }
+        await reloadMindsAfterAuthChange('e2e login');
         broadcast(IPC.AUTH.ACCOUNT_SWITCHED, { login: result.login });
       }
       return result;
@@ -94,11 +104,7 @@ export function setupAuthIPC(
       if (result.success && result.login) {
         authService.setActiveLogin(result.login);
         broadcast(IPC.AUTH.ACCOUNT_SWITCH_STARTED, { login: result.login });
-        try {
-          await mindManager.reloadAllMinds();
-        } catch (err) {
-          log.error('Failed to reload minds after login:', err);
-        }
+        await reloadMindsAfterAuthChange('login');
         broadcast(IPC.AUTH.ACCOUNT_SWITCHED, { login: result.login });
       }
 
@@ -131,21 +137,13 @@ export function setupAuthIPC(
 
     authService.setActiveLogin(login);
     broadcast(IPC.AUTH.ACCOUNT_SWITCH_STARTED, { login });
-    try {
-      await mindManager.reloadAllMinds();
-    } catch (err) {
-      log.error('Failed to reload minds after account switch:', err);
-    }
+    await reloadMindsAfterAuthChange('account switch');
     broadcast(IPC.AUTH.ACCOUNT_SWITCHED, { login });
   });
 
   ipcMain.handle(IPC.AUTH.LOGOUT, async () => {
     await authService.logout();
-    try {
-      await mindManager.reloadAllMinds();
-    } catch (err) {
-      log.error('Failed to reload minds after logout:', err);
-    }
+    await reloadMindsAfterAuthChange('logout');
     broadcast(IPC.AUTH.LOGGED_OUT);
   });
 
