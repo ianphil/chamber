@@ -120,8 +120,9 @@ describe('setupAuthIPC', () => {
     consoleSpy.mockRestore();
   });
 
-  it('auth:logout handler calls authService.logout and broadcasts to all windows', async () => {
+  it('auth:logout handler calls authService.logout, reloads minds, and broadcasts to all windows', async () => {
     const fakeAuth = createFakeAuth();
+    const fakeMindManager = createFakeMindManager();
     const mockSend = vi.fn();
     const mockWindows = [
       { webContents: { send: mockSend } },
@@ -129,7 +130,7 @@ describe('setupAuthIPC', () => {
     ];
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(mockWindows as never);
 
-    setupAuthIPC(fakeAuth, createFakeMindManager());
+    setupAuthIPC(fakeAuth, fakeMindManager);
 
     // Find and invoke the auth:logout handler
     const logoutCall = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'auth:logout');
@@ -137,6 +138,7 @@ describe('setupAuthIPC', () => {
     await logoutCall![1]({} as never, ...([] as unknown[]));
 
     expect(fakeAuth.logout).toHaveBeenCalled();
+    expect(fakeMindManager.reloadAllMinds).toHaveBeenCalled();
     expect(mockSend).toHaveBeenCalledWith('auth:loggedOut');
     expect(mockSend).toHaveBeenCalledTimes(2);
   });

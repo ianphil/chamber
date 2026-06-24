@@ -14,6 +14,7 @@ import {
   CopilotClientFactory,
   getChamberToolsBinDir,
   IdentityLoader,
+  listStoredGitHubCredentials,
   MessageRouter,
   MindManager,
   TaskManager,
@@ -52,13 +53,24 @@ const saveActiveLogin = (login: string | null) => {
   configService.save({ ...config, activeLogin: login });
 };
 const authService = new AuthService(credentialStore, () => configService.load().activeLogin, saveActiveLogin);
+async function getActiveGitHubToken(): Promise<string | null> {
+  const stored = await listStoredGitHubCredentials(credentialStore);
+  const active = configService.load().activeLogin;
+  const entry = active
+    ? stored.find((credential) => credential.login === active)
+    : stored[0];
+  return entry?.password ?? null;
+}
 const viewDiscovery = new ViewDiscovery();
 const a2aEventBus = new EventEmitter();
 const agentCardRegistry = new AgentCardRegistry();
 const activeA2AResolver = new ActiveA2AResolver(agentCardRegistry);
 const a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver);
 const mindManager = new MindManager(
-  new CopilotClientFactory({ toolsBinDir: getChamberToolsBinDir() }),
+  new CopilotClientFactory({
+    toolsBinDir: getChamberToolsBinDir(),
+    getGitHubToken: getActiveGitHubToken,
+  }),
   new IdentityLoader(() => configService.load().installedTools ?? []),
   configService,
   viewDiscovery,

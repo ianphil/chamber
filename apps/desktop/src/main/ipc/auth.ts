@@ -141,6 +141,11 @@ export function setupAuthIPC(
 
   ipcMain.handle(IPC.AUTH.LOGOUT, async () => {
     await authService.logout();
+    try {
+      await mindManager.reloadAllMinds();
+    } catch (err) {
+      log.error('Failed to reload minds after logout:', err);
+    }
     broadcast(IPC.AUTH.LOGGED_OUT);
   });
 

@@ -235,6 +235,15 @@ let cronService: CronService;
 let automationBridgeStop: (() => Promise<void>) | null = null;
 let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
+
+async function getActiveGitHubToken(): Promise<string | null> {
+  const stored = await listStoredGitHubCredentials(credentialStore);
+  const active = configService.load().activeLogin;
+  const entry = active
+    ? stored.find((c) => c.login === active)
+    : stored[0];
+  return entry?.password ?? null;
+}
 let updaterService: UpdaterService;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
 const ttasksStoresByMindPath = new Map<string, SqliteStore>();
@@ -279,14 +288,7 @@ async function initializeRuntime(): Promise<void> {
   const chamberToolsBinDir = getChamberToolsBinDir();
   const clientFactory = new CopilotClientFactory({
     toolsBinDir: chamberToolsBinDir,
-    getGitHubToken: async () => {
-      const stored = await listStoredGitHubCredentials(credentialStore);
-      const active = configService.load().activeLogin;
-      const entry = active
-        ? stored.find((c) => c.login === active)
-        : stored[0];
-      return entry?.password ?? null;
-    },
+    getGitHubToken: getActiveGitHubToken,
   });
   void clientFactory.preloadSdk().catch((err: unknown) => {
     log.warn('SDK preload failed (non-fatal — first createClient will retry):', err);
@@ -497,10 +499,17 @@ function createChamberCopilotService(
   const service = new ChamberCopilotService({
     connectionsByMode: {
       safe: () => new AcpConnection({
-        connectionFactory: defaultAcpConnectionFactory({
-          command: cliPath,
-          args: ['--acp', '--no-auto-update'],
-        }),
+        connectionFactory: async () => {
+          const gitHubToken = await getActiveGitHubToken();
+          const env = gitHubToken
+            ? { ...process.env, COPILOT_SDK_AUTH_TOKEN: gitHubToken }
+            : process.env;
+          return defaultAcpConnectionFactory({
+            command: cliPath,
+            args: ['--acp', '--no-auto-update', '--no-auto-login', '--auth-token-env', 'COPILOT_SDK_AUTH_TOKEN'],
+            env,
+          })();
+        },
       }),
     },
     // Keep value-level chamber-copilot imports out of ChamberCopilotService.ts;

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Restore legacy conversation resume fallback** — Conversation resume now falls back from Chamber's current SDK session-state root to the legacy default Copilot session-state root before recreating a missing session, so pre-move chat history hydrates instead of opening empty.
 - **Refresh packaged Copilot runtime pin** — Aligns the committed @github/copilot runtime pin with the launcher-resolved 1.0.58 build so package smoke validates the bundled CLI.
+- **Stop Copilot CLI auth popups after sign-in** — Pass Chamber's stored GitHub OAuth token into SDK-created CLI clients and disable CLI auto-login so device-flow browser prompts only occur from Chamber's explicit sign-in flow.
 
 ### Tests
 
