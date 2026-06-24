@@ -233,6 +233,10 @@ export class ChamberCopilotService implements ChamberToolProvider {
         );
       }
     }
+    if (epoch !== this.startEpoch) {
+      await this.stopOne(safe, 'safe');
+      return;
+    }
 
     this.connections = yolo ? { safe, yolo } : { safe };
     this.store = this.jobStoreFactory(this.connections);

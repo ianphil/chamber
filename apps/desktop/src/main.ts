@@ -501,12 +501,18 @@ function createChamberCopilotService(
       safe: () => new AcpConnection({
         connectionFactory: async () => {
           const gitHubToken = await getActiveGitHubToken();
-          const env = gitHubToken
-            ? { ...process.env, COPILOT_SDK_AUTH_TOKEN: gitHubToken }
-            : process.env;
+          const env = { ...process.env };
+          const authArgs = gitHubToken
+            ? ['--auth-token-env', 'COPILOT_SDK_AUTH_TOKEN']
+            : [];
+          if (gitHubToken) {
+            env.COPILOT_SDK_AUTH_TOKEN = gitHubToken;
+          } else {
+            delete env.COPILOT_SDK_AUTH_TOKEN;
+          }
           return defaultAcpConnectionFactory({
             command: cliPath,
-            args: ['--acp', '--no-auto-update', '--no-auto-login', '--auth-token-env', 'COPILOT_SDK_AUTH_TOKEN'],
+            args: ['--acp', '--no-auto-update', '--no-auto-login', ...authArgs],
             env,
           })();
         },

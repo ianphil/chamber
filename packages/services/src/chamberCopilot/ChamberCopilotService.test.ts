@@ -514,6 +514,47 @@ describe('ChamberCopilotService', () => {
       expect(jobStoreFactoryCalls[0].yolo).toBeUndefined();
     });
 
+    it('does not let an old yolo-start failure assign stale safe-only connections after reset', async () => {
+      const staleSafe = new FakeAcpConnection();
+      const staleYolo = new FakeAcpConnection();
+      let rejectStaleYolo: ((error: Error) => void) | undefined;
+      staleYolo.start = vi.fn(() => new Promise<void>((_resolve, reject) => {
+        rejectStaleYolo = reject;
+      }));
+      const freshSafe = new FakeAcpConnection();
+      const freshYolo = new FakeAcpConnection();
+      const safeFactory = vi.fn()
+        .mockReturnValueOnce(staleSafe as unknown as AcpConnection)
+        .mockReturnValueOnce(freshSafe as unknown as AcpConnection);
+      const yoloFactory = vi.fn()
+        .mockReturnValueOnce(staleYolo as unknown as AcpConnection)
+        .mockReturnValueOnce(freshYolo as unknown as AcpConnection);
+      const jobStoreFactoryCalls: Array<{ readonly safe: AcpConnection; readonly yolo?: AcpConnection }> = [];
+      const service = new ChamberCopilotService({
+        connectionsByMode: { safe: safeFactory, yolo: yoloFactory },
+        jobStoreFactory: (connections) => {
+          jobStoreFactoryCalls.push(connections);
+          return new FakeJobStore() as unknown as JobStore;
+        },
+        toolFactory: () => [],
+      });
+
+      const prewarm = service.prewarm();
+      await Promise.resolve();
+      const reset = service.resetAuthState();
+      await Promise.resolve();
+      rejectStaleYolo?.(new Error('old yolo failed after auth reset'));
+
+      await Promise.all([prewarm, reset]);
+
+      expect(staleSafe.stop).toHaveBeenCalledOnce();
+      expect(freshSafe.start).toHaveBeenCalledOnce();
+      expect(freshYolo.start).toHaveBeenCalledOnce();
+      expect(jobStoreFactoryCalls).toHaveLength(1);
+      expect(jobStoreFactoryCalls[0].safe).toBe(freshSafe as unknown as AcpConnection);
+      expect(jobStoreFactoryCalls[0].yolo).toBe(freshYolo as unknown as AcpConnection);
+    });
+
     it('treats a safe-start failure as fatal (no yolo factory call attempted)', async () => {
       const failingSafe = new FakeAcpConnection();
       failingSafe.start = vi.fn(async () => {
