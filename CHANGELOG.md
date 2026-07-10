@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Polish Lens view presentation** — Adds view descriptions, Lucide icons, loading skeletons, refined empty states, and improved detail-view readability.
 
 
+
+
+
+
 ## [0.64.1] - 2026-06-01
 
 ### Fixed
