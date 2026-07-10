@@ -14,6 +14,7 @@ describe('feature flags', () => {
   it('keeps preview features disabled by default', () => {
     expect(DEFAULT_APP_FEATURE_FLAGS.switchboardRelay).toBe(false);
     expect(DEFAULT_APP_FEATURE_FLAGS.byoLlm).toBe(false);
+    expect(DEFAULT_APP_FEATURE_FLAGS.voiceDictation).toBe(false);
   });
 
   it('enables preview features for insiders versions', () => {
@@ -21,6 +22,7 @@ describe('feature flags', () => {
       switchboardRelay: true,
       byoLlm: true,
       chamberCopilot: true,
+      voiceDictation: true,
     });
   });
 
@@ -33,6 +35,7 @@ describe('feature flags', () => {
       switchboardRelay: true,
       byoLlm: true,
       chamberCopilot: true,
+      voiceDictation: true,
     });
   });
 
@@ -43,11 +46,13 @@ describe('feature flags', () => {
         switchboardRelay: false,
         byoLlm: true,
         chamberCopilot: false,
+        voiceDictation: true,
       },
     })).toEqual({
       switchboardRelay: false,
       byoLlm: true,
       chamberCopilot: false,
+      voiceDictation: true,
     });
   });
 
@@ -67,6 +72,7 @@ describe('feature flags', () => {
       switchboardRelay: true,
       byoLlm: false,
       chamberCopilot: false,
+      voiceDictation: false,
     });
   });
 
@@ -76,15 +82,33 @@ describe('feature flags', () => {
       updatedAt: '2026-05-17T21:00:00Z',
       ignored: true,
       channels: {
-        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false },
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, futureFlag: true },
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true, futureFlag: true },
       },
     })).toEqual({
       version: 1,
       updatedAt: '2026-05-17T21:00:00Z',
       channels: {
         stable: DEFAULT_APP_FEATURE_FLAGS,
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true },
+      },
+    });
+  });
+
+  it('defaults voice dictation off for policies cached before the flag existed', () => {
+    expect(parseRemoteFeatureFlagPolicy({
+      version: 1,
+      channels: {
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false },
         insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    })?.channels).toEqual({
+      stable: DEFAULT_APP_FEATURE_FLAGS,
+      insiders: {
+        switchboardRelay: true,
+        byoLlm: true,
+        chamberCopilot: true,
+        voiceDictation: false,
       },
     });
   });
@@ -92,6 +116,13 @@ describe('feature flags', () => {
   it('rejects malformed remote policies', () => {
     expect(parseRemoteFeatureFlagPolicy({ version: 2, channels: {} })).toBeNull();
     expect(parseRemoteFeatureFlagPolicy({ version: 1, channels: { stable: {} } })).toBeNull();
+    expect(parseRemoteFeatureFlagPolicy({
+      version: 1,
+      channels: {
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: 'yes' },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    })).toBeNull();
     expect(parseRemoteFeatureFlagPolicy(null)).toBeNull();
   });
 
@@ -104,7 +135,7 @@ describe('feature flags', () => {
       updatedAt: '2026-05-17T21:00:00Z',
       channels: {
         stable: DEFAULT_APP_FEATURE_FLAGS,
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true },
       },
     });
   });

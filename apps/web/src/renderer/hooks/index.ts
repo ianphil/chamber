@@ -5,3 +5,4 @@ export { useResponsiveLayout } from './useResponsiveLayout';
 export type { ResponsiveLayout } from './useResponsiveLayout';
 export { useTheme } from './useTheme';
 export type { Theme } from './useTheme';
+export { useVoiceDictation, type UseVoiceDictationOptions, type UseVoiceDictationResult } from './useVoiceDictation';

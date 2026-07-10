@@ -1,11 +1,68 @@
 /**
  * @vitest-environment jsdom
  */
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ChatInput } from './ChatInput';
 import type { ModelInfo } from '@chamber/shared/types';
+import { VOICE_DICTATION_MODEL_ID, type VoiceDictationConfig, type VoiceModelStatus } from '@chamber/shared/voice-types';
+import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
+
+const appStateMock = vi.hoisted(() => ({
+  current: {
+    featureFlags: {
+      switchboardRelay: false,
+      byoLlm: false,
+      chamberCopilot: false,
+      voiceDictation: false,
+    },
+  },
+}));
+
+const voiceHookMock = vi.hoisted(() => ({
+  start: vi.fn(),
+  stop: vi.fn(),
+  state: 'idle',
+  permissionState: 'granted',
+  latestOptions: null as null | {
+    enabled: boolean;
+    shortcut: string;
+    pushToTalk: boolean;
+    onFinalTranscript: (text: string) => void;
+  },
+}));
+
+vi.mock('../../lib/store', () => ({
+  useAppState: () => appStateMock.current,
+}));
+
+vi.mock('../../hooks/useVoiceDictation', async () => {
+  const ReactActual = await vi.importActual<typeof import('react')>('react');
+  return {
+    useVoiceDictation: vi.fn((options: NonNullable<typeof voiceHookMock.latestOptions>) => {
+      voiceHookMock.latestOptions = options;
+      ReactActual.useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+          if (!options.enabled || event.repeat || event.isComposing) return;
+          if (options.shortcut === 'Alt+V' && event.altKey && event.key.toLowerCase() === 'v') {
+            event.preventDefault();
+            voiceHookMock.start();
+          }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+      }, [options.enabled, options.shortcut]);
+      return {
+        state: voiceHookMock.state,
+        start: voiceHookMock.start,
+        stop: voiceHookMock.stop,
+        error: null,
+        permissionState: voiceHookMock.permissionState,
+      };
+    }),
+  };
+});
 
 const caretCoords = vi.hoisted(() => ({
   current: { top: 100, left: 50, height: 16 },
@@ -39,6 +96,40 @@ const defaultProps = {
   selectedModel: null,
   onModelChange: vi.fn(),
 };
+
+const defaultVoiceConfig: VoiceDictationConfig = {
+  enabled: true,
+  inputDeviceId: null,
+  shortcut: 'Alt+V',
+  pushToTalk: true,
+  model: { id: VOICE_DICTATION_MODEL_ID },
+};
+
+const readyVoiceModelStatus: VoiceModelStatus = {
+  id: VOICE_DICTATION_MODEL_ID,
+  status: 'ready',
+};
+
+let api: ReturnType<typeof mockElectronAPI>;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  appStateMock.current = {
+    featureFlags: {
+      switchboardRelay: false,
+      byoLlm: false,
+      chamberCopilot: false,
+      voiceDictation: false,
+    },
+  };
+  voiceHookMock.state = 'idle';
+  voiceHookMock.permissionState = 'granted';
+  voiceHookMock.latestOptions = null;
+  api = installElectronAPI(mockElectronAPI());
+  vi.mocked(api.voice.getConfig).mockResolvedValue(defaultVoiceConfig);
+  vi.mocked(api.voice.getModelStatus).mockResolvedValue(readyVoiceModelStatus);
+  vi.mocked(api.voice.getPermissionState).mockResolvedValue('granted');
+});
 
 describe('ChatInput', () => {
   it('typing updates textarea value', () => {
@@ -83,11 +174,8 @@ describe('ChatInput', () => {
   it('streaming shows stop button, clicking calls onStop', () => {
     const onStop = vi.fn();
     render(<ChatInput {...defaultProps} isStreaming={true} onStop={onStop} />);
-    // The emoji trigger has aria-label "Insert emoji"; the stop button is the only other button.
-    const buttons = screen.getAllByRole('button');
-    const stop = buttons.find((b) => b.getAttribute('aria-label') !== 'Insert emoji');
-    expect(stop).toBeTruthy();
-    fireEvent.click(stop!);
+    const stop = screen.getByRole('button', { name: 'Stop streaming (Escape)' });
+    fireEvent.click(stop);
     expect(onStop).toHaveBeenCalled();
   });
 
@@ -107,6 +195,175 @@ describe('ChatInput', () => {
     render(<ChatInput {...defaultProps} isStreaming={true} onStop={onStop} />);
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
     expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  describe('voice dictation', () => {
+    async function renderWithMic(props: Partial<React.ComponentProps<typeof ChatInput>> = {}) {
+      appStateMock.current = {
+        featureFlags: {
+          switchboardRelay: false,
+          byoLlm: false,
+          chamberCopilot: false,
+          voiceDictation: true,
+        },
+      };
+      render(<ChatInput {...defaultProps} {...props} />);
+      return await screen.findByRole('button', { name: 'Dictate message' });
+    }
+
+    it('hides the mic button when the voice dictation feature flag is off', () => {
+      appStateMock.current = {
+        featureFlags: {
+          switchboardRelay: false,
+          byoLlm: false,
+          chamberCopilot: false,
+          voiceDictation: false,
+        },
+      };
+
+      render(<ChatInput {...defaultProps} />);
+
+      expect(screen.queryByRole('button', { name: 'Dictate message' })).toBeNull();
+    });
+
+    it('shows an enabled mic button when the flag is on, permission is granted, and the model is ready', async () => {
+      const mic = await renderWithMic();
+
+      expect((mic as HTMLButtonElement).disabled).toBe(false);
+      expect(mic.getAttribute('title')).toBe('Click to start dictation · Alt+Shift+V');
+      expect(screen.queryByText('Listening…')).toBeNull();
+      fireEvent.click(mic);
+      expect(voiceHookMock.start).toHaveBeenCalledOnce();
+    });
+
+    it('shows a listening indicator while voice dictation is active', async () => {
+      voiceHookMock.state = 'listening';
+
+      await renderWithMic();
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Dictate message' }).getAttribute('title')).toBe('Click to stop dictation');
+      });
+      expect(screen.getByText('Listening…')).toBeTruthy();
+    });
+
+    it('inserts final transcript text at the caret without submitting', async () => {
+      await renderWithMic();
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+
+      act(() => {
+        voiceHookMock.latestOptions?.onFinalTranscript('hello');
+      });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe('hello ');
+      });
+      expect(defaultProps.onSend).not.toHaveBeenCalled();
+    });
+
+    it('preserves an existing draft when appending a transcript', async () => {
+      await renderWithMic();
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: 'Draft: ' } });
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+      act(() => {
+        voiceHookMock.latestOptions?.onFinalTranscript('dictated');
+      });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe('Draft: dictated ');
+      });
+    });
+
+    it('Enter submits the edited textarea after dictation inserts text', async () => {
+      const onSend = vi.fn();
+      await renderWithMic({ onSend });
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      textarea.focus();
+
+      act(() => {
+        voiceHookMock.latestOptions?.onFinalTranscript('send this');
+      });
+      await waitFor(() => {
+        expect(textarea.value).toBe('send this ');
+      });
+      fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+
+      expect(onSend).toHaveBeenCalledWith('send this ', undefined);
+    });
+
+    it('disables the mic and exposes the settings tooltip when the dictation model is not downloaded', async () => {
+      vi.mocked(api.voice.getModelStatus).mockResolvedValue({
+        id: VOICE_DICTATION_MODEL_ID,
+        status: 'not-downloaded',
+      });
+
+      const mic = await renderWithMic();
+
+      expect((mic as HTMLButtonElement).disabled).toBe(true);
+      expect(mic.getAttribute('title')).toBe('Download the dictation model in Settings → Voice dictation');
+    });
+
+    it('does not let an older model-status request overwrite newer progress', async () => {
+      let resolveInitialStatus!: (status: VoiceModelStatus) => void;
+      vi.mocked(api.voice.getModelStatus).mockReturnValue(new Promise((resolve) => {
+        resolveInitialStatus = resolve;
+      }));
+      let onModelProgress!: (status: VoiceModelStatus) => void;
+      vi.mocked(api.voice.onModelProgress).mockImplementation((callback) => {
+        onModelProgress = callback;
+        return vi.fn();
+      });
+
+      const mic = await renderWithMic();
+      act(() => {
+        onModelProgress(readyVoiceModelStatus);
+      });
+      await waitFor(() => expect((mic as HTMLButtonElement).disabled).toBe(false));
+
+      await act(async () => {
+        resolveInitialStatus({
+          id: VOICE_DICTATION_MODEL_ID,
+          status: 'not-downloaded',
+        });
+      });
+
+      expect((mic as HTMLButtonElement).disabled).toBe(false);
+      expect(mic.getAttribute('title')).toBe('Click to start dictation · Alt+Shift+V');
+    });
+
+    it('does not start push-to-talk while the shortcode popover is open', async () => {
+      await renderWithMic();
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      Object.defineProperty(textarea, 'selectionStart', { configurable: true, value: 3 });
+      Object.defineProperty(textarea, 'selectionEnd', { configurable: true, value: 3 });
+      fireEvent.change(textarea, { target: { value: ':sm' } });
+      await waitFor(() => screen.getByTestId('shortcode-popover'));
+      await waitFor(() => {
+        expect(voiceHookMock.latestOptions?.enabled).toBe(false);
+      });
+
+      fireEvent.keyDown(document, { key: 'v', altKey: true });
+
+      expect(voiceHookMock.start).not.toHaveBeenCalled();
+    });
+
+    it('does not start push-to-talk during IME composition', async () => {
+      await renderWithMic();
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      fireEvent.compositionStart(textarea);
+      await waitFor(() => {
+        expect(voiceHookMock.latestOptions?.enabled).toBe(false);
+      });
+
+      fireEvent.keyDown(document, { key: 'v', altKey: true });
+
+      expect(voiceHookMock.start).not.toHaveBeenCalled();
+    });
   });
 
   it('shows Loading models when no models available and not disabled', () => {

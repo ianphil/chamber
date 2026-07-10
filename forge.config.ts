@@ -98,6 +98,8 @@ function prepareAutomationRuntime(): void {
 // installer bytes for users who never exercise the MVP loopback path.
 const includeMvpServerResource = process.env.CHAMBER_MVP_SERVER === '1';
 const MVP_SERVER_RESOURCE = './apps/server/dist';
+const includeVoiceRuntime = process.env.CHAMBER_RELEASE_CHANNEL === 'insiders';
+const VOICE_RUNTIME_RESOURCE = './resources/voice-runtime';
 
 const baseExtraResource = [
   './resources/node',
@@ -123,9 +125,11 @@ const config: ForgeConfig = {
         schemes: ['chamber'],
       },
     ],
-    extraResource: includeMvpServerResource
-      ? [...baseExtraResource, MVP_SERVER_RESOURCE]
-      : baseExtraResource,
+    extraResource: [
+      ...baseExtraResource,
+      ...(includeVoiceRuntime ? [VOICE_RUNTIME_RESOURCE] : []),
+      ...(includeMvpServerResource ? [MVP_SERVER_RESOURCE] : []),
+    ],
   },
   publishers: [
     {
@@ -176,6 +180,11 @@ const config: ForgeConfig = {
           entry: 'apps/desktop/src/preload.ts',
           config: 'apps/desktop/vite.preload.config.ts',
           target: 'preload',
+        },
+        {
+          entry: 'apps/desktop/src/main/voiceWorker/voiceWorker.ts',
+          config: 'apps/desktop/vite.voiceWorker.config.ts',
+          target: 'main',
         },
       ],
       renderer: [

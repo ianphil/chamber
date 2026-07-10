@@ -15,6 +15,7 @@ import {
 import { AddAccountModal } from './AddAccountModal';
 import { LocalLlmSettingsSection } from './LocalLlmSettingsSection';
 import { Skeleton } from '../ui/skeleton';
+import { VoiceDictationSettingsSection } from './VoiceDictationSettingsSection';
 const ADD_ACCOUNT_VALUE = '__add-account__';
 
 export function SettingsView() {
@@ -203,7 +204,10 @@ export function SettingsView() {
   };
 
   return (
-    <SettingsLayout showLocalLlm={Boolean(featureFlags.byoLlm)}>
+    <SettingsLayout
+      showLocalLlm={Boolean(featureFlags.byoLlm)}
+      showVoiceDictation={Boolean(featureFlags.voiceDictation)}
+    >
       {(activeSection) => (
         <>
           {activeSection === 'profile' && (
@@ -463,6 +467,12 @@ export function SettingsView() {
             </section>
           )}
 
+          {activeSection === 'voice-dictation' && featureFlags.voiceDictation && (
+            <section className="space-y-3">
+              <VoiceDictationSettingsSection />
+            </section>
+          )}
+
           <AddAccountModal
             open={addAccountOpen}
             openId={addAccountIntent}
@@ -484,7 +494,7 @@ export function SettingsView() {
 // index.css so navigating between sections matches the rest of the app.
 // ---------------------------------------------------------------------------
 
-export type SettingsSectionId = 'profile' | 'account' | 'marketplaces' | 'local-llm';
+export type SettingsSectionId = 'profile' | 'account' | 'marketplaces' | 'local-llm' | 'voice-dictation';
 
 interface SettingsRailItem {
   id: SettingsSectionId;
@@ -493,10 +503,11 @@ interface SettingsRailItem {
 
 interface SettingsLayoutProps {
   showLocalLlm: boolean;
+  showVoiceDictation: boolean;
   children: (activeSection: SettingsSectionId) => React.ReactNode;
 }
 
-function SettingsLayout({ children, showLocalLlm }: SettingsLayoutProps) {
+function SettingsLayout({ children, showLocalLlm, showVoiceDictation }: SettingsLayoutProps) {
   const railItems = useMemo<SettingsRailItem[]>(() => {
     const items: SettingsRailItem[] = [
       { id: 'profile', label: 'Profile' },
@@ -504,14 +515,14 @@ function SettingsLayout({ children, showLocalLlm }: SettingsLayoutProps) {
       { id: 'marketplaces', label: 'Marketplaces' },
     ];
     if (showLocalLlm) items.push({ id: 'local-llm', label: 'Local LLM' });
+    if (showVoiceDictation) items.push({ id: 'voice-dictation', label: 'Voice dictation' });
     return items;
-  }, [showLocalLlm]);
+  }, [showLocalLlm, showVoiceDictation]);
 
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(railItems[0]?.id ?? 'profile');
 
-  // If the LLM tab is currently active and the feature flag flips off,
-  // fall back to the first available section so we don't render an empty
-  // pane.
+  // Feature flags may change after remote policy refresh. Keep the active page
+  // on a section that is still available.
   useEffect(() => {
     if (!railItems.some((item) => item.id === activeSection)) {
       setActiveSection(railItems[0]?.id ?? 'profile');
@@ -557,4 +568,3 @@ function SettingsLayout({ children, showLocalLlm }: SettingsLayoutProps) {
     </div>
   );
 }
-

@@ -10,14 +10,29 @@ interface FakeWebRequest {
 }
 interface FakeSession {
   webRequest: FakeWebRequest;
-  setPermissionRequestHandler: (cb: (wc: unknown, permission: string, callback: (allow: boolean) => void) => void) => void;
-  setPermissionCheckHandler: (cb: (wc: unknown, permission: string) => boolean) => void;
+  setPermissionRequestHandler: (cb: (wc: FakeWebContents, permission: string, callback: (allow: boolean) => void, details: FakePermissionRequestDetails) => void) => void;
+  setPermissionCheckHandler: (cb: (wc: FakeWebContents | null, permission: string, requestingOrigin: string, details: FakePermissionCheckDetails) => boolean) => void;
+}
+interface FakeWebContents {
+  getURL: () => string;
+}
+interface FakePermissionRequestDetails {
+  isMainFrame: boolean;
+  requestingUrl: string;
+  securityOrigin?: string;
+  mediaTypes?: Array<'video' | 'audio'>;
+}
+interface FakePermissionCheckDetails {
+  isMainFrame: boolean;
+  requestingUrl?: string;
+  securityOrigin?: string;
+  mediaType?: 'video' | 'audio' | 'unknown';
 }
 
 function fakeSession() {
   let headersHandler: ((details: { responseHeaders?: Record<string, string[]>; resourceType?: string }, callback: (response: { responseHeaders?: Record<string, string[]> }) => void) => void) | null = null;
-  let permissionRequestHandler: ((wc: unknown, permission: string, callback: (allow: boolean) => void) => void) | null = null;
-  let permissionCheckHandler: ((wc: unknown, permission: string) => boolean) | null = null;
+  let permissionRequestHandler: ((wc: FakeWebContents, permission: string, callback: (allow: boolean) => void, details: FakePermissionRequestDetails) => void) | null = null;
+  let permissionCheckHandler: ((wc: FakeWebContents | null, permission: string, requestingOrigin: string, details: FakePermissionCheckDetails) => boolean) | null = null;
 
   const session: FakeSession = {
     webRequest: {
@@ -33,14 +48,43 @@ function fakeSession() {
       if (!headersHandler) throw new Error('onHeadersReceived not registered');
       return new Promise((resolve) => headersHandler!(details, resolve));
     },
-    invokePermissionRequest(permission: string): Promise<boolean> {
+    invokePermissionRequest(
+      permission: string,
+      details: FakePermissionRequestDetails = requestDetails('https://example.com/'),
+    ): Promise<boolean> {
       if (!permissionRequestHandler) throw new Error('setPermissionRequestHandler not called');
-      return new Promise((resolve) => permissionRequestHandler!({}, permission, resolve));
+      return new Promise((resolve) => permissionRequestHandler!(webContents(details.requestingUrl), permission, resolve, details));
     },
-    invokePermissionCheck(permission: string): boolean {
+    invokePermissionCheck(
+      permission: string,
+      requestingOrigin = 'https://example.com/',
+      details: FakePermissionCheckDetails = checkDetails(requestingOrigin),
+    ): boolean {
       if (!permissionCheckHandler) throw new Error('setPermissionCheckHandler not called');
-      return permissionCheckHandler({}, permission);
+      return permissionCheckHandler(webContents(details.requestingUrl ?? requestingOrigin), permission, requestingOrigin, details);
     },
+  };
+}
+
+function webContents(url: string): FakeWebContents {
+  return { getURL: () => url };
+}
+
+function requestDetails(origin: string, mediaTypes: Array<'video' | 'audio'> = ['audio']): FakePermissionRequestDetails {
+  return {
+    isMainFrame: true,
+    requestingUrl: origin,
+    securityOrigin: origin,
+    mediaTypes,
+  };
+}
+
+function checkDetails(origin: string, mediaType: 'video' | 'audio' | 'unknown' = 'audio'): FakePermissionCheckDetails {
+  return {
+    isMainFrame: true,
+    requestingUrl: origin,
+    securityOrigin: origin,
+    mediaType,
   };
 }
 
@@ -171,14 +215,55 @@ describe('installPermissionHandlers', () => {
     expect(fake.invokePermissionCheck('notifications')).toBe(true);
   });
 
-  it('denies media, geolocation, midi, and other non-allowlisted permissions', async () => {
+  it('allows audio media permissions for Chamber renderer origins', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: true });
+
+    for (const origin of ['file:///app/index.html', 'http://localhost:5173/', 'http://127.0.0.1:5173/']) {
+      expect(await fake.invokePermissionRequest('media', requestDetails(origin))).toBe(true);
+      expect(fake.invokePermissionCheck('media', origin, checkDetails(origin))).toBe(true);
+    }
+  });
+
+  it('denies media permissions from foreign origins', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: true });
+
+    for (const origin of ['https://example.com/', 'http://evil.localhost.example/', 'http://0.0.0.0:5173/']) {
+      expect(await fake.invokePermissionRequest('media', requestDetails(origin))).toBe(false);
+      expect(fake.invokePermissionCheck('media', origin, checkDetails(origin))).toBe(false);
+    }
+  });
+
+  it('denies non-audio media permission requests even from Chamber renderer origins', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: true });
+    const origin = 'http://localhost:5173/';
+
+    expect(await fake.invokePermissionRequest('media', requestDetails(origin, ['video']))).toBe(false);
+    expect(await fake.invokePermissionRequest('media', requestDetails(origin, ['audio', 'video']))).toBe(false);
+    expect(fake.invokePermissionCheck('media', origin, checkDetails(origin, 'video'))).toBe(false);
+    expect(fake.invokePermissionCheck('media', origin, checkDetails(origin, 'unknown'))).toBe(false);
+  });
+
+  it('denies geolocation, midi, and other non-allowlisted permissions', async () => {
     const fake = fakeSession();
     installPermissionHandlers(fake.session as never);
 
-    for (const permission of ['media', 'geolocation', 'midi', 'pointerLock', 'fullscreen', 'clipboard-read']) {
-      expect(await fake.invokePermissionRequest(permission)).toBe(false);
-      expect(fake.invokePermissionCheck(permission)).toBe(false);
+    const chamberOrigin = 'http://localhost:5173/';
+    for (const permission of ['geolocation', 'midi', 'pointerLock', 'fullscreen', 'clipboard-read']) {
+      expect(await fake.invokePermissionRequest(permission, requestDetails(chamberOrigin))).toBe(false);
+      expect(fake.invokePermissionCheck(permission, chamberOrigin, checkDetails(chamberOrigin))).toBe(false);
     }
+  });
+
+  it('denies audio capture when voice dictation is unavailable', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: false });
+    const origin = 'http://localhost:5173/';
+
+    expect(await fake.invokePermissionRequest('media', requestDetails(origin))).toBe(false);
+    expect(fake.invokePermissionCheck('media', origin, checkDetails(origin))).toBe(false);
   });
 
   it('default-denies any permission name not on the allow-list, including unknown sentinel values', async () => {

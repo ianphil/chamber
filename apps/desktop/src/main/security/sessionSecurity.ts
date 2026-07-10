@@ -3,6 +3,7 @@ import type { Session } from 'electron';
 export type SecurityMode = 'development' | 'production';
 
 const ALLOWED_PERMISSIONS: ReadonlySet<string> = new Set(['notifications']);
+const CHAMBER_RENDERER_HTTP_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1']);
 
 const COMMON_DIRECTIVES = [
   "default-src 'self'",
@@ -67,11 +68,64 @@ export function installContentSecurityPolicy(session: Session, mode: SecurityMod
   });
 }
 
-export function installPermissionHandlers(session: Session): void {
-  session.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(ALLOWED_PERMISSIONS.has(permission));
+export interface PermissionHandlerOptions {
+  readonly allowAudioCapture?: boolean;
+}
+
+export function installPermissionHandlers(session: Session, options: PermissionHandlerOptions = {}): void {
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    callback(
+      isPermissionAllowed(permission, {
+        allowAudioCapture: options.allowAudioCapture === true,
+        origin: getPermissionRequestOrigin(webContents, details),
+        mediaTypes: 'mediaTypes' in details ? details.mediaTypes : undefined,
+        isMainFrame: details.isMainFrame,
+      }),
+    );
   });
-  session.setPermissionCheckHandler((_webContents, permission) =>
-    ALLOWED_PERMISSIONS.has(permission),
+  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) =>
+    isPermissionAllowed(permission, {
+      allowAudioCapture: options.allowAudioCapture === true,
+      origin: details.securityOrigin ?? requestingOrigin ?? details.requestingUrl ?? webContents?.getURL(),
+      mediaTypes: details.mediaType ? [details.mediaType] : undefined,
+      isMainFrame: details.isMainFrame,
+    }),
   );
+}
+
+function getPermissionRequestOrigin(
+  webContents: Parameters<NonNullable<Parameters<Session['setPermissionRequestHandler']>[0]>>[0],
+  details: Parameters<NonNullable<Parameters<Session['setPermissionRequestHandler']>[0]>>[3],
+): string | undefined {
+  return ('securityOrigin' in details ? details.securityOrigin : undefined) ?? details.requestingUrl ?? webContents.getURL();
+}
+
+interface PermissionDecisionInput {
+  readonly allowAudioCapture: boolean;
+  readonly origin?: string;
+  readonly mediaTypes?: ReadonlyArray<'video' | 'audio' | 'unknown'>;
+  readonly isMainFrame: boolean;
+}
+
+function isPermissionAllowed(permission: string, input: PermissionDecisionInput): boolean {
+  if (ALLOWED_PERMISSIONS.has(permission)) return true;
+  if (permission !== 'media') return false;
+  if (!input.allowAudioCapture) return false;
+  if (!input.isMainFrame) return false;
+  if (!isChamberRendererOrigin(input.origin)) return false;
+
+  return input.mediaTypes?.length === 1 && input.mediaTypes[0] === 'audio';
+}
+
+function isChamberRendererOrigin(originOrUrl: string | undefined): boolean {
+  if (!originOrUrl) return false;
+  if (originOrUrl.startsWith('file://')) return true;
+
+  try {
+    const parsed = new URL(originOrUrl);
+    if (parsed.protocol !== 'http:') return false;
+    return CHAMBER_RENDERER_HTTP_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
 }

@@ -22,6 +22,14 @@ import type { ChatroomAPI } from './chatroom-types';
 import type { AppFeatureFlags } from './feature-flags';
 import type { CancelOutcome, LedgerRecord, LedgerStatus } from './ledger';
 import type {
+  TranscriptionEvent,
+  VoiceDictationConfig,
+  VoiceDownloadModelOptions,
+  VoiceMicTestResult,
+  VoiceModelStatus,
+  VoicePermissionState,
+} from './voice-types';
+import type {
   AgentProfile,
   AgentProfileActionResult,
   AgentProfileAvatarPickResult,
@@ -166,6 +174,13 @@ export interface ElectronAPI {
     emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;
     emitAuthProgress: (payload: { step: string; userCode?: string; verificationUri?: string; login?: string; error?: string }) => Promise<void>;
     completeLoginStub: (payload: { success?: boolean; login?: string }) => Promise<void>;
+    voice?: {
+      setFakeProvider: () => Promise<void>;
+      emitTranscript: (payload?: E2EVoiceTranscriptPayload) => Promise<void>;
+      setPermissionState: (state: VoicePermissionState | null) => Promise<void>;
+      setModelStatus: (status: VoiceModelStatus | null) => Promise<void>;
+      getSessionState: () => Promise<E2EVoiceSessionState>;
+    };
   };
   byoLlm: {
     get: () => Promise<ByoLlmConfig | null>;
@@ -174,6 +189,22 @@ export interface ElectronAPI {
     probe: (config: ByoLlmConfig) => Promise<ByoLlmProbeResult>;
     restartAgents: () => Promise<{ success: boolean; restartedCount: number; error?: string }>;
     onChanged: (callback: (config: ByoLlmConfig | null) => void) => () => void;
+  };
+  voice: {
+    getConfig: () => Promise<VoiceDictationConfig | null>;
+    saveConfig: (config: VoiceDictationConfig) => Promise<void>;
+    onConfigChanged: (callback: (config: VoiceDictationConfig | null) => void) => () => void;
+    getPermissionState: () => Promise<VoicePermissionState>;
+    openMicPreferences: () => Promise<void>;
+    getModelStatus: (modelId: string) => Promise<VoiceModelStatus>;
+    downloadModel: (modelId: string, options?: VoiceDownloadModelOptions) => Promise<void>;
+    cancelDownload: (modelId: string) => Promise<void>;
+    startSession: (payload: VoiceStartSessionPayload) => Promise<void>;
+    appendAudio: (payload: VoiceAppendAudioPayload) => Promise<void>;
+    endSession: (payload: VoiceEndSessionPayload) => Promise<void>;
+    testMic: () => Promise<VoiceMicTestResult>;
+    onModelProgress: (callback: (status: VoiceModelStatus) => void) => () => void;
+    onTranscript: (callback: (event: TranscriptionEvent) => void) => () => void;
   };
   window: {
     minimize: () => void;
@@ -196,6 +227,33 @@ export interface ElectronAPI {
      */
     listForMind: (mindId: string) => Promise<SkillManifest[]>;
   };
+}
+
+export interface VoiceStartSessionPayload {
+  readonly sessionId: string;
+  readonly deviceId?: string | null;
+  readonly modelId?: string;
+}
+
+export interface VoiceAppendAudioPayload {
+  readonly sessionId: string;
+  readonly chunk: Uint8Array;
+}
+
+export interface VoiceEndSessionPayload {
+  readonly sessionId: string;
+}
+
+export interface E2EVoiceTranscriptPayload {
+  readonly type?: TranscriptionEvent['type'];
+  readonly text?: string;
+  readonly message?: string;
+}
+
+export interface E2EVoiceSessionState {
+  readonly activeSessionId: string | null;
+  readonly startedCount: number;
+  readonly endedCount: number;
 }
 
 declare global {
