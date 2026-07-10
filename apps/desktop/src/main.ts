@@ -37,6 +37,7 @@ import {
   AuthService,
   CanvasService,
   ChamberCopilotService,
+  listStoredGitHubCredentials,
   ChatroomService,
   ChatService,
   ConfigService,
@@ -234,6 +235,15 @@ let cronService: CronService;
 let automationBridgeStop: (() => Promise<void>) | null = null;
 let authService: AuthService;
 let chamberCopilotService: ChamberCopilotService | null = null;
+
+async function getActiveGitHubToken(): Promise<string | null> {
+  const stored = await listStoredGitHubCredentials(credentialStore);
+  const active = configService.load().activeLogin;
+  const entry = active
+    ? stored.find((c) => c.login === active)
+    : stored[0];
+  return entry?.password ?? null;
+}
 let updaterService: UpdaterService;
 const taskLedgersByMindPath = new Map<string, TaskLedger>();
 const ttasksStoresByMindPath = new Map<string, SqliteStore>();
@@ -276,7 +286,10 @@ async function initializeRuntime(): Promise<void> {
   }).initialize();
 
   const chamberToolsBinDir = getChamberToolsBinDir();
-  const clientFactory = new CopilotClientFactory({ toolsBinDir: chamberToolsBinDir });
+  const clientFactory = new CopilotClientFactory({
+    toolsBinDir: chamberToolsBinDir,
+    getGitHubToken: getActiveGitHubToken,
+  });
   void clientFactory.preloadSdk().catch((err: unknown) => {
     log.warn('SDK preload failed (non-fatal — first createClient will retry):', err);
   });
@@ -298,7 +311,7 @@ async function initializeRuntime(): Promise<void> {
     saveActiveLogin,
     userAgent,
   );
-  scaffold = new MindScaffold();
+  scaffold = new MindScaffold(githubRegistryClient, clientFactory);
   genesisTemplateCatalog = new GenesisMindTemplateMarketplaceCatalog(githubRegistryClient, getGenesisMarketplaceSources);
   genesisTemplateInstaller = new GenesisMindTemplateInstaller(githubRegistryClient, clientFactory, getGenesisMarketplaceSources);
   marketplaceRegistryService = new MarketplaceRegistryService(configService, githubRegistryClient);
@@ -486,10 +499,23 @@ function createChamberCopilotService(
   const service = new ChamberCopilotService({
     connectionsByMode: {
       safe: () => new AcpConnection({
-        connectionFactory: defaultAcpConnectionFactory({
-          command: cliPath,
-          args: ['--acp', '--no-auto-update'],
-        }),
+        connectionFactory: async () => {
+          const gitHubToken = await getActiveGitHubToken();
+          const env = { ...process.env };
+          const authArgs = gitHubToken
+            ? ['--auth-token-env', 'COPILOT_SDK_AUTH_TOKEN']
+            : [];
+          if (gitHubToken) {
+            env.COPILOT_SDK_AUTH_TOKEN = gitHubToken;
+          } else {
+            delete env.COPILOT_SDK_AUTH_TOKEN;
+          }
+          return defaultAcpConnectionFactory({
+            command: cliPath,
+            args: ['--acp', '--no-auto-update', '--no-auto-login', ...authArgs],
+            env,
+          })();
+        },
       }),
     },
     // Keep value-level chamber-copilot imports out of ChamberCopilotService.ts;
@@ -831,7 +857,9 @@ app.on('ready', async () => {
       return mindPath ? createTaskLedger(mindPath) : undefined;
     },
   });
-  setupAuthIPC(authService, mindManager);
+  setupAuthIPC(authService, mindManager, async () => {
+    await chamberCopilotService?.resetAuthState();
+  });
   setupByoLlmIPC(byoLlmStore, mindManager, {
     featureEnabled: appFeatureFlags.byoLlm,
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },

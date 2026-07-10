@@ -165,6 +165,34 @@ describe('CopilotClientFactory', () => {
       expect(env.Path).toBe(`${toolsBinDir}${path.delimiter}${existing}`);
     });
 
+    it('passes useLoggedInUser: false to suppress CLI-driven device flow browser windows', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      expect(client.options.useLoggedInUser).toBe(false);
+    });
+
+    it('passes gitHubToken from getGitHubToken callback when a token is available', async () => {
+      factory = new CopilotClientFactory({
+        getGitHubToken: async () => 'ghu_test_token',
+      });
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      expect(client.options.gitHubToken).toBe('ghu_test_token');
+      expect(client.options.useLoggedInUser).toBe(false);
+    });
+
+    it('passes gitHubToken as undefined (not the string "undefined") when callback returns null', async () => {
+      factory = new CopilotClientFactory({
+        getGitHubToken: async () => null,
+      });
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      expect(client.options.gitHubToken).toBeUndefined();
+      expect(client.options.useLoggedInUser).toBe(false);
+    });
+
+    it('omits gitHubToken entirely when no getGitHubToken callback is configured', async () => {
+      const client = await factory.createClient('C:\\agents\\q') as unknown as FakeCopilotClient;
+      expect(client.options.gitHubToken).toBeUndefined();
+    });
+
     it('creates separate clients for different mind paths', async () => {
       const client1 = await factory.createClient('C:\\agents\\q');
       const client2 = await factory.createClient('C:\\agents\\fox');

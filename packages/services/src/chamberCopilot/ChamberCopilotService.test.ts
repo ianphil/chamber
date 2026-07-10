@@ -378,6 +378,54 @@ describe('ChamberCopilotService', () => {
     expect(failingConnection.stop).not.toHaveBeenCalled();
   });
 
+  it('resetAuthState keeps a fresh prewarmed store available through a mind reload', async () => {
+    const { service, connection } = buildHarness();
+
+    await service.activateMind('mind-1', '/tmp/mind-1');
+    await service.resetAuthState();
+    await service.releaseMind('mind-1');
+
+    expect(connection.stop).toHaveBeenCalledOnce();
+    expect(service.getToolsForMind('mind-2', '/tmp/mind-2').map((tool) => tool.name)).toContain('cli_delegate');
+
+    await service.activateMind('mind-2', '/tmp/mind-2');
+    await service.releaseMind('mind-2');
+
+    expect(connection.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('resetAuthState invalidates an in-flight prewarm so stale auth cannot win the race', async () => {
+    const staleConnection = new FakeAcpConnection();
+    let resolveStaleStart: (() => void) | undefined;
+    staleConnection.start = vi.fn(() => new Promise<void>((resolve) => {
+      resolveStaleStart = () => {
+        staleConnection.isStarted = true;
+        resolve();
+      };
+    }));
+    const freshConnection = new FakeAcpConnection();
+    const connectionFactory = vi.fn()
+      .mockReturnValueOnce(staleConnection as unknown as AcpConnection)
+      .mockReturnValueOnce(freshConnection as unknown as AcpConnection);
+    const service = new ChamberCopilotService({
+      connectionFactory,
+      jobStoreFactory: () => new FakeJobStore() as unknown as JobStore,
+      toolFactory: () => [makeStubTool('cli_delegate')],
+    });
+
+    const prewarm = service.prewarm();
+    await Promise.resolve();
+    const reset = service.resetAuthState();
+    await Promise.resolve();
+    resolveStaleStart?.();
+
+    await Promise.all([prewarm, reset]);
+
+    expect(staleConnection.stop).toHaveBeenCalledOnce();
+    expect(freshConnection.start).toHaveBeenCalledOnce();
+    expect(service.getToolsForMind('mind-1', '/tmp/mind-1').map((tool) => tool.name)).toEqual(['cli_delegate']);
+  });
+
   describe('connectionsByMode (yolo posture)', () => {
     it('rejects passing both connectionFactory and connectionsByMode at the same time', () => {
       const safe = vi.fn(() => new FakeAcpConnection() as unknown as AcpConnection);
@@ -464,6 +512,47 @@ describe('ChamberCopilotService', () => {
       expect(failingYolo.start).toHaveBeenCalledOnce();
       // Safe-only fallback: JobStore receives only `safe`.
       expect(jobStoreFactoryCalls[0].yolo).toBeUndefined();
+    });
+
+    it('does not let an old yolo-start failure assign stale safe-only connections after reset', async () => {
+      const staleSafe = new FakeAcpConnection();
+      const staleYolo = new FakeAcpConnection();
+      let rejectStaleYolo: ((error: Error) => void) | undefined;
+      staleYolo.start = vi.fn(() => new Promise<void>((_resolve, reject) => {
+        rejectStaleYolo = reject;
+      }));
+      const freshSafe = new FakeAcpConnection();
+      const freshYolo = new FakeAcpConnection();
+      const safeFactory = vi.fn()
+        .mockReturnValueOnce(staleSafe as unknown as AcpConnection)
+        .mockReturnValueOnce(freshSafe as unknown as AcpConnection);
+      const yoloFactory = vi.fn()
+        .mockReturnValueOnce(staleYolo as unknown as AcpConnection)
+        .mockReturnValueOnce(freshYolo as unknown as AcpConnection);
+      const jobStoreFactoryCalls: Array<{ readonly safe: AcpConnection; readonly yolo?: AcpConnection }> = [];
+      const service = new ChamberCopilotService({
+        connectionsByMode: { safe: safeFactory, yolo: yoloFactory },
+        jobStoreFactory: (connections) => {
+          jobStoreFactoryCalls.push(connections);
+          return new FakeJobStore() as unknown as JobStore;
+        },
+        toolFactory: () => [],
+      });
+
+      const prewarm = service.prewarm();
+      await Promise.resolve();
+      const reset = service.resetAuthState();
+      await Promise.resolve();
+      rejectStaleYolo?.(new Error('old yolo failed after auth reset'));
+
+      await Promise.all([prewarm, reset]);
+
+      expect(staleSafe.stop).toHaveBeenCalledOnce();
+      expect(freshSafe.start).toHaveBeenCalledOnce();
+      expect(freshYolo.start).toHaveBeenCalledOnce();
+      expect(jobStoreFactoryCalls).toHaveLength(1);
+      expect(jobStoreFactoryCalls[0].safe).toBe(freshSafe as unknown as AcpConnection);
+      expect(jobStoreFactoryCalls[0].yolo).toBe(freshYolo as unknown as AcpConnection);
     });
 
     it('treats a safe-start failure as fatal (no yolo factory call attempted)', async () => {

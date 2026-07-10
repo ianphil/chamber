@@ -14,6 +14,19 @@ export interface CopilotClientFactoryOptions {
   toolsBinDir?: string;
   env?: Record<string, string | undefined>;
   stopTimeoutMs?: number;
+  /**
+   * Returns the active GitHub OAuth token from the keychain. When provided,
+   * the token is forwarded to the CLI via the SDK's `gitHubToken` option
+   * (injected as COPILOT_SDK_AUTH_TOKEN) and `useLoggedInUser` is set to
+   * false, which adds `--no-auto-login` to the CLI args. This prevents the
+   * CLI from ever launching its own device-flow browser window — Chamber
+   * owns auth entirely.
+   *
+   * If the callback returns `null` (no stored credential), the client is
+   * still created with `useLoggedInUser: false`; the CLI will fail any
+   * operation that requires auth rather than prompting in the browser.
+   */
+  getGitHubToken?: () => Promise<string | null>;
 }
 
 // Side-effect tool kinds Chamber auto-approves at the CLI layer. The list
@@ -117,11 +130,22 @@ export class CopilotClientFactory {
       ? { ...withTools, ...createOptions.extraEnv }
       : withTools;
 
+    // Retrieve the active OAuth token so we can hand it to the SDK explicitly.
+    // This causes the SDK to inject it via COPILOT_SDK_AUTH_TOKEN and to add
+    // --no-auto-login, which prevents the bundled CLI from ever launching its
+    // own device-flow browser window. Chamber is the sole auth authority.
+    const gitHubToken = this.options.getGitHubToken ? (await this.options.getGitHubToken() ?? undefined) : undefined;
+
     const client = new sdk.CopilotClient({
       connection: sdk.RuntimeConnection.forStdio({ path: cliPath, args: cliArgs }),
       workingDirectory: mindPath,
       logLevel: 'all',
       env: finalEnv,
+      gitHubToken,
+      // Explicitly disable auto-login even when no token is available so the CLI
+      // never opens a browser on its own. If there is no token the CLI will return
+      // auth errors which Chamber surfaces in the chat UI.
+      useLoggedInUser: false,
     });
 
     await client.start();
