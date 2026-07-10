@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CredentialStore } from '@chamber/services';
+import type { CredentialStore } from '../../packages/services/src/ports';
 import { canAccessRepoWithChamberCredentials } from '../e2e/electron/chamberRepoAccess';
 
 const NWO = 'agency-microsoft/genesis-minds';

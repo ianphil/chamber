@@ -171,9 +171,9 @@ function logsPreview(logs: string[]): string {
  * file) because Playwright's TypeScript loader handles static imports of
  * sibling `.ts` files but routes `await import('./helper')` through Node's
  * native loader, which rejects the helper's top-level ESM `import`
- * statements. Keeping it static is safe only as long as `@chamber/services`
- * has no `keytar` transitive imports (verified at commit time); a future
- * change that introduces one would re-open the EPERM window via this file.
+ * statements. The helper imports the auth module directly instead of the
+ * services barrel so unrelated native or runtime dependencies are not loaded
+ * into Playwright's runner process.
  */
 export async function canAccessRepo(nwo: string): Promise<boolean> {
   const keytarModule = await import('keytar');

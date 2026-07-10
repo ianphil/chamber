@@ -1,5 +1,5 @@
-import { listStoredGitHubCredentials } from '@chamber/services';
-import type { CredentialStore } from '@chamber/services';
+import { listStoredGitHubCredentials } from '../../../packages/services/src/auth/AuthService';
+import type { CredentialStore } from '../../../packages/services/src/ports';
 
 export interface CanAccessOptions {
   fetchImpl?: typeof fetch;
