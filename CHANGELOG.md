@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests
 
 - **Add invariant test suite** — Introduces test:invariants for high-signal Chamber contracts covering session-state fallback order, stable conversation state roots, SDK config discovery, metadata-only history records, renderer/preload and shared architecture boundaries, managed skill/session ordering, approval redaction/default-deny behavior, credential-write boundaries, automation bridge/token safety, startup prewarm ordering, Electron window preferences, and cron script validation.
+- **Align marketplace E2E credential checks** — Makes marketplace test guards use the same stored GitHub credential filter as the runtime so inaccessible private registries skip cleanly instead of failing after launch. (#343)
 
 ### Added
 
