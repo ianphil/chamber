@@ -125,6 +125,40 @@ describe('ChatInput', () => {
     expect(screen.getByRole('combobox').hasAttribute('data-disabled')).toBe(true);
   });
 
+  it('exposes an aria-label on the textarea so screen readers have a name after the placeholder clears', () => {
+    render(<ChatInput {...defaultProps} />);
+    expect(screen.getByRole('textbox').getAttribute('aria-label')).toBe('Message your agent');
+  });
+
+  it('Send button is actually disabled when the textarea is empty (not just visually muted)', () => {
+    render(<ChatInput {...defaultProps} />);
+    const sendBtn = screen.getByLabelText('Send message');
+    expect(sendBtn.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('Send button enables once the textarea has content', () => {
+    render(<ChatInput {...defaultProps} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'hi' } });
+    expect(screen.getByLabelText('Send message').hasAttribute('disabled')).toBe(false);
+  });
+
+  it('Stop button stays enabled while streaming, regardless of textarea contents', () => {
+    render(<ChatInput {...defaultProps} isStreaming={true} />);
+    const stopBtn = screen.getByLabelText('Stop streaming (Escape)');
+    expect(stopBtn.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('shows an Enter/Shift+Enter keyboard hint when idle', () => {
+    render(<ChatInput {...defaultProps} />);
+    expect(screen.getByText('Enter to send · Shift+Enter for newline')).toBeTruthy();
+  });
+
+  it('swaps the keyboard hint to "Esc to stop" while streaming', () => {
+    render(<ChatInput {...defaultProps} isStreaming={true} />);
+    expect(screen.getByText('Esc to stop')).toBeTruthy();
+    expect(screen.queryByText('Enter to send · Shift+Enter for newline')).toBeNull();
+  });
+
   describe('emoji picker', () => {
     it('renders an emoji trigger button with aria-label', () => {
       render(<ChatInput {...defaultProps} />);

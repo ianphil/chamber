@@ -22,6 +22,11 @@ function entriesFromBlocks(blocks: ContentBlock[]): WorkEntry[] {
   return chunk.entries as WorkEntry[];
 }
 
+/** Expand a collapsed work log by clicking its header toggle. */
+function expandWorkLog(label: RegExp): void {
+  fireEvent.click(screen.getByRole('button', { name: label }));
+}
+
 describe('WorkGroup', () => {
   it('renders all entries with an entry count label', () => {
     const entries = entriesFromBlocks([
@@ -31,6 +36,7 @@ describe('WorkGroup', () => {
     ]);
     render(<WorkGroup entries={entries} />);
     expect(screen.getByText(/Tool calls \(3\)/)).toBeTruthy();
+    expandWorkLog(/Tool calls \(3\)/);
     expect(screen.getByText('grep')).toBeTruthy();
     expect(screen.getByText('read_file')).toBeTruthy();
     expect(screen.getByText('bash')).toBeTruthy();
@@ -46,12 +52,30 @@ describe('WorkGroup', () => {
     expect(screen.getByText(/Work log \(2\)/)).toBeTruthy();
   });
 
+  it('is collapsed by default for a completed (inactive) group', () => {
+    const entries = entriesFromBlocks([
+      tool('tc-1', { toolName: 'grep' }),
+      tool('tc-2', { toolName: 'read_file' }),
+    ]);
+    render(<WorkGroup entries={entries} />);
+    expect(screen.queryByText('grep')).toBeNull();
+    expandWorkLog(/Tool calls \(2\)/);
+    expect(screen.getByText('grep')).toBeTruthy();
+  });
+
+  it('is expanded by default while the group is active', () => {
+    const entries = entriesFromBlocks([tool('tc-1', { toolName: 'grep' })]);
+    render(<WorkGroup entries={entries} isActive />);
+    expect(screen.getByText('grep')).toBeTruthy();
+  });
+
   it('truncates to last 6 entries with a show-more button', () => {
     const blocks: ContentBlock[] = Array.from({ length: 10 }, (_, i) =>
       tool(`tc-${i}`, { toolName: `tool_${i}` }),
     );
     const entries = entriesFromBlocks(blocks);
     render(<WorkGroup entries={entries} />);
+    expandWorkLog(/Tool calls \(10\)/);
     // Newest 6 visible.
     expect(screen.queryByText('tool_0')).toBeNull();
     expect(screen.queryByText('tool_3')).toBeNull();
@@ -68,6 +92,7 @@ describe('WorkGroup', () => {
       tool('tc-1', { toolName: 'grep', output: 'first-line\nsecond-detail-line' }),
     ]);
     render(<WorkGroup entries={entries} />);
+    expandWorkLog(/Tool calls \(1\)/);
     // Detail-only line hidden initially.
     expect(screen.queryByText(/second-detail-line/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /grep/ }));
@@ -103,6 +128,7 @@ describe('WorkGroup', () => {
       tool('tc-1', { toolName: 'grep', status: 'done' }),
     ]);
     render(<WorkGroup entries={entries} />);
+    expandWorkLog(/Tool calls \(1\)/);
     const button = screen.getByRole('button', { name: /grep/ });
     expect(button).toHaveProperty('disabled', true);
   });

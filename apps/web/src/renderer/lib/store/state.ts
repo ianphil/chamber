@@ -9,6 +9,7 @@ export interface AgentProfileSummary {
   mindId: string;
   displayName: string;
   avatarDataUrl: string | null;
+  accentColor?: string | null;
 }
 
 // Per-mind conversation view state machine:
