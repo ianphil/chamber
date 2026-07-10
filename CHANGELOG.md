@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Add chamber:a2a ttasks runtime support** — Adds a chamber:a2a custom task type, production A2A bridge wiring, durable ttasks persistence, and invariants for the runtime contract.
 
+### Refactor
+
+- **Establish shared renderer UI foundations** — Adds shared design tokens, light and dark palettes, Inter typography, reusable tabs and skeletons, and responsive, resizable, clipboard, delay, and theme hooks.
+
+
 
 
 
