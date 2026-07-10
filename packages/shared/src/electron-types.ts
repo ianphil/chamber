@@ -190,7 +190,10 @@ export interface ElectronAPI {
     onStartupProgress: (callback: (event: StartupProgressEvent) => void) => () => void;
   };
   skills: {
-    /** List the skills installed under `<mindPath>/.github/skills/`. */
+    /**
+     * Lists self-declared metadata for skill directories currently on disk.
+     * This does not attest managed provenance, integrity, or lifecycle state.
+     */
     listForMind: (mindId: string) => Promise<SkillManifest[]>;
   };
 }

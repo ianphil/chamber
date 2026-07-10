@@ -114,6 +114,7 @@ import { setupChatroomIPC } from './main/ipc/chatroom';
 import { setupConversationHistoryIPC } from './main/ipc/conversationHistory';
 import { setupUpdaterIPC } from './main/ipc/updater';
 import { setupUserProfileIPC } from './main/ipc/userProfile';
+import { setupSkillsIPC } from './main/ipc/skills';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
@@ -824,6 +825,7 @@ app.on('ready', async () => {
   }
 
   // --- IPC adapters (thin, parameter-injected) ---
+  const skillDiscovery = new MindSkillDiscovery();
   setupChatIPC(chatService, mindManager);
   setupConversationHistoryIPC(chatService);
   setupMindIPC(mindManager, chatService, {
@@ -858,6 +860,10 @@ app.on('ready', async () => {
       return mindPath ? createTaskLedger(mindPath) : undefined;
     },
   });
+  setupSkillsIPC(
+    { getMindPath: (mindId) => mindManager.getMind(mindId)?.mindPath },
+    skillDiscovery,
+  );
   setupAuthIPC(authService, mindManager, async () => {
     await chamberCopilotService?.resetAuthState();
   });
@@ -886,13 +892,6 @@ app.on('ready', async () => {
   ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
   ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => appFeatureFlags);
-  const skillDiscovery = new MindSkillDiscovery();
-  ipcMain.handle(IPC.SKILLS.LIST_FOR_MIND, (_event, mindId: string) => {
-    if (typeof mindId !== 'string') return [];
-    const mind = mindManager.getMind(mindId);
-    if (!mind) return [];
-    return skillDiscovery.list(mind.mindPath);
-  });
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {

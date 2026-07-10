@@ -1,15 +1,18 @@
-// Shared SkillManifest type. Skills live under <mindPath>/.github/skills/<name>/SKILL.md
-// with YAML frontmatter (name, version, description) and a markdown body that
-// teaches the agent how to use the skill. The renderer surfaces these in the
-// AboutAgentPanel so users can see what a mind can do.
-
+/**
+ * Self-declared metadata discovered from a skill directory on disk.
+ *
+ * Presence in this list does not establish marketplace provenance, content
+ * hash verification, management status, update status, or trust. Managed-skill
+ * integrity and lifecycle remain the responsibility of ManagedSkillService.
+ * Values are untrusted local file content and must be rendered as text.
+ */
 export interface SkillManifest {
-  /** Directory name under .github/skills/, used as the stable id. */
+  /** Directory name under .github/skills and the stable on-disk identifier. */
   id: string;
-  /** YAML `name` from the SKILL.md frontmatter. Falls back to id. */
+  /** Display name from SKILL.md; falls back to id when absent or blank. */
   name: string;
-  /** Optional YAML `version` field. */
+  /** Self-declared version string from SKILL.md, if present. */
   version?: string;
-  /** Optional YAML `description` field (one-line summary). */
+  /** Self-declared description from SKILL.md, if present. */
   description?: string;
 }
