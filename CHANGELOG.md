@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Polish chat message rendering** — Improves streaming, scrolling, tool and reasoning groups, agent colors, copy actions, composer affordances, and welcome states.
 - **Refresh Settings navigation and layout** — Reorganizes Profile, Account, Marketplaces, and Local LLM settings into a clearer left-rail interface with updated panels and light-theme styling.
+- **Polish Lens view presentation** — Adds view descriptions, Lucide icons, loading skeletons, refined empty states, and improved detail-view readability.
 
 
 
