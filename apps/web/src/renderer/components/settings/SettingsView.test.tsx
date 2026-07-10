@@ -3,11 +3,19 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { version } from '../../../../../../package.json';
 import { SettingsView } from './SettingsView';
 import { AppStateProvider } from '../../lib/store';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
+
+// Settings is now tabbed. Tests that assert on Account / Marketplaces /
+// Local LLM content must first activate that tab (the Profile tab is the
+// default). Profile-tab tests don't need this helper.
+function gotoTab(label: 'Profile' | 'Account' | 'Marketplaces' | 'Local LLM') {
+  const nav = screen.getByRole('navigation', { name: /settings sections/i });
+  fireEvent.click(within(nav).getByRole('button', { name: label }));
+}
 
 describe('SettingsView', () => {
   let api: ReturnType<typeof mockElectronAPI>;
@@ -36,6 +44,7 @@ describe('SettingsView', () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'ianphil_microsoft' });
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'ianphil_microsoft' }]);
     render(<SettingsView />);
+    gotoTab('Account');
     await waitFor(() => {
       expect(screen.getByText('ianphil_microsoft')).toBeTruthy();
     });
@@ -45,6 +54,7 @@ describe('SettingsView', () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: false });
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     render(<SettingsView />);
+    gotoTab('Account');
     await waitFor(() => {
       expect(screen.getByText('Not signed in')).toBeTruthy();
     });
@@ -54,6 +64,7 @@ describe('SettingsView', () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'ianphil_microsoft' });
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'ianphil_microsoft' }]);
     render(<SettingsView />);
+    gotoTab('Account');
     await waitFor(() => {
       expect(screen.getByText('ianphil_microsoft')).toBeTruthy();
     });
@@ -83,6 +94,7 @@ describe('SettingsView', () => {
         <SettingsView />
       </AppStateProvider>,
     );
+    gotoTab('Local LLM');
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /local & custom llm/i })).toBeTruthy();
     });
@@ -92,6 +104,7 @@ describe('SettingsView', () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'alice' });
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }]);
     render(<SettingsView />);
+    gotoTab('Account');
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /account/i })).toBeTruthy();
     });
@@ -220,6 +233,7 @@ describe('SettingsView', () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('IPC failed'));
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     render(<SettingsView />);
+    gotoTab('Account');
     await waitFor(() => {
       expect(screen.getByText('Unable to load account info')).toBeTruthy();
     });
@@ -230,6 +244,7 @@ describe('SettingsView', () => {
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }, { login: 'bob' }]);
 
     render(<SettingsView />);
+    gotoTab('Account');
 
     await waitFor(() => {
       expect(screen.getByRole('combobox')).toBeTruthy();
@@ -241,6 +256,7 @@ describe('SettingsView', () => {
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'zebra' }, { login: 'alice' }]);
 
     render(<SettingsView />);
+    gotoTab('Account');
 
     const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
@@ -254,6 +270,7 @@ describe('SettingsView', () => {
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }, { login: 'bob' }]);
 
     render(<SettingsView />);
+    gotoTab('Account');
 
     await waitFor(() => {
       expect(screen.getByRole('combobox', { name: /select account/i }).textContent).toContain('bob');
@@ -265,6 +282,7 @@ describe('SettingsView', () => {
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }, { login: 'bob' }]);
 
     render(<SettingsView />);
+    gotoTab('Account');
 
     const trigger = await screen.findByRole('combobox', { name: /select account/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
@@ -280,13 +298,12 @@ describe('SettingsView', () => {
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }]);
 
     render(<SettingsView />);
+    gotoTab('Account');
 
-    const trigger = await screen.findByRole('combobox', { name: /select account/i });
-    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByRole('option', { name: '+ Add Account' }));
+    // With a single account, the UI renders a static chip plus an inline
+    // "+ Add account" button (no dropdown), since switching is not possible.
+    fireEvent.click(await screen.findByRole('button', { name: /\+ add account/i }));
 
-    // Add Account opens the modal which subscribes BEFORE calling startLogin —
-    // assert via the modal's dialog role and the eventual startLogin invocation.
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /add a github account/i })).toBeTruthy();
     });
@@ -310,6 +327,7 @@ describe('SettingsView', () => {
     });
 
     render(<SettingsView />);
+    gotoTab('Account');
 
     await screen.findByText('alice');
     onAccountSwitched!();
@@ -333,6 +351,7 @@ describe('SettingsView', () => {
     });
 
     render(<SettingsView />);
+    gotoTab('Account');
 
     await screen.findByText('alice');
     // Simulate the IPC broadcast that fires after AuthService stores credentials
@@ -344,15 +363,21 @@ describe('SettingsView', () => {
     });
   });
 
-  it('shows a dropdown even when only one account exists', async () => {
+  it('shows a static chip + Add account button when only one account exists', async () => {
     (api.auth.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ authenticated: true, login: 'alice' });
     (api.auth.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ login: 'alice' }]);
 
     render(<SettingsView />);
+    gotoTab('Account');
 
+    // The old <Select> dropdown implied multi-account switching that doesn't
+    // exist for a single login; the new UI is a static chip + Add account
+    // affordance instead. Audit pass 4 (minor) findings.
     await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeTruthy();
+      expect(screen.getByText('alice')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /\+ add account/i })).toBeTruthy();
     });
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 
   it('lists followed marketplaces', async () => {
@@ -371,6 +396,7 @@ describe('SettingsView', () => {
     ]);
 
     render(<SettingsView />);
+    gotoTab('Marketplaces');
 
     expect(await screen.findByText('Public Genesis Minds')).toBeTruthy();
     expect(screen.getByText('https://github.com/ianphil/genesis-minds')).toBeTruthy();
@@ -394,6 +420,7 @@ describe('SettingsView', () => {
       ]);
 
     render(<SettingsView />);
+    gotoTab('Marketplaces');
 
     fireEvent.change(await screen.findByLabelText('Marketplace repository URL'), {
       target: { value: 'https://github.com/agency-microsoft/genesis-minds' },
@@ -421,6 +448,7 @@ describe('SettingsView', () => {
     (api.marketplace.listGenesisRegistries as ReturnType<typeof vi.fn>).mockResolvedValue([agencyMarketplace]);
 
     render(<SettingsView />);
+    gotoTab('Marketplaces');
 
     await screen.findByText('agency-microsoft/genesis-minds');
     fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
