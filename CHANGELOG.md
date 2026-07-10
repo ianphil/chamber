@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Establish shared renderer UI foundations** — Adds shared design tokens, light and dark palettes, Inter typography, reusable tabs and skeletons, and responsive, resizable, clipboard, delay, and theme hooks.
 
+### Changed
+
+- **Polish chat message rendering** — Improves streaming, scrolling, tool and reasoning groups, agent colors, copy actions, composer affordances, and welcome states.
+
+
 
 
 
