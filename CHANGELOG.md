@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Add chamber:a2a ttasks runtime support** — Adds a chamber:a2a custom task type, production A2A bridge wiring, durable ttasks persistence, and invariants for the runtime contract.
+- **Add theme-aware update chrome** — Adds a dismissible ready-to-install banner and update-status indicator with accessible light and dark theme colors.
 
 ### Refactor
 
