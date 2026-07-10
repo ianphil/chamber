@@ -95,9 +95,34 @@ describe('feature flags', () => {
     });
   });
 
+  it('defaults voice dictation off for policies cached before the flag existed', () => {
+    expect(parseRemoteFeatureFlagPolicy({
+      version: 1,
+      channels: {
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    })?.channels).toEqual({
+      stable: DEFAULT_APP_FEATURE_FLAGS,
+      insiders: {
+        switchboardRelay: true,
+        byoLlm: true,
+        chamberCopilot: true,
+        voiceDictation: false,
+      },
+    });
+  });
+
   it('rejects malformed remote policies', () => {
     expect(parseRemoteFeatureFlagPolicy({ version: 2, channels: {} })).toBeNull();
     expect(parseRemoteFeatureFlagPolicy({ version: 1, channels: { stable: {} } })).toBeNull();
+    expect(parseRemoteFeatureFlagPolicy({
+      version: 1,
+      channels: {
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: 'yes' },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    })).toBeNull();
     expect(parseRemoteFeatureFlagPolicy(null)).toBeNull();
   });
 

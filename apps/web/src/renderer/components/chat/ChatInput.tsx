@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Mic } from 'lucide-react';
+import { Mic, Smile } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import { VOICE_DICTATION_MODEL_ID, type VoiceDictationConfig, type VoiceModelStatus } from '@chamber/shared/voice-types';
@@ -20,7 +20,6 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import { TooltipFor } from '../ui/tooltip';
-import { Smile } from 'lucide-react';
 import {
   Command,
   CommandList,
@@ -274,14 +273,18 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     }
 
     let cancelled = false;
+    let receivedProgress = false;
     const modelId = voiceConfig.model.id;
     window.electronAPI.voice.getModelStatus(modelId).then((status) => {
-      if (!cancelled) setModelStatus(status);
+      if (!cancelled && !receivedProgress) setModelStatus(status);
     }).catch(() => {
-      if (!cancelled) setModelStatus(DEFAULT_VOICE_MODEL_STATUS);
+      if (!cancelled && !receivedProgress) setModelStatus(DEFAULT_VOICE_MODEL_STATUS);
     });
     const unsubscribe = window.electronAPI.voice.onModelProgress((status) => {
-      if (!cancelled && status.id === modelId) setModelStatus(status);
+      if (!cancelled && status.id === modelId) {
+        receivedProgress = true;
+        setModelStatus(status);
+      }
     });
 
     return () => {
@@ -301,6 +304,8 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   });
   const voiceButtonTitle = modelStatus.status !== 'ready'
     ? VOICE_MODEL_NOT_READY_TOOLTIP
+    : voice.error
+      ? `Voice dictation error: ${voice.error}`
     : voice.state === 'listening'
       ? 'Click to stop dictation'
       : disabled

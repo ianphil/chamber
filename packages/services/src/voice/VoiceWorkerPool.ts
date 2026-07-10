@@ -23,10 +23,17 @@ export interface VoiceWorkerPoolScheduler {
 
 export interface VoiceWorkerPoolOptions {
   readonly voiceWorkerPath: string;
-  readonly workerFactory?: (workerPath: string) => VoiceWorkerLike;
+  readonly voiceSdkEntry: string;
+  readonly workerFactory?: (workerPath: string, options: VoiceWorkerLaunchOptions) => VoiceWorkerLike;
   readonly scheduler?: VoiceWorkerPoolScheduler;
   readonly restartBackoffMs?: number;
   readonly maxRestartBackoffMs?: number;
+}
+
+export interface VoiceWorkerLaunchOptions {
+  readonly workerData: {
+    readonly voiceSdkEntry: string;
+  };
 }
 
 type WorkerRole = 'engine' | 'installer';
@@ -41,7 +48,8 @@ const DEFAULT_MAX_RESTART_BACKOFF_MS = 5_000;
 
 export class VoiceWorkerPool {
   private readonly voiceWorkerPath: string;
-  private readonly workerFactory: (workerPath: string) => VoiceWorkerLike;
+  private readonly voiceSdkEntry: string;
+  private readonly workerFactory: (workerPath: string, options: VoiceWorkerLaunchOptions) => VoiceWorkerLike;
   private readonly scheduler: VoiceWorkerPoolScheduler;
   private readonly restartBackoffMs: number;
   private readonly maxRestartBackoffMs: number;
@@ -62,7 +70,9 @@ export class VoiceWorkerPool {
 
   constructor(options: VoiceWorkerPoolOptions) {
     this.voiceWorkerPath = options.voiceWorkerPath;
-    this.workerFactory = options.workerFactory ?? ((workerPath) => new Worker(workerPath) as VoiceWorkerLike);
+    this.voiceSdkEntry = options.voiceSdkEntry;
+    this.workerFactory = options.workerFactory
+      ?? ((workerPath, launchOptions) => new Worker(workerPath, launchOptions) as VoiceWorkerLike);
     this.scheduler = options.scheduler ?? {
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -194,7 +204,9 @@ export class VoiceWorkerPool {
   }
 
   private createWorker(): VoiceWorkerLike {
-    const worker = this.workerFactory(this.voiceWorkerPath);
+    const worker = this.workerFactory(this.voiceWorkerPath, {
+      workerData: { voiceSdkEntry: this.voiceSdkEntry },
+    });
     worker.on('message', (message) => this.handleMessage(message));
     worker.on('error', (error) => this.handleWorkerError(error));
     worker.on('exit', (code) => this.handleWorkerExit(code));

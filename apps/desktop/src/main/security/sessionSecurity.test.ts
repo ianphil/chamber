@@ -217,7 +217,7 @@ describe('installPermissionHandlers', () => {
 
   it('allows audio media permissions for Chamber renderer origins', async () => {
     const fake = fakeSession();
-    installPermissionHandlers(fake.session as never);
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: true });
 
     for (const origin of ['file:///app/index.html', 'http://localhost:5173/', 'http://127.0.0.1:5173/']) {
       expect(await fake.invokePermissionRequest('media', requestDetails(origin))).toBe(true);
@@ -227,7 +227,7 @@ describe('installPermissionHandlers', () => {
 
   it('denies media permissions from foreign origins', async () => {
     const fake = fakeSession();
-    installPermissionHandlers(fake.session as never);
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: true });
 
     for (const origin of ['https://example.com/', 'http://evil.localhost.example/', 'http://0.0.0.0:5173/']) {
       expect(await fake.invokePermissionRequest('media', requestDetails(origin))).toBe(false);
@@ -237,7 +237,7 @@ describe('installPermissionHandlers', () => {
 
   it('denies non-audio media permission requests even from Chamber renderer origins', async () => {
     const fake = fakeSession();
-    installPermissionHandlers(fake.session as never);
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: true });
     const origin = 'http://localhost:5173/';
 
     expect(await fake.invokePermissionRequest('media', requestDetails(origin, ['video']))).toBe(false);
@@ -255,6 +255,15 @@ describe('installPermissionHandlers', () => {
       expect(await fake.invokePermissionRequest(permission, requestDetails(chamberOrigin))).toBe(false);
       expect(fake.invokePermissionCheck(permission, chamberOrigin, checkDetails(chamberOrigin))).toBe(false);
     }
+  });
+
+  it('denies audio capture when voice dictation is unavailable', async () => {
+    const fake = fakeSession();
+    installPermissionHandlers(fake.session as never, { allowAudioCapture: false });
+    const origin = 'http://localhost:5173/';
+
+    expect(await fake.invokePermissionRequest('media', requestDetails(origin))).toBe(false);
+    expect(fake.invokePermissionCheck('media', origin, checkDetails(origin))).toBe(false);
   });
 
   it('default-denies any permission name not on the allow-list, including unknown sentinel values', async () => {

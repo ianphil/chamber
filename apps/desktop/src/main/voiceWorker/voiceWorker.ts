@@ -1,11 +1,12 @@
-import { parentPort } from 'node:worker_threads';
+import { pathToFileURL } from 'node:url';
+import { parentPort, workerData } from 'node:worker_threads';
 
-import {
+import type {
+  AudioClient,
   FoundryLocalManager,
-  type AudioClient,
-  type IModel,
-  type LiveAudioTranscriptionResponse,
-  type LiveAudioTranscriptionSession,
+  IModel,
+  LiveAudioTranscriptionResponse,
+  LiveAudioTranscriptionSession,
 } from 'foundry-local-sdk';
 import {
   VOICE_DICTATION_MODEL_ID,
@@ -33,6 +34,8 @@ interface FoundryVoiceWorkerState {
   streamLoop: Promise<void> | null;
 }
 
+type FoundrySdk = Pick<typeof import('foundry-local-sdk'), 'FoundryLocalManager'>;
+
 const state: FoundryVoiceWorkerState = {
   manager: null,
   managerPromise: null,
@@ -42,6 +45,7 @@ const state: FoundryVoiceWorkerState = {
   sessionId: null,
   streamLoop: null,
 };
+let foundrySdkPromise: Promise<FoundrySdk> | null = null;
 
 export function bindVoiceWorker(port: VoiceWorkerPort): void {
   const maybeParentPort = port as VoiceWorkerPort & { on?: (event: 'message', listener: (message: unknown) => void) => void };
@@ -107,6 +111,7 @@ export async function handleVoiceWorkerRequest(request: VoiceWorkerRpcRequest, p
 
 async function getManager(): Promise<FoundryLocalManager> {
   if (state.manager) return state.manager;
+  const { FoundryLocalManager } = await loadFoundrySdk();
   state.managerPromise ??= FoundryLocalManager.createAsync({ appName: 'Chamber', logLevel: 'info' })
     .then((manager) => {
       state.manager = manager;
@@ -117,6 +122,21 @@ async function getManager(): Promise<FoundryLocalManager> {
       throw err;
     });
   return state.managerPromise;
+}
+
+function loadFoundrySdk(): Promise<FoundrySdk> {
+  if (foundrySdkPromise) return foundrySdkPromise;
+  const sdkEntry = getVoiceSdkEntry();
+  foundrySdkPromise = sdkEntry
+    ? import(/* @vite-ignore */ pathToFileURL(sdkEntry).href) as Promise<FoundrySdk>
+    : import('foundry-local-sdk');
+  return foundrySdkPromise;
+}
+
+function getVoiceSdkEntry(): string | null {
+  if (typeof workerData !== 'object' || workerData === null || Array.isArray(workerData)) return null;
+  const entry = (workerData as Record<string, unknown>).voiceSdkEntry;
+  return typeof entry === 'string' && entry.length > 0 ? entry : null;
 }
 
 async function selectModel(modelId: string): Promise<IModel> {

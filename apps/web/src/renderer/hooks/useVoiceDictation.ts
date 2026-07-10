@@ -65,7 +65,7 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
   }, [options.enabled]);
 
   useEffect(() => {
-    if (!options.enabled || permission !== 'granted') return;
+    if (!options.enabled) return;
     return window.electronAPI.voice.onTranscript((event: TranscriptionEvent) => {
       if (event.sessionId !== sessionIdRef.current) return;
       if (event.type === 'final') {
@@ -86,7 +86,7 @@ export function useVoiceDictation(options: UseVoiceDictationOptions): UseVoiceDi
         setState('idle');
       }
     });
-  }, [options.enabled, permission]);
+  }, [options.enabled]);
 
   const stop = useCallback(async () => {
     const sessionId = sessionIdRef.current;

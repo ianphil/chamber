@@ -132,6 +132,11 @@ import { SharpAvatarNormalizer } from './main/services/mindProfile/SharpAvatarNo
 import { DEV_FEATURE_FLAGS } from './main/devFeatureFlags';
 import { FeatureFlagService } from './main/services/featureFlags/FeatureFlagService';
 import { ElectronPermissionInspector } from './main/voice/PermissionInspector';
+import {
+  applyVoiceRuntimeAvailability,
+  resolveVoiceRuntime,
+  type VoiceRuntimeResolution,
+} from './main/voice/voiceRuntime';
 import type sharpModule from 'sharp';
 
 if (started) {
@@ -313,15 +318,19 @@ const closeTTasksStores = (): void => {
   ttasksStoresByMindPath.clear();
 };
 
-async function initializeRuntime(): Promise<void> {
+async function initializeRuntime(voiceRuntimeAvailable: boolean): Promise<void> {
   const userAgent = `Chamber/${app.getVersion()}`;
-  appFeatureFlags = await new FeatureFlagService({
+  const configuredFeatureFlags = await new FeatureFlagService({
     version: app.getVersion(),
     isPackaged: app.isPackaged,
     userDataPath: appPaths.userData,
     devFeatureFlags: DEV_FEATURE_FLAGS,
     previewFeatures: process.env.CHAMBER_E2E === '1' && process.env.CHAMBER_E2E_PREVIEW_FEATURES === '1',
   }).initialize();
+  appFeatureFlags = applyVoiceRuntimeAvailability(configuredFeatureFlags, voiceRuntimeAvailable);
+  if (configuredFeatureFlags.voiceDictation && !voiceRuntimeAvailable) {
+    log.warn('Voice dictation is enabled by policy, but the Foundry voice runtime is unavailable.');
+  }
 
   const chamberToolsBinDir = getChamberToolsBinDir();
   const clientFactory = new CopilotClientFactory({
@@ -838,7 +847,6 @@ app.on('ready', async () => {
   }
 
   installContentSecurityPolicy(session.defaultSession, app.isPackaged ? 'production' : 'development');
-  installPermissionHandlers(session.defaultSession);
 
   cleanupLegacySquirrelInstall({ isPackaged: app.isPackaged })
     .then((result) => {
@@ -850,7 +858,15 @@ app.on('ready', async () => {
       log.warn('squirrel-migration: Unexpected cleanup failure:', error);
     });
 
-  await initializeRuntime();
+  const voiceRuntime: VoiceRuntimeResolution = resolveVoiceRuntime({
+    isPackaged: app.isPackaged,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+    cwd: process.cwd(),
+  });
+  await initializeRuntime(voiceRuntime.available);
+  installPermissionHandlers(session.defaultSession, {
+    allowAudioCapture: appFeatureFlags.voiceDictation,
+  });
 
   if (useMvpServer) {
     await startMvpServer();
@@ -918,7 +934,7 @@ app.on('ready', async () => {
     featureEnabled: appFeatureFlags.byoLlm,
     onConfigChanged: (config) => { cachedByoLlmConfig = appFeatureFlags.byoLlm ? config : null; },
   });
-  if (appFeatureFlags.voiceDictation === true) {
+  if (appFeatureFlags.voiceDictation && voiceRuntime.available) {
     const voiceStore = new VoiceDictationStore({ storeDir: process.env.CHAMBER_E2E_USER_DATA });
     const electronPermissions = new ElectronPermissionInspector();
     const e2ePermissionOverride = process.env.CHAMBER_E2E === '1'
@@ -929,7 +945,10 @@ app.on('ready', async () => {
       : null;
     const permissions = e2ePermissionOverride ?? electronPermissions;
     const voiceWorkerPath = resolveVoiceWorkerEntry('voiceWorker.js');
-    const workerPool = new VoiceWorkerPool({ voiceWorkerPath });
+    const workerPool = new VoiceWorkerPool({
+      voiceWorkerPath,
+      voiceSdkEntry: voiceRuntime.sdkEntry,
+    });
     workerPool.start();
     voiceWorkerPool = workerPool;
     const provider = process.env.CHAMBER_E2E_VOICE_FAKE === '1'

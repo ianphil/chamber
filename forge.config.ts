@@ -98,11 +98,12 @@ function prepareAutomationRuntime(): void {
 // installer bytes for users who never exercise the MVP loopback path.
 const includeMvpServerResource = process.env.CHAMBER_MVP_SERVER === '1';
 const MVP_SERVER_RESOURCE = './apps/server/dist';
+const includeVoiceRuntime = process.env.CHAMBER_RELEASE_CHANNEL === 'insiders';
+const VOICE_RUNTIME_RESOURCE = './resources/voice-runtime';
 
 const baseExtraResource = [
   './resources/node',
   './resources/copilot-runtime',
-  './resources/voice-runtime',
   './resources/sharp-runtime',
   './resources/acp-runtime',
   './resources/msal-runtime',
@@ -114,9 +115,7 @@ const baseExtraResource = [
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      // foundry-local-sdk loads native prebuilds at runtime; those files must
-      // stay outside app.asar or packaged voice dictation cannot start.
-      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime,foundry-local-sdk}/**/*',
+      unpack: '**/node_modules/{sharp,@img,@azure/msal-node-runtime}/**/*',
     },
     executableName: 'chamber',
     icon: APP_ICON_PATH,
@@ -126,9 +125,11 @@ const config: ForgeConfig = {
         schemes: ['chamber'],
       },
     ],
-    extraResource: includeMvpServerResource
-      ? [...baseExtraResource, MVP_SERVER_RESOURCE]
-      : baseExtraResource,
+    extraResource: [
+      ...baseExtraResource,
+      ...(includeVoiceRuntime ? [VOICE_RUNTIME_RESOURCE] : []),
+      ...(includeMvpServerResource ? [MVP_SERVER_RESOURCE] : []),
+    ],
   },
   publishers: [
     {

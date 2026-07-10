@@ -223,6 +223,7 @@ export function VoiceDictationSettingsSection() {
 
   useEffect(() => {
     let cancelled = false;
+    let receivedModelProgress = false;
 
     void window.electronAPI.voice.getConfig()
       .then((savedConfig) => {
@@ -242,10 +243,10 @@ export function VoiceDictationSettingsSection() {
 
     void window.electronAPI.voice.getModelStatus(VOICE_DICTATION_MODEL_ID)
       .then((status) => {
-        if (!cancelled) setModelStatus(status);
+        if (!cancelled && !receivedModelProgress) setModelStatus(status);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
+        if (!cancelled && !receivedModelProgress) {
           setModelStatus({
             id: VOICE_DICTATION_MODEL_ID,
             status: 'error',
@@ -266,7 +267,10 @@ export function VoiceDictationSettingsSection() {
       setConfig(normalizeConfig(nextConfig));
     });
     const unsubscribeProgress = window.electronAPI.voice.onModelProgress((status) => {
-      if (status.id === VOICE_DICTATION_MODEL_ID) setModelStatus(status);
+      if (status.id === VOICE_DICTATION_MODEL_ID) {
+        receivedModelProgress = true;
+        setModelStatus(status);
+      }
     });
 
     return () => {

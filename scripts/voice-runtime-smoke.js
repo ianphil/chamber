@@ -13,7 +13,9 @@ const stubDir = path.join(buildDir, 'node_modules', 'foundry-local-sdk');
 async function main() {
   await buildVoiceWorker();
   installFoundryStub();
-  const worker = new Worker(workerPath);
+  const worker = new Worker(workerPath, {
+    workerData: { voiceSdkEntry: path.join(stubDir, 'index.mjs') },
+  });
   try {
     const messages = [];
     worker.on('message', (message) => {

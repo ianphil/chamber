@@ -14,10 +14,8 @@ interface ForgeMakerWithConfig {
 }
 
 async function loadForgeConfig() {
-  // forge.config.ts reads process.env.CHAMBER_MVP_SERVER at module-load to
-  // decide whether to ship the server bundle as an Electron resource (#145).
-  // resetModules() drops the cached evaluation so each test sees the env it
-  // arranged in beforeEach.
+  // forge.config.ts reads packaging flags at module-load. resetModules() drops
+  // the cached evaluation so each test sees the environment it arranged.
   vi.resetModules();
   const mod = await import('../../forge.config');
   return mod.default;
@@ -42,9 +40,11 @@ async function getSquirrelMakerConfig(): Promise<Record<string, unknown>> {
 
 describe('forge config', () => {
   const originalMvpServerEnv = process.env.CHAMBER_MVP_SERVER;
+  const originalReleaseChannel = process.env.CHAMBER_RELEASE_CHANNEL;
 
   beforeEach(() => {
     delete process.env.CHAMBER_MVP_SERVER;
+    delete process.env.CHAMBER_RELEASE_CHANNEL;
   });
 
   afterEach(() => {
@@ -52,6 +52,11 @@ describe('forge config', () => {
       delete process.env.CHAMBER_MVP_SERVER;
     } else {
       process.env.CHAMBER_MVP_SERVER = originalMvpServerEnv;
+    }
+    if (originalReleaseChannel === undefined) {
+      delete process.env.CHAMBER_RELEASE_CHANNEL;
+    } else {
+      process.env.CHAMBER_RELEASE_CHANNEL = originalReleaseChannel;
     }
   });
 
@@ -92,7 +97,6 @@ describe('forge config', () => {
       // These resources are always required for the packaged app.
       expect(extraResource).toContain('./resources/node');
       expect(extraResource).toContain('./resources/copilot-runtime');
-      expect(extraResource).toContain('./resources/voice-runtime');
       expect(extraResource).toContain('./resources/sqlite-runtime');
       expect(extraResource).toContain('./node_modules/keytar');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/managed-skills');
@@ -101,13 +105,23 @@ describe('forge config', () => {
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/automation-skill');
     });
 
-    it('unpacks Foundry Local native prebuilds required by packaged voice dictation', async () => {
+    it('keeps Foundry Local out of stable packages', async () => {
       const config = await loadForgeConfig();
+      const extraResource = (config.packagerConfig?.extraResource ?? []) as string[];
       const unpack = config.packagerConfig?.asar && typeof config.packagerConfig.asar === 'object'
         ? config.packagerConfig.asar.unpack
         : '';
 
-      expect(unpack).toContain('foundry-local-sdk');
+      expect(extraResource).not.toContain('./resources/voice-runtime');
+      expect(unpack).not.toContain('foundry-local-sdk');
+    });
+
+    it('ships the dedicated voice runtime for insiders packages', async () => {
+      process.env.CHAMBER_RELEASE_CHANNEL = 'insiders';
+      const config = await loadForgeConfig();
+      const extraResource = (config.packagerConfig?.extraResource ?? []) as string[];
+
+      expect(extraResource).toContain('./resources/voice-runtime');
     });
   });
 });

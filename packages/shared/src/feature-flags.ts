@@ -73,7 +73,7 @@ export function parseCompleteFeatureFlags(value: unknown): AppFeatureFlags | nul
     typeof value.switchboardRelay !== 'boolean' ||
     typeof value.byoLlm !== 'boolean' ||
     typeof value.chamberCopilot !== 'boolean' ||
-    typeof value.voiceDictation !== 'boolean'
+    (value.voiceDictation !== undefined && typeof value.voiceDictation !== 'boolean')
   ) {
     return null;
   }
@@ -81,7 +81,7 @@ export function parseCompleteFeatureFlags(value: unknown): AppFeatureFlags | nul
     switchboardRelay: value.switchboardRelay,
     byoLlm: value.byoLlm,
     chamberCopilot: value.chamberCopilot,
-    voiceDictation: value.voiceDictation,
+    voiceDictation: value.voiceDictation === true,
   };
 }
 

@@ -118,6 +118,7 @@ describe('SettingsView', () => {
       </AppStateProvider>,
     );
     await screen.findByRole('heading', { name: /settings/i });
+    expect(screen.queryByRole('button', { name: 'Voice dictation' })).toBeNull();
     expect(screen.queryByTestId('voice-dictation-settings-section')).toBeNull();
   });
 
@@ -127,6 +128,7 @@ describe('SettingsView', () => {
         <SettingsView />
       </AppStateProvider>,
     );
+    expect(screen.getByRole('button', { name: 'Voice dictation' })).toBeTruthy();
     gotoTab('Voice dictation');
     expect(await screen.findByTestId('voice-dictation-settings-section')).toBeTruthy();
   });

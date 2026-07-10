@@ -12,6 +12,7 @@ export default defineConfig({
         'foundry-local-sdk',
         'node:worker_threads',
         'node:path',
+        'node:url',
         'node:fs',
         'better-sqlite3',
         'node:sqlite',

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import packageJson from '../../package.json';
+import voiceRuntimePackageJson from '../../chamber-voice-runtime/package.json';
 import {
   PACKAGED_RENDERER_ENTRY,
   PACKAGED_RENDERER_NAME,
@@ -9,6 +10,16 @@ import {
 } from '../../config/packaged-renderer.cjs';
 
 describe('packaging scripts', () => {
+  it('keeps Foundry Local build-only at the root and pinned in the packaged voice runtime', () => {
+    expect(packageJson.dependencies).not.toHaveProperty('foundry-local-sdk');
+    expect(packageJson.devDependencies['foundry-local-sdk']).toBe('1.1.0');
+    expect(voiceRuntimePackageJson.dependencies['foundry-local-sdk']).toBe('1.1.0');
+
+    const prepareVoiceRuntime = readFileSync('scripts/prepare-voice-runtime.js', 'utf-8');
+    expect(prepareVoiceRuntime).toContain("process.env.CHAMBER_RELEASE_CHANNEL !== 'insiders'");
+    expect(prepareVoiceRuntime).toContain('fs.rmSync(targetDir, { recursive: true, force: true })');
+  });
+
   it('builds generated server resources before Electron packaging commands', () => {
     for (const scriptName of ['package', 'make:forge', 'publish'] as const) {
       const script = packageJson.scripts[scriptName];

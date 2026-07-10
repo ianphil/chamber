@@ -107,6 +107,14 @@ function promoteRuntime() {
 }
 
 function main() {
+  if (process.env.CHAMBER_RELEASE_CHANNEL !== 'insiders') {
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    fs.rmSync(backupDir, { recursive: true, force: true });
+    console.log('Skipping Chamber voice runtime for a non-insiders package.');
+    return;
+  }
+
   const pinnedVersion = readPinnedVersion();
   console.log(`Preparing Chamber voice runtime (foundry-local-sdk@${pinnedVersion}) at ${targetDir}`);
 

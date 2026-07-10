@@ -308,6 +308,34 @@ describe('ChatInput', () => {
       expect(mic.getAttribute('title')).toBe('Download the dictation model in Settings → Voice dictation');
     });
 
+    it('does not let an older model-status request overwrite newer progress', async () => {
+      let resolveInitialStatus!: (status: VoiceModelStatus) => void;
+      vi.mocked(api.voice.getModelStatus).mockReturnValue(new Promise((resolve) => {
+        resolveInitialStatus = resolve;
+      }));
+      let onModelProgress!: (status: VoiceModelStatus) => void;
+      vi.mocked(api.voice.onModelProgress).mockImplementation((callback) => {
+        onModelProgress = callback;
+        return vi.fn();
+      });
+
+      const mic = await renderWithMic();
+      act(() => {
+        onModelProgress(readyVoiceModelStatus);
+      });
+      await waitFor(() => expect((mic as HTMLButtonElement).disabled).toBe(false));
+
+      await act(async () => {
+        resolveInitialStatus({
+          id: VOICE_DICTATION_MODEL_ID,
+          status: 'not-downloaded',
+        });
+      });
+
+      expect((mic as HTMLButtonElement).disabled).toBe(false);
+      expect(mic.getAttribute('title')).toBe('Click to start dictation · Alt+Shift+V');
+    });
+
     it('does not start push-to-talk while the shortcode popover is open', async () => {
       await renderWithMic();
       const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;

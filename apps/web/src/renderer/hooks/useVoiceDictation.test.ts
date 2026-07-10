@@ -168,7 +168,7 @@ describe('useVoiceDictation', () => {
 
     expect(api.voice.startSession).not.toHaveBeenCalled();
     expect(startMicCapture).not.toHaveBeenCalled();
-    expect(api.voice.onTranscript).not.toHaveBeenCalled();
+    expect(api.voice.onTranscript).toHaveBeenCalled();
     expect(result.current.state).toBe('error');
   });
 

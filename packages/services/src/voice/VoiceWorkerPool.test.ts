@@ -49,10 +49,12 @@ describe('VoiceWorkerPool', () => {
     const workers: FakeWorker[] = [];
     const pool = new VoiceWorkerPool({
       voiceWorkerPath: 'voiceWorker.js',
-      workerFactory: (workerPath) => {
+      voiceSdkEntry: 'foundry-entry.js',
+      workerFactory: (workerPath, options) => {
         const worker = new FakeWorker();
         workers.push(worker);
         expect(workerPath).toBe('voiceWorker.js');
+        expect(options.workerData.voiceSdkEntry).toBe('foundry-entry.js');
         return worker;
       },
     });
@@ -77,6 +79,7 @@ describe('VoiceWorkerPool', () => {
     const engine = new FakeWorker();
     const pool = new VoiceWorkerPool({
       voiceWorkerPath: 'voiceWorker.js',
+      voiceSdkEntry: 'foundry-entry.js',
       workerFactory: () => engine,
     });
     const events: TranscriptionEvent[] = [];
@@ -94,6 +97,7 @@ describe('VoiceWorkerPool', () => {
     const worker = new FakeWorker();
     const pool = new VoiceWorkerPool({
       voiceWorkerPath: 'voiceWorker.js',
+      voiceSdkEntry: 'foundry-entry.js',
       workerFactory: () => worker,
     });
     const events: VoiceInstallerEvent[] = [];
@@ -112,6 +116,7 @@ describe('VoiceWorkerPool', () => {
     const workers: FakeWorker[] = [];
     const pool = new VoiceWorkerPool({
       voiceWorkerPath: 'voiceWorker.js',
+      voiceSdkEntry: 'foundry-entry.js',
       workerFactory: () => {
         const worker = new FakeWorker();
         workers.push(worker);
@@ -137,6 +142,7 @@ describe('VoiceWorkerPool', () => {
     const engine = new FakeWorker();
     const pool = new VoiceWorkerPool({
       voiceWorkerPath: 'voiceWorker.js',
+      voiceSdkEntry: 'foundry-entry.js',
       workerFactory: () => engine,
       scheduler: createScheduler(),
     });
@@ -153,6 +159,7 @@ describe('VoiceWorkerPool', () => {
     const workers = [new FakeWorker()];
     const pool = new VoiceWorkerPool({
       voiceWorkerPath: 'voiceWorker.js',
+      voiceSdkEntry: 'foundry-entry.js',
       workerFactory: () => workers.shift() ?? new FakeWorker(),
       scheduler,
     });

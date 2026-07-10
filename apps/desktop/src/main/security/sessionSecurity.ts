@@ -68,10 +68,15 @@ export function installContentSecurityPolicy(session: Session, mode: SecurityMod
   });
 }
 
-export function installPermissionHandlers(session: Session): void {
+export interface PermissionHandlerOptions {
+  readonly allowAudioCapture?: boolean;
+}
+
+export function installPermissionHandlers(session: Session, options: PermissionHandlerOptions = {}): void {
   session.setPermissionRequestHandler((webContents, permission, callback, details) => {
     callback(
       isPermissionAllowed(permission, {
+        allowAudioCapture: options.allowAudioCapture === true,
         origin: getPermissionRequestOrigin(webContents, details),
         mediaTypes: 'mediaTypes' in details ? details.mediaTypes : undefined,
         isMainFrame: details.isMainFrame,
@@ -80,6 +85,7 @@ export function installPermissionHandlers(session: Session): void {
   });
   session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) =>
     isPermissionAllowed(permission, {
+      allowAudioCapture: options.allowAudioCapture === true,
       origin: details.securityOrigin ?? requestingOrigin ?? details.requestingUrl ?? webContents?.getURL(),
       mediaTypes: details.mediaType ? [details.mediaType] : undefined,
       isMainFrame: details.isMainFrame,
@@ -95,6 +101,7 @@ function getPermissionRequestOrigin(
 }
 
 interface PermissionDecisionInput {
+  readonly allowAudioCapture: boolean;
   readonly origin?: string;
   readonly mediaTypes?: ReadonlyArray<'video' | 'audio' | 'unknown'>;
   readonly isMainFrame: boolean;
@@ -103,6 +110,7 @@ interface PermissionDecisionInput {
 function isPermissionAllowed(permission: string, input: PermissionDecisionInput): boolean {
   if (ALLOWED_PERMISSIONS.has(permission)) return true;
   if (permission !== 'media') return false;
+  if (!input.allowAudioCapture) return false;
   if (!input.isMainFrame) return false;
   if (!isChamberRendererOrigin(input.origin)) return false;
 

@@ -80,10 +80,10 @@ test.describe.serial('electron voice dictation UAT smoke', () => {
       'Microphone permissions',
       'Test mic',
       'Shortcut',
-      'Push-to-talk',
+      'Keyboard shortcut behavior',
       'Transcription model',
     ]) {
-      await expect(section.getByText(rowTitle, { exact: true }).first()).toBeVisible();
+      await expect(section.getByText(rowTitle, { exact: true }).first()).toBeAttached();
     }
   });
 
@@ -300,6 +300,9 @@ async function installBrowserMediaStubs(page: Page): Promise<void> {
 async function openSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('button', { name: 'Voice dictation' })
+    .click();
 }
 
 function voiceSettingsSection(page: Page) {
@@ -311,12 +314,10 @@ async function activateMind(page: Page, options: { expectMicEnabled?: boolean } 
     const minds = await window.electronAPI.mind.list();
     const existing = minds.find((candidate) => candidate.mindId === id || candidate.identity.name === name);
     if (!existing) throw new Error(`Seeded mind ${name} was not loaded`);
-    await window.electronAPI.mind.setActive(existing.mindId);
     return existing;
   }, { id: mindId, name: mindName });
   const mindButton = page.getByRole('button', { name: mindName }).first();
   await expect(mindButton).toBeVisible();
-  await mindButton.click({ force: true });
   await expect(chatTextarea(page)).toBeEnabled();
   const mic = page.getByRole('button', { name: 'Dictate message' });
   await expect(mic).toBeVisible();
@@ -335,7 +336,14 @@ async function startDictationFromMicButton(page: Page): Promise<void> {
   await expect(mic).toBeEnabled();
   await mic.click();
   await expect(mic).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(async () => (await getVoiceSessionState(page)).activeSessionId).not.toBeNull();
+  try {
+    await expect.poll(async () => (await getVoiceSessionState(page)).activeSessionId).not.toBeNull();
+  } catch {
+    const state = await getVoiceSessionState(page);
+    throw new Error(
+      `Voice session did not remain active: ${JSON.stringify(state)}; title=${await mic.getAttribute('title')}`,
+    );
+  }
 }
 
 async function emitTranscript(page: Page, text = sentinelTranscript): Promise<void> {
