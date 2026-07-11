@@ -52,7 +52,7 @@ test.describe('electron Genesis Lucy template smoke', () => {
     await page.getByRole('button', { name: 'Choose this voice' }).click();
 
     await expect(page.getByText('How can I help you today?')).toBeVisible({ timeout: 120_000 });
-    await expect(page.getByText(lucyName)).toBeVisible();
+    await expect(page.getByRole('heading', { name: lucyName, exact: true })).toBeVisible();
     await expect(page.getByPlaceholder('Message your agent… (paste an image to attach)')).toBeEnabled();
 
     expect(fs.existsSync(path.join(lucyPath, 'SOUL.md'))).toBe(true);

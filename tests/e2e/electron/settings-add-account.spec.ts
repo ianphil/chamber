@@ -48,9 +48,7 @@ test.describe('electron Settings Add Account device-code smoke (#214)', () => {
 
     await openSettings(page);
 
-    // Open the account dropdown and choose + Add Account.
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: '+ Add Account' }).click();
+    await openAddAccount(page);
 
     // The bug fix: the modal must open and show the injected device code.
     const dialog = page.getByRole('dialog', { name: /Add a GitHub account/i });
@@ -95,8 +93,7 @@ test.describe('electron Settings Add Account device-code smoke (#214)', () => {
     }
 
     await openSettings(page);
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: '+ Add Account' }).click();
+    await openAddAccount(page);
 
     const dialog = page.getByRole('dialog', { name: /Add a GitHub account/i });
     await expect(dialog).toBeVisible();
@@ -121,6 +118,23 @@ async function openSettings(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'Settings' }).click();
   }
   await expect(heading).toBeVisible();
+  const settingsNav = page.getByRole('navigation', { name: 'Settings sections' });
+  await settingsNav.getByRole('button', { name: 'Account' }).click();
+  await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
+}
+
+async function openAddAccount(page: Page): Promise<void> {
+  const addAccountButton = page.getByRole('button', { name: '+ Add account', exact: true });
+  const accountSelect = page.getByRole('combobox', { name: 'Select account' });
+  await expect(addAccountButton.or(accountSelect)).toBeVisible();
+
+  if (await addAccountButton.isVisible()) {
+    await addAccountButton.click();
+    return;
+  }
+
+  await accountSelect.click();
+  await page.getByRole('option', { name: '+ Add Account', exact: true }).click();
 }
 
 function seedMind(seedPath: string): void {

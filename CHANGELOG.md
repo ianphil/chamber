@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refresh Settings navigation and layout** — Reorganizes Profile, Account, Marketplaces, and Local LLM settings into a clearer left-rail interface with updated panels and light-theme styling.
 - **Polish Lens view presentation** — Adds view descriptions, Lucide icons, loading skeletons, refined empty states, and improved detail-view readability.
 
+### Security
+
+- **Harden npm dependency supply-chain security** — Remediates production and development audit findings, enforces a seven-day minimum package age, and updates affected Electron smoke coverage.
+
+
 
 
 

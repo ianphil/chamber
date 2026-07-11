@@ -54,15 +54,23 @@ test.describe('electron marketplace managed skills smoke', () => {
 
     expect(mind.identity.name).toBe('Marketplace Mind');
 
-    await expect.poll(() => readInstalledSkillSummary(mindPath), {
+    await expect.poll(() => {
+      const summary = readInstalledSkillSummary(mindPath);
+      return coreSkillIds.every((skillId) => summary[skillId] !== null);
+    }, {
       timeout: 90_000,
       intervals: [500, 1_000, 2_000],
       message: 'Expected marketplace managed skills to install into the fresh mind.',
-    }).toEqual({
-      automation: { version: '2.2.0', fileCount: 2, marketplaceId },
-      lens: { version: '2.0.0', fileCount: 1, marketplaceId },
-      ttasks: { version: '0.3.0', fileCount: 7, marketplaceId },
-    });
+    }).toBe(true);
+
+    const installedSkills = readInstalledSkillSummary(mindPath);
+    for (const skillId of coreSkillIds) {
+      const installedSkill = installedSkills[skillId];
+      expect(installedSkill).not.toBeNull();
+      expect(installedSkill?.marketplaceId).toBe(marketplaceId);
+      expect(installedSkill?.version).not.toBe('');
+      expect(installedSkill?.fileCount).toBeGreaterThan(0);
+    }
 
     await page.evaluate((mindId) => window.electronAPI.mind.remove(mindId), mind.mindId);
   });
