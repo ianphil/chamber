@@ -101,10 +101,10 @@ function createManager(managedSkillService?: { installIntoMind: (mindPath: strin
 }
 
 function assertConversationConfigDirIsStable(config: Record<string, unknown>): void {
-  if (config.configDir !== COPILOT_RUNTIME_CONFIG_DIR) {
+  if (config.configDirectory !== COPILOT_RUNTIME_CONFIG_DIR) {
     throw new Error(
       [
-        `Conversation SDK configDir changed from ${COPILOT_RUNTIME_CONFIG_DIR} to ${String(config.configDir)}.`,
+        `Conversation SDK configDirectory changed from ${COPILOT_RUNTIME_CONFIG_DIR} to ${String(config.configDirectory)}.`,
         'Changing this path moves session-state roots, so existing conversations listed in the history pane can no longer hydrate and open as empty chats.',
         'If this is intentional, add an explicit migration/fallback plan before updating this invariant.',
       ].join(' '),
@@ -298,14 +298,14 @@ describe('session-state invariants', () => {
       1,
       target.sessionId,
       expect.objectContaining({
-        configDir: COPILOT_RUNTIME_CONFIG_DIR,
+        configDirectory: COPILOT_RUNTIME_CONFIG_DIR,
         enableConfigDiscovery: false,
       }),
     );
     expect(mockResumeSession).toHaveBeenNthCalledWith(
       2,
       target.sessionId,
-      expect.not.objectContaining({ configDir: expect.any(String) }),
+      expect.not.objectContaining({ configDirectory: expect.any(String) }),
     );
     expect(mockResumeSession.mock.calls[1][1]).toMatchObject({
       workingDirectory: '/tmp/agents/q',
@@ -335,7 +335,7 @@ describe('session-state invariants', () => {
     for (const [config] of mockCreateSession.mock.calls) {
       expect(config).not.toHaveProperty('sessionId');
       expect(config).toMatchObject({
-        configDir: COPILOT_RUNTIME_CONFIG_DIR,
+        configDirectory: COPILOT_RUNTIME_CONFIG_DIR,
         enableConfigDiscovery: false,
       });
     }

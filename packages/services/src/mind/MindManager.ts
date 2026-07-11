@@ -1141,7 +1141,7 @@ export class MindManager extends EventEmitter {
     const effectiveModel = this.resolveModelForSdk(model, provider);
     const sessionConfig: SessionConfig = {
       workingDirectory: mindPath,
-      configDir: this.getCopilotRuntimeConfigDir(),
+      configDirectory: this.getCopilotRuntimeConfigDir(),
       enableConfigDiscovery: false,
       tools,
       systemMessage: {
@@ -1211,7 +1211,7 @@ export class MindManager extends EventEmitter {
       onPermissionRequest,
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
       ...(skillDirectories.length > 0 ? { skillDirectories } : {}),
-      ...(configDir ? { configDir } : {}),
+      ...(configDir ? { configDirectory: configDir } : {}),
       ...(chamberMindConfig.excludedTools && chamberMindConfig.excludedTools.length > 0
         ? { excludedTools: chamberMindConfig.excludedTools }
         : {}),

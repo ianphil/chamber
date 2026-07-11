@@ -202,20 +202,30 @@ export class ChatService {
         resolveTurnEndQuiescence?.();
       }, TURN_END_QUIESCENCE_MS);
     };
+    const getEventDataString = (
+      event: Parameters<TurnLifecycleTrace['record']>[0],
+      key: string,
+    ): string | undefined => {
+      if (typeof event.data !== 'object' || event.data === null || !(key in event.data)) return undefined;
+      const value = event.data[key as keyof typeof event.data];
+      return typeof value === 'string' ? value : undefined;
+    };
     const trackTerminalCandidate = (event: Parameters<TurnLifecycleTrace['record']>[0]) => {
       clearTurnEndQuiescence();
 
-      if (event.type === 'tool.execution_start' && typeof event.data?.toolCallId === 'string') {
-        outstandingToolIds.add(event.data.toolCallId);
+      const toolCallId = getEventDataString(event, 'toolCallId');
+      const requestId = getEventDataString(event, 'requestId');
+      if (event.type === 'tool.execution_start' && toolCallId) {
+        outstandingToolIds.add(toolCallId);
       }
-      if (event.type === 'tool.execution_complete' && typeof event.data?.toolCallId === 'string') {
-        outstandingToolIds.delete(event.data.toolCallId);
+      if (event.type === 'tool.execution_complete' && toolCallId) {
+        outstandingToolIds.delete(toolCallId);
       }
-      if (event.type === 'permission.requested' && typeof event.data?.requestId === 'string') {
-        pendingPermissionIds.add(event.data.requestId);
+      if (event.type === 'permission.requested' && requestId) {
+        pendingPermissionIds.add(requestId);
       }
-      if (event.type === 'permission.completed' && typeof event.data?.requestId === 'string') {
-        pendingPermissionIds.delete(event.data.requestId);
+      if (event.type === 'permission.completed' && requestId) {
+        pendingPermissionIds.delete(requestId);
       }
       if (event.type === 'assistant.turn_start') {
         if (typeof event.agentId === 'string') {

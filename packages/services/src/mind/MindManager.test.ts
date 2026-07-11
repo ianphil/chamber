@@ -233,7 +233,7 @@ describe('MindManager', () => {
       await manager.loadMind('/tmp/agents/q');
 
       expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({
-        configDir: COPILOT_RUNTIME_CONFIG_DIR,
+        configDirectory: COPILOT_RUNTIME_CONFIG_DIR,
         enableConfigDiscovery: false,
       }));
     });
@@ -264,7 +264,7 @@ describe('MindManager', () => {
         'chamber-q-a1b2-existing',
         expect.objectContaining({
           workingDirectory: '/tmp/agents/q',
-          configDir: COPILOT_RUNTIME_CONFIG_DIR,
+          configDirectory: COPILOT_RUNTIME_CONFIG_DIR,
           enableConfigDiscovery: false,
         }),
       );
@@ -886,7 +886,7 @@ describe('MindManager', () => {
       );
       expect(mockResumeSession).toHaveBeenCalledWith(
         mind.activeSessionId,
-        expect.not.objectContaining({ configDir: expect.any(String) }),
+        expect.not.objectContaining({ configDirectory: expect.any(String) }),
       );
       expect(mockCreateSession).toHaveBeenCalledWith(expect.objectContaining({
         sessionId: mind.activeSessionId,
@@ -1030,14 +1030,14 @@ describe('MindManager', () => {
         1,
         target.sessionId,
         expect.objectContaining({
-          configDir: COPILOT_RUNTIME_CONFIG_DIR,
+          configDirectory: COPILOT_RUNTIME_CONFIG_DIR,
           enableConfigDiscovery: false,
         }),
       );
       expect(mockResumeSession).toHaveBeenNthCalledWith(
         2,
         target.sessionId,
-        expect.not.objectContaining({ configDir: expect.any(String) }),
+        expect.not.objectContaining({ configDirectory: expect.any(String) }),
       );
       const legacyResumeConfig = mockResumeSession.mock.calls[1][1] as Record<string, unknown>;
       expect(legacyResumeConfig.enableConfigDiscovery).toBe(false);

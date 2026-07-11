@@ -42,7 +42,12 @@ export interface LifecycleSummary {
 interface RawEvent {
   type: string;
   agentId?: string;
-  data?: { toolCallId?: string } & Record<string, unknown>;
+  data?: unknown;
+}
+
+function getToolCallId(data: unknown): string | undefined {
+  if (typeof data !== 'object' || data === null || !('toolCallId' in data)) return undefined;
+  return typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
 }
 
 export class TurnLifecycleTrace {
@@ -74,7 +79,7 @@ export class TurnLifecycleTrace {
       if (event.agentId === undefined) this.sawRootTurnEndEver = true;
     }
 
-    const toolCallId = typeof event.data?.toolCallId === 'string' ? event.data.toolCallId : undefined;
+    const toolCallId = getToolCallId(event.data);
     if (event.type === 'tool.execution_start' && toolCallId) {
       this.outstandingTools.add(toolCallId);
     }
