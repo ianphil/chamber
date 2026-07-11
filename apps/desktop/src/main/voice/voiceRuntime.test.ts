@@ -67,6 +67,7 @@ describe('resolveVoiceRuntime', () => {
       byoLlm: false,
       chamberCopilot: false,
       voiceDictation: true,
+      wtdTopology: false,
     }, false).voiceDictation).toBe(false);
   });
 });

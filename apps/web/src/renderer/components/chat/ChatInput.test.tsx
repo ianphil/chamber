@@ -16,6 +16,7 @@ const appStateMock = vi.hoisted(() => ({
       byoLlm: false,
       chamberCopilot: false,
       voiceDictation: false,
+      wtdTopology: false,
     },
   },
 }));
@@ -120,6 +121,7 @@ beforeEach(() => {
       byoLlm: false,
       chamberCopilot: false,
       voiceDictation: false,
+      wtdTopology: false,
     },
   };
   voiceHookMock.state = 'idle';
@@ -205,6 +207,7 @@ describe('ChatInput', () => {
           byoLlm: false,
           chamberCopilot: false,
           voiceDictation: true,
+          wtdTopology: false,
         },
       };
       render(<ChatInput {...defaultProps} {...props} />);
@@ -218,6 +221,7 @@ describe('ChatInput', () => {
           byoLlm: false,
           chamberCopilot: false,
           voiceDictation: false,
+          wtdTopology: false,
         },
       };
 

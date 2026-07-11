@@ -12,4 +12,5 @@ export const DEV_FEATURE_FLAGS: AppFeatureFlags = {
   byoLlm: true,
   chamberCopilot: true,
   voiceDictation: true,
+  wtdTopology: true,
 };

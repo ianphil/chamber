@@ -1,0 +1,9 @@
+{
+  "name": "chamber-wtd-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned packaged runtime for the Chamber WTD topology advisor (ttasks-wtd)",
+  "dependencies": {
+    "@ianphil/ttasks-wtd": "git+https://github.com/ianphil/ttasks-wtd.git#9dd671051935fcbb6e2aa7eb8060401d75dda68d"
+  }
+}

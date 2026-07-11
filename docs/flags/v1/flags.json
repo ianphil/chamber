@@ -1,18 +1,20 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-17T21:00:00Z",
+  "updatedAt": "2026-07-11T05:00:00Z",
   "channels": {
     "stable": {
       "switchboardRelay": false,
       "byoLlm": false,
       "chamberCopilot": false,
-      "voiceDictation": false
+      "voiceDictation": false,
+      "wtdTopology": false
     },
     "insiders": {
       "switchboardRelay": true,
       "byoLlm": true,
       "chamberCopilot": true,
-      "voiceDictation": true
+      "voiceDictation": true,
+      "wtdTopology": true
     }
   }
 }

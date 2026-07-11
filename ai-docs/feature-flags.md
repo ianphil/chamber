@@ -45,17 +45,21 @@ Expected shape:
 ```json
 {
   "version": 1,
-  "updatedAt": "2026-05-17T21:00:00Z",
+  "updatedAt": "2026-07-11T05:00:00Z",
   "channels": {
     "stable": {
       "switchboardRelay": false,
       "byoLlm": false,
-      "chamberCopilot": false
+      "chamberCopilot": false,
+      "voiceDictation": false,
+      "wtdTopology": false
     },
     "insiders": {
       "switchboardRelay": true,
       "byoLlm": true,
-      "chamberCopilot": true
+      "chamberCopilot": true,
+      "voiceDictation": true,
+      "wtdTopology": true
     }
   }
 }
@@ -73,8 +77,9 @@ local baseline like "stable off, insiders on"; it only chooses which remote JSON
 object to read.
 
 When changing the GitHub Pages policy, update both channel objects explicitly.
-Do not rely on missing fields to mean "off" for the remote policy; packaged
-policy validation requires every known flag to be present for both channels.
+The parser tolerates a missing newly introduced preview flag as `false` so older
+cached policies remain usable, but the published policy should always include
+every current flag.
 
 ### Failure behavior
 
@@ -108,6 +113,8 @@ normal app runs or release builds.
 | `switchboardRelay` | remote | remote | Hides the activity-bar relay entry point and route. |
 | `byoLlm` | remote | remote | Hides BYO model settings and disables desktop BYO runtime/IPC usage. |
 | `chamberCopilot` | remote | remote | Wires the chamber-copilot ACP provider and `cli_*` tools. |
+| `voiceDictation` | remote | remote | Gates local voice UI, IPC, permissions, and the packaged Foundry runtime. |
+| `wtdTopology` | remote | remote | Wires the local WTD topology-advisor tool when its prepared runtime is available. |
 
 ## Local development flags
 
@@ -126,6 +133,8 @@ export const DEV_FEATURE_FLAGS = {
   switchboardRelay: true,
   byoLlm: true,
   chamberCopilot: true,
+  voiceDictation: true,
+  wtdTopology: true,
 };
 ```
 
@@ -155,6 +164,21 @@ are simply ignored until the user runs an insiders build again.
 to mind tool providers. Stable builds also ignore the legacy
 `chamberCopilotEnabled` key in `~/.chamber/config.json`; users cannot turn this
 surface on locally.
+
+## Voice dictation
+
+`voiceDictation` gates the local dictation UI, microphone permission handling,
+voice IPC, and the prepared Foundry runtime. Effective enablement also requires
+the runtime to be present, so a stable package cannot expose voice through an
+accidental remote-policy change.
+
+## WTD topology advisor
+
+`wtdTopology` gates the `wtd_retrieve_topology` agent tool and its prepared
+native ONNX runtime. Effective enablement also requires the current
+platform/architecture runtime to be present. The model bundle is downloaded
+into the shared application cache on first use; workflow intent and draft DAGs
+remain local.
 
 ## Adding a new feature flag
 

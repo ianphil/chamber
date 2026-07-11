@@ -101,7 +101,7 @@ describe('SettingsView', () => {
 
   it('shows Local & Custom LLM settings when BYO LLM is feature-flagged on', async () => {
     render(
-      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false, voiceDictation: false } }}>
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: true, chamberCopilot: false, voiceDictation: false, wtdTopology: false } }}>
         <SettingsView />
       </AppStateProvider>,
     );
@@ -113,7 +113,7 @@ describe('SettingsView', () => {
 
   it('hides Voice dictation settings when voice dictation is feature-flagged off', async () => {
     render(
-      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false } }}>
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false, wtdTopology: false } }}>
         <SettingsView />
       </AppStateProvider>,
     );
@@ -124,7 +124,7 @@ describe('SettingsView', () => {
 
   it('shows Voice dictation settings when voice dictation is feature-flagged on', async () => {
     render(
-      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: true } }}>
+      <AppStateProvider testInitialState={{ featureFlags: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: true, wtdTopology: false } }}>
         <SettingsView />
       </AppStateProvider>,
     );

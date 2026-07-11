@@ -750,10 +750,11 @@ describe('appReducer', () => {
   it('SET_FEATURE_FLAGS updates feature flags', () => {
     const state = appReducer(initialState, {
       type: 'SET_FEATURE_FLAGS',
-      payload: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true },
+      payload: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true, wtdTopology: true },
     });
     expect(state.featureFlags.switchboardRelay).toBe(true);
     expect(state.featureFlags.byoLlm).toBe(true);
+    expect(state.featureFlags.wtdTopology).toBe(true);
     expect(state.featureFlags.chamberCopilot).toBe(true);
     expect(state.featureFlags.voiceDictation).toBe(true);
   });

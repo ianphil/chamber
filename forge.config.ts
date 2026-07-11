@@ -91,6 +91,18 @@ function prepareAutomationRuntime(): void {
   }
 }
 
+function prepareWtdRuntime(platform: string, arch: string): void {
+  const scriptPath = path.resolve(__dirname, 'scripts', 'prepare-wtd-runtime.js');
+  const result = spawnSync(process.execPath, [scriptPath, platform, arch], {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Failed to prepare packaged WTD runtime for ${platform}-${arch}.`);
+  }
+}
+
 // Issue #145 — the loopback server bundle ships as an Electron resource only
 // when CHAMBER_MVP_SERVER=1 is set at package time. The runtime gate in
 // apps/desktop/src/main.ts uses the same env variable to decide whether to
@@ -100,6 +112,8 @@ const includeMvpServerResource = process.env.CHAMBER_MVP_SERVER === '1';
 const MVP_SERVER_RESOURCE = './apps/server/dist';
 const includeVoiceRuntime = process.env.CHAMBER_RELEASE_CHANNEL === 'insiders';
 const VOICE_RUNTIME_RESOURCE = './resources/voice-runtime';
+const includeWtdRuntime = process.env.CHAMBER_RELEASE_CHANNEL === 'insiders';
+const WTD_RUNTIME_RESOURCE = './resources/wtd-runtime';
 
 const baseExtraResource = [
   './resources/node',
@@ -128,6 +142,7 @@ const config: ForgeConfig = {
     extraResource: [
       ...baseExtraResource,
       ...(includeVoiceRuntime ? [VOICE_RUNTIME_RESOURCE] : []),
+      ...(includeWtdRuntime ? [WTD_RUNTIME_RESOURCE] : []),
       ...(includeMvpServerResource ? [MVP_SERVER_RESOURCE] : []),
     ],
   },
@@ -153,6 +168,7 @@ const config: ForgeConfig = {
       prepareMsalRuntime();
       prepareSqliteRuntime();
       prepareAutomationRuntime();
+      prepareWtdRuntime(platform, arch);
     },
   },
   makers: [

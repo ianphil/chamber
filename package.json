@@ -11,7 +11,7 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "node scripts/check-sdk-versions.js && node scripts/check-voice-sdk-version.js && electron-forge start",
+    "start": "node scripts/check-sdk-versions.js && node scripts/check-voice-sdk-version.js && node scripts/prepare-wtd-runtime.js --dev && electron-forge start",
     "package": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge package",
     "make": "npm run make:builder",
     "make:forge": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge make",
@@ -44,7 +44,8 @@
     "smoke:byo-llm": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 tests/e2e/electron/byo-llm-settings.spec.ts",
     "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js",
     "smoke:voice-runtime": "node scripts/voice-runtime-smoke.js",
-    "smoke:automation": "node scripts/prepare-automation-runtime.js && node scripts/run-automation-smoke.js"
+    "smoke:automation": "node scripts/prepare-automation-runtime.js && node scripts/run-automation-smoke.js",
+    "smoke:wtd-runtime": "node scripts/wtd-runtime-smoke.js"
   },
   "keywords": [],
   "author": {

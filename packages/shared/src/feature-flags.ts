@@ -3,6 +3,7 @@ export interface AppFeatureFlags {
   readonly byoLlm: boolean;
   readonly chamberCopilot: boolean;
   readonly voiceDictation: boolean;
+  readonly wtdTopology: boolean;
 }
 
 export type FeatureFlagChannel = 'stable' | 'insiders';
@@ -18,6 +19,7 @@ export const DEFAULT_APP_FEATURE_FLAGS: AppFeatureFlags = {
   byoLlm: false,
   chamberCopilot: false,
   voiceDictation: false,
+  wtdTopology: false,
 };
 
 export function getAppFeatureFlags(options: {
@@ -32,6 +34,7 @@ export function getAppFeatureFlags(options: {
     byoLlm: insiders,
     chamberCopilot: insiders,
     voiceDictation: insiders,
+    wtdTopology: insiders,
   };
 }
 
@@ -64,6 +67,7 @@ export function parseFeatureFlags(value: unknown): AppFeatureFlags | null {
     byoLlm: value.byoLlm === true,
     chamberCopilot: value.chamberCopilot === true,
     voiceDictation: value.voiceDictation === true,
+    wtdTopology: value.wtdTopology === true,
   };
 }
 
@@ -73,7 +77,8 @@ export function parseCompleteFeatureFlags(value: unknown): AppFeatureFlags | nul
     typeof value.switchboardRelay !== 'boolean' ||
     typeof value.byoLlm !== 'boolean' ||
     typeof value.chamberCopilot !== 'boolean' ||
-    (value.voiceDictation !== undefined && typeof value.voiceDictation !== 'boolean')
+    (value.voiceDictation !== undefined && typeof value.voiceDictation !== 'boolean') ||
+    (value.wtdTopology !== undefined && typeof value.wtdTopology !== 'boolean')
   ) {
     return null;
   }
@@ -82,6 +87,7 @@ export function parseCompleteFeatureFlags(value: unknown): AppFeatureFlags | nul
     byoLlm: value.byoLlm,
     chamberCopilot: value.chamberCopilot,
     voiceDictation: value.voiceDictation === true,
+    wtdTopology: value.wtdTopology === true,
   };
 }
 

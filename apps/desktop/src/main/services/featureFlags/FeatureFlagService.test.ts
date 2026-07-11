@@ -10,6 +10,7 @@ const DEV_FLAGS: AppFeatureFlags = {
   byoLlm: false,
   chamberCopilot: true,
   voiceDictation: false,
+  wtdTopology: true,
 };
 
 const REMOTE_FLAGS: AppFeatureFlags = {
@@ -17,6 +18,7 @@ const REMOTE_FLAGS: AppFeatureFlags = {
   byoLlm: true,
   chamberCopilot: false,
   voiceDictation: true,
+  wtdTopology: true,
 };
 
 describe('FeatureFlagService', () => {
@@ -117,6 +119,7 @@ describe('FeatureFlagService', () => {
       byoLlm: true,
       chamberCopilot: true,
       voiceDictation: true,
+      wtdTopology: true,
     });
     expect(fetched).toBe(false);
   });

@@ -124,4 +124,30 @@ describe('forge config', () => {
       expect(extraResource).toContain('./resources/voice-runtime');
     });
   });
+
+  describe('WTD runtime resource (#400)', () => {
+    it('keeps the WTD runtime out of stable packages', async () => {
+      delete process.env.CHAMBER_RELEASE_CHANNEL;
+      const config = await loadForgeConfig();
+      const extraResource = (config.packagerConfig?.extraResource ?? []) as string[];
+
+      expect(extraResource).not.toContain('./resources/wtd-runtime');
+    });
+
+    it('ships the dedicated WTD runtime for insiders packages', async () => {
+      process.env.CHAMBER_RELEASE_CHANNEL = 'insiders';
+      const config = await loadForgeConfig();
+      const extraResource = (config.packagerConfig?.extraResource ?? []) as string[];
+
+      expect(extraResource).toContain('./resources/wtd-runtime');
+    });
+
+    it('calls the target-aware WTD prepare script from prePackage with platform and arch', async () => {
+      const forgeConfigSource = fs.readFileSync('forge.config.ts', 'utf-8');
+
+      expect(forgeConfigSource).toContain('prepare-wtd-runtime.js');
+      expect(forgeConfigSource).toContain('prepareWtdRuntime(platform, arch)');
+      expect(forgeConfigSource).toMatch(/prePackage: async \(_forgeConfig, platform, arch\) => \{[\s\S]*prepareWtdRuntime\(platform, arch\);[\s\S]*\}/);
+    });
+  });
 });

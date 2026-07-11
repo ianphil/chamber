@@ -15,6 +15,7 @@ describe('feature flags', () => {
     expect(DEFAULT_APP_FEATURE_FLAGS.switchboardRelay).toBe(false);
     expect(DEFAULT_APP_FEATURE_FLAGS.byoLlm).toBe(false);
     expect(DEFAULT_APP_FEATURE_FLAGS.voiceDictation).toBe(false);
+    expect(DEFAULT_APP_FEATURE_FLAGS.wtdTopology).toBe(false);
   });
 
   it('enables preview features for insiders versions', () => {
@@ -23,6 +24,7 @@ describe('feature flags', () => {
       byoLlm: true,
       chamberCopilot: true,
       voiceDictation: true,
+      wtdTopology: true,
     });
   });
 
@@ -36,6 +38,7 @@ describe('feature flags', () => {
       byoLlm: true,
       chamberCopilot: true,
       voiceDictation: true,
+      wtdTopology: true,
     });
   });
 
@@ -47,12 +50,14 @@ describe('feature flags', () => {
         byoLlm: true,
         chamberCopilot: false,
         voiceDictation: true,
+        wtdTopology: false,
       },
     })).toEqual({
       switchboardRelay: false,
       byoLlm: true,
       chamberCopilot: false,
       voiceDictation: true,
+      wtdTopology: false,
     });
   });
 
@@ -73,29 +78,30 @@ describe('feature flags', () => {
       byoLlm: false,
       chamberCopilot: false,
       voiceDictation: false,
+      wtdTopology: false,
     });
   });
 
   it('parses a valid remote policy', () => {
     expect(parseRemoteFeatureFlagPolicy({
       version: 1,
-      updatedAt: '2026-05-17T21:00:00Z',
+      updatedAt: '2026-07-11T05:00:00Z',
       ignored: true,
       channels: {
-        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false },
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true, futureFlag: true },
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: false, wtdTopology: false },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true, wtdTopology: true, futureFlag: true },
       },
     })).toEqual({
       version: 1,
-      updatedAt: '2026-05-17T21:00:00Z',
+      updatedAt: '2026-07-11T05:00:00Z',
       channels: {
         stable: DEFAULT_APP_FEATURE_FLAGS,
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true, wtdTopology: true },
       },
     });
   });
 
-  it('defaults voice dictation off for policies cached before the flag existed', () => {
+  it('defaults newer preview flags off for policies cached before they existed', () => {
     expect(parseRemoteFeatureFlagPolicy({
       version: 1,
       channels: {
@@ -109,6 +115,7 @@ describe('feature flags', () => {
         byoLlm: true,
         chamberCopilot: true,
         voiceDictation: false,
+        wtdTopology: false,
       },
     });
   });
@@ -119,7 +126,14 @@ describe('feature flags', () => {
     expect(parseRemoteFeatureFlagPolicy({
       version: 1,
       channels: {
-        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: 'yes' },
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, voiceDictation: 'yes', wtdTopology: false },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
+      },
+    })).toBeNull();
+    expect(parseRemoteFeatureFlagPolicy({
+      version: 1,
+      channels: {
+        stable: { switchboardRelay: false, byoLlm: false, chamberCopilot: false, wtdTopology: 'yes' },
         insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true },
       },
     })).toBeNull();
@@ -132,10 +146,10 @@ describe('feature flags', () => {
 
     expect(policy).toEqual({
       version: 1,
-      updatedAt: '2026-05-17T21:00:00Z',
+      updatedAt: '2026-07-11T05:00:00Z',
       channels: {
         stable: DEFAULT_APP_FEATURE_FLAGS,
-        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true },
+        insiders: { switchboardRelay: true, byoLlm: true, chamberCopilot: true, voiceDictation: true, wtdTopology: true },
       },
     });
   });
