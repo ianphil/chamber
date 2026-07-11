@@ -18,6 +18,7 @@ async function loadPrepareWtdRuntime(): Promise<{
   ) => { wtdVersion: string; onnxVersion: string };
   readPinnedVersion: () => string;
   cleanStaleResources: () => void;
+  createNestedNpmEnvironment: (baseEnv?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
 }> {
   const module = await import('../../scripts/prepare-wtd-runtime.js');
   return ('default' in module ? module.default : module) as never;
@@ -230,6 +231,25 @@ describe('prepare-wtd-runtime', () => {
     const source = fs.readFileSync('scripts/prepare-wtd-runtime.js', 'utf-8');
     expect(source).toContain("process.env.CHAMBER_RELEASE_CHANNEL !== 'insiders'");
     expect(source).toContain('cleanStaleResources()');
+  });
+
+  it('stages npm installs outside the repository project config', () => {
+    const source = fs.readFileSync('scripts/prepare-wtd-runtime.js', 'utf-8');
+    expect(source).toContain('path.join(os.tmpdir()');
+    expect(source).toContain('min-release-age');
+  });
+
+  it('removes inherited minimum-release-age from nested npm installs', async () => {
+    const { createNestedNpmEnvironment } = await loadPrepareWtdRuntime();
+
+    expect(createNestedNpmEnvironment({
+      PATH: 'C:\\tools',
+      npm_config_min_release_age: '7',
+      NPM_CONFIG_MIN_RELEASE_AGE: '7',
+    })).toEqual({
+      PATH: 'C:\\tools',
+      npm_config_update_notifier: 'false',
+    });
   });
 
   it('keeps chamber-automation-runtime advisory-only: it must never depend on @ianphil/ttasks-wtd or onnxruntime-node', () => {

@@ -12,13 +12,19 @@
 // leftover staging/backup directories) are removed instead.
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
 const manifestDir = path.join(repoRoot, 'chamber-wtd-runtime');
 const targetDir = path.join(repoRoot, 'resources', 'wtd-runtime');
-const stagingDir = path.join(repoRoot, 'resources', 'wtd-runtime.new');
+// Keep npm's staging cwd outside the repository so the nested git dependency
+// install does not inherit Chamber's project-level min-release-age setting.
+// npm prepares git dependencies with --before, which is incompatible with
+// min-release-age even when every package is already pinned.
+const stagingDir = path.join(os.tmpdir(), `chamber-wtd-runtime-${process.pid}.new`);
+const legacyStagingDir = path.join(repoRoot, 'resources', 'wtd-runtime.new');
 const backupDir = path.join(repoRoot, 'resources', 'wtd-runtime.old');
 
 // Only these two targets are supported end to end today. Notably NOT
@@ -78,6 +84,16 @@ function runCommand(command, args, options = {}) {
       + (result.error ? ` (${result.error.message})` : '')
     );
   }
+}
+
+function createNestedNpmEnvironment(baseEnv = process.env) {
+  const env = {
+    ...baseEnv,
+    npm_config_update_notifier: 'false',
+  };
+  delete env.npm_config_min_release_age;
+  delete env.NPM_CONFIG_MIN_RELEASE_AGE;
+  return env;
 }
 
 function copyRuntimeManifest(destinationRoot) {
@@ -210,6 +226,7 @@ function promoteRuntime(target) {
 function cleanStaleResources() {
   fs.rmSync(targetDir, { recursive: true, force: true });
   fs.rmSync(stagingDir, { recursive: true, force: true });
+  fs.rmSync(legacyStagingDir, { recursive: true, force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
 }
 
@@ -235,7 +252,7 @@ function prepareDevRuntime() {
 
   runCommand(getNpmCommand(), ['ci', '--omit=dev', '--no-audit', '--no-fund'], {
     cwd: manifestDir,
-    env: { ...process.env, npm_config_update_notifier: 'false' },
+    env: createNestedNpmEnvironment(),
   });
   const installed = validateRuntimeFiles(manifestDir, target);
   console.log(
@@ -264,7 +281,7 @@ function main() {
   copyRuntimeManifest(stagingDir);
   runCommand(getNpmCommand(), ['ci', '--omit=dev', '--no-audit', '--no-fund'], {
     cwd: stagingDir,
-    env: { ...process.env, npm_config_update_notifier: 'false' },
+    env: createNestedNpmEnvironment(),
   });
   pruneOnnxRuntimeBinaries(stagingDir, target);
   const prepared = validateRuntimeDir(stagingDir, target);
@@ -283,6 +300,7 @@ module.exports = {
   assertNoForeignNativeDirs,
   validateRuntimeDir,
   validateRuntimeFiles,
+  createNestedNpmEnvironment,
   readPinnedVersion,
   cleanStaleResources,
   prepareDevRuntime,

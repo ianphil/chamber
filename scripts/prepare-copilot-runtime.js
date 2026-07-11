@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
@@ -302,13 +303,28 @@ function validateRuntimeDir(runtimeRoot, targetPlatform, targetArch, requiredVer
   };
 }
 
+function createIsolatedCopilotEnvironment(homeDir, baseEnv = process.env) {
+  return {
+    ...baseEnv,
+    HOME: homeDir,
+    USERPROFILE: homeDir,
+  };
+}
+
 function smokeTestRuntime(binaryPath, expectedCliVersion) {
-  const output = runCommandCapture(binaryPath, ['--version']);
-  const reportedVersion = expectedCliVersion.split('-')[0];
-  if (!output.includes(reportedVersion)) {
-    throw new Error(
-      `Copilot CLI smoke test output did not include ${reportedVersion}. Output: ${output.trim()}`
-    );
+  const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-copilot-runtime-smoke-'));
+  try {
+    const output = runCommandCapture(binaryPath, ['--version'], {
+      env: createIsolatedCopilotEnvironment(isolatedHome),
+    });
+    const reportedVersion = expectedCliVersion.split('-')[0];
+    if (!output.includes(reportedVersion)) {
+      throw new Error(
+        `Copilot CLI smoke test output did not include ${reportedVersion}. Output: ${output.trim()}`
+      );
+    }
+  } finally {
+    fs.rmSync(isolatedHome, { recursive: true, force: true });
   }
 }
 
@@ -439,6 +455,7 @@ function main() {
 
 module.exports = {
   assertHostMatchesTarget,
+  createIsolatedCopilotEnvironment,
   getKeepPrebuildTriples,
   getPlatformBinaryPath,
   getPlatformPackageName,

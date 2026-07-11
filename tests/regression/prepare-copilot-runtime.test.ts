@@ -5,6 +5,10 @@ import path from 'node:path';
 
 async function loadPrepareRuntime(): Promise<{
   assertHostMatchesTarget: (platform: string, arch: string) => void;
+  createIsolatedCopilotEnvironment: (
+    homeDir: string,
+    baseEnv?: NodeJS.ProcessEnv,
+  ) => NodeJS.ProcessEnv;
   getKeepPrebuildTriples: (platform: string, arch: string) => Set<string>;
   getPlatformPackageName: (platform: string, arch: string) => string;
   pruneForeignPrebuilds: (modulesDir: string, platform: string, arch: string) => string[];
@@ -16,6 +20,10 @@ async function loadPrepareRuntime(): Promise<{
   const module = await import('../../scripts/prepare-copilot-runtime.js');
   return ('default' in module ? module.default : module) as {
     assertHostMatchesTarget: (platform: string, arch: string) => void;
+    createIsolatedCopilotEnvironment: (
+      homeDir: string,
+      baseEnv?: NodeJS.ProcessEnv,
+    ) => NodeJS.ProcessEnv;
     getKeepPrebuildTriples: (platform: string, arch: string) => Set<string>;
     getPlatformPackageName: (platform: string, arch: string) => string;
     pruneForeignPrebuilds: (modulesDir: string, platform: string, arch: string) => string[];
@@ -44,6 +52,20 @@ describe('prepare-copilot-runtime', () => {
   it('allows native-host packaging', async () => {
     const { assertHostMatchesTarget } = await loadPrepareRuntime();
     expect(() => assertHostMatchesTarget(process.platform, process.arch)).not.toThrow();
+  });
+
+  it('isolates runtime validation from the developer Copilot cache', async () => {
+    const { createIsolatedCopilotEnvironment } = await loadPrepareRuntime();
+
+    expect(createIsolatedCopilotEnvironment('C:\\temp\\copilot-home', {
+      PATH: 'C:\\tools',
+      HOME: 'C:\\Users\\developer',
+      USERPROFILE: 'C:\\Users\\developer',
+    })).toMatchObject({
+      PATH: 'C:\\tools',
+      HOME: 'C:\\temp\\copilot-home',
+      USERPROFILE: 'C:\\temp\\copilot-home',
+    });
   });
 
   it('rejects cross-compiling the Copilot runtime', async () => {

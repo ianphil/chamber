@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Copilot Runtime Version Pin &amp; the make:sandbox Mismatch</title>
+  <title>Copilot Runtime Version Pin &amp; Packaging Validation</title>
   <style>
     :root {
       color-scheme: dark;
@@ -159,22 +159,19 @@
 </head>
 <body>
   <main>
-    <h1>Copilot Runtime Version Pin &amp; the <code>make:sandbox</code> Mismatch</h1>
+    <h1>Copilot Runtime Version Pin &amp; Packaging Validation</h1>
     <p>
-      This is the failure we hit <strong>almost every day</strong>: <code>npm run make:sandbox</code>
-      (or any packaging path) aborts in the <code>prePackage</code> Copilot-runtime prep hook with a
-      version-mismatch error, even though the SDK smoke test passes and the dev server runs fine.
-      This doc explains why, and exactly which two files to edit to fix it.
+      Chamber ships an exact Copilot CLI and SDK pair. Packaging validates that
+      committed runtime without consulting the developer's self-updated Copilot cache.
     </p>
 
     <div class="summary">
-      <p><strong>Symptom:</strong> <span class="status-bad">make:sandbox fails at prePackage</span></p>
-      <pre><code>Copilot CLI smoke test output did not include 1.0.55.
-Output: GitHub Copilot CLI 1.0.57-2</code></pre>
+      <p><strong>Invariant:</strong> <span class="status-good">package metadata and the isolated executable agree</span></p>
+      <pre><code>@github/copilot package: 1.0.58
+Isolated copilot --version: 1.0.58</code></pre>
       <p style="margin-bottom:0">
-        <strong>Fix:</strong> bump the pin in <strong>both</strong> manifests to the version the
-        launcher actually resolves to, then full <code>npm install</code> in each. See
-        <a href="#fix">The fix</a>.
+        A normal <code>copilot --version</code> may report a newer self-updated build.
+        That user-cache version is not the packaged runtime pin.
       </p>
     </div>
 
@@ -207,39 +204,31 @@ Output: GitHub Copilot CLI 1.0.57-2</code></pre>
       not the GitHub Copilot CLI.
     </div>
 
-    <h2>Why it happens</h2>
-    <p>The npm pin does <strong>not</strong> control the runtime binary version on a developer machine. The chain:</p>
+    <h2>Why normal and packaged version checks differ</h2>
+    <p>The npm pin controls the bundled platform package, while a normal developer invocation may use cached updates:</p>
     <ol>
       <li>The <code>@github/copilot</code> npm package ships <code>npm-loader.js</code>, which spawns the
         platform binary <code>@github/copilot-win32-x64/copilot.exe</code>.</li>
-      <li>That <code>copilot.exe</code> is a <strong>bootstrap launcher</strong>. It self-resolves to the
-        <strong>newest build present in the global cache</strong> at
-        <code>~/.copilot/pkg/win32-x64/</code> — ignoring the pinned npm version entirely.</li>
+      <li>The launcher may select the newest build in
+        <code>~/.copilot/pkg/&lt;platform-arch&gt;/</code> for normal interactive use.</li>
       <li>Every time you run <code>copilot update</code> (or the CLI auto-updates), a new build lands in
         that global cache (e.g. <code>1.0.55-1</code>, <code>1.0.56-1</code>, <code>1.0.57-2</code> all
         side-by-side).</li>
-      <li>The prep hook's <code>smokeTestRuntime()</code> runs <code>copilot.exe --version</code>, gets the
-        <em>newest cached</em> build, and compares it against the manifest pin. Mismatch &rarr; abort.</li>
+      <li>The prep hook runs <code>copilot --version</code> with temporary
+        <code>HOME</code> and <code>USERPROFILE</code> paths, so the global cache cannot affect validation.</li>
     </ol>
     <div class="note">
-      <strong>Why CI doesn't hit this:</strong> CI starts with a clean global cache, so the launcher
-      resolves to exactly the pinned/installed build. Only developer machines with a populated
-      <code>~/.copilot/pkg/</code> cache see the drift. That's why it bites locally "every day" but the
-      pipeline stays green.
+      <strong>Do not pin to the global cache version.</strong> A cached build may not
+      exist as an npm release and is not the runtime Chamber will package.
     </div>
 
-    <h2 id="fix">The fix</h2>
-    <p>Align the pin with whatever the launcher resolves to. Find the resolved build:</p>
-    <pre><code># what the launcher actually runs:
-copilot --version
-# or inspect the cache:
-Get-ChildItem $HOME\.copilot\pkg\win32-x64\</code></pre>
-    <p>Then set <strong>both</strong> manifests to that exact version (e.g. <code>1.0.57-2</code>):</p>
+    <h2 id="fix">Changing the packaged runtime</h2>
+    <p>Choose an exact version that exists on npm, then update both manifests:</p>
     <ul>
       <li><code>chamber-copilot-runtime/package.json</code> &rarr; <code>"@github/copilot"</code></li>
       <li><code>package.json</code> (root) &rarr; <code>"@github/copilot"</code></li>
     </ul>
-    <p>Refresh the lockfiles with a <strong>full</strong> <code>npm install</code> in each location:</p>
+    <p>Refresh both lockfiles with a <strong>full</strong> install:</p>
     <pre><code>npm install                       # root
 cd chamber-copilot-runtime && npm install</code></pre>
     <div class="warn-box">
@@ -248,18 +237,16 @@ cd chamber-copilot-runtime && npm install</code></pre>
       (e.g. <code>@emnapi/core</code>, <code>@emnapi/runtime</code>) that CI later requires, producing a
       <em>different</em> failure downstream.
     </div>
-    <p>Validate, in order:</p>
+    <p>Validation checks the isolated bundled executable, not the user's cached CLI:</p>
     <pre><code>npm run smoke:sdk      # SDK/CLI compatibility on the new pin
-npm run make:sandbox   # expected version now == launcher-resolved version</code></pre>
+npm run make:sandbox   # isolated executable version == committed pin</code></pre>
 
     <h2>Governance note</h2>
     <p>
-      Bumping the <code>@github/copilot</code> / <code>@github/copilot-sdk</code> pair is a change to the
-      committed runtime contract. Per <code>copilot-instructions</code> / <code>AGENTS.md</code>, a real
-      bump warrants a coordinated <code>CHANGELOG.md</code> entry and validation via
-      <code>npm run smoke:sdk</code> + <code>npm run make:sandbox</code>. A purely local re-alignment to
-      stop the daily packaging abort can be done in isolation, but if you commit the pin change, treat it
-      as a runtime-contract bump.
+      Bumping the <code>@github/copilot</code> / <code>@github/copilot-sdk</code> pair changes the
+      committed runtime contract and requires a changelog entry plus
+      <code>npm run smoke:sdk</code> and packaging validation. A developer's global
+      cache never changes Chamber's committed runtime contract.
     </p>
 
     <p style="margin-top:32px">
