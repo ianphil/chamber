@@ -199,28 +199,50 @@ function validateRuntimeFiles(runtimeRoot, target) {
   return { wtdVersion: installedWtd.version, onnxVersion: installedOnnx.version };
 }
 
-function promoteRuntime(target) {
-  fs.rmSync(backupDir, { recursive: true, force: true });
+function isRecoverableRenameError(error) {
+  return error
+    && typeof error === 'object'
+    && (error.code === 'EPERM' || error.code === 'EXDEV');
+}
+
+function promoteDirectory(dirs, validate = () => {}, fsImpl = fs) {
+  fsImpl.rmSync(dirs.backupDir, { recursive: true, force: true });
 
   let movedExistingTarget = false;
   try {
-    if (fs.existsSync(targetDir)) {
-      fs.renameSync(targetDir, backupDir);
+    if (fsImpl.existsSync(dirs.targetDir)) {
+      fsImpl.renameSync(dirs.targetDir, dirs.backupDir);
       movedExistingTarget = true;
     }
 
-    fs.renameSync(stagingDir, targetDir);
-    validateRuntimeDir(targetDir, target);
-    fs.rmSync(backupDir, { recursive: true, force: true });
+    try {
+      fsImpl.renameSync(dirs.stagingDir, dirs.targetDir);
+    } catch (error) {
+      if (!isRecoverableRenameError(error)) {
+        throw error;
+      }
+      fsImpl.rmSync(dirs.targetDir, { recursive: true, force: true });
+      fsImpl.cpSync(dirs.stagingDir, dirs.targetDir, { recursive: true });
+    }
+
+    validate(dirs.targetDir);
+    fsImpl.rmSync(dirs.backupDir, { recursive: true, force: true });
   } catch (error) {
-    fs.rmSync(targetDir, { recursive: true, force: true });
-    if (movedExistingTarget && fs.existsSync(backupDir)) {
-      fs.renameSync(backupDir, targetDir);
+    fsImpl.rmSync(dirs.targetDir, { recursive: true, force: true });
+    if (movedExistingTarget && fsImpl.existsSync(dirs.backupDir)) {
+      fsImpl.renameSync(dirs.backupDir, dirs.targetDir);
     }
     throw error;
   } finally {
-    fs.rmSync(stagingDir, { recursive: true, force: true });
+    fsImpl.rmSync(dirs.stagingDir, { recursive: true, force: true });
   }
+}
+
+function promoteRuntime(target) {
+  promoteDirectory(
+    { stagingDir, targetDir, backupDir },
+    (runtimeRoot) => validateRuntimeDir(runtimeRoot, target),
+  );
 }
 
 function cleanStaleResources() {
@@ -304,6 +326,7 @@ module.exports = {
   readPinnedVersion,
   cleanStaleResources,
   prepareDevRuntime,
+  promoteDirectory,
 };
 
 if (require.main === module) {

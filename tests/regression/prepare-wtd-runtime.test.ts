@@ -19,6 +19,11 @@ async function loadPrepareWtdRuntime(): Promise<{
   readPinnedVersion: () => string;
   cleanStaleResources: () => void;
   createNestedNpmEnvironment: (baseEnv?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+  promoteDirectory: (
+    dirs: { stagingDir: string; targetDir: string; backupDir: string },
+    validate?: (runtimeRoot: string) => void,
+    fsImpl?: typeof fs,
+  ) => void;
 }> {
   const module = await import('../../scripts/prepare-wtd-runtime.js');
   return ('default' in module ? module.default : module) as never;
@@ -250,6 +255,35 @@ describe('prepare-wtd-runtime', () => {
       PATH: 'C:\\tools',
       npm_config_update_notifier: 'false',
     });
+  });
+
+  it('copies the staged runtime when promotion crosses Windows volumes', async () => {
+    const { promoteDirectory } = await loadPrepareWtdRuntime();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chamber-wtd-promote-'));
+    const stagingDir = path.join(root, 'wtd-runtime.new');
+    const targetDir = path.join(root, 'wtd-runtime');
+    const backupDir = path.join(root, 'wtd-runtime.old');
+    fs.mkdirSync(stagingDir, { recursive: true });
+    fs.writeFileSync(path.join(stagingDir, 'sentinel.txt'), 'ready');
+    const fsWithCrossVolumeRename = {
+      ...fs,
+      renameSync: (oldPath: fs.PathLike, newPath: fs.PathLike) => {
+        if (String(oldPath) === stagingDir && String(newPath) === targetDir) {
+          throw Object.assign(new Error('EXDEV: cross-device link not permitted, rename'), { code: 'EXDEV' });
+        }
+        return fs.renameSync(oldPath, newPath);
+      },
+    } as typeof fs;
+
+    try {
+      promoteDirectory({ stagingDir, targetDir, backupDir }, undefined, fsWithCrossVolumeRename);
+
+      expect(fs.readFileSync(path.join(targetDir, 'sentinel.txt'), 'utf-8')).toBe('ready');
+      expect(fs.existsSync(stagingDir)).toBe(false);
+      expect(fs.existsSync(backupDir)).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('keeps chamber-automation-runtime advisory-only: it must never depend on @ianphil/ttasks-wtd or onnxruntime-node', () => {
