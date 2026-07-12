@@ -33,10 +33,9 @@ import { getTextareaCaretCoords } from '../../lib/textarea-caret';
 import {
   imageToken,
   fileToken,
-  collectImageNames,
-  collectFileNames,
+  collectImageIds,
+  collectFileIds,
   isInsideAttachmentToken,
-  makeUniqueName,
   detectMention,
   toMentionables,
   filterMentionables,
@@ -47,12 +46,31 @@ import {
   buildMessageWithTextAttachments,
   SLASH_COMMANDS,
   MAX_TEXT_FILE_BYTES,
+  MAX_IMAGE_FILE_BYTES,
   type Mentionable,
   type MentionMatch,
   type SlashMatch,
   type SlashCommandId,
   type TextFileAttachment,
 } from '../../lib/composer';
+
+// Composer attachment payload state, scoped per conversation. Image payloads
+// carry an opaque id so their inline token can never collide with a filename.
+interface ComposerImageAttachment extends ChatImageAttachment {
+  id: number;
+}
+
+interface AttachmentBucket {
+  images: ComposerImageAttachment[];
+  texts: TextFileAttachment[];
+}
+
+const EMPTY_BUCKET: AttachmentBucket = { images: [], texts: [] };
+// Bucket keys for the controlled (single-agent, per-mind) and uncontrolled
+// (chatroom) hosts. Draft text is already per-mind; payloads must follow it so
+// switching agents never leaks one mind's attachments into another's compose.
+const NO_MIND_BUCKET_KEY = '__no-mind__';
+const UNCONTROLLED_BUCKET_KEY = '__uncontrolled__';
 
 const log = Logger.create('ChatInput');
 
@@ -279,8 +297,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     if (isControlled) onValueChange?.(resolved);
     else setInternalInput(resolved);
   }, [input, isControlled, onValueChange]);
-  const [attachments, setAttachments] = useState<ChatImageAttachment[]>([]);
-  const [textAttachments, setTextAttachments] = useState<TextFileAttachment[]>([]);
+  const [attachmentsByKey, setAttachmentsByKey] = useState<Record<string, AttachmentBucket>>({});
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -301,9 +318,26 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pastedSeq = useRef(0);
+  const attachmentIdRef = useRef(0);
   // Last known textarea selection — preserved across blur (e.g., when the
   // emoji popover steals focus) so insertAtCaret can land in the right place.
   const selectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  // Which attachment bucket the current draft belongs to. Mirrors the per-mind
+  // draft partitioning so payloads travel with the text when agents switch.
+  const conversationKey = isControlled ? (activeMindId ?? NO_MIND_BUCKET_KEY) : UNCONTROLLED_BUCKET_KEY;
+  const activeBucket = attachmentsByKey[conversationKey] ?? EMPTY_BUCKET;
+  const activeImages = activeBucket.images;
+  const activeTexts = activeBucket.texts;
+
+  const updateBucket = useCallback((key: string, fn: (bucket: AttachmentBucket) => AttachmentBucket) => {
+    setAttachmentsByKey((prev) => {
+      const current = prev[key] ?? EMPTY_BUCKET;
+      const next = fn(current);
+      if (next === current) return prev;
+      return { ...prev, [key]: next };
+    });
+  }, []);
 
   const mentionables = useMemo<Mentionable[]>(() => toMentionables(minds), [minds]);
   const mentionResults = useMemo<Mentionable[]>(
@@ -353,29 +387,27 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     closeSlash();
   }, [closeShortcode, closeMention, closeSlash]);
 
-  // Drop attachments whose tokens no longer appear in the given text.
+  // Drop attachments from the active bucket whose token id no longer appears in
+  // the given text. Matching is by opaque id so odd filenames cannot desync it.
   const pruneAttachments = useCallback((next: string) => {
-    const imageNames = collectImageNames(next);
-    setAttachments((prev) => {
-      const pruned = prev.filter((a) => imageNames.has(a.name));
-      return pruned.length === prev.length ? prev : pruned;
+    const imageIds = collectImageIds(next);
+    const fileIds = collectFileIds(next);
+    updateBucket(conversationKey, (bucket) => {
+      const images = bucket.images.filter((a) => imageIds.has(a.id));
+      const texts = bucket.texts.filter((a) => fileIds.has(a.id));
+      if (images.length === bucket.images.length && texts.length === bucket.texts.length) return bucket;
+      return { images, texts };
     });
-    const fileNames = collectFileNames(next);
-    setTextAttachments((prev) => {
-      const pruned = prev.filter((a) => fileNames.has(a.name));
-      return pruned.length === prev.length ? prev : pruned;
-    });
-  }, []);
+  }, [conversationKey, updateBucket]);
 
   const resetComposer = useCallback(() => {
     setInput('');
-    setAttachments([]);
-    setTextAttachments([]);
+    updateBucket(conversationKey, (bucket) => (bucket === EMPTY_BUCKET ? bucket : EMPTY_BUCKET));
     setAttachmentNotice(null);
     closeAllMenus();
     setEmojiOpen(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-  }, [setInput, closeAllMenus]);
+  }, [setInput, conversationKey, updateBucket, closeAllMenus]);
 
   const getMaxHeight = useCallback((el: HTMLTextAreaElement) => {
     const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
@@ -417,34 +449,36 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
   const handleFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    const used = new Set<string>([
-      ...collectImageNames(textareaRef.current?.value ?? input),
-      ...collectFileNames(textareaRef.current?.value ?? input),
-    ]);
+    // Capture the bucket at click time so an agent switch mid-read cannot
+    // misfile the payload relative to the token we insert into this draft.
+    const key = conversationKey;
     const skipped: string[] = [];
+    const oversized: string[] = [];
     for (const file of files) {
       if (isImageFile({ name: file.name, mimeType: file.type })) {
+        if (file.size > MAX_IMAGE_FILE_BYTES) {
+          oversized.push(file.name);
+          continue;
+        }
         try {
           const data = await readAsBase64(file);
-          const name = makeUniqueName(file.name, used);
-          used.add(name);
+          const id = ++attachmentIdRef.current;
           const mimeType = file.type || 'image/png';
-          setAttachments((prev) => [...prev, { name, mimeType, data }]);
-          insertAtCaret(imageToken(name));
+          updateBucket(key, (b) => ({ ...b, images: [...b.images, { id, name: file.name, mimeType, data }] }));
+          insertAtCaret(imageToken(id, file.name));
         } catch {
           skipped.push(file.name);
         }
       } else if (isTextLikeFile({ name: file.name, mimeType: file.type })) {
         if (file.size > MAX_TEXT_FILE_BYTES) {
-          skipped.push(file.name);
+          oversized.push(file.name);
           continue;
         }
         try {
           const content = await readAsText(file);
-          const name = makeUniqueName(file.name, used);
-          used.add(name);
-          setTextAttachments((prev) => [...prev, { name, mimeType: file.type || 'text/plain', content }]);
-          insertAtCaret(fileToken(name));
+          const id = ++attachmentIdRef.current;
+          updateBucket(key, (b) => ({ ...b, texts: [...b.texts, { id, name: file.name, mimeType: file.type || 'text/plain', content }] }));
+          insertAtCaret(fileToken(id, file.name));
         } catch {
           skipped.push(file.name);
         }
@@ -452,13 +486,16 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         skipped.push(file.name);
       }
     }
-    setAttachmentNotice(
-      skipped.length > 0
-        ? `Skipped ${skipped.length} unsupported file${skipped.length > 1 ? 's' : ''}: ${skipped.join(', ')}`
-        : null,
-    );
+    const notices: string[] = [];
+    if (skipped.length > 0) {
+      notices.push(`Skipped ${skipped.length} unsupported file${skipped.length > 1 ? 's' : ''}: ${skipped.join(', ')}`);
+    }
+    if (oversized.length > 0) {
+      notices.push(`Skipped ${oversized.length} oversized file${oversized.length > 1 ? 's' : ''}: ${oversized.join(', ')}`);
+    }
+    setAttachmentNotice(notices.length > 0 ? notices.join(' · ') : null);
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [input, insertAtCaret]);
+  }, [conversationKey, updateBucket, insertAtCaret]);
 
   const acceptMention = useCallback((item: Mentionable) => {
     const match = mentionMatch;
@@ -493,7 +530,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'settings' });
         break;
       case 'new':
-        if (activeMindId) {
+        // Guard client-side: starting a fresh conversation mid-stream would
+        // race the in-flight turn. Ignore until streaming settles.
+        if (activeMindId && !isStreaming) {
           void newConversation(activeMindId).catch((error: unknown) => {
             log.error('Failed to start new conversation:', error);
           });
@@ -501,7 +540,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         break;
     }
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [resetComposer, availableModels.length, dispatch, activeMindId, newConversation]);
+  }, [resetComposer, availableModels.length, dispatch, activeMindId, isStreaming, newConversation]);
 
   useEffect(() => {
     if (!featureFlags.voiceDictation) {
@@ -577,6 +616,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     if (imageItems.length === 0) return;
 
     e.preventDefault();
+    const key = conversationKey;
     for (const item of imageItems) {
       const file = item.getAsFile();
       if (!file) continue;
@@ -584,15 +624,15 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         const data = await readAsBase64(file);
         const mimeType = file.type || 'image/png';
         const ext = mimeToExt(mimeType);
-        const id = (++pastedSeq.current).toString(36);
-        const name = `image-${id}.${ext}`;
-        setAttachments((prev) => [...prev, { name, mimeType, data }]);
-        insertAtCaret(imageToken(name));
+        const name = `image-${(++pastedSeq.current).toString(36)}.${ext}`;
+        const id = ++attachmentIdRef.current;
+        updateBucket(key, (b) => ({ ...b, images: [...b.images, { id, name, mimeType, data }] }));
+        insertAtCaret(imageToken(id, name));
       } catch {
         // ignore unreadable clipboard entries
       }
     }
-  }, [insertAtCaret]);
+  }, [conversationKey, updateBucket, insertAtCaret]);
 
   const handleSubmit = useCallback(() => {
     if (isStreaming) {
@@ -601,18 +641,21 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     // A bare slash command is never sent as a message; it runs from the menu.
     if (slashMatch) return;
 
-    const keptImageNames = collectImageNames(input);
-    const keptImages = attachments.filter((a) => keptImageNames.has(a.name));
+    const bucket = attachmentsByKey[conversationKey] ?? EMPTY_BUCKET;
+    const keptImageIds = collectImageIds(input);
+    const keptImages: ChatImageAttachment[] = bucket.images
+      .filter((a) => keptImageIds.has(a.id))
+      .map((a) => ({ name: a.name, mimeType: a.mimeType, data: a.data }));
     const hasText = input.trim().length > 0;
-    const hasAttachments = keptImages.length > 0 || collectFileNames(input).size > 0;
+    const hasAttachments = keptImages.length > 0 || collectFileIds(input).size > 0;
     if ((!hasText && !hasAttachments) || disabled) return;
 
     // Fold any text-file contents into the outgoing prompt; images ride along
     // as blob attachments and keep their inline marker token.
-    const message = buildMessageWithTextAttachments(input, textAttachments);
+    const message = buildMessageWithTextAttachments(input, bucket.texts);
     onSend(message, keptImages.length > 0 ? keptImages : undefined);
     resetComposer();
-  }, [input, attachments, textAttachments, slashMatch, isStreaming, disabled, onSend, resetComposer]);
+  }, [input, attachmentsByKey, conversationKey, slashMatch, isStreaming, disabled, onSend, resetComposer]);
 
   const acceptShortcode = useCallback(
     (record: EmojiRecord) => {
@@ -700,8 +743,10 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         return;
       }
     }
-    // 2b) Mention popover open.
-    if (mentionMatch && handleMenuKeydown(e, {
+    // 2b) Mention popover open — only intercept when it has visible results, so
+    // arrows/Escape/Enter fall through to normal editing when the query matches
+    // no agent (the popover is not rendered in that case).
+    if (mentionMatch && mentionResults.length > 0 && handleMenuKeydown(e, {
       count: mentionResults.length,
       index: mentionIndex,
       setIndex: setMentionIndex,
@@ -788,7 +833,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   };
 
   const canSubmit = !slashMatch
-    && (input.trim().length > 0 || attachments.length > 0 || textAttachments.length > 0)
+    && (input.trim().length > 0 || activeImages.length > 0 || activeTexts.length > 0)
     && !disabled;
 
   return (

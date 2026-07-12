@@ -9,48 +9,63 @@ import type { MindContext } from '@chamber/shared/types';
 // ---------------------------------------------------------------------------
 
 // Attachment tokens ---------------------------------------------------------
+//
+// A token is the inline marker the user sees for an attachment, e.g.
+// `[📷#3 photo.png]`. The authoritative key is the opaque numeric id (`#3`),
+// never the filename: filenames may contain `]`, `[` or newlines that would
+// otherwise break token parsing or let one token bleed into the next. The
+// display label is sanitized of those characters so the token is always
+// well-formed, while the real filename is preserved on the attachment payload
+// for sending and for folded-file headers.
 
 /** Marker prefix for pasted/attached images (carried to the SDK as blobs). */
 export const IMAGE_TOKEN_EMOJI = '📷';
 /** Marker prefix for text-like files (folded into the outgoing prompt). */
 export const FILE_TOKEN_EMOJI = '📄';
 
-export function imageToken(name: string): string {
-  return `[${IMAGE_TOKEN_EMOJI} ${name}]`;
+/** Strip characters that would break token structure from a display label. */
+export function sanitizeTokenLabel(name: string): string {
+  return name.replace(/[[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export function fileToken(name: string): string {
-  return `[${FILE_TOKEN_EMOJI} ${name}]`;
+export function imageToken(id: number, name: string): string {
+  return `[${IMAGE_TOKEN_EMOJI}#${id} ${sanitizeTokenLabel(name)}]`;
+}
+
+export function fileToken(id: number, name: string): string {
+  return `[${FILE_TOKEN_EMOJI}#${id} ${sanitizeTokenLabel(name)}]`;
 }
 
 // Fresh RegExp instances per call so the global `lastIndex` is never shared.
+// The label class `[^\][\n]*` excludes brackets and newlines, so a token can
+// never span another token and the trailing `]` is unambiguous.
 function imageTokenRe(): RegExp {
-  return /\[📷 ([^\]]+)\]/g;
+  return /\[📷#(\d+) [^\][\n]*\]/g;
 }
 
 function fileTokenRe(): RegExp {
-  return /\[📄 ([^\]]+)\]/g;
+  return /\[📄#(\d+) [^\][\n]*\]/g;
 }
 
 function anyTokenRe(): RegExp {
-  return /\[(?:📷|📄) ([^\]]+)\]/g;
+  return /\[(?:📷|📄)#(\d+) [^\][\n]*\]/g;
 }
 
-function collectNames(text: string, re: RegExp): Set<string> {
-  const names = new Set<string>();
+function collectIds(text: string, re: RegExp): Set<number> {
+  const ids = new Set<number>();
   let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) names.add(match[1]);
-  return names;
+  while ((match = re.exec(text)) !== null) ids.add(Number(match[1]));
+  return ids;
 }
 
-/** Names of image tokens currently present in `text`. */
-export function collectImageNames(text: string): Set<string> {
-  return collectNames(text, imageTokenRe());
+/** Ids of image tokens currently present in `text`. */
+export function collectImageIds(text: string): Set<number> {
+  return collectIds(text, imageTokenRe());
 }
 
-/** Names of file tokens currently present in `text`. */
-export function collectFileNames(text: string): Set<string> {
-  return collectNames(text, fileTokenRe());
+/** Ids of file tokens currently present in `text`. */
+export function collectFileIds(text: string): Set<number> {
+  return collectIds(text, fileTokenRe());
 }
 
 /** True when `index` falls within any attachment token span. */
@@ -63,21 +78,6 @@ export function isInsideAttachmentToken(text: string, index: number): boolean {
     if (index >= start && index < end) return true;
   }
   return false;
-}
-
-/** Suffix a name with " (n)" until it is unique against `used`. */
-export function makeUniqueName(name: string, used: Set<string>): string {
-  if (!used.has(name)) return name;
-  const dot = name.lastIndexOf('.');
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : '';
-  let n = 2;
-  let candidate = `${stem} (${n})${ext}`;
-  while (used.has(candidate)) {
-    n += 1;
-    candidate = `${stem} (${n})${ext}`;
-  }
-  return candidate;
 }
 
 // @-mentions ----------------------------------------------------------------
@@ -162,6 +162,9 @@ export function filterSlashCommands(commands: readonly SlashCommand[], query: st
 /** Max size we will inline as text; larger text files are skipped. */
 export const MAX_TEXT_FILE_BYTES = 256 * 1024;
 
+/** Max image payload we will attach as a blob; larger images are skipped. */
+export const MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024;
+
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'ico']);
 
 const TEXT_LIKE_MIME = new Set([
@@ -208,22 +211,41 @@ export function isTextLikeFile(file: { name: string; mimeType: string }): boolea
 }
 
 export interface TextFileAttachment {
+  id: number;
   name: string;
   mimeType: string;
   content: string;
 }
 
 /**
+ * Choose a backtick fence longer than any backtick run in `content`, so folded
+ * file bodies that themselves contain ``` fences cannot terminate the block
+ * early. Never shorter than the standard three backticks.
+ */
+export function safeFenceFor(content: string): string {
+  let longestRun = 0;
+  const matches = content.match(/`+/g);
+  if (matches) {
+    for (const run of matches) longestRun = Math.max(longestRun, run.length);
+  }
+  return '`'.repeat(Math.max(3, longestRun + 1));
+}
+
+/**
  * Fold the contents of any text attachments whose token still appears in
  * `input` into the outgoing prompt as labelled fenced blocks. Image tokens are
  * left untouched (their payload rides along as a separate blob attachment).
+ * Attachments are matched by opaque id, never by filename.
  */
 export function buildMessageWithTextAttachments(input: string, files: readonly TextFileAttachment[]): string {
   if (files.length === 0) return input;
-  const present = collectFileNames(input);
-  const kept = files.filter((file) => present.has(file.name));
+  const presentIds = collectFileIds(input);
+  const kept = files.filter((file) => presentIds.has(file.id));
   if (kept.length === 0) return input;
-  const blocks = kept.map((file) => `Attached file ${file.name}:\n\`\`\`\n${file.content}\n\`\`\``);
+  const blocks = kept.map((file) => {
+    const fence = safeFenceFor(file.content);
+    return `Attached file ${file.name}:\n${fence}\n${file.content}\n${fence}`;
+  });
   const base = input.trimEnd();
   return `${base}${base.length > 0 ? '\n\n' : ''}${blocks.join('\n\n')}`;
 }

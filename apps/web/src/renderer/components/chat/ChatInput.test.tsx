@@ -7,6 +7,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { ChatInput } from './ChatInput';
 import type { ModelInfo, MindContext } from '@chamber/shared/types';
 import { VOICE_DICTATION_MODEL_ID, type VoiceDictationConfig, type VoiceModelStatus } from '@chamber/shared/voice-types';
+import { MAX_IMAGE_FILE_BYTES } from '../../lib/composer';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
 const appStateMock = vi.hoisted(() => ({
@@ -708,7 +709,7 @@ describe('ChatInput controlled value (per-agent compose drafts #221)', () => {
     });
 
     await waitFor(() => {
-      expect(onMindBValueChange).toHaveBeenCalledWith('[📷 image-1.png]');
+      expect(onMindBValueChange).toHaveBeenCalledWith(expect.stringMatching(/^\[📷#\d+ image-1\.png\]$/));
     });
     expect(onMindAValueChange).not.toHaveBeenCalled();
   });
@@ -771,15 +772,17 @@ describe('ChatInput file attachments', () => {
     const file = new File(['image-bytes'], 'photo.png', { type: 'image/png' });
 
     fireEvent.change(fileInput, { target: { files: [file] } });
-    await waitFor(() => expect(textarea.value).toContain('[📷 photo.png]'));
+    await waitFor(() => expect(textarea.value).toMatch(/\[📷#\d+ photo\.png\]/));
 
     fireEvent.keyDown(textarea, { key: 'Enter' });
     expect(onSend).toHaveBeenCalledTimes(1);
     const [message, attachments] = onSend.mock.calls[0];
-    expect(message).toContain('[📷 photo.png]');
+    expect(message).toMatch(/\[📷#\d+ photo\.png\]/);
     expect(attachments).toEqual([
       expect.objectContaining({ name: 'photo.png', mimeType: 'image/png' }),
     ]);
+    // The opaque id is stripped before the payload reaches the send path.
+    expect(attachments[0]).not.toHaveProperty('id');
   });
 
   it('attaches a text file by folding its contents into the outgoing prompt', async () => {
@@ -790,7 +793,7 @@ describe('ChatInput file attachments', () => {
     const file = new File(['hello world'], 'notes.txt', { type: 'text/plain' });
 
     fireEvent.change(fileInput, { target: { files: [file] } });
-    await waitFor(() => expect(textarea.value).toContain('[📄 notes.txt]'));
+    await waitFor(() => expect(textarea.value).toMatch(/\[📄#\d+ notes\.txt\]/));
 
     fireEvent.keyDown(textarea, { key: 'Enter' });
     expect(onSend).toHaveBeenCalledTimes(1);
@@ -809,6 +812,89 @@ describe('ChatInput file attachments', () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
     await screen.findByText(/Skipped 1 unsupported file/);
     expect(textarea.value).toBe('');
+  });
+
+  it('skips images larger than the size cap with a notice', async () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    const file = new File(['x'], 'huge.png', { type: 'image/png' });
+    Object.defineProperty(file, 'size', { value: MAX_IMAGE_FILE_BYTES + 1 });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await screen.findByText(/Skipped 1 oversized file/);
+    expect(textarea.value).toBe('');
+  });
+
+  it('keeps a filename containing a closing bracket parseable via its opaque id', async () => {
+    const onSend = vi.fn();
+    render(<ChatInput {...defaultProps} onSend={onSend} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    const file = new File(['bytes'], 'weird]name].png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await waitFor(() => expect(textarea.value).toMatch(/\[📷#\d+ /));
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const [, attachments] = onSend.mock.calls[0];
+    expect(attachments).toHaveLength(1);
+    // The real filename is preserved on the payload even though the token label
+    // is sanitized of brackets.
+    expect(attachments[0].name).toBe('weird]name].png');
+  });
+});
+
+describe('ChatInput attachment scoping (per-mind)', () => {
+  function ControlledHarness({ onSend, mindId }: { onSend: (m: string, a?: unknown) => void; mindId: string }) {
+    const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+    const draft = drafts[mindId] ?? '';
+    return (
+      <ChatInput
+        {...defaultProps}
+        onSend={onSend}
+        value={draft}
+        onValueChange={(next) => setDrafts((prev) => ({ ...prev, [mindId]: next }))}
+      />
+    );
+  }
+
+  it('keeps pending image and text attachments scoped to their mind across switches', async () => {
+    const onSend = vi.fn();
+    appStateMock.current.activeMindId = 'mindA';
+    const { rerender } = render(<ControlledHarness onSend={onSend} mindId="mindA" />);
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+
+    fireEvent.change(fileInput, { target: { files: [new File(['bytes'], 'a.png', { type: 'image/png' })] } });
+    await waitFor(() => expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toMatch(/\[📷#\d+ a\.png\]/));
+
+    fireEvent.change(fileInput, { target: { files: [new File(['secret text'], 'notes.txt', { type: 'text/plain' })] } });
+    await waitFor(() => expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toMatch(/\[📄#\d+ notes\.txt\]/));
+
+    // Switch to mind B: its draft and attachment bucket are independent.
+    appStateMock.current.activeMindId = 'mindB';
+    rerender(<ControlledHarness onSend={onSend} mindId="mindB" />);
+    let textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('');
+    fireEvent.change(textarea, { target: { value: 'hi from B' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith('hi from B', undefined);
+
+    // Switch back to mind A: the image + text payloads are still attached.
+    onSend.mockClear();
+    appStateMock.current.activeMindId = 'mindA';
+    rerender(<ControlledHarness onSend={onSend} mindId="mindA" />);
+    textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toMatch(/\[📷#\d+ a\.png\]/);
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const [message, attachments] = onSend.mock.calls[0];
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].name).toBe('a.png');
+    expect(message).toContain('Attached file notes.txt:');
+    expect(message).toContain('secret text');
   });
 });
 
@@ -849,6 +935,19 @@ describe('ChatInput @-mentions', () => {
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
     typeAtEnd(textarea, '@');
     expect(screen.queryByTestId('mention-popover')).toBeNull();
+  });
+
+  it('does not intercept Enter when the mention query matches no agent', () => {
+    const onSend = vi.fn();
+    appStateMock.current.minds = [makeMind('m1', 'Ada')];
+    render(<ChatInput {...defaultProps} onSend={onSend} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // "@zzz" matches nothing, so the popover is not shown and Enter must send.
+    typeAtEnd(textarea, 'hello @zzz');
+    expect(screen.queryByTestId('mention-popover')).toBeNull();
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith('hello @zzz', undefined);
   });
 });
 
@@ -911,6 +1010,18 @@ describe('ChatInput slash commands', () => {
     await screen.findByTestId('slash-popover');
     fireEvent.keyDown(textarea, { key: 'Enter' });
     await waitFor(() => expect(api.chat.newConversation).toHaveBeenCalledWith('m1'));
+  });
+
+  it('/new is ignored while a response is streaming', async () => {
+    appStateMock.current.activeMindId = 'm1';
+    render(<ChatInput {...defaultProps} isStreaming />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/new');
+    await screen.findByTestId('slash-popover');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    // The composer still clears the slash text, but no new conversation starts.
+    await waitFor(() => expect(textarea.value).toBe(''));
+    expect(api.chat.newConversation).not.toHaveBeenCalled();
   });
 
   it('/model opens the model picker', async () => {

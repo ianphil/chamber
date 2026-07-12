@@ -3,10 +3,10 @@ import type { MindContext } from '@chamber/shared/types';
 import {
   imageToken,
   fileToken,
-  collectImageNames,
-  collectFileNames,
+  sanitizeTokenLabel,
+  collectImageIds,
+  collectFileIds,
   isInsideAttachmentToken,
-  makeUniqueName,
   detectMention,
   toMentionables,
   filterMentionables,
@@ -15,6 +15,7 @@ import {
   SLASH_COMMANDS,
   isImageFile,
   isTextLikeFile,
+  safeFenceFor,
   buildMessageWithTextAttachments,
 } from './composer';
 
@@ -28,37 +29,42 @@ function makeMind(mindId: string, name: string): MindContext {
 }
 
 describe('attachment tokens', () => {
-  it('builds distinct image and file token markers', () => {
-    expect(imageToken('a.png')).toBe('[📷 a.png]');
-    expect(fileToken('notes.md')).toBe('[📄 notes.md]');
+  it('builds image and file tokens with opaque ids and display labels', () => {
+    expect(imageToken(1, 'a.png')).toBe('[📷#1 a.png]');
+    expect(fileToken(2, 'notes.md')).toBe('[📄#2 notes.md]');
   });
 
-  it('collects image and file names independently', () => {
-    const text = `hello ${imageToken('a.png')} and ${fileToken('notes.md')}`;
-    expect(collectImageNames(text)).toEqual(new Set(['a.png']));
-    expect(collectFileNames(text)).toEqual(new Set(['notes.md']));
+  it('collects image and file ids independently', () => {
+    const text = `hello ${imageToken(1, 'a.png')} and ${fileToken(2, 'notes.md')}`;
+    expect(collectImageIds(text)).toEqual(new Set([1]));
+    expect(collectFileIds(text)).toEqual(new Set([2]));
+  });
+
+  it('keys attachments by id even when the filename contains a closing bracket', () => {
+    // A raw "]" in the filename must not break parsing or bleed into the label.
+    const token = imageToken(7, 'weird]name].png');
+    expect(token).toBe('[📷#7 weird name .png]');
+    const text = `before ${token} after ${imageToken(8, 'clean.png')}`;
+    expect(collectImageIds(text)).toEqual(new Set([7, 8]));
+  });
+
+  it('does not let one token span into the next when labels are adjacent', () => {
+    const text = `${imageToken(1, 'a.png')}${imageToken(2, 'b.png')}`;
+    expect(collectImageIds(text)).toEqual(new Set([1, 2]));
   });
 
   it('detects when an index sits inside any attachment token span', () => {
-    const text = `x ${imageToken('a.png')}`;
+    const text = `x ${imageToken(3, 'a.png')}`;
     const insideStart = text.indexOf('[') + 2;
     expect(isInsideAttachmentToken(text, insideStart)).toBe(true);
     expect(isInsideAttachmentToken(text, 0)).toBe(false);
   });
 });
 
-describe('makeUniqueName', () => {
-  it('returns the name unchanged when unused', () => {
-    expect(makeUniqueName('report.txt', new Set())).toBe('report.txt');
-  });
-
-  it('suffixes a counter before the extension on collision', () => {
-    const used = new Set(['report.txt', 'report (2).txt']);
-    expect(makeUniqueName('report.txt', used)).toBe('report (3).txt');
-  });
-
-  it('suffixes extensionless names', () => {
-    expect(makeUniqueName('Dockerfile', new Set(['Dockerfile']))).toBe('Dockerfile (2)');
+describe('sanitizeTokenLabel', () => {
+  it('replaces brackets and newlines and collapses whitespace', () => {
+    expect(sanitizeTokenLabel('a]b[c\nd')).toBe('a b c d');
+    expect(sanitizeTokenLabel('  spaced   name  ')).toBe('spaced name');
   });
 });
 
@@ -85,7 +91,7 @@ describe('detectMention', () => {
   });
 
   it('suppresses mentions inside an attachment token', () => {
-    const text = `${imageToken('@shot.png')}`;
+    const text = `${imageToken(1, '@shot.png')}`;
     // caret right after the "@" inside the token span
     const caret = text.indexOf('@') + 1;
     expect(detectMention(text, caret)).toBeNull();
@@ -154,25 +160,44 @@ describe('file classification', () => {
   });
 });
 
+describe('safeFenceFor', () => {
+  it('uses three backticks when content has no fence', () => {
+    expect(safeFenceFor('plain text')).toBe('```');
+  });
+
+  it('grows the fence beyond the longest backtick run in the content', () => {
+    expect(safeFenceFor('a ``` b')).toBe('````');
+    expect(safeFenceFor('a ````` b')).toBe('``````');
+  });
+});
+
 describe('buildMessageWithTextAttachments', () => {
   it('returns the input unchanged when there are no text attachments', () => {
     expect(buildMessageWithTextAttachments('hi', [])).toBe('hi');
   });
 
-  it('folds contents of attachments whose token is present', () => {
-    const input = `look at ${fileToken('notes.md')}`;
+  it('folds contents of attachments whose token id is present', () => {
+    const input = `look at ${fileToken(5, 'notes.md')}`;
     const out = buildMessageWithTextAttachments(input, [
-      { name: 'notes.md', mimeType: 'text/markdown', content: '# Title' },
+      { id: 5, name: 'notes.md', mimeType: 'text/markdown', content: '# Title' },
     ]);
-    expect(out).toContain('look at [📄 notes.md]');
+    expect(out).toContain(`look at ${fileToken(5, 'notes.md')}`);
     expect(out).toContain('Attached file notes.md:');
     expect(out).toContain('# Title');
   });
 
-  it('ignores attachments whose token was removed from the input', () => {
+  it('ignores attachments whose token id is not in the input', () => {
     const out = buildMessageWithTextAttachments('no tokens here', [
-      { name: 'notes.md', mimeType: 'text/markdown', content: '# Title' },
+      { id: 5, name: 'notes.md', mimeType: 'text/markdown', content: '# Title' },
     ]);
     expect(out).toBe('no tokens here');
+  });
+
+  it('uses a fence long enough to wrap content that itself contains fences', () => {
+    const input = fileToken(1, 'snippet.md');
+    const out = buildMessageWithTextAttachments(input, [
+      { id: 1, name: 'snippet.md', mimeType: 'text/markdown', content: 'text\n```\ncode\n```' },
+    ]);
+    expect(out).toContain('````\ntext');
   });
 });
