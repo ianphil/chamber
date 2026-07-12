@@ -40,6 +40,7 @@ function createChatService(overrides: Partial<ChatService> = {}): ChatService {
     renameConversation: vi.fn(() => []),
     deleteConversation: vi.fn(async () => ({ sessionId: '', messages: [], conversations: [] })),
     getConversationMessages: vi.fn(async () => []),
+    getConversationExportFilename: vi.fn(() => markdownExport.filename),
     exportConversation: vi.fn(async () => markdownExport),
     ...overrides,
   } as unknown as ChatService;
@@ -84,6 +85,7 @@ describe('setupConversationHistoryIPC', () => {
 
     const result = await handlerFor('conversationHistory:export')(EVT, 'mind-1', 'session-1', 'markdown');
 
+    expect(chatService.getConversationExportFilename).toHaveBeenCalledWith('mind-1', 'session-1', 'markdown');
     expect(chatService.exportConversation).toHaveBeenCalledWith('mind-1', 'session-1', 'markdown');
     expect(dialog.showSaveDialog).toHaveBeenCalledWith(
       expect.anything(),
@@ -93,20 +95,42 @@ describe('setupConversationHistoryIPC', () => {
     expect(result).toEqual({ status: 'saved', path: 'C:/tmp/planning.md', format: 'markdown' });
   });
 
+  it('export handler shows the save dialog before doing expensive transcript work', async () => {
+    const order: string[] = [];
+    vi.mocked(dialog.showSaveDialog).mockImplementation(async () => {
+      order.push('dialog');
+      return { canceled: true, filePath: undefined } as never;
+    });
+    const chatService = createChatService({
+      exportConversation: vi.fn(async () => { order.push('export'); return markdownExport; }) as never,
+    });
+    setupConversationHistoryIPC(chatService);
+
+    await handlerFor('conversationHistory:export')(EVT, 'mind-1', 'session-1', 'markdown');
+
+    expect(order).toEqual(['dialog']);
+    expect(chatService.exportConversation).not.toHaveBeenCalled();
+  });
+
   it('export handler returns canceled and writes nothing when the dialog is dismissed', async () => {
     vi.mocked(dialog.showSaveDialog).mockResolvedValue({ canceled: true, filePath: undefined } as never);
-    setupConversationHistoryIPC(createChatService());
+    const chatService = createChatService();
+    setupConversationHistoryIPC(chatService);
 
     const result = await handlerFor('conversationHistory:export')(EVT, 'mind-1', 'session-1', 'markdown');
 
     expect(writeFile).not.toHaveBeenCalled();
+    expect(chatService.exportConversation).not.toHaveBeenCalled();
     expect(result).toEqual({ status: 'canceled' });
   });
 
   it('export handler normalizes the json format and requests it from the service', async () => {
     const jsonExport: ConversationExport = { format: 'json', filename: 'planning.json', content: '{}\n' };
     vi.mocked(dialog.showSaveDialog).mockResolvedValue({ canceled: false, filePath: 'C:/tmp/planning.json' } as never);
-    const chatService = createChatService({ exportConversation: vi.fn(async () => jsonExport) as never });
+    const chatService = createChatService({
+      getConversationExportFilename: vi.fn(() => 'planning.json') as never,
+      exportConversation: vi.fn(async () => jsonExport) as never,
+    });
     setupConversationHistoryIPC(chatService);
 
     const result = await handlerFor('conversationHistory:export')(EVT, 'mind-1', 'session-1', 'json');

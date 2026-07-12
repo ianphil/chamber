@@ -422,6 +422,35 @@ describe('ChatService', () => {
     });
   });
 
+  describe('getConversationExportFilename', () => {
+    it('resolves the filename from the summary without reading the transcript', () => {
+      mockMindManager.listConversationHistory.mockReturnValueOnce([
+        {
+          sessionId: 'session-1',
+          title: 'Design review',
+          createdAt: '2026-05-05T22:00:00.000Z',
+          updatedAt: '2026-05-05T22:30:00.000Z',
+          kind: 'chat',
+          active: true,
+          hasMessages: true,
+        },
+      ]);
+
+      const markdownName = svc.getConversationExportFilename('valid-mind', 'session-1', 'markdown');
+
+      expect(markdownName).toBe('design-review.md');
+      expect(mockMindManager.getConversationMessages).not.toHaveBeenCalled();
+    });
+
+    it('throws when the conversation is unknown', () => {
+      mockMindManager.listConversationHistory.mockReturnValueOnce([]);
+
+      expect(() => svc.getConversationExportFilename('valid-mind', 'missing', 'json')).toThrow(
+        'Conversation missing not found',
+      );
+    });
+  });
+
   describe('listModels', () => {
     it('returns models from the minds client', async () => {
       const models = await svc.listModels('valid-mind');

@@ -20,6 +20,12 @@ const log = Logger.create('ConversationHistoryPanel');
 const HISTORY_COLLAPSED_STORAGE_KEY = 'chamber:conversation-history-collapsed';
 const SEARCH_DEBOUNCE_MS = 180;
 const CONTENT_SEARCH_MIN_QUERY_LENGTH = 2;
+const MAX_CONTENT_LOADS_PER_PASS = 8;
+
+interface CachedTranscriptText {
+  updatedAt: string;
+  text: string;
+}
 
 export function ConversationHistoryPanel() {
   const { activeMindId, conversationHistoryByMind, activeConversationByMind, conversationViewByMind, streamingByMind } = useAppState();
@@ -38,7 +44,7 @@ export function ConversationHistoryPanel() {
   const [contentIndexVersion, setContentIndexVersion] = useState(0);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const creatingConversationRef = useRef(false);
-  const contentIndexByMind = useRef<Map<string, Map<string, string>>>(new Map());
+  const contentIndexByMind = useRef<Map<string, Map<string, CachedTranscriptText>>>(new Map());
   const contentLoadsInFlight = useRef<Set<string>>(new Set());
 
   const conversations = useMemo<ConversationSummary[] | undefined>(() => {
@@ -47,10 +53,17 @@ export function ConversationHistoryPanel() {
   }, [activeMindId, conversationHistoryByMind]);
   const visibleConversations = conversations ?? [];
   const filteredConversations = useMemo(() => {
-    const contentIndex = activeMindId ? contentIndexByMind.current.get(activeMindId) : undefined;
     // contentIndexVersion forces recompute when best-effort content loads resolve.
     void contentIndexVersion;
-    return filterConversations(visibleConversations, debouncedQuery, contentIndex);
+    const mindIndex = activeMindId ? contentIndexByMind.current.get(activeMindId) : undefined;
+    const freshIndex = mindIndex
+      ? new Map(
+          visibleConversations
+            .filter((conversation) => mindIndex.get(conversation.sessionId)?.updatedAt === conversation.updatedAt)
+            .map((conversation) => [conversation.sessionId, mindIndex.get(conversation.sessionId)!.text] as const),
+        )
+      : undefined;
+    return filterConversations(visibleConversations, debouncedQuery, freshIndex);
   }, [visibleConversations, debouncedQuery, activeMindId, contentIndexVersion]);
   const selectedConversationId = activeMindId ? activeConversationByMind[activeMindId] : undefined;
   const activeConversationView = activeMindId ? conversationViewByMind[activeMindId] : undefined;
@@ -122,9 +135,10 @@ export function ConversationHistoryPanel() {
   }, [activeMindId]);
 
   // Best-effort content index for search: lazily load each conversation's
-  // transcript once (read-only, cached) while a query is active, so search can
-  // match message bodies without disturbing the active chat. Title matching
-  // still works if a transcript fails to load.
+  // transcript (read-only, cached by sessionId + updatedAt) while a query is
+  // active, so search can match message bodies without disturbing the active
+  // chat. Loads are bounded per pass and re-run until every conversation is
+  // cached. Title matching still works if a transcript fails to load.
   useEffect(() => {
     if (!activeMindId) return;
     const normalized = normalizeSearchQuery(debouncedQuery);
@@ -133,16 +147,17 @@ export function ConversationHistoryPanel() {
     const mindId = activeMindId;
     let mindIndex = contentIndexByMind.current.get(mindId);
     if (!mindIndex) {
-      mindIndex = new Map<string, string>();
+      mindIndex = new Map<string, CachedTranscriptText>();
       contentIndexByMind.current.set(mindId, mindIndex);
     }
     const index = mindIndex;
 
     const pending = visibleConversations.filter((conversation) => {
       if (conversation.hasMessages === false) return false;
-      if (index.has(conversation.sessionId)) return false;
+      const cached = index.get(conversation.sessionId);
+      if (cached && cached.updatedAt === conversation.updatedAt) return false;
       return !contentLoadsInFlight.current.has(`${mindId}:${conversation.sessionId}`);
-    });
+    }).slice(0, MAX_CONTENT_LOADS_PER_PASS);
     if (pending.length === 0) return;
 
     let cancelled = false;
@@ -151,9 +166,9 @@ export function ConversationHistoryPanel() {
       contentLoadsInFlight.current.add(key);
       try {
         const messages = await window.electronAPI.conversationHistory.messages(mindId, conversation.sessionId);
-        index.set(conversation.sessionId, conversationSearchText(messages));
+        index.set(conversation.sessionId, { updatedAt: conversation.updatedAt, text: conversationSearchText(messages) });
       } catch (error) {
-        index.set(conversation.sessionId, '');
+        index.set(conversation.sessionId, { updatedAt: conversation.updatedAt, text: '' });
         log.warn('Failed to load conversation content for search:', error);
       } finally {
         contentLoadsInFlight.current.delete(key);
@@ -165,7 +180,7 @@ export function ConversationHistoryPanel() {
     return () => {
       cancelled = true;
     };
-  }, [activeMindId, debouncedQuery, visibleConversations]);
+  }, [activeMindId, debouncedQuery, visibleConversations, contentIndexVersion]);
 
   useEffect(() => {
     if (!activeMindId || !selectedConversationId || isActiveMindBusy || creatingConversationRef.current) return;

@@ -995,7 +995,7 @@ describe('MindManager', () => {
         {
           id: 'a1',
           role: 'assistant',
-          blocks: [{ type: 'text', content: 'hello human' }],
+          blocks: [{ type: 'text', sdkMessageId: 'a1', content: 'hello human' }],
           timestamp: Date.parse('2026-05-05T22:00:01.000Z'),
         },
       ]);
@@ -1262,7 +1262,7 @@ describe('MindManager', () => {
         {
           id: 'a1',
           role: 'assistant',
-          blocks: [{ type: 'text', content: 'archived answer' }],
+          blocks: [{ type: 'text', sdkMessageId: 'a1', content: 'archived answer' }],
           timestamp: Date.parse('2026-05-05T22:00:01.000Z'),
         },
       ]);
@@ -1273,6 +1273,69 @@ describe('MindManager', () => {
       await expect(manager.getConversationMessages(mind.mindId, 'missing-session')).rejects.toThrow(
         'Conversation missing-session not found',
       );
+    });
+
+    it('does not disconnect a throwaway read session that a concurrent resume promoted to active', async () => {
+      const readOnlySession = createSessionStub();
+      let releaseGetEvents: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { releaseGetEvents = resolve; });
+      readOnlySession.getEvents.mockImplementation(async () => {
+        await gate;
+        return [
+          { type: 'assistant.message', timestamp: '2026-05-05T22:00:01.000Z', data: { messageId: 'a1', content: 'archived answer' } },
+        ];
+      });
+      const activeSession = createSessionStub();
+      activeSession.getEvents.mockResolvedValue([]);
+
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Existing chat');
+      await manager.startNewConversation(mind.mindId);
+      const inactive = manager.listConversationHistory(mind.mindId).find((conversation) => !conversation.active);
+      expect(inactive).toBeDefined();
+
+      mockResumeSession.mockClear();
+      mockResumeSession
+        .mockResolvedValueOnce(readOnlySession)  // background read-only load
+        .mockResolvedValueOnce(activeSession);   // concurrent resume promotes to active
+
+      const readPromise = manager.getConversationMessages(mind.mindId, inactive!.sessionId);
+      await vi.waitFor(() => { expect(mockResumeSession).toHaveBeenCalledTimes(1); });
+
+      await manager.resumeConversation(mind.mindId, inactive!.sessionId);
+      expect(manager.getMind(mind.mindId)?.activeSessionId).toBe(inactive!.sessionId);
+      expect(manager.getMind(mind.mindId)?.session).toBe(activeSession);
+
+      releaseGetEvents?.();
+      await readPromise;
+
+      // The background read must not tear down the SDK session that the resume
+      // just promoted to active, nor the live session the user now sees.
+      expect(readOnlySession.disconnect).not.toHaveBeenCalled();
+      expect(activeSession.disconnect).not.toHaveBeenCalled();
+      expect(manager.getMind(mind.mindId)?.session).toBe(activeSession);
+    });
+
+    it('deduplicates concurrent read-only transcript loads for the same conversation', async () => {
+      const readOnlySession = createSessionStub();
+      readOnlySession.getEvents.mockResolvedValue([
+        { type: 'assistant.message', timestamp: '2026-05-05T22:00:01.000Z', data: { messageId: 'a1', content: 'archived' } },
+      ]);
+      const mind = await manager.loadMind('/tmp/agents/q');
+      manager.markActiveConversationHasMessages(mind.mindId, 'Existing chat');
+      await manager.startNewConversation(mind.mindId);
+      const inactive = manager.listConversationHistory(mind.mindId).find((conversation) => !conversation.active);
+      mockResumeSession.mockClear();
+      mockResumeSession.mockResolvedValue(readOnlySession);
+
+      const [first, second] = await Promise.all([
+        manager.getConversationMessages(mind.mindId, inactive!.sessionId),
+        manager.getConversationMessages(mind.mindId, inactive!.sessionId),
+      ]);
+
+      expect(mockResumeSession).toHaveBeenCalledTimes(1);
+      expect(readOnlySession.disconnect).toHaveBeenCalledTimes(1);
+      expect(first).toEqual(second);
     });
 
     it('renames only Chamber-owned conversation metadata', async () => {

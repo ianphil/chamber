@@ -17,7 +17,8 @@ import { loadChamberMindConfig } from './chamberMindConfig';
 import type { CopilotClientFactory } from '../sdk/CopilotClientFactory';
 import { approveForSessionCompat } from '../sdk/approveForSessionCompat';
 import type { IdentityLoader } from '../chat/IdentityLoader';
-import { getCurrentDateTimeContext, injectCurrentDateTimeContext, stripInjectedCurrentDateTimeContext } from '../chat/currentDateTimeContext';
+import { getCurrentDateTimeContext, injectCurrentDateTimeContext } from '../chat/currentDateTimeContext';
+import { mapSessionEventsToChatMessages } from '../chat/sessionTranscript';
 import type { ChamberToolProvider } from '../chamberTools';
 import type { ConfigService } from '../config/ConfigService';
 import type { ViewDiscovery } from '../lens/ViewDiscovery';
@@ -84,6 +85,10 @@ export class MindManager extends EventEmitter {
   private minds = new Map<string, InternalMindContext>();
   private pathToId = new Map<string, string>();
   private loading = new Map<string, Promise<MindContext>>();
+  // Deduplicates concurrent read-only transcript loads for the same
+  // `mindId:sessionId`, so history search fan-out and an export cannot resume
+  // the same SDK session twice and race each other's teardown.
+  private readonly inFlightConversationReads = new Map<string, Promise<ChatMessage[]>>();
   // Lowercased+NFC display names held by in-flight `loadMind({enforceUnique:true})`
   // calls. Two concurrent uniqueness-enforcing loads with colliding identity
   // names would otherwise both pass the `this.minds`-only check because neither
@@ -606,9 +611,18 @@ export class MindManager extends EventEmitter {
   /**
    * Read a conversation's messages without changing the mind's active session.
    * The active conversation is read from its live session; any other
-   * conversation is resumed into a throwaway session that is disconnected
-   * immediately after its transcript is read, so the user's current chat is
-   * never disturbed. Used by history search (content lookup) and export.
+   * conversation is resumed into a throwaway session that is disconnected once
+   * its transcript is read, so the user's current chat is never disturbed.
+   * Used by history search (content lookup) and export.
+   *
+   * Two safety properties guard against a background read tearing down a
+   * conversation the user just opened:
+   *   1. Concurrent reads of the same session are deduplicated via
+   *      `inFlightConversationReads`, so only one throwaway session exists.
+   *   2. Before disconnecting the throwaway session, we re-check whether a
+   *      concurrent resume promoted this session to the mind's active session.
+   *      If so, the live session now owns that SDK session id and we must not
+   *      disconnect it.
    */
   async getConversationMessages(mindId: string, sessionId: string): Promise<ChatMessage[]> {
     const context = this.minds.get(mindId);
@@ -620,6 +634,28 @@ export class MindManager extends EventEmitter {
 
     if (context.activeSessionId === sessionId && context.session) {
       return this.getMessagesForSession(context.session);
+    }
+
+    const key = `${mindId}:${sessionId}`;
+    const existing = this.inFlightConversationReads.get(key);
+    if (existing) return existing;
+
+    const load = this.readConversationMessagesReadOnly(mindId, sessionId, context)
+      .finally(() => this.inFlightConversationReads.delete(key));
+    this.inFlightConversationReads.set(key, load);
+    return load;
+  }
+
+  private async readConversationMessagesReadOnly(
+    mindId: string,
+    sessionId: string,
+    context: InternalMindContext,
+  ): Promise<ChatMessage[]> {
+    // A resume may have promoted this session to active between the caller's
+    // guard and here; read from the live session instead of resuming a rival.
+    const beforeLoad = this.minds.get(mindId);
+    if (beforeLoad?.activeSessionId === sessionId && beforeLoad.session) {
+      return this.getMessagesForSession(beforeLoad.session);
     }
 
     const sessionTools = this.getSessionTools(mindId, context.mindPath);
@@ -636,7 +672,11 @@ export class MindManager extends EventEmitter {
     try {
       return await this.getMessagesForSession(readOnlySession);
     } finally {
-      await readOnlySession.disconnect().catch(() => { /* session already disconnected */ });
+      const current = this.minds.get(mindId);
+      const promotedToActive = current?.activeSessionId === sessionId && Boolean(current.session);
+      if (!promotedToActive) {
+        await readOnlySession.disconnect().catch(() => { /* session already disconnected */ });
+      }
     }
   }
 
@@ -1359,51 +1399,7 @@ export class MindManager extends EventEmitter {
 
   private async getMessagesForSession(session: CopilotSession): Promise<ChatMessage[]> {
     const events = await session.getEvents();
-    return events.flatMap((event, index) => this.mapSessionEventToChatMessage(event, index));
-  }
-
-  private mapSessionEventToChatMessage(event: unknown, index: number): ChatMessage[] {
-    if (typeof event !== 'object' || event === null) return [];
-    const record = event as Record<string, unknown>;
-    const data = typeof record.data === 'object' && record.data !== null
-      ? record.data as Record<string, unknown>
-      : {};
-    const rawContent = this.extractMessageContent(data);
-    const content = record.type === 'user.message' && rawContent
-      ? stripInjectedCurrentDateTimeContext(rawContent)
-      : rawContent;
-    if (!content) return [];
-    const timestamp = typeof record.timestamp === 'number'
-      ? record.timestamp
-      : Date.parse(String(record.timestamp ?? '')) || Date.now();
-    const id = typeof data.messageId === 'string'
-      ? data.messageId
-      : `${String(record.type ?? 'session-event')}-${index}`;
-    if (record.type === 'user.message') {
-      return [{ id, role: 'user', blocks: [{ type: 'text', content }], timestamp }];
-    }
-    if (record.type === 'assistant.message') {
-      return [{ id, role: 'assistant', blocks: [{ type: 'text', content }], timestamp }];
-    }
-    return [];
-  }
-
-  private extractMessageContent(data: Record<string, unknown>): string | null {
-    const value = data.content ?? data.message ?? data.text ?? data.prompt;
-    if (typeof value === 'string') return value;
-    if (Array.isArray(value)) {
-      const content = value
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item !== 'object' || item === null) return '';
-          const block = item as Record<string, unknown>;
-          return typeof block.text === 'string' ? block.text : '';
-        })
-        .filter(Boolean)
-        .join('\n');
-      return content || null;
-    }
-    return null;
+    return mapSessionEventsToChatMessages(events);
   }
 
   async sendBackgroundPrompt(mindPath: string, prompt: string): Promise<void> {

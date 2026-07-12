@@ -33,12 +33,14 @@ export function setupConversationHistoryIPC(chatService: ChatService): void {
     IPC.CONVERSATION_HISTORY.EXPORT,
     async (event, mindId: string, sessionId: string, format: ConversationExportFormat): Promise<ConversationExportResult> => {
       const normalizedFormat = normalizeExportFormat(format);
-      const conversationExport = await chatService.exportConversation(mindId, sessionId, normalizedFormat);
+      // Resolve the file name cheaply and show the save dialog before reading or
+      // serializing the transcript, so a cancel costs no expensive work.
+      const filename = chatService.getConversationExportFilename(mindId, sessionId, normalizedFormat);
 
       const win = BrowserWindow.fromWebContents(event.sender);
       const options = {
         title: 'Export conversation',
-        defaultPath: conversationExport.filename,
+        defaultPath: filename,
         filters: [EXPORT_DIALOG_FILTERS[normalizedFormat], { name: 'All Files', extensions: ['*'] }],
       };
       const result = win
@@ -49,6 +51,7 @@ export function setupConversationHistoryIPC(chatService: ChatService): void {
         return { status: 'canceled' };
       }
 
+      const conversationExport = await chatService.exportConversation(mindId, sessionId, normalizedFormat);
       await writeFile(result.filePath, conversationExport.content, 'utf-8');
       return { status: 'saved', path: result.filePath, format: normalizedFormat };
     },

@@ -9,3 +9,4 @@ export { parseIpcArgs } from './ipc-validation';
 export { Logger, type LogLevel } from './logger';
 export { escapeXml } from './escapeXml';
 export { getErrorMessage } from './getErrorMessage';
+export { applyChatEventToMessage } from './chat-transcript';

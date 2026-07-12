@@ -125,3 +125,6 @@ resources/automation-runtime/
 chamber-automation-runtime/node_modules/
 
 .playwright-cli/
+
+# Impeccable design-hook cache (local tooling artifact)
+.impeccable/
