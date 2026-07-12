@@ -182,6 +182,19 @@ function readAsText(file: Blob): Promise<string> {
   });
 }
 
+// Build the composer notice for files that could not be attached. Returns null
+// when nothing was skipped so the notice line can be cleared.
+function buildSkipNotice(skipped: string[], oversized: string[]): string | null {
+  const notices: string[] = [];
+  if (skipped.length > 0) {
+    notices.push(`Skipped ${skipped.length} unsupported file${skipped.length > 1 ? 's' : ''}: ${skipped.join(', ')}`);
+  }
+  if (oversized.length > 0) {
+    notices.push(`Skipped ${oversized.length} oversized file${oversized.length > 1 ? 's' : ''}: ${oversized.join(', ')}`);
+  }
+  return notices.length > 0 ? notices.join(' · ') : null;
+}
+
 function getMenuPopoverPlacement(anchor: MenuAnchor): MenuPopoverPlacement {
   const viewportHeight = typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerHeight;
   const viewportWidth = typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth;
@@ -326,6 +339,10 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
   // Which attachment bucket the current draft belongs to. Mirrors the per-mind
   // draft partitioning so payloads travel with the text when agents switch.
   const conversationKey = isControlled ? (activeMindId ?? NO_MIND_BUCKET_KEY) : UNCONTROLLED_BUCKET_KEY;
+  // Live mirror of the key so async file-read completions can tell whether the
+  // user has since switched agents (and skip stealing caret/focus if so).
+  const conversationKeyRef = useRef(conversationKey);
+  conversationKeyRef.current = conversationKey;
   const activeBucket = attachmentsByKey[conversationKey] ?? EMPTY_BUCKET;
   const activeImages = activeBucket.images;
   const activeTexts = activeBucket.texts;
@@ -447,11 +464,60 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     });
   }, [resize, setInput]);
 
+  // Snapshot the draft + caret that own an attachment pick, so an async file
+  // read that resolves after an agent switch composes against the origin draft
+  // rather than whatever draft is now live in the shared textarea.
+  const captureDraft = useCallback(() => {
+    const el = textareaRef.current;
+    const base = el?.value ?? input;
+    const focused = el ? document.activeElement === el : false;
+    const caret = el
+      ? (focused ? (el.selectionStart ?? base.length) : (selectionRef.current?.start ?? base.length))
+      : base.length;
+    return { base, caret };
+  }, [input]);
+
+  // File payloads and their inline tokens are committed together, against the
+  // captured base draft and via the captured (origin-mind) writer. The textarea
+  // caret/focus is only touched when the origin mind is still active.
+  const commitAttachments = useCallback((
+    key: string,
+    base: string,
+    caret: number,
+    images: ComposerImageAttachment[],
+    texts: TextFileAttachment[],
+    tokens: string[],
+  ) => {
+    if (images.length === 0 && texts.length === 0) return;
+    updateBucket(key, (b) => ({ images: [...b.images, ...images], texts: [...b.texts, ...texts] }));
+    let draft = base;
+    let pos = Math.max(0, Math.min(caret, base.length));
+    for (const token of tokens) {
+      draft = draft.slice(0, pos) + token + draft.slice(pos);
+      pos += token.length;
+    }
+    setInput(draft);
+    if (key === conversationKeyRef.current) {
+      selectionRef.current = { start: pos, end: pos };
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(pos, pos);
+        resize(el);
+      });
+    }
+  }, [updateBucket, setInput, resize]);
+
   const handleFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    // Capture the bucket at click time so an agent switch mid-read cannot
-    // misfile the payload relative to the token we insert into this draft.
+    // Capture the bucket and base draft at pick time so a mid-read agent switch
+    // cannot misfile the payload or corrupt the origin/destination drafts.
     const key = conversationKey;
+    const { base, caret } = captureDraft();
+    const images: ComposerImageAttachment[] = [];
+    const texts: TextFileAttachment[] = [];
+    const tokens: string[] = [];
     const skipped: string[] = [];
     const oversized: string[] = [];
     for (const file of files) {
@@ -463,9 +529,8 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         try {
           const data = await readAsBase64(file);
           const id = ++attachmentIdRef.current;
-          const mimeType = file.type || 'image/png';
-          updateBucket(key, (b) => ({ ...b, images: [...b.images, { id, name: file.name, mimeType, data }] }));
-          insertAtCaret(imageToken(id, file.name));
+          images.push({ id, name: file.name, mimeType: file.type || 'image/png', data });
+          tokens.push(imageToken(id, file.name));
         } catch {
           skipped.push(file.name);
         }
@@ -477,8 +542,8 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         try {
           const content = await readAsText(file);
           const id = ++attachmentIdRef.current;
-          updateBucket(key, (b) => ({ ...b, texts: [...b.texts, { id, name: file.name, mimeType: file.type || 'text/plain', content }] }));
-          insertAtCaret(fileToken(id, file.name));
+          texts.push({ id, name: file.name, mimeType: file.type || 'text/plain', content });
+          tokens.push(fileToken(id, file.name));
         } catch {
           skipped.push(file.name);
         }
@@ -486,16 +551,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         skipped.push(file.name);
       }
     }
-    const notices: string[] = [];
-    if (skipped.length > 0) {
-      notices.push(`Skipped ${skipped.length} unsupported file${skipped.length > 1 ? 's' : ''}: ${skipped.join(', ')}`);
-    }
-    if (oversized.length > 0) {
-      notices.push(`Skipped ${oversized.length} oversized file${oversized.length > 1 ? 's' : ''}: ${oversized.join(', ')}`);
-    }
-    setAttachmentNotice(notices.length > 0 ? notices.join(' · ') : null);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [conversationKey, updateBucket, insertAtCaret]);
+    commitAttachments(key, base, caret, images, texts, tokens);
+    setAttachmentNotice(buildSkipNotice(skipped, oversized));
+  }, [conversationKey, captureDraft, commitAttachments]);
 
   const acceptMention = useCallback((item: Mentionable) => {
     const match = mentionMatch;
@@ -617,22 +675,31 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
     e.preventDefault();
     const key = conversationKey;
+    const { base, caret } = captureDraft();
+    const images: ComposerImageAttachment[] = [];
+    const tokens: string[] = [];
+    const oversized: string[] = [];
     for (const item of imageItems) {
       const file = item.getAsFile();
       if (!file) continue;
+      const mimeType = file.type || 'image/png';
+      const name = `image-${(++pastedSeq.current).toString(36)}.${mimeToExt(mimeType)}`;
+      if (file.size > MAX_IMAGE_FILE_BYTES) {
+        oversized.push(name);
+        continue;
+      }
       try {
         const data = await readAsBase64(file);
-        const mimeType = file.type || 'image/png';
-        const ext = mimeToExt(mimeType);
-        const name = `image-${(++pastedSeq.current).toString(36)}.${ext}`;
         const id = ++attachmentIdRef.current;
-        updateBucket(key, (b) => ({ ...b, images: [...b.images, { id, name, mimeType, data }] }));
-        insertAtCaret(imageToken(id, name));
+        images.push({ id, name, mimeType, data });
+        tokens.push(imageToken(id, name));
       } catch {
         // ignore unreadable clipboard entries
       }
     }
-  }, [conversationKey, updateBucket, insertAtCaret]);
+    commitAttachments(key, base, caret, images, [], tokens);
+    setAttachmentNotice(buildSkipNotice([], oversized));
+  }, [conversationKey, captureDraft, commitAttachments]);
 
   const handleSubmit = useCallback(() => {
     if (isStreaming) {
@@ -857,7 +924,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               isComposingRef.current = false;
               setIsComposingForVoice(false);
             }}
-            placeholder={placeholder ?? (disabled ? 'Select a mind directory to start…' : 'Message your agent… (attach or paste files, @ to mention, / for commands)')}
+            placeholder={placeholder ?? (disabled ? 'Select a mind directory to start…' : 'Message your agent… (paste an image to attach)')}
             aria-label="Message your agent"
             disabled={disabled}
             rows={1}

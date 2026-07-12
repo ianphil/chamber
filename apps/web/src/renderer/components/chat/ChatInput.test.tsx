@@ -714,6 +714,20 @@ describe('ChatInput controlled value (per-agent compose drafts #221)', () => {
     expect(onMindAValueChange).not.toHaveBeenCalled();
   });
 
+  it('skips a pasted image that exceeds the size cap with a notice', async () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const file = new File(['x'], 'huge-paste.png', { type: 'image/png' });
+    Object.defineProperty(file, 'size', { value: MAX_IMAGE_FILE_BYTES + 1 });
+
+    fireEvent.paste(textarea, {
+      clipboardData: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }] },
+    });
+
+    await screen.findByText(/Skipped 1 oversized file/);
+    expect(textarea.value).toBe('');
+  });
+
   it('clearing the controlled value to "" empties the textarea (post-send clear)', () => {
     const onValueChange = vi.fn();
     const { rerender } = render(
@@ -895,6 +909,38 @@ describe('ChatInput attachment scoping (per-mind)', () => {
     expect(attachments[0].name).toBe('a.png');
     expect(message).toContain('Attached file notes.txt:');
     expect(message).toContain('secret text');
+  });
+
+  it('does not corrupt the origin mind draft when a file read resolves after switching minds', async () => {
+    const onSend = vi.fn();
+    appStateMock.current.activeMindId = 'mindA';
+    const { rerender } = render(<ControlledHarness onSend={onSend} mindId="mindA" />);
+    let textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // Mind A has typed text pending.
+    fireEvent.change(textarea, { target: { value: 'please review this' } });
+
+    // Start attaching an image on A, then switch to B before the read settles.
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(['bytes'], 'a.png', { type: 'image/png' })] } });
+    appStateMock.current.activeMindId = 'mindB';
+    rerender(<ControlledHarness onSend={onSend} mindId="mindB" />);
+
+    // B's draft must stay empty: no token bleed, no A text leaking into B.
+    textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe(''));
+
+    // Back on A: the typed text survives and the image token is appended.
+    appStateMock.current.activeMindId = 'mindA';
+    rerender(<ControlledHarness onSend={onSend} mindId="mindA" />);
+    textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toContain('please review this'));
+    expect(textarea.value).toMatch(/\[📷#\d+ a\.png\]/);
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const [, attachments] = onSend.mock.calls[0];
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].name).toBe('a.png');
   });
 });
 
