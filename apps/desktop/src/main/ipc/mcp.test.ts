@@ -67,6 +67,22 @@ describe('MCP IPC', () => {
       expect(write).toHaveBeenCalledWith('C:\\minds\\lucy', entries);
     });
 
+    it('passes preserved fields through validation unchanged', async () => {
+      getMindPath.mockReturnValue('C:\\minds\\lucy');
+      const entries: McpServerEntry[] = [
+        {
+          name: 'stream',
+          transport: 'http',
+          url: 'https://mcp.example.test/sse',
+          headers: {},
+          preserved: { type: 'sse', tools: ['ping'], timeout: 1000 },
+        },
+      ];
+
+      await expect(getHandler(IPC.MCP.SET_SERVERS)(EVT, entries, 'lucy')).resolves.toEqual(entries);
+      expect(write).toHaveBeenCalledWith('C:\\minds\\lucy', entries);
+    });
+
     it('throws when no mind is selected', async () => {
       const entries: McpServerEntry[] = [
         { name: 'files', transport: 'stdio', command: 'npx', args: [], env: {} },

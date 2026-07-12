@@ -1,9 +1,12 @@
-import type { McpServerEntry, McpServerTransport } from '@chamber/shared/mcp-types';
+import type { McpServerEntry, McpServerTransport, McpPreservedServerFields } from '@chamber/shared/mcp-types';
 
 /**
  * Editable form representation of a single MCP server. Multi-value fields are
  * held as raw text (one item per line) so the textarea stays the source of
  * truth while the user types; {@link formToEntry} parses them on save.
+ *
+ * `preserved` carries the entry's non-UI-edited runtime fields (tools, timeout,
+ * cwd, exact type) untouched so editing or renaming a server never drops them.
  */
 export interface McpServerFormState {
   name: string;
@@ -13,6 +16,7 @@ export interface McpServerFormState {
   envText: string;
   url: string;
   headersText: string;
+  preserved?: McpPreservedServerFields;
 }
 
 export function emptyMcpForm(): McpServerFormState {
@@ -21,6 +25,7 @@ export function emptyMcpForm(): McpServerFormState {
 
 export function entryToForm(entry: McpServerEntry): McpServerFormState {
   const base = emptyMcpForm();
+  const preservedProp = entry.preserved ? { preserved: entry.preserved } : {};
   if (entry.transport === 'stdio') {
     return {
       ...base,
@@ -29,6 +34,7 @@ export function entryToForm(entry: McpServerEntry): McpServerFormState {
       command: entry.command,
       argsText: formatArgs(entry.args),
       envText: formatKeyValues(entry.env),
+      ...preservedProp,
     };
   }
   return {
@@ -37,12 +43,14 @@ export function entryToForm(entry: McpServerEntry): McpServerFormState {
     transport: 'http',
     url: entry.url,
     headersText: formatKeyValues(entry.headers),
+    ...preservedProp,
   };
 }
 
 /** Builds a normalized entry from a form. Assumes {@link validateMcpForm} passed. */
 export function formToEntry(form: McpServerFormState): McpServerEntry {
   const name = form.name.trim();
+  const preservedProp = form.preserved ? { preserved: form.preserved } : {};
   if (form.transport === 'stdio') {
     return {
       name,
@@ -50,6 +58,7 @@ export function formToEntry(form: McpServerFormState): McpServerEntry {
       command: form.command.trim(),
       args: parseArgs(form.argsText),
       env: parseKeyValues(form.envText),
+      ...preservedProp,
     };
   }
   return {
@@ -57,6 +66,7 @@ export function formToEntry(form: McpServerFormState): McpServerEntry {
     transport: 'http',
     url: form.url.trim(),
     headers: parseKeyValues(form.headersText),
+    ...preservedProp,
   };
 }
 

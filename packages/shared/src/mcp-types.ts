@@ -3,16 +3,45 @@
  *
  * These types describe the subset of a mind's `.mcp.json` that the Extensions
  * hub lets users manage: a name plus either a stdio launch command or an HTTP
- * endpoint. They are intentionally narrower than the SDK's `MCPServerConfig`
- * (see `mcpConfig.ts`) — the store (`mcpServerStore.ts`) normalizes on read and
- * preserves non-managed fields (`tools`, `timeout`, `cwd`) on write so editing a
- * server through the UI never silently drops its tool scoping.
+ * endpoint. Management reads reuse the runtime MCP schema (`mcpConfig.ts`) to
+ * decide which raw entries are surfaced as editable — entries the runtime would
+ * reject are preserved on disk unchanged rather than normalized into an
+ * executable config.
+ *
+ * The `preserved` bag carries runtime fields the UI does not edit but must
+ * round-trip verbatim (including across a rename) so a management edit never
+ * silently drops server configuration. `tools` is a security-sensitive
+ * allowlist: losing it widens a server to all tools, so it is always preserved.
  */
 
 export type McpServerTransport = 'stdio' | 'http';
 
-export interface McpStdioServerEntry {
+/** Exact runtime discriminator for a command-based (stdio-family) server. */
+export type McpStdioType = 'stdio' | 'local';
+/** Exact runtime discriminator for a URL-based (http-family) server. */
+export type McpHttpType = 'http' | 'sse';
+
+/**
+ * Runtime server fields Chamber's Extensions UI does not edit but preserves
+ * verbatim on save. Carried with the entry so a rename keeps them (rather than
+ * dropping `tools` and widening the server to `['*']`).
+ */
+export interface McpPreservedServerFields {
+  /** Exact runtime type, e.g. `sse` vs `http`, preserved through serialization. */
+  type?: McpStdioType | McpHttpType;
+  /** Tool allowlist. Absence means the runtime defaults to all tools (`['*']`). */
+  tools?: string[];
+  timeout?: number;
+  /** stdio-only working directory. */
+  cwd?: string;
+}
+
+interface McpServerEntryBase {
   name: string;
+  preserved?: McpPreservedServerFields;
+}
+
+export interface McpStdioServerEntry extends McpServerEntryBase {
   transport: 'stdio';
   /** Executable to launch, e.g. `npx`. */
   command: string;
@@ -22,8 +51,7 @@ export interface McpStdioServerEntry {
   env: Record<string, string>;
 }
 
-export interface McpHttpServerEntry {
-  name: string;
+export interface McpHttpServerEntry extends McpServerEntryBase {
   transport: 'http';
   /** Remote MCP endpoint URL. */
   url: string;

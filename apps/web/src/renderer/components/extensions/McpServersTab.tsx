@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { McpServerEntry } from '@chamber/shared/mcp-types';
 import { Globe, Pencil, Plus, Server, Terminal, Trash2 } from 'lucide-react';
@@ -28,6 +28,13 @@ export function McpServersTab() {
   const [entries, setEntries] = useState<McpServerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The mind whose entries are currently displayed. Writes are only allowed
+  // when this equals activeMindId, so a slow load for a previously-selected
+  // mind can never persist over the newly-active mind's .mcp.json (blocker 3).
+  const [loadedMindId, setLoadedMindId] = useState<string | null>(null);
+  // Monotonic token: only the most recent load may apply its result. Guards
+  // against an earlier getServers() resolving after the user switched minds.
+  const requestSeq = useRef(0);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -36,7 +43,10 @@ export function McpServersTab() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    if (!activeMindId) {
+    const seq = ++requestSeq.current;
+    const mindId = activeMindId;
+    setLoadedMindId(null);
+    if (!mindId) {
       setEntries([]);
       setLoading(false);
       return;
@@ -44,11 +54,15 @@ export function McpServersTab() {
     setLoading(true);
     setError(null);
     try {
-      setEntries(await window.electronAPI.mcp.getServers(activeMindId));
+      const result = await window.electronAPI.mcp.getServers(mindId);
+      if (requestSeq.current !== seq) return;
+      setEntries(result);
+      setLoadedMindId(mindId);
     } catch (err) {
+      if (requestSeq.current !== seq) return;
       setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (requestSeq.current === seq) setLoading(false);
     }
   }, [activeMindId]);
 
@@ -56,12 +70,19 @@ export function McpServersTab() {
     void load();
   }, [load]);
 
+  // Writable only once the active mind's servers have loaded. Using loadedMindId
+  // as the write target means a persist is always addressed to the mind whose
+  // data the user actually edited.
+  const canWrite = loadedMindId !== null && loadedMindId === activeMindId && !loading;
+
   const persist = useCallback(
     async (next: McpServerEntry[]): Promise<McpServerEntry[]> => {
-      if (!activeMindId) throw new Error('Select a mind first.');
-      return window.electronAPI.mcp.setServers(next, activeMindId);
+      if (loadedMindId === null || loadedMindId !== activeMindId) {
+        throw new Error('The selected mind changed. Reload before saving.');
+      }
+      return window.electronAPI.mcp.setServers(next, loadedMindId);
     },
-    [activeMindId],
+    [loadedMindId, activeMindId],
   );
 
   const otherNames = useMemo(
@@ -84,6 +105,10 @@ export function McpServersTab() {
   };
 
   const submit = async () => {
+    if (!canWrite) {
+      setFormError('The selected mind changed. Reload before saving.');
+      return;
+    }
     const message = validateMcpForm(form, otherNames);
     if (message) {
       setFormError(message);
@@ -106,6 +131,7 @@ export function McpServersTab() {
   };
 
   const remove = async (name: string) => {
+    if (!canWrite) return;
     setError(null);
     try {
       setEntries(await persist(entries.filter((entry) => entry.name !== name)));
@@ -138,7 +164,7 @@ export function McpServersTab() {
         <button
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm disabled:opacity-60"
           onClick={openAdd}
-          disabled={saving}
+          disabled={saving || !canWrite}
         >
           <Plus size={16} />
           Add server
@@ -177,15 +203,17 @@ export function McpServersTab() {
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   aria-label={`Edit ${entry.name}`}
-                  className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
                   onClick={() => openEdit(entry)}
+                  disabled={!canWrite}
                 >
                   <Pencil size={16} />
                 </button>
                 <button
                   aria-label={`Remove ${entry.name}`}
-                  className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-red-300"
+                  className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-red-300 disabled:opacity-40"
                   onClick={() => void remove(entry.name)}
+                  disabled={!canWrite}
                 >
                   <Trash2 size={16} />
                 </button>

@@ -764,6 +764,16 @@ describe('appReducer', () => {
     expect(state.discoveredViews).toEqual(views);
   });
 
+  it('SET_DISCOVERED_VIEWS drops views that collide with reserved built-in route ids', () => {
+    const views = [
+      makeLensViewManifest({ id: 'v1' }),
+      makeLensViewManifest({ id: 'extensions' }),
+      makeLensViewManifest({ id: 'settings' }),
+    ];
+    const state = appReducer(initialState, { type: 'SET_DISCOVERED_VIEWS', payload: views });
+    expect(state.discoveredViews.map((view) => view.id)).toEqual(['v1']);
+  });
+
   it('SHOW_LANDING sets showLanding true', () => {
     const state = appReducer(initialState, { type: 'SHOW_LANDING' });
     expect(state.showLanding).toBe(true);

@@ -46,6 +46,15 @@ const httpSchema = z.object({
 
 const serverSchema = z.union([stdioSchema, httpSchema]);
 
+// Re-exported under public names so the Extensions management layer
+// (`mcpServerStore.ts`) classifies entries with the *same* validation the
+// runtime uses. This keeps management and runtime in lockstep: an entry the
+// runtime would skip is never surfaced as editable nor normalized into an
+// executable config.
+export const mcpStdioServerSchema = stdioSchema;
+export const mcpHttpServerSchema = httpSchema;
+export const mcpServerSchema = serverSchema;
+
 // Top-level shape: the file MUST be a valid JSON object whose `mcpServers` is
 // an object map. Each entry is validated independently below so a single typo
 // only drops that one server, not every server in the file (#199).

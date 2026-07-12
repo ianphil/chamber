@@ -4,18 +4,27 @@
 // this module round-trips the raw file so users can add, edit, and remove
 // servers without losing unrelated content.
 //
-// Round-trip guarantees:
+// Safety invariants:
+//   - Manageability is decided by the *runtime* MCP schema (`mcpServerSchema`).
+//     An entry the runtime would reject is never surfaced as editable and is
+//     preserved on disk verbatim — management must not normalize an inert,
+//     invalid entry into a valid, executable stdio/http config (#S5-1).
+//   - Non-managed per-server fields (`type`, `tools`, `timeout`, `cwd`) are
+//     carried with the entry (see `preserved`) so a rename keeps them. Losing
+//     `tools` would widen a server from its allowlist to all tools (#S5-2), and
+//     losing `type` would rewrite an `sse` server as `http` (#S5-4).
 //   - Unknown top-level keys in `.mcp.json` are preserved on write.
-//   - Non-managed per-server fields (`tools`, `timeout`, and stdio `cwd`) are
-//     preserved for a server that is kept on the same transport. This matters
-//     for security: `tools` scopes which tools a server may expose, and a UI
-//     edit must never silently widen that scope by dropping the field.
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { McpServerEntry, McpServerTransport } from '@chamber/shared/mcp-types';
+import type {
+  McpHttpType,
+  McpPreservedServerFields,
+  McpServerEntry,
+  McpStdioType,
+} from '@chamber/shared/mcp-types';
 import { Logger } from '../logger';
-import { MCP_CONFIG_FILENAME } from './mcpConfig';
+import { MCP_CONFIG_FILENAME, mcpServerSchema } from './mcpConfig';
 
 const log = Logger.create('mcpServerStore');
 
@@ -29,25 +38,50 @@ interface RawConfig {
 }
 
 /**
- * Reads and normalizes the MCP servers configured for `mindPath`. Invalid or
- * ambiguous entries are skipped rather than throwing so a single bad entry
- * never hides the rest. Returns an empty array when the file is absent.
+ * True when a raw entry validates against the runtime MCP schema — i.e. the
+ * runtime would actually load it. Only manageable entries are surfaced to the
+ * UI; everything else is preserved untouched.
  */
-export function readMcpServers(mindPath: string): McpServerEntry[] {
-  const { servers } = readRawConfig(path.join(mindPath, MCP_CONFIG_FILENAME));
-  return normalizeServers(servers);
+function isManageable(raw: unknown): boolean {
+  return mcpServerSchema.safeParse(raw).success;
 }
 
 /**
- * Replaces the MCP server set in `mindPath`'s `.mcp.json` and returns the
- * persisted, normalized list. Throws on empty or duplicate names so the IPC
- * layer can surface a clear error to the renderer.
+ * Reads the manageable MCP servers configured for `mindPath`. Entries the
+ * runtime schema rejects are intentionally omitted (they remain on disk,
+ * untouched). Returns an empty array when the file is absent.
+ */
+export function readMcpServers(mindPath: string): McpServerEntry[] {
+  const { servers } = readRawConfig(path.join(mindPath, MCP_CONFIG_FILENAME));
+  const entries: McpServerEntry[] = [];
+  for (const [name, raw] of Object.entries(servers)) {
+    if (!isManageable(raw)) continue;
+    entries.push(toEntry(name, raw));
+  }
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Replaces the *manageable* MCP server set in `mindPath`'s `.mcp.json` and
+ * returns the persisted, normalized list. Raw entries the runtime rejects are
+ * preserved verbatim; managed entries are replaced/added by name and removed by
+ * omission. Throws on empty or duplicate names.
  */
 export function writeMcpServers(mindPath: string, entries: McpServerEntry[]): McpServerEntry[] {
   const filePath = path.join(mindPath, MCP_CONFIG_FILENAME);
-  const existing = readRawConfig(filePath);
+  const { top, servers: rawServers } = readRawConfig(filePath);
 
   const nextServers: Record<string, RawServer> = {};
+
+  // Preserve every entry the runtime schema rejects, exactly as written. These
+  // are invalid/unsupported servers the UI never surfaced; management must not
+  // rewrite them (blocker 1).
+  for (const [name, raw] of Object.entries(rawServers)) {
+    if (!isManageable(raw)) nextServers[name] = raw;
+  }
+
+  // Serialize the managed entries, replacing/adding by name. Managed entries
+  // omitted from `entries` are dropped (removal by name).
   const seen = new Set<string>();
   for (const entry of entries) {
     const name = entry.name.trim();
@@ -58,13 +92,13 @@ export function writeMcpServers(mindPath: string, entries: McpServerEntry[]): Mc
       throw new Error(`Duplicate MCP server name: ${name}`);
     }
     seen.add(name);
-    nextServers[name] = serializeEntry(entry, existing.servers[name]);
+    nextServers[name] = serializeEntry(entry);
   }
 
-  const document = { ...existing.top, mcpServers: nextServers };
+  const document = { ...top, mcpServers: nextServers };
   fs.mkdirSync(mindPath, { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`, 'utf-8');
-  return normalizeServers(nextServers);
+  return readMcpServers(mindPath);
 }
 
 function readRawConfig(filePath: string): RawConfig {
@@ -78,88 +112,77 @@ function readRawConfig(filePath: string): RawConfig {
     return { top: {}, servers: {} };
   }
 
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { top: {}, servers: {} };
-  }
+  if (!isRecord(parsed)) return { top: {}, servers: {} };
 
-  const record = parsed as Record<string, unknown>;
-  const { mcpServers, ...top } = record;
+  const { mcpServers, ...top } = parsed;
   const servers = isRecord(mcpServers) ? (mcpServers as Record<string, RawServer>) : {};
   return { top, servers };
 }
 
-function normalizeServers(servers: Record<string, RawServer>): McpServerEntry[] {
-  const entries: McpServerEntry[] = [];
-  for (const [name, raw] of Object.entries(servers)) {
-    const entry = normalizeEntry(name, raw);
-    if (entry) entries.push(entry);
-  }
-  return entries.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function normalizeEntry(name: string, raw: unknown): McpServerEntry | null {
-  if (!isRecord(raw)) return null;
-  const hasCommand = typeof raw.command === 'string' && raw.command.length > 0;
-  const hasUrl = typeof raw.url === 'string' && raw.url.length > 0;
-  // Reject entries that mix stdio and http keys — the same guard the SDK
-  // loader applies — so an ambiguous entry is dropped, not coerced.
-  if (hasCommand === hasUrl) return null;
-
-  if (hasCommand) {
+/** Maps a schema-valid raw entry to the renderer model, capturing preserved fields. */
+function toEntry(name: string, raw: RawServer): McpServerEntry {
+  const preserved = readPreserved(raw);
+  const preservedProp = preserved ? { preserved } : {};
+  if (typeof raw.url === 'string') {
     return {
       name,
-      transport: 'stdio',
-      command: raw.command as string,
-      args: toStringArray(raw.args),
-      env: toStringRecord(raw.env),
+      transport: 'http',
+      url: raw.url,
+      headers: toStringRecord(raw.headers),
+      ...preservedProp,
     };
   }
   return {
     name,
-    transport: 'http',
-    url: raw.url as string,
-    headers: toStringRecord(raw.headers),
+    transport: 'stdio',
+    command: raw.command as string,
+    args: toStringArray(raw.args),
+    env: toStringRecord(raw.env),
+    ...preservedProp,
   };
 }
 
-function serializeEntry(entry: McpServerEntry, prior: RawServer | undefined): RawServer {
-  const carried = preservedFields(prior, entry.transport);
-  if (entry.transport === 'stdio') {
-    return {
-      type: 'stdio',
-      command: entry.command,
-      args: entry.args,
-      ...(Object.keys(entry.env).length > 0 ? { env: entry.env } : {}),
-      ...carried,
-    };
+/** Extracts the non-UI-edited runtime fields to round-trip verbatim. */
+function readPreserved(raw: RawServer): McpPreservedServerFields | undefined {
+  const preserved: McpPreservedServerFields = {};
+  if (typeof raw.type === 'string') preserved.type = raw.type as McpStdioType | McpHttpType;
+  if (Array.isArray(raw.tools)) {
+    preserved.tools = raw.tools.filter((item): item is string => typeof item === 'string');
   }
-  return {
-    type: 'http',
-    url: entry.url,
-    ...(Object.keys(entry.headers).length > 0 ? { headers: entry.headers } : {}),
-    ...carried,
-  };
+  if (typeof raw.timeout === 'number') preserved.timeout = raw.timeout;
+  if (typeof raw.cwd === 'string') preserved.cwd = raw.cwd;
+  return Object.keys(preserved).length > 0 ? preserved : undefined;
 }
 
 /**
- * Copies forward the non-managed fields the UI never edits, but only when the
- * prior entry used the same transport — switching stdio <-> http must not carry
- * stale scoping across shapes.
+ * Serializes an entry back to raw `.mcp.json` shape. The written `type` is
+ * clamped to the arm's valid values so a stale `preserved.type` left over from
+ * a transport change can never produce an invalid config (e.g. `sse` on a
+ * stdio server). `tools` and `timeout` are carried across transports; `cwd` is
+ * stdio-only.
  */
-function preservedFields(prior: RawServer | undefined, transport: McpServerTransport): RawServer {
-  if (!isRecord(prior)) return {};
-  const priorTransport: McpServerTransport | null = typeof prior.url === 'string'
-    ? 'http'
-    : typeof prior.command === 'string'
-      ? 'stdio'
-      : null;
-  if (priorTransport !== transport) return {};
-
-  const carried: RawServer = {};
-  if (Array.isArray(prior.tools)) carried.tools = prior.tools;
-  if (typeof prior.timeout === 'number') carried.timeout = prior.timeout;
-  if (transport === 'stdio' && typeof prior.cwd === 'string') carried.cwd = prior.cwd;
-  return carried;
+function serializeEntry(entry: McpServerEntry): RawServer {
+  const preserved = entry.preserved ?? {};
+  if (entry.transport === 'stdio') {
+    const out: RawServer = {
+      type: preserved.type === 'local' ? 'local' : 'stdio',
+      command: entry.command,
+      args: entry.args,
+    };
+    if (Object.keys(entry.env).length > 0) out.env = entry.env;
+    if (typeof preserved.cwd === 'string') out.cwd = preserved.cwd;
+    if (Array.isArray(preserved.tools)) out.tools = preserved.tools;
+    if (typeof preserved.timeout === 'number') out.timeout = preserved.timeout;
+    return out;
+  }
+  const out: RawServer = {
+    type: preserved.type === 'sse' ? 'sse' : 'http',
+    url: entry.url,
+  };
+  if (Object.keys(entry.headers).length > 0) out.headers = entry.headers;
+  if (Array.isArray(preserved.tools)) out.tools = preserved.tools;
+  if (typeof preserved.timeout === 'number') out.timeout = preserved.timeout;
+  return out;
 }
 
 function toStringArray(value: unknown): string[] {

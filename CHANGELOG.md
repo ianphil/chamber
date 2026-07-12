@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Add theme-aware update chrome** — Adds a dismissible ready-to-install banner and update-status indicator with accessible light and dark theme colors.
 - **Expose bounded per-mind skill discovery** — Adds renderer-safe on-disk skill metadata IPC with asynchronous bounded reads, deterministic limits, and path/link safeguards without conflating managed provenance or integrity.
 - **Add insiders-gated local voice dictation** — Adds local Foundry/Nemotron dictation with a dedicated Settings page, chat mic and push-to-talk controls, explicit runtime capability gating, and insiders-only prepared runtime packaging. (#385) (#385)
+- **Add Extensions hub** — New Extensions view (activity-bar icon) with four tabs: manage a mind's MCP servers (add/edit/remove written to .mcp.json, reusing the runtime schema so invalid entries are preserved and never normalized, with tools/type preserved across edits and renames), install/uninstall marketplace Tools, and read-only Skills and Lens view lists
 
 ### Refactor
 

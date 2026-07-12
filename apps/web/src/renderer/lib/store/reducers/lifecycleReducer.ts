@@ -1,4 +1,5 @@
 import type { AppState, AppAction } from '../state';
+import { isReservedViewId } from '../../reservedViewIds';
 
 type Handler<T extends AppAction['type']> = (
   state: AppState,
@@ -20,7 +21,9 @@ function setDiscoveredViews(
   _state: AppState,
   action: Extract<AppAction, { type: 'SET_DISCOVERED_VIEWS' }>,
 ): Partial<AppState> {
-  return { discoveredViews: action.payload };
+  // Drop any discovered view that collides with a built-in route id so it can
+  // neither shadow nor be shadowed by Chamber's own views (e.g. extensions).
+  return { discoveredViews: action.payload.filter((view) => !isReservedViewId(view.id)) };
 }
 
 function showLanding(): Partial<AppState> {

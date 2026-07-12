@@ -18,12 +18,20 @@ export interface McpServerStorePort {
   write(mindPath: string, servers: McpServerEntry[]): McpServerEntry[];
 }
 
+const preservedSchema = z.object({
+  type: z.enum(['stdio', 'local', 'http', 'sse']).optional(),
+  tools: z.array(z.string()).optional(),
+  timeout: z.number().optional(),
+  cwd: z.string().optional(),
+}).strict();
+
 const stdioEntrySchema = z.object({
   name: z.string().trim().min(1, 'must be a non-empty string'),
   transport: z.literal('stdio'),
   command: z.string().trim().min(1, 'must be a non-empty string'),
   args: z.array(z.string()),
   env: z.record(z.string(), z.string()),
+  preserved: preservedSchema.optional(),
 }).strict();
 
 const httpEntrySchema = z.object({
@@ -31,6 +39,7 @@ const httpEntrySchema = z.object({
   transport: z.literal('http'),
   url: z.url(),
   headers: z.record(z.string(), z.string()),
+  preserved: preservedSchema.optional(),
 }).strict();
 
 const entriesSchema: z.ZodType<McpServerEntry[]> = z.array(

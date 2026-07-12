@@ -60,6 +60,17 @@ describe('mcpFormUtils', () => {
       expect(formToEntry(entryToForm(entry))).toEqual(entry);
     });
 
+    it('round-trips preserved fields (tools/type) across the form', () => {
+      const entry: McpServerEntry = {
+        name: 'stream',
+        transport: 'http',
+        url: 'https://mcp.example.test/sse',
+        headers: {},
+        preserved: { type: 'sse', tools: ['ping'] },
+      };
+      expect(formToEntry(entryToForm(entry))).toEqual(entry);
+    });
+
     it('trims the name and command when building an entry', () => {
       const form = { ...emptyMcpForm(), name: '  files  ', command: '  npx  ' };
       expect(formToEntry(form)).toEqual({ name: 'files', transport: 'stdio', command: 'npx', args: [], env: {} });
