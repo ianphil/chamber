@@ -1,12 +1,14 @@
-import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useMemo, Suspense, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Mic, Smile } from 'lucide-react';
+import { Mic, Paperclip, Smile } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { modelSelectionKeyFromModel } from '@chamber/shared/model-selection';
 import { VOICE_DICTATION_MODEL_ID, type VoiceDictationConfig, type VoiceModelStatus } from '@chamber/shared/voice-types';
 import type { ModelInfo, ChatImageAttachment } from '@chamber/shared/types';
-import { useAppState } from '../../lib/store';
+import { useAppState, useAppDispatch } from '../../lib/store';
 import { useVoiceDictation } from '../../hooks/useVoiceDictation';
+import { useNewConversation } from '../../hooks/useNewConversation';
+import { Logger } from '../../lib/logger';
 import {
   Select,
   SelectContent,
@@ -28,6 +30,31 @@ import {
 import { pushRecentEmoji } from '../../lib/emoji-recents';
 import { loadEmojiData, type EmojiRecord } from '../../lib/emoji-data';
 import { getTextareaCaretCoords } from '../../lib/textarea-caret';
+import {
+  imageToken,
+  fileToken,
+  collectImageNames,
+  collectFileNames,
+  isInsideAttachmentToken,
+  makeUniqueName,
+  detectMention,
+  toMentionables,
+  filterMentionables,
+  detectSlash,
+  filterSlashCommands,
+  isImageFile,
+  isTextLikeFile,
+  buildMessageWithTextAttachments,
+  SLASH_COMMANDS,
+  MAX_TEXT_FILE_BYTES,
+  type Mentionable,
+  type MentionMatch,
+  type SlashMatch,
+  type SlashCommandId,
+  type TextFileAttachment,
+} from '../../lib/composer';
+
+const log = Logger.create('ChatInput');
 
 const EmojiPickerLazy = React.lazy(() =>
   import('../ui/emoji-picker').then((m) => ({ default: m.EmojiPicker })),
@@ -52,11 +79,10 @@ interface Props {
   onValueChange?: (next: string) => void;
 }
 
-const IMAGE_TOKEN_RE = /\[📷 ([^\]]+)\]/g;
-const SHORTCODE_POPOVER_GAP = 4;
-const SHORTCODE_POPOVER_MARGIN = 8;
-const SHORTCODE_POPOVER_MAX_HEIGHT = 240;
-const SHORTCODE_POPOVER_MIN_WIDTH = 220;
+const MENU_POPOVER_GAP = 4;
+const MENU_POPOVER_MARGIN = 8;
+const MENU_POPOVER_MAX_HEIGHT = 240;
+const MENU_POPOVER_MIN_WIDTH = 220;
 const VOICE_MODEL_NOT_READY_TOOLTIP = 'Download the dictation model in Settings → Voice dictation';
 const DEFAULT_VOICE_MODEL_STATUS: VoiceModelStatus = {
   id: VOICE_DICTATION_MODEL_ID,
@@ -77,13 +103,13 @@ interface ShortcodeMatch {
   query: string;
 }
 
-interface ShortcodeAnchor {
+interface MenuAnchor {
   top: number;
   left: number;
   height: number;
 }
 
-interface ShortcodePopoverPlacement {
+interface MenuPopoverPlacement {
   side: 'top' | 'bottom';
   style: React.CSSProperties;
 }
@@ -95,14 +121,8 @@ function detectShortcode(text: string, caret: number): ShortcodeMatch | null {
   const token = m[2];
   const start = caret - token.length;
 
-  // Suppress if caret is inside an existing image token span.
-  IMAGE_TOKEN_RE.lastIndex = 0;
-  let img: RegExpExecArray | null;
-  while ((img = IMAGE_TOKEN_RE.exec(text)) !== null) {
-    const imgStart = img.index;
-    const imgEnd = imgStart + img[0].length;
-    if (start >= imgStart && start < imgEnd) return null;
-  }
+  // Suppress if the caret is inside an existing attachment token span.
+  if (isInsideAttachmentToken(text, start)) return null;
 
   return { start, query: token.slice(1).toLowerCase() };
 }
@@ -135,21 +155,30 @@ function readAsBase64(file: Blob): Promise<string> {
   });
 }
 
-function getShortcodePopoverPlacement(anchor: ShortcodeAnchor): ShortcodePopoverPlacement {
+function readAsText(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+    reader.readAsText(file);
+  });
+}
+
+function getMenuPopoverPlacement(anchor: MenuAnchor): MenuPopoverPlacement {
   const viewportHeight = typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerHeight;
   const viewportWidth = typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth;
   const maxHeight = Math.min(
-    SHORTCODE_POPOVER_MAX_HEIGHT,
-    Math.max(0, viewportHeight - SHORTCODE_POPOVER_MARGIN * 2),
+    MENU_POPOVER_MAX_HEIGHT,
+    Math.max(0, viewportHeight - MENU_POPOVER_MARGIN * 2),
   );
-  const bottomTop = anchor.top + anchor.height + SHORTCODE_POPOVER_GAP;
-  const wouldClipBottom = bottomTop + maxHeight > viewportHeight - SHORTCODE_POPOVER_MARGIN;
+  const bottomTop = anchor.top + anchor.height + MENU_POPOVER_GAP;
+  const wouldClipBottom = bottomTop + maxHeight > viewportHeight - MENU_POPOVER_MARGIN;
   const top = wouldClipBottom
-    ? Math.max(SHORTCODE_POPOVER_MARGIN, anchor.top - maxHeight - SHORTCODE_POPOVER_GAP)
+    ? Math.max(MENU_POPOVER_MARGIN, anchor.top - maxHeight - MENU_POPOVER_GAP)
     : bottomTop;
   const left = Math.min(
-    Math.max(SHORTCODE_POPOVER_MARGIN, anchor.left),
-    Math.max(SHORTCODE_POPOVER_MARGIN, viewportWidth - SHORTCODE_POPOVER_MIN_WIDTH - SHORTCODE_POPOVER_MARGIN),
+    Math.max(MENU_POPOVER_MARGIN, anchor.left),
+    Math.max(MENU_POPOVER_MARGIN, viewportWidth - MENU_POPOVER_MIN_WIDTH - MENU_POPOVER_MARGIN),
   );
 
   return {
@@ -164,8 +193,84 @@ function getShortcodePopoverPlacement(anchor: ShortcodeAnchor): ShortcodePopover
   };
 }
 
+interface MenuNav {
+  count: number;
+  index: number;
+  setIndex: React.Dispatch<React.SetStateAction<number>>;
+  onAccept: () => void;
+  onClose: () => void;
+  /** When true, Enter/Tab are swallowed even with no results (prevents send). */
+  swallowEnterWhenEmpty?: boolean;
+}
+
+// Shared caret-menu keyboard handling for the mention and slash popovers.
+// Returns true when the key was consumed so the caller can stop processing.
+function handleMenuKeydown(e: React.KeyboardEvent<HTMLTextAreaElement>, menu: MenuNav): boolean {
+  const isAccept = (e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab';
+  if (isAccept && menu.count > 0) {
+    e.preventDefault();
+    menu.onAccept();
+    return true;
+  }
+  if (isAccept && menu.swallowEnterWhenEmpty) {
+    e.preventDefault();
+    menu.onClose();
+    return true;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    menu.onClose();
+    return true;
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    menu.setIndex((i) => Math.min(i + 1, menu.count - 1));
+    return true;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    menu.setIndex((i) => Math.max(i - 1, 0));
+    return true;
+  }
+  return false;
+}
+
+// Portal-rendered caret menu shared by the shortcode, mention and slash
+// popovers so placement, chrome and the cmdk wrapper live in one place.
+function CaretPopover({
+  anchor,
+  testId,
+  ariaLabel,
+  children,
+}: {
+  anchor: MenuAnchor;
+  testId: string;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  if (typeof document === 'undefined') return null;
+  const placement = getMenuPopoverPlacement(anchor);
+  return createPortal(
+    <div
+      role="listbox"
+      aria-label={ariaLabel}
+      data-testid={testId}
+      data-side={placement.side}
+      style={placement.style}
+      className="min-w-[220px] overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
+    >
+      <Command shouldFilter={false}>
+        <CommandList>{children}</CommandList>
+      </Command>
+    </div>,
+    document.body,
+  );
+}
+
 export function ChatInput({ onSend, onStop, isStreaming, disabled, availableModels, selectedModel, onModelChange, placeholder, value, onValueChange }: Props) {
-  const { featureFlags } = useAppState();
+  const { featureFlags, minds, activeMindId } = useAppState();
+  const dispatch = useAppDispatch();
+  const newConversation = useNewConversation();
   const isControlled = value !== undefined;
   const [internalInput, setInternalInput] = useState('');
   const input = isControlled ? value : internalInput;
@@ -175,20 +280,44 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     else setInternalInput(resolved);
   }, [input, isControlled, onValueChange]);
   const [attachments, setAttachments] = useState<ChatImageAttachment[]>([]);
+  const [textAttachments, setTextAttachments] = useState<TextFileAttachment[]>([]);
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [shortcodeMatch, setShortcodeMatch] = useState<ShortcodeMatch | null>(null);
   const [shortcodeResults, setShortcodeResults] = useState<EmojiRecord[]>([]);
   const [shortcodeIndex, setShortcodeIndex] = useState(0);
-  const [shortcodeAnchor, setShortcodeAnchor] = useState<ShortcodeAnchor | null>(null);
+  const [shortcodeAnchor, setShortcodeAnchor] = useState<MenuAnchor | null>(null);
+  const [mentionMatch, setMentionMatch] = useState<MentionMatch | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionAnchor, setMentionAnchor] = useState<MenuAnchor | null>(null);
+  const [slashMatch, setSlashMatch] = useState<SlashMatch | null>(null);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashAnchor, setSlashAnchor] = useState<MenuAnchor | null>(null);
   const [isComposingForVoice, setIsComposingForVoice] = useState(false);
   const [voiceConfig, setVoiceConfig] = useState<VoiceDictationConfig | null>(null);
   const [modelStatus, setModelStatus] = useState<VoiceModelStatus>(DEFAULT_VOICE_MODEL_STATUS);
   const isComposingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const pastedSeq = useRef(0);
   // Last known textarea selection — preserved across blur (e.g., when the
   // emoji popover steals focus) so insertAtCaret can land in the right place.
   const selectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  const mentionables = useMemo<Mentionable[]>(() => toMentionables(minds), [minds]);
+  const mentionResults = useMemo<Mentionable[]>(
+    () => (mentionMatch ? filterMentionables(mentionables, mentionMatch.query) : []),
+    [mentionMatch, mentionables],
+  );
+  const availableSlashCommands = useMemo(
+    () => (availableModels.length > 0 ? SLASH_COMMANDS : SLASH_COMMANDS.filter((c) => c.id !== 'model')),
+    [availableModels.length],
+  );
+  const slashResults = useMemo(
+    () => (slashMatch ? filterSlashCommands(availableSlashCommands, slashMatch.query) : []),
+    [slashMatch, availableSlashCommands],
+  );
 
   const updateSelectionRef = useCallback(() => {
     const el = textareaRef.current;
@@ -205,6 +334,48 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     setShortcodeIndex(0);
     setShortcodeAnchor(null);
   }, []);
+
+  const closeMention = useCallback(() => {
+    setMentionMatch(null);
+    setMentionIndex(0);
+    setMentionAnchor(null);
+  }, []);
+
+  const closeSlash = useCallback(() => {
+    setSlashMatch(null);
+    setSlashIndex(0);
+    setSlashAnchor(null);
+  }, []);
+
+  const closeAllMenus = useCallback(() => {
+    closeShortcode();
+    closeMention();
+    closeSlash();
+  }, [closeShortcode, closeMention, closeSlash]);
+
+  // Drop attachments whose tokens no longer appear in the given text.
+  const pruneAttachments = useCallback((next: string) => {
+    const imageNames = collectImageNames(next);
+    setAttachments((prev) => {
+      const pruned = prev.filter((a) => imageNames.has(a.name));
+      return pruned.length === prev.length ? prev : pruned;
+    });
+    const fileNames = collectFileNames(next);
+    setTextAttachments((prev) => {
+      const pruned = prev.filter((a) => fileNames.has(a.name));
+      return pruned.length === prev.length ? prev : pruned;
+    });
+  }, []);
+
+  const resetComposer = useCallback(() => {
+    setInput('');
+    setAttachments([]);
+    setTextAttachments([]);
+    setAttachmentNotice(null);
+    closeAllMenus();
+    setEmojiOpen(false);
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+  }, [setInput, closeAllMenus]);
 
   const getMaxHeight = useCallback((el: HTMLTextAreaElement) => {
     const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
@@ -243,6 +414,94 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
       resize(textareaRef.current);
     });
   }, [resize, setInput]);
+
+  const handleFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const used = new Set<string>([
+      ...collectImageNames(textareaRef.current?.value ?? input),
+      ...collectFileNames(textareaRef.current?.value ?? input),
+    ]);
+    const skipped: string[] = [];
+    for (const file of files) {
+      if (isImageFile({ name: file.name, mimeType: file.type })) {
+        try {
+          const data = await readAsBase64(file);
+          const name = makeUniqueName(file.name, used);
+          used.add(name);
+          const mimeType = file.type || 'image/png';
+          setAttachments((prev) => [...prev, { name, mimeType, data }]);
+          insertAtCaret(imageToken(name));
+        } catch {
+          skipped.push(file.name);
+        }
+      } else if (isTextLikeFile({ name: file.name, mimeType: file.type })) {
+        if (file.size > MAX_TEXT_FILE_BYTES) {
+          skipped.push(file.name);
+          continue;
+        }
+        try {
+          const content = await readAsText(file);
+          const name = makeUniqueName(file.name, used);
+          used.add(name);
+          setTextAttachments((prev) => [...prev, { name, mimeType: file.type || 'text/plain', content }]);
+          insertAtCaret(fileToken(name));
+        } catch {
+          skipped.push(file.name);
+        }
+      } else {
+        skipped.push(file.name);
+      }
+    }
+    setAttachmentNotice(
+      skipped.length > 0
+        ? `Skipped ${skipped.length} unsupported file${skipped.length > 1 ? 's' : ''}: ${skipped.join(', ')}`
+        : null,
+    );
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [input, insertAtCaret]);
+
+  const acceptMention = useCallback((item: Mentionable) => {
+    const match = mentionMatch;
+    if (!match) return;
+    const source = textareaRef.current?.value ?? input;
+    const before = source.slice(0, match.start);
+    const afterStart = match.start + 1 + match.query.length; // include the `@`
+    const after = source.slice(afterStart);
+    const token = `@${item.name} `;
+    const next = before + token + after;
+    setInput(next);
+    const caret = before.length + token.length;
+    selectionRef.current = { start: caret, end: caret };
+    closeMention();
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(caret, caret);
+      resize(textareaRef.current);
+    });
+  }, [mentionMatch, input, closeMention, resize, setInput]);
+
+  const runSlashCommand = useCallback((id: SlashCommandId) => {
+    resetComposer();
+    switch (id) {
+      case 'clear':
+        break;
+      case 'model':
+        if (availableModels.length > 0) setModelMenuOpen(true);
+        break;
+      case 'settings':
+        dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'settings' });
+        break;
+      case 'new':
+        if (activeMindId) {
+          void newConversation(activeMindId).catch((error: unknown) => {
+            log.error('Failed to start new conversation:', error);
+          });
+        }
+        break;
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [resetComposer, availableModels.length, dispatch, activeMindId, newConversation]);
 
   useEffect(() => {
     if (!featureFlags.voiceDictation) {
@@ -295,7 +554,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
   const voiceEnabled = featureFlags.voiceDictation && voiceConfig?.enabled === true;
   const voiceModelReady = modelStatus.status === 'ready';
-  const pttEnabled = voiceEnabled && !disabled && voiceModelReady && !shortcodeMatch && !isComposingForVoice;
+  const pttEnabled = voiceEnabled && !disabled && voiceModelReady && !shortcodeMatch && !mentionMatch && !slashMatch && !isComposingForVoice;
   const voice = useVoiceDictation({
     enabled: pttEnabled,
     shortcut: voiceConfig?.shortcut ?? '',
@@ -328,7 +587,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         const id = (++pastedSeq.current).toString(36);
         const name = `image-${id}.${ext}`;
         setAttachments((prev) => [...prev, { name, mimeType, data }]);
-        insertAtCaret(`[📷 ${name}]`);
+        insertAtCaret(imageToken(name));
       } catch {
         // ignore unreadable clipboard entries
       }
@@ -339,28 +598,21 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     if (isStreaming) {
       return;
     }
+    // A bare slash command is never sent as a message; it runs from the menu.
+    if (slashMatch) return;
+
+    const keptImageNames = collectImageNames(input);
+    const keptImages = attachments.filter((a) => keptImageNames.has(a.name));
     const hasText = input.trim().length > 0;
-    const hasAttachments = attachments.length > 0;
+    const hasAttachments = keptImages.length > 0 || collectFileNames(input).size > 0;
     if ((!hasText && !hasAttachments) || disabled) return;
 
-    // Only include attachments whose tokens still appear in the text
-    const tokensInText = new Set<string>();
-    let m: RegExpExecArray | null;
-    IMAGE_TOKEN_RE.lastIndex = 0;
-    while ((m = IMAGE_TOKEN_RE.exec(input)) !== null) {
-      tokensInText.add(m[1]);
-    }
-    const kept = attachments.filter((a) => tokensInText.has(a.name));
-
-    onSend(input, kept.length > 0 ? kept : undefined);
-    setInput('');
-    setAttachments([]);
-    setEmojiOpen(false);
-    closeShortcode();
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-  }, [input, attachments, isStreaming, disabled, onSend, closeShortcode, setInput]);
+    // Fold any text-file contents into the outgoing prompt; images ride along
+    // as blob attachments and keep their inline marker token.
+    const message = buildMessageWithTextAttachments(input, textAttachments);
+    onSend(message, keptImages.length > 0 ? keptImages : undefined);
+    resetComposer();
+  }, [input, attachments, textAttachments, slashMatch, isStreaming, disabled, onSend, resetComposer]);
 
   const acceptShortcode = useCallback(
     (record: EmojiRecord) => {
@@ -377,14 +629,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
       const caret = before.length + record.emoji.length;
       selectionRef.current = { start: caret, end: caret };
       // Prune attachments whose tokens may have been removed.
-      setAttachments((prev) => {
-        const tokens = new Set<string>();
-        let m: RegExpExecArray | null;
-        IMAGE_TOKEN_RE.lastIndex = 0;
-        while ((m = IMAGE_TOKEN_RE.exec(next)) !== null) tokens.add(m[1]);
-        const pruned = prev.filter((a) => tokens.has(a.name));
-        return pruned.length === prev.length ? prev : pruned;
-      });
+      pruneAttachments(next);
       closeShortcode();
       requestAnimationFrame(() => {
         if (!textareaRef.current) return;
@@ -393,7 +638,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         resize(textareaRef.current);
       });
     },
-    [shortcodeMatch, closeShortcode, resize, setInput],
+    [shortcodeMatch, closeShortcode, pruneAttachments, resize, setInput],
   );
 
   const handleEmojiSelect = useCallback(
@@ -455,6 +700,33 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
         return;
       }
     }
+    // 2b) Mention popover open.
+    if (mentionMatch && handleMenuKeydown(e, {
+      count: mentionResults.length,
+      index: mentionIndex,
+      setIndex: setMentionIndex,
+      onAccept: () => {
+        const pick = mentionResults[mentionIndex] ?? mentionResults[0];
+        if (pick) acceptMention(pick);
+      },
+      onClose: closeMention,
+    })) {
+      return;
+    }
+    // 2c) Slash command menu open — never let the slash text submit.
+    if (slashMatch && handleMenuKeydown(e, {
+      count: slashResults.length,
+      index: slashIndex,
+      setIndex: setSlashIndex,
+      onAccept: () => {
+        const pick = slashResults[slashIndex] ?? slashResults[0];
+        if (pick) runSlashCommand(pick.id);
+      },
+      onClose: closeSlash,
+      swallowEnterWhenEmpty: true,
+    })) {
+      return;
+    }
     if (e.key === 'Escape' && isStreaming) {
       e.preventDefault();
       onStop();
@@ -471,21 +743,38 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     const next = e.target.value;
     setInput(next);
     resize(e.target);
-    // Drop attachments whose tokens were removed by the user
-    setAttachments((prev) => {
-      const tokens = new Set<string>();
-      let m: RegExpExecArray | null;
-      IMAGE_TOKEN_RE.lastIndex = 0;
-      while ((m = IMAGE_TOKEN_RE.exec(next)) !== null) tokens.add(m[1]);
-      const pruned = prev.filter((a) => tokens.has(a.name));
-      return pruned.length === prev.length ? prev : pruned;
-    });
-    // Shortcode detection — suppressed during IME composition.
+    // Drop attachments whose tokens were removed by the user.
+    pruneAttachments(next);
+    // Menu detection — suppressed during IME composition.
     if (isComposingRef.current) {
-      closeShortcode();
+      closeAllMenus();
       return;
     }
     const caret = e.target.selectionStart ?? next.length;
+    // A bare `/command` at the very start opens the slash menu.
+    const slash = detectSlash(next);
+    if (slash) {
+      setSlashMatch(slash);
+      setSlashIndex(0);
+      setSlashAnchor(getTextareaCaretCoords(e.target, caret));
+      closeShortcode();
+      closeMention();
+      return;
+    } else if (slashMatch) {
+      closeSlash();
+    }
+    // `@name` at the caret opens the mention menu.
+    const mention = detectMention(next, caret);
+    if (mention) {
+      setMentionMatch(mention);
+      setMentionIndex(0);
+      setMentionAnchor(getTextareaCaretCoords(e.target, caret));
+      closeShortcode();
+      return;
+    } else if (mentionMatch) {
+      closeMention();
+    }
+    // `:shortcode` emoji suggestions.
     const match = detectShortcode(next, caret);
     if (match) {
       setShortcodeMatch(match);
@@ -498,10 +787,9 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
     }
   };
 
-  const canSubmit = (input.trim().length > 0 || attachments.length > 0) && !disabled;
-  const shortcodePopoverPlacement = shortcodeAnchor
-    ? getShortcodePopoverPlacement(shortcodeAnchor)
-    : null;
+  const canSubmit = !slashMatch
+    && (input.trim().length > 0 || attachments.length > 0 || textAttachments.length > 0)
+    && !disabled;
 
   return (
     <div className="border-t border-border px-4 py-3">
@@ -524,7 +812,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               isComposingRef.current = false;
               setIsComposingForVoice(false);
             }}
-            placeholder={placeholder ?? (disabled ? 'Select a mind directory to start…' : 'Message your agent… (paste an image to attach)')}
+            placeholder={placeholder ?? (disabled ? 'Select a mind directory to start…' : 'Message your agent… (attach or paste files, @ to mention, / for commands)')}
             aria-label="Message your agent"
             disabled={disabled}
             rows={1}
@@ -533,6 +821,35 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+                data-testid="composer-file-input"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  if (files.length > 0) void handleFiles(files);
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Attach files"
+                disabled={disabled}
+                onMouseDown={(e) => {
+                  // Preserve textarea selection across the focus shift.
+                  updateSelectionRef();
+                  e.preventDefault();
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className="h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent flex items-center justify-center"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+
               <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
                 <PopoverTrigger asChild>
                   <button
@@ -599,6 +916,8 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
 
               {availableModels.length > 0 ? (
                 <Select
+                  open={modelMenuOpen}
+                  onOpenChange={setModelMenuOpen}
                   value={selectedModel ?? undefined}
                   onValueChange={onModelChange}
                   disabled={isStreaming || disabled}
@@ -655,6 +974,12 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
               </button>
             </TooltipFor>
           </div>
+
+          {attachmentNotice ? (
+            <p role="status" className="text-xs text-amber-500">
+              {attachmentNotice}
+            </p>
+          ) : null}
         </div>
 
         <p className="text-xs text-muted-foreground text-center mt-2">
@@ -665,41 +990,68 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled, availableMode
           AI agents can make mistakes. Verify important information.
         </p>
       </div>
-      {shortcodeMatch && shortcodeAnchor && shortcodeResults.length > 0 && typeof document !== 'undefined'
-        ? createPortal(
-            <div
-              role="listbox"
-              aria-label="Emoji shortcode suggestions"
-              data-testid="shortcode-popover"
-              data-side={shortcodePopoverPlacement?.side}
-              style={shortcodePopoverPlacement?.style}
-              className="min-w-[220px] overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
+      {shortcodeMatch && shortcodeAnchor && shortcodeResults.length > 0 ? (
+        <CaretPopover anchor={shortcodeAnchor} testId="shortcode-popover" ariaLabel="Emoji shortcode suggestions">
+          {shortcodeResults.map((rec, i) => (
+            <CommandItem
+              key={rec.hexcode}
+              value={rec.shortcodes[0]}
+              data-selected={i === shortcodeIndex || undefined}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                acceptShortcode(rec);
+              }}
+              onMouseEnter={() => setShortcodeIndex(i)}
             >
-              <Command shouldFilter={false}>
-                <CommandList>
-                  {shortcodeResults.map((rec, i) => (
-                    <CommandItem
-                      key={rec.hexcode}
-                      value={rec.shortcodes[0]}
-                      data-selected={i === shortcodeIndex || undefined}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        acceptShortcode(rec);
-                      }}
-                      onMouseEnter={() => setShortcodeIndex(i)}
-                    >
-                      <span className="text-base">{rec.emoji}</span>
-                      <span className="text-xs text-muted-foreground">
-                        :{rec.shortcodes[0]}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandList>
-              </Command>
-            </div>,
-            document.body,
-          )
-        : null}
+              <span className="text-base">{rec.emoji}</span>
+              <span className="text-xs text-muted-foreground">
+                :{rec.shortcodes[0]}
+              </span>
+            </CommandItem>
+          ))}
+        </CaretPopover>
+      ) : null}
+      {mentionMatch && mentionAnchor && mentionResults.length > 0 ? (
+        <CaretPopover anchor={mentionAnchor} testId="mention-popover" ariaLabel="Agent mention suggestions">
+          {mentionResults.map((item, i) => (
+            <CommandItem
+              key={item.mindId}
+              value={item.name}
+              data-selected={i === mentionIndex || undefined}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                acceptMention(item);
+              }}
+              onMouseEnter={() => setMentionIndex(i)}
+            >
+              <span className="text-sm font-medium">@{item.name}</span>
+            </CommandItem>
+          ))}
+        </CaretPopover>
+      ) : null}
+      {slashMatch && slashAnchor ? (
+        <CaretPopover anchor={slashAnchor} testId="slash-popover" ariaLabel="Slash commands">
+          {slashResults.length > 0 ? (
+            slashResults.map((command, i) => (
+              <CommandItem
+                key={command.id}
+                value={command.name}
+                data-selected={i === slashIndex || undefined}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  runSlashCommand(command.id);
+                }}
+                onMouseEnter={() => setSlashIndex(i)}
+              >
+                <span className="text-sm font-medium">{command.name}</span>
+                <span className="text-xs text-muted-foreground">{command.hint}</span>
+              </CommandItem>
+            ))
+          ) : (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching commands</div>
+          )}
+        </CaretPopover>
+      ) : null}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConversationSummary } from '@chamber/shared/types';
 import { useAppDispatch, useAppState } from '../../lib/store';
+import { useNewConversation } from '../../hooks/useNewConversation';
 import { Logger } from '../../lib/logger';
 import { cn } from '../../lib/utils';
 import {
@@ -20,6 +21,7 @@ const HISTORY_COLLAPSED_STORAGE_KEY = 'chamber:conversation-history-collapsed';
 export function ConversationHistoryPanel() {
   const { activeMindId, conversationHistoryByMind, activeConversationByMind, conversationViewByMind, streamingByMind } = useAppState();
   const dispatch = useAppDispatch();
+  const newConversation = useNewConversation();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
@@ -165,10 +167,7 @@ export function ConversationHistoryPanel() {
     creatingConversationRef.current = true;
     setIsCreatingConversation(true);
     try {
-      const result = await window.electronAPI.chat.newConversation(activeMindId);
-      await window.electronAPI.chatroom.clear();
-      applyResumeResult(activeMindId, result);
-      dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
+      await newConversation(activeMindId);
     } catch (error) {
       log.error('Failed to start new conversation:', error);
     } finally {

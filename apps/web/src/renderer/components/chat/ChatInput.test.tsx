@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ChatInput } from './ChatInput';
-import type { ModelInfo } from '@chamber/shared/types';
+import type { ModelInfo, MindContext } from '@chamber/shared/types';
 import { VOICE_DICTATION_MODEL_ID, type VoiceDictationConfig, type VoiceModelStatus } from '@chamber/shared/voice-types';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
@@ -18,8 +18,12 @@ const appStateMock = vi.hoisted(() => ({
       voiceDictation: false,
       wtdTopology: false,
     },
+    minds: [] as MindContext[],
+    activeMindId: null as string | null,
   },
 }));
+
+const dispatchMock = vi.hoisted(() => vi.fn());
 
 const voiceHookMock = vi.hoisted(() => ({
   start: vi.fn(),
@@ -36,6 +40,7 @@ const voiceHookMock = vi.hoisted(() => ({
 
 vi.mock('../../lib/store', () => ({
   useAppState: () => appStateMock.current,
+  useAppDispatch: () => dispatchMock,
 }));
 
 vi.mock('../../hooks/useVoiceDictation', async () => {
@@ -123,6 +128,8 @@ beforeEach(() => {
       voiceDictation: false,
       wtdTopology: false,
     },
+    minds: [],
+    activeMindId: null,
   };
   voiceHookMock.state = 'idle';
   voiceHookMock.permissionState = 'granted';
@@ -209,6 +216,8 @@ describe('ChatInput', () => {
           voiceDictation: true,
           wtdTopology: false,
         },
+        minds: [],
+        activeMindId: null,
       };
       render(<ChatInput {...defaultProps} {...props} />);
       return await screen.findByRole('button', { name: 'Dictate message' });
@@ -223,6 +232,8 @@ describe('ChatInput', () => {
           voiceDictation: false,
           wtdTopology: false,
         },
+        minds: [],
+        activeMindId: null,
       };
 
       render(<ChatInput {...defaultProps} />);
@@ -721,3 +732,198 @@ describe('ChatInput controlled value (per-agent compose drafts #221)', () => {
     expect(textarea.value).toBe('local-only');
   });
 });
+
+function makeMind(mindId: string, name: string): MindContext {
+  return {
+    mindId,
+    mindPath: `C:\\minds\\${mindId}`,
+    identity: { name, systemMessage: '' },
+    status: 'ready',
+  };
+}
+
+function typeAtEnd(textarea: HTMLTextAreaElement, value: string) {
+  Object.defineProperty(textarea, 'selectionStart', { configurable: true, value: value.length });
+  Object.defineProperty(textarea, 'selectionEnd', { configurable: true, value: value.length });
+  fireEvent.change(textarea, { target: { value } });
+}
+
+describe('ChatInput file attachments', () => {
+  it('renders a paperclip button and a hidden file input', () => {
+    render(<ChatInput {...defaultProps} />);
+    expect(screen.getByLabelText('Attach files')).toBeTruthy();
+    expect(screen.getByTestId('composer-file-input')).toBeTruthy();
+  });
+
+  it('clicking the paperclip opens the hidden file input', () => {
+    render(<ChatInput {...defaultProps} />);
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    const clickSpy = vi.spyOn(fileInput, 'click');
+    fireEvent.click(screen.getByLabelText('Attach files'));
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it('attaches an image file as a blob and sends it with the message', async () => {
+    const onSend = vi.fn();
+    render(<ChatInput {...defaultProps} onSend={onSend} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    const file = new File(['image-bytes'], 'photo.png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await waitFor(() => expect(textarea.value).toContain('[📷 photo.png]'));
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const [message, attachments] = onSend.mock.calls[0];
+    expect(message).toContain('[📷 photo.png]');
+    expect(attachments).toEqual([
+      expect.objectContaining({ name: 'photo.png', mimeType: 'image/png' }),
+    ]);
+  });
+
+  it('attaches a text file by folding its contents into the outgoing prompt', async () => {
+    const onSend = vi.fn();
+    render(<ChatInput {...defaultProps} onSend={onSend} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    const file = new File(['hello world'], 'notes.txt', { type: 'text/plain' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await waitFor(() => expect(textarea.value).toContain('[📄 notes.txt]'));
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const [message, attachments] = onSend.mock.calls[0];
+    expect(message).toContain('Attached file notes.txt:');
+    expect(message).toContain('hello world');
+    expect(attachments).toBeUndefined();
+  });
+
+  it('skips unsupported binary files with a clear notice', async () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const fileInput = screen.getByTestId('composer-file-input') as HTMLInputElement;
+    const file = new File(['\x00\x01'], 'archive.bin', { type: 'application/octet-stream' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await screen.findByText(/Skipped 1 unsupported file/);
+    expect(textarea.value).toBe('');
+  });
+});
+
+describe('ChatInput @-mentions', () => {
+  it('opens a mention menu listing loaded minds when the user types "@"', async () => {
+    appStateMock.current.minds = [makeMind('m1', 'Ada'), makeMind('m2', 'Alan')];
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '@');
+    await screen.findByTestId('mention-popover');
+    expect(screen.getByText('@Ada')).toBeTruthy();
+    expect(screen.getByText('@Alan')).toBeTruthy();
+  });
+
+  it('filters minds by the typed query', async () => {
+    appStateMock.current.minds = [makeMind('m1', 'Ada'), makeMind('m2', 'Alan')];
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '@al');
+    await screen.findByTestId('mention-popover');
+    expect(screen.queryByText('@Ada')).toBeNull();
+    expect(screen.getByText('@Alan')).toBeTruthy();
+  });
+
+  it('inserts an @Name token at the caret on selection', async () => {
+    appStateMock.current.minds = [makeMind('m1', 'Ada'), makeMind('m2', 'Alan')];
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, 'hey @al');
+    await screen.findByTestId('mention-popover');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(textarea.value).toBe('hey @Alan '));
+  });
+
+  it('does not open a mention menu when no minds are loaded', () => {
+    appStateMock.current.minds = [];
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '@');
+    expect(screen.queryByTestId('mention-popover')).toBeNull();
+  });
+});
+
+describe('ChatInput slash commands', () => {
+  it('opens the command menu for a bare "/"', async () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/');
+    await screen.findByTestId('slash-popover');
+    expect(screen.getByText('/new')).toBeTruthy();
+    expect(screen.getByText('/clear')).toBeTruthy();
+    expect(screen.getByText('/settings')).toBeTruthy();
+  });
+
+  it('hides /model when no models are available and shows it when they are', async () => {
+    const { rerender } = render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/');
+    await screen.findByTestId('slash-popover');
+    expect(screen.queryByText('/model')).toBeNull();
+
+    rerender(<ChatInput {...defaultProps} availableModels={[{ id: 'm', name: 'Claude Sonnet' }]} />);
+    typeAtEnd(textarea, '/');
+    await screen.findByTestId('slash-popover');
+    expect(screen.getByText('/model')).toBeTruthy();
+  });
+
+  it('does not send the slash text as a message on Enter', () => {
+    const onSend = vi.fn();
+    render(<ChatInput {...defaultProps} onSend={onSend} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/settings');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('/clear empties the composer', async () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/clear');
+    await screen.findByTestId('slash-popover');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(textarea.value).toBe(''));
+  });
+
+  it('/settings navigates to the settings view via the store', async () => {
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/settings');
+    await screen.findByTestId('slash-popover');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'SET_ACTIVE_VIEW', payload: 'settings' });
+  });
+
+  it('/new starts a new conversation for the active mind', async () => {
+    appStateMock.current.activeMindId = 'm1';
+    render(<ChatInput {...defaultProps} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    typeAtEnd(textarea, '/new');
+    await screen.findByTestId('slash-popover');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(api.chat.newConversation).toHaveBeenCalledWith('m1'));
+  });
+
+  it('/model opens the model picker', async () => {
+    const { container } = render(
+      <ChatInput {...defaultProps} availableModels={[{ id: 'm', name: 'Claude Sonnet' }]} selectedModel="m" />,
+    );
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const trigger = container.querySelector('[data-slot="select-trigger"]');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    typeAtEnd(textarea, '/model');
+    await screen.findByTestId('slash-popover');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(trigger?.getAttribute('aria-expanded')).toBe('true'));
+  });
+});
+
