@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useTheme } from './useTheme';
+import { appearanceStore } from '../lib/appearanceStore';
 import { APPEARANCE_STORAGE_KEYS } from '../lib/appearance';
 
 function installMatchMedia(initialDark: boolean) {
@@ -38,22 +39,26 @@ describe('useTheme', () => {
   });
 
   afterEach(() => {
+    appearanceStore.resetForTests();
     delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
-  it('starts from the persisted preference and resolves it', () => {
+  it('reflects the persisted preference and its resolved theme', () => {
     installMatchMedia(false);
     localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'light');
+    appearanceStore.resetForTests();
+    appearanceStore.start();
 
     const { result } = renderHook(() => useTheme());
 
     expect(result.current.theme).toBe('light');
     expect(result.current.resolvedTheme).toBe('light');
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 
   it('persists and applies an explicit preference change', () => {
     installMatchMedia(true);
+    appearanceStore.resetForTests();
+    appearanceStore.start();
     const { result } = renderHook(() => useTheme());
 
     act(() => result.current.setTheme('light'));
@@ -66,11 +71,12 @@ describe('useTheme', () => {
 
   it('follows the OS scheme live when the preference is system', () => {
     const media = installMatchMedia(false);
+    appearanceStore.resetForTests();
+    appearanceStore.start();
     const { result } = renderHook(() => useTheme());
 
     act(() => result.current.setTheme('system'));
     expect(result.current.resolvedTheme).toBe('light');
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
 
     act(() => media.emit(true));
     expect(result.current.resolvedTheme).toBe('dark');
@@ -79,6 +85,9 @@ describe('useTheme', () => {
 
   it('mirrors a preference change made in another window', () => {
     installMatchMedia(true);
+    localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'dark');
+    appearanceStore.resetForTests();
+    appearanceStore.start();
     const { result } = renderHook(() => useTheme());
     expect(result.current.theme).toBe('dark');
 
@@ -95,6 +104,8 @@ describe('useTheme', () => {
   it('toggles between light and dark', () => {
     installMatchMedia(true);
     localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'dark');
+    appearanceStore.resetForTests();
+    appearanceStore.start();
     const { result } = renderHook(() => useTheme());
 
     act(() => result.current.toggle());

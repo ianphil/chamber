@@ -125,6 +125,7 @@ import { setupVoiceIPC } from './main/ipc/voice';
 
 import { EventEmitter } from 'events';
 import { wireLifecycleEvents } from './main/wireLifecycleEvents';
+import { applyTitleBarTheme, titleBarOverlayFor } from './main/titleBarTheme';
 import { cleanupLegacySquirrelInstall } from './main/squirrelMigration';
 import { runUpdaterSmoke } from './main/updaterSmoke';
 import { UpdaterService } from './main/updater/UpdaterService';
@@ -789,11 +790,7 @@ const createWindow = () => {
     minWidth: 600,
     minHeight: 400,
     titleBarStyle: 'hiddenInset',
-    titleBarOverlay: process.platform === 'win32' ? {
-      color: '#09090b',
-      symbolColor: '#fafafa',
-      height: 36,
-    } : undefined,
+    titleBarOverlay: process.platform === 'win32' ? titleBarOverlayFor('dark') : undefined,
     icon: windowIcon,
     backgroundColor: '#09090b',
     webPreferences: {
@@ -987,6 +984,12 @@ app.on('ready', async () => {
   ipcMain.on(IPC.WINDOW.CLOSE, () => mainWindow?.close());
   ipcMain.handle(IPC.DESKTOP.GET_BRANDING, () => ({ name: app.getName(), version: app.getVersion() }));
   ipcMain.handle(IPC.APP.GET_FEATURE_FLAGS, () => appFeatureFlags);
+  // Repaint the native title-bar overlay to match the renderer theme. The sender
+  // may be the main window or a mind popout, so target whichever window invoked.
+  ipcMain.handle(IPC.DESKTOP.SET_THEME, (event, theme: unknown) => {
+    if (theme !== 'light' && theme !== 'dark') return;
+    applyTitleBarTheme(BrowserWindow.fromWebContents(event.sender), theme);
+  });
   ipcMain.handle(IPC.DESKTOP.CONFIRM, (_event, message: string) => {
     const choice = mainWindow
       ? dialog.showMessageBoxSync(mainWindow, {

@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type KeyboardEvent, type ReactNode } from 'react';
 import { useDensity, useFontScale, type Density, type FontScale } from '../../hooks/useAppearance';
 import { useTheme, type ThemePreference } from '../../hooks/useTheme';
 import { cn } from '../../lib/utils';
@@ -36,10 +36,26 @@ function SegmentedControl<T extends string>({
   readonly options: readonly SegmentOption<T>[];
   readonly onChange: (value: T) => void;
 }) {
+  // Arrow keys move the selection (the WAI-ARIA radio group pattern); focus
+  // follows via roving tabindex so the group is a single tab stop.
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+    const backward = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
+    if (!forward && !backward) return;
+    event.preventDefault();
+    const currentIndex = options.findIndex((option) => option.value === value);
+    const delta = forward ? 1 : -1;
+    const next = options[(currentIndex + delta + options.length) % options.length];
+    onChange(next.value);
+    const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    buttons[(currentIndex + delta + options.length) % options.length]?.focus();
+  };
+
   return (
     <div
       role="radiogroup"
       aria-label={label}
+      onKeyDown={handleKeyDown}
       className="inline-flex rounded-lg border border-border bg-background p-0.5"
     >
       {options.map((option) => {
@@ -50,6 +66,7 @@ function SegmentedControl<T extends string>({
             type="button"
             role="radio"
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
             onClick={() => onChange(option.value)}
             className={cn(
               'rounded-md px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',

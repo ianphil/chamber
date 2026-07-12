@@ -8,6 +8,7 @@ import type { ChatService, MindManager } from '@chamber/services';
 import { Logger } from '@chamber/services';
 import type { MindContext } from '@chamber/shared/types';
 import { installExternalNavigationGuard } from '../navigationGuard';
+import { titleBarOverlayFor } from '../titleBarTheme';
 
 const log = Logger.create('mind-ipc');
 
@@ -91,11 +92,7 @@ export function setupMindIPC(mindManager: MindManager, chatService: ChatService,
       minHeight: 400,
       title: `${mind.identity.name} — Chamber`,
       titleBarStyle: 'hiddenInset',
-      titleBarOverlay: process.platform === 'win32' ? {
-        color: '#09090b',
-        symbolColor: '#fafafa',
-        height: 36,
-      } : undefined,
+      titleBarOverlay: process.platform === 'win32' ? titleBarOverlayFor('dark') : undefined,
       icon: config.windowIcon,
       backgroundColor: '#09090b',
       webPreferences: {

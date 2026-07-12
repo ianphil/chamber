@@ -8,6 +8,7 @@ import { version } from '../../../../../../package.json';
 import { SettingsView } from './SettingsView';
 import { AppStateProvider } from '../../lib/store';
 import { APPEARANCE_STORAGE_KEYS } from '../../lib/appearance';
+import { appearanceStore } from '../../lib/appearanceStore';
 import { installElectronAPI, mockElectronAPI } from '../../../test/helpers';
 
 // Settings is now tabbed. Tests that assert on Account / Marketplaces /
@@ -501,6 +502,9 @@ describe('SettingsView', () => {
       localStorage.clear();
       document.documentElement.className = '';
       delete document.documentElement.dataset.theme;
+      // The store is an app-lifetime singleton; re-sync it from the cleared
+      // storage so each case starts from the default snapshot.
+      appearanceStore.resetForTests();
     });
 
     it('renders theme, font size, and density controls', async () => {
@@ -543,6 +547,18 @@ describe('SettingsView', () => {
 
       expect(document.documentElement.classList.contains('density-compact')).toBe(true);
       expect(localStorage.getItem(APPEARANCE_STORAGE_KEYS.density)).toBe('compact');
+    });
+
+    it('moves theme selection with arrow keys', async () => {
+      render(<SettingsView />);
+      gotoTab('Appearance');
+
+      const group = await screen.findByRole('radiogroup', { name: 'Theme' });
+      // Dark is selected by default; ArrowRight advances to System.
+      fireEvent.keyDown(group, { key: 'ArrowRight' });
+
+      expect(screen.getByRole('radio', { name: 'System' }).getAttribute('aria-checked')).toBe('true');
+      expect(localStorage.getItem(APPEARANCE_STORAGE_KEYS.theme)).toBe('system');
     });
   });
 });

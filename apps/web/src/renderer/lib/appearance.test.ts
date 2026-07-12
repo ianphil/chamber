@@ -7,7 +7,6 @@ import {
   applyDensity,
   applyFontScale,
   applyResolvedTheme,
-  initializeAppearance,
   isThemePreference,
   readStoredDensity,
   readStoredFontScale,
@@ -131,31 +130,6 @@ describe('appearance preferences', () => {
     it('default to medium and comfortable', () => {
       expect(readStoredFontScale()).toBe('medium');
       expect(readStoredDensity()).toBe('comfortable');
-    });
-  });
-
-  describe('initializeAppearance', () => {
-    it('applies every persisted preference to the document root', () => {
-      setMatchMedia(false);
-      localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'light');
-      localStorage.setItem(APPEARANCE_STORAGE_KEYS.fontScale, 'large');
-      localStorage.setItem(APPEARANCE_STORAGE_KEYS.density, 'compact');
-
-      initializeAppearance();
-
-      const root = document.documentElement;
-      expect(root.classList.contains('dark')).toBe(false);
-      expect(root.classList.contains('font-scale-large')).toBe(true);
-      expect(root.classList.contains('density-compact')).toBe(true);
-    });
-
-    it('resolves a stored system preference against the OS scheme', () => {
-      setMatchMedia(true);
-      localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'system');
-
-      initializeAppearance();
-
-      expect(document.documentElement.classList.contains('dark')).toBe(true);
     });
   });
 });

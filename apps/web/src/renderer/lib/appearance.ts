@@ -159,18 +159,3 @@ export function persistDensity(density: Density): void {
 export function applyDensity(density: Density): void {
   applyRootClass(Object.values(DENSITY_CLASSES), DENSITY_CLASSES[density]);
 }
-
-// ---------------------------------------------------------------------------
-// Startup
-// ---------------------------------------------------------------------------
-
-/**
- * Apply every persisted appearance preference to the document. Called once from
- * the renderer entry before React mounts so a reload restores the user's choice
- * without a flash of the default appearance.
- */
-export function initializeAppearance(): void {
-  applyResolvedTheme(resolveTheme(readStoredThemePreference(), systemPrefersDark()));
-  applyFontScale(readStoredFontScale());
-  applyDensity(readStoredDensity());
-}
