@@ -120,6 +120,22 @@ describe('appearanceStore', () => {
     expect(appearanceStore.getSnapshot().resolvedTheme).toBe('dark');
   });
 
+  it('ignores OS scheme changes when the preference is explicit', () => {
+    const media = installMatchMedia(true);
+    localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'dark');
+    appearanceStore.resetForTests();
+    appearanceStore.start();
+    const listener = vi.fn();
+    appearanceStore.subscribe(listener);
+
+    media.emit(false);
+
+    expect(appearanceStore.getSnapshot().resolvedTheme).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.classList.contains('theme-switching')).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('stops responding to OS changes after reset', () => {
     const media = installMatchMedia(false);
     localStorage.setItem(APPEARANCE_STORAGE_KEYS.theme, 'system');

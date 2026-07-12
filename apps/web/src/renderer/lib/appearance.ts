@@ -1,10 +1,12 @@
 /**
  * Appearance preferences: the single source of truth for how Chamber's theme,
- * font scale, and density are read, persisted, and applied to the document.
+ * font scale, and density are read, persisted, and applied.
  *
  * Kept framework-agnostic (no React) so the renderer entry can apply stored
- * preferences before first paint and the appearance hooks can share the exact
- * same read/apply logic instead of duplicating it.
+ * preferences at startup and the appearance hooks/store can share the exact same
+ * read/apply logic instead of duplicating it. "Apply" means reflecting a
+ * preference everywhere it shows: DOM classes for all three, plus the native
+ * Windows title-bar overlay for the theme (see `applyResolvedTheme`).
  */
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -40,7 +42,8 @@ const DENSITY_CLASSES: Record<Density, string> = {
   compact: 'density-compact',
 };
 
-const DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
+/** The `matchMedia` query used to detect the OS dark color-scheme preference. */
+export const DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
 
 // Keep aligned with the 450ms color transition in index.css so the
 // `theme-switching` class clears exactly as the crossfade ends.
@@ -136,6 +139,10 @@ export function readStoredFontScale(): FontScale {
   return readChoice(APPEARANCE_STORAGE_KEYS.fontScale, FONT_SCALES, DEFAULT_FONT_SCALE);
 }
 
+export function isFontScale(value: unknown): value is FontScale {
+  return typeof value === 'string' && (FONT_SCALES as readonly string[]).includes(value);
+}
+
 export function persistFontScale(scale: FontScale): void {
   persistChoice(APPEARANCE_STORAGE_KEYS.fontScale, scale);
 }
@@ -150,6 +157,10 @@ export function applyFontScale(scale: FontScale): void {
 
 export function readStoredDensity(): Density {
   return readChoice(APPEARANCE_STORAGE_KEYS.density, DENSITIES, DEFAULT_DENSITY);
+}
+
+export function isDensity(value: unknown): value is Density {
+  return typeof value === 'string' && (DENSITIES as readonly string[]).includes(value);
 }
 
 export function persistDensity(density: Density): void {

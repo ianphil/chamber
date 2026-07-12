@@ -17,8 +17,9 @@ import {
   applyDensity,
   applyFontScale,
   applyResolvedTheme,
-  DENSITIES,
-  FONT_SCALES,
+  DARK_MEDIA_QUERY,
+  isDensity,
+  isFontScale,
   isThemePreference,
   persistDensity,
   persistFontScale,
@@ -44,16 +45,6 @@ export interface AppearanceState {
 
 type Listener = () => void;
 
-const DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
-
-function isFontScale(value: string | null): value is FontScale {
-  return (FONT_SCALES as readonly string[]).includes(value ?? '');
-}
-
-function isDensity(value: string | null): value is Density {
-  return (DENSITIES as readonly string[]).includes(value ?? '');
-}
-
 class AppearanceStore {
   private themePreference: ThemePreference = readStoredThemePreference();
   private fontScale: FontScale = readStoredFontScale();
@@ -66,6 +57,9 @@ class AppearanceStore {
 
   private readonly handleMedia = (event: MediaQueryListEvent): void => {
     this.prefersDark = event.matches;
+    // The OS scheme only changes the resolved theme when following `system`;
+    // for an explicit light/dark preference there is nothing to repaint.
+    if (this.themePreference !== 'system') return;
     this.applyTheme(true);
     this.publish();
   };
