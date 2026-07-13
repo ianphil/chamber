@@ -10,6 +10,7 @@
  */
 import type {
   A2AIncomingPayload,
+  A2AInboundApprovalRequest,
   A2ARelayConnectRequest,
   A2ARelayStatus,
   AgentCard,
@@ -169,6 +170,11 @@ export interface ElectronAPI {
     relayConnect: (request: A2ARelayConnectRequest) => Promise<A2ARelayStatus>;
     relayDisconnect: () => Promise<A2ARelayStatus>;
     onRelayStateChanged: (callback: (status: A2ARelayStatus) => void) => () => void;
+    listPendingApprovals: () => Promise<A2AInboundApprovalRequest[]>;
+    approvePendingRequest: (id: string, digest: string) => Promise<A2AInboundApprovalRequest>;
+    declinePendingRequest: (id: string, digest: string) => Promise<A2AInboundApprovalRequest>;
+    onApprovalStateChanged: (callback: (requests: A2AInboundApprovalRequest[]) => void) => () => void;
+    onApprovalReviewRequested: (callback: (id: string) => void) => () => void;
   };
   e2e?: {
     emitA2AIncoming: (payload: A2AIncomingPayload) => Promise<void>;

@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
 import { ipcMain, BrowserWindow } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { setupA2AIPC } from './a2a';
-import type { A2ARelayModeService, AgentCardRegistry, CredentialStore, TaskArtifactUpdateEvent, TaskManager, TaskStatusUpdateEvent } from '@chamber/services';
+import type { A2ARelayModeService, AgentCardRegistry, CredentialStore, InboundA2AApprovalService, TaskArtifactUpdateEvent, TaskManager, TaskStatusUpdateEvent } from '@chamber/services';
 
 // Helper to keep test ergonomics — the IPC handler signature demands
 // IpcMainInvokeEvent / BrowserWindow instances we don't need in unit tests.
@@ -280,6 +280,7 @@ describe('A2A IPC', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
+
     });
     globalThis.fetch = fetchMock;
     const credentialStore = makeCredentialStore([
@@ -317,6 +318,53 @@ describe('A2A IPC', () => {
       );
     } finally {
       globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('a2a:relayConnect uses an isolated process-local refresh token in E2E mode', async () => {
+    const relayModeService = makeRelayModeService();
+    const previousFetch = globalThis.fetch;
+    const previousE2E = process.env.CHAMBER_E2E;
+    const previousRefreshToken = process.env.CHAMBER_E2E_A2A_REFRESH_TOKEN;
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = new URLSearchParams(String(init?.body));
+      expect(body.get('refresh_token')).toBe('e2e-refresh-token');
+      return new Response(JSON.stringify({
+        access_token: 'e2e-access-token',
+        expires_in: 3_600,
+        refresh_token: 'rotated-e2e-refresh-token',
+      }), { status: 200 });
+    });
+    globalThis.fetch = fetchMock;
+    process.env.CHAMBER_E2E = '1';
+    process.env.CHAMBER_E2E_A2A_REFRESH_TOKEN = 'e2e-refresh-token';
+    try {
+      vi.clearAllMocks();
+      setupA2AIPC(
+        ipcEmitter,
+        mockRegistry as unknown as AgentCardRegistry,
+        mockTaskManager as unknown as TaskManager,
+        { relayModeService: relayModeService as unknown as A2ARelayModeService },
+      );
+
+      await getHandler('a2a:relay-connect')(EVT, {
+        relayBaseUrl: 'https://switchboard.example.com',
+        authMode: 'interactive',
+        clientId: 'client-id',
+        tenantId: 'tenant-id',
+      });
+
+      const options = relayModeService.connect.mock.calls[0][0] as {
+        authProvider: { getAuthorizationHeader: () => Promise<string> };
+      };
+      await expect(options.authProvider.getAuthorizationHeader()).resolves.toMatch(/^Bearer \S+$/);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousE2E === undefined) delete process.env.CHAMBER_E2E;
+      else process.env.CHAMBER_E2E = previousE2E;
+      if (previousRefreshToken === undefined) delete process.env.CHAMBER_E2E_A2A_REFRESH_TOKEN;
+      else process.env.CHAMBER_E2E_A2A_REFRESH_TOKEN = previousRefreshToken;
     }
   });
 
@@ -546,6 +594,72 @@ describe('A2A IPC', () => {
       authMode: 'static',
     })).rejects.toThrow('A2A relay token is not configured');
     expect(relayModeService.connect).not.toHaveBeenCalled();
+  });
+
+  it('keeps approval handlers unavailable when the relay feature flag is disabled', async () => {
+    await expect(getHandler('a2a:approval-list')(EVT)).resolves.toEqual([]);
+    await expect(getHandler('a2a:approval-approve')(EVT, 'request-1', 'digest-1'))
+      .rejects.toThrow('A2A relay approvals are unavailable');
+  });
+
+  it('lists and decides pending approvals through the guarded service', async () => {
+    const request = { id: 'request-1', digest: 'digest-1', state: 'pending' };
+    const approvalService = {
+      listPending: vi.fn(() => [request]),
+      expirePending: vi.fn(async () => 0),
+      approve: vi.fn(async () => ({ ...request, state: 'delivered' })),
+      decline: vi.fn(async () => ({ ...request, state: 'declined' })),
+      on: vi.fn(),
+    };
+    vi.clearAllMocks();
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        approvalService: approvalService as unknown as InboundA2AApprovalService,
+        relayFeatureEnabled: true,
+      },
+    );
+
+    await expect(getHandler('a2a:approval-list')(EVT)).resolves.toEqual([request]);
+    await expect(getHandler('a2a:approval-approve')(EVT, ' request-1 ', ' digest-1 '))
+      .resolves.toEqual({ ...request, state: 'delivered' });
+    await expect(getHandler('a2a:approval-decline')(EVT, 'request-1', 'digest-1'))
+      .resolves.toEqual({ ...request, state: 'declined' });
+
+    expect(approvalService.expirePending).toHaveBeenCalledTimes(1);
+    expect(approvalService.approve).toHaveBeenCalledWith('request-1', 'digest-1');
+    expect(approvalService.decline).toHaveBeenCalledWith('request-1', 'digest-1');
+  });
+
+  it('forwards approval state changes to renderer windows', () => {
+    let changed: ((requests: unknown[]) => void) | undefined;
+    const approvalService = {
+      listPending: vi.fn(() => []),
+      expirePending: vi.fn(async () => 0),
+      approve: vi.fn(),
+      decline: vi.fn(),
+      on: vi.fn((event: string, callback: (requests: unknown[]) => void) => {
+        if (event === 'changed') changed = callback;
+      }),
+    };
+    const send = vi.fn();
+    vi.clearAllMocks();
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue(asWindows([{ webContents: { send } }]));
+    setupA2AIPC(
+      ipcEmitter,
+      mockRegistry as unknown as AgentCardRegistry,
+      mockTaskManager as unknown as TaskManager,
+      {
+        approvalService: approvalService as unknown as InboundA2AApprovalService,
+        relayFeatureEnabled: true,
+      },
+    );
+
+    changed?.([{ id: 'request-1' }]);
+
+    expect(send).toHaveBeenCalledWith('a2a:approval-state-changed', [{ id: 'request-1' }]);
   });
 });
 

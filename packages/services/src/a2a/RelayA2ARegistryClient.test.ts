@@ -148,6 +148,40 @@ describe('RelayA2ARegistryClient', () => {
     expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual({ recipients: ['agent-a'], limit: 10 });
     expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toEqual({ messageIds: ['relay-msg-1'] });
   });
+
+  it('reads the authenticated relay session identity', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      identity: {
+        authentication: 'entra',
+        principalId: 'principal-a',
+        tenantId: 'tenant-a',
+      },
+    }), { status: 200 }));
+    const client = makeClient({ fetchImpl });
+
+    await expect(client.getSession()).resolves.toEqual({
+      identity: {
+        authentication: 'entra',
+        principalId: 'principal-a',
+        tenantId: 'tenant-a',
+      },
+    });
+  });
+
+  it('reports digest-bound recipient dispositions', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = makeClient({ fetchImpl });
+
+    await client.reportDisposition('relay-msg-1', 'digest-1', 'declined');
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL('http://127.0.0.1:4100/api/a2a/messages/relay-msg-1:decide'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ digest: 'digest-1', disposition: 'declined' }),
+      }),
+    );
+  });
 });
 
 function makeClient(options: {

@@ -202,6 +202,63 @@ export interface A2ARelayQueuedMessage {
   request: SendMessageRequest;
   enqueuedAt: string;
   attempts: number;
+  envelope?: A2ARelayEnvelope;
+}
+
+export interface A2ARelayIdentity {
+  authentication: 'entra' | 'static';
+  principalId?: string;
+  tenantId?: string;
+}
+
+export interface A2ARelayAgentIdentity {
+  name: string;
+  identifier?: string;
+}
+
+export interface A2ARelayEnvelope {
+  version: 1;
+  kind: 'message' | 'task';
+  digest: string;
+  expiresAt: string;
+  sender: {
+    identity: A2ARelayIdentity;
+    agent?: A2ARelayAgentIdentity;
+  };
+  recipient: {
+    identity: A2ARelayIdentity;
+    agent: A2ARelayAgentIdentity;
+  };
+}
+
+export type A2AInboundApprovalState =
+  | 'pending'
+  | 'approved'
+  | 'delivered'
+  | 'declined'
+  | 'expired'
+  | 'delivery_failed';
+
+export interface A2AInboundApprovalRequest {
+  id: string;
+  digest: string;
+  kind: A2ARelayEnvelope['kind'];
+  targetMindId: string;
+  request: SendMessageRequest;
+  sender: A2ARelayEnvelope['sender'];
+  recipient: A2ARelayEnvelope['recipient'];
+  preview: string;
+  state: A2AInboundApprovalState;
+  receivedAt: string;
+  expiresAt: string;
+  decidedAt?: string;
+  error?: string;
+}
+
+export type A2ARelayDisposition = 'delivered' | 'declined' | 'expired' | 'delivery_failed';
+
+export interface A2ARelaySession {
+  identity: A2ARelayIdentity;
 }
 
 export interface A2ARelayPollRequest {

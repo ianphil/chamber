@@ -17,6 +17,7 @@ export interface LaunchedElectronApp {
 export async function launchElectronApp(options: {
   cdpPort: number;
   cdpUrl?: string;
+  executablePath?: string;
   env?: NodeJS.ProcessEnv;
 }): Promise<LaunchedElectronApp> {
   const cdpUrl = options.cdpUrl ?? `http://127.0.0.1:${options.cdpPort}`;
@@ -24,7 +25,7 @@ export async function launchElectronApp(options: {
   let child: ChildProcessWithoutNullStreams | undefined;
 
   if (!options.cdpUrl) {
-    child = spawnNpmStart({
+    const launchOptions = {
       cwd: repoRoot,
       env: {
         ...process.env,
@@ -34,7 +35,10 @@ export async function launchElectronApp(options: {
         CHAMBER_E2E_CDP_PORT: String(options.cdpPort),
       },
       windowsHide: true,
-    });
+    };
+    child = options.executablePath
+      ? spawn(options.executablePath, [], launchOptions)
+      : spawnNpmStart(launchOptions);
     child.stdout.on('data', (chunk) => logs.push(String(chunk)));
     child.stderr.on('data', (chunk) => logs.push(String(chunk)));
   }
@@ -72,7 +76,7 @@ export async function findRendererPage(browser: Browser | undefined, logs: strin
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     for (const context of browser.contexts()) {
-      const page = context.pages().find((candidate) => /localhost|127\.0\.0\.1/.test(candidate.url()));
+      const page = context.pages().find((candidate) => /localhost|127\.0\.0\.1|^file:/.test(candidate.url()));
       if (page) return page;
     }
     await delay(250);

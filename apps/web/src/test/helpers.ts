@@ -356,6 +356,11 @@ export function mockElectronAPI(): ElectronAPI {
         connectedAt: null,
       }),
       onRelayStateChanged: vi.fn().mockReturnValue(vi.fn()),
+      listPendingApprovals: vi.fn().mockResolvedValue([]),
+      approvePendingRequest: vi.fn(),
+      declinePendingRequest: vi.fn(),
+      onApprovalStateChanged: vi.fn().mockReturnValue(vi.fn()),
+      onApprovalReviewRequested: vi.fn().mockReturnValue(vi.fn()),
     },
     window: {
       minimize: vi.fn(),

@@ -2,7 +2,13 @@ import { ActiveA2AResolver } from './ActiveA2AResolver';
 import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import { AgentCardRegistry } from './AgentCardRegistry';
 import { RelayA2ARegistryClient, type RelayA2ARegistryClientOptions } from './RelayA2ARegistryClient';
-import type { A2ARelayQueuedMessage, AgentCard, SendMessageRequest, SendMessageResponse } from './types';
+import type {
+  A2ARelayDisposition,
+  A2ARelayQueuedMessage,
+  AgentCard,
+  SendMessageRequest,
+  SendMessageResponse,
+} from './types';
 import { Logger } from '../logger';
 
 const log = Logger.create('A2ARelayModeService');
@@ -17,6 +23,7 @@ export interface A2ARelayRegistryClientPort {
   sendMessage(request: SendMessageRequest): Promise<SendMessageResponse>;
   pollMessages(request: { recipients: string[]; limit?: number }): Promise<A2ARelayQueuedMessage[]>;
   ackMessages(messageIds: string[]): Promise<number>;
+  reportDisposition(id: string, digest: string, disposition: A2ARelayDisposition): Promise<void>;
 }
 
 export interface A2ARelayModeConnectOptions extends RelayA2ARegistryClientOptions {
@@ -26,6 +33,10 @@ export interface A2ARelayModeConnectOptions extends RelayA2ARegistryClientOption
 
 export interface A2ALocalDeliveryPort {
   deliverToLocalMind(targetMindId: string, request: SendMessageRequest): Promise<SendMessageResponse>;
+}
+
+export interface A2AInboundCustodyPort {
+  receive(targetMindId: string, message: A2ARelayQueuedMessage): Promise<'delivered' | 'pending'>;
 }
 
 export class A2ARelayModeService {
@@ -43,6 +54,7 @@ export class A2ARelayModeService {
       (options) => new RelayA2ARegistryClient(options),
     private readonly localDelivery?: A2ALocalDeliveryPort,
     private readonly pollIntervalMs = 1_000,
+    private readonly inboundCustody?: A2AInboundCustodyPort,
   ) {}
 
   isConnected(): boolean {
@@ -55,6 +67,15 @@ export class A2ARelayModeService {
 
   async getRelayAgentCount(): Promise<number> {
     return this.relayClient ? (await this.relayClient.getCards()).length : 0;
+  }
+
+  async reportDisposition(
+    id: string,
+    digest: string,
+    disposition: A2ARelayDisposition,
+  ): Promise<void> {
+    if (!this.relayClient) throw new Error('A2A relay transport is not connected');
+    await this.relayClient.reportDisposition(id, digest, disposition);
   }
 
   getLastPollError(): string | null {
@@ -130,7 +151,7 @@ export class A2ARelayModeService {
   }
 
   async pollOnce(): Promise<number> {
-    if (!this.relayClient || !this.localDelivery) return 0;
+    if (!this.relayClient || (!this.localDelivery && !this.inboundCustody)) return 0;
     const recipients = getLocalRecipientIdentifiers(this.localRegistry.getCards());
     if (recipients.length === 0) return 0;
 
@@ -138,10 +159,14 @@ export class A2ARelayModeService {
     let deliveredCount = 0;
     let firstDeliveryError: unknown = null;
     for (const message of messages) {
-      const targetMindId = findLocalMindId(this.localRegistry.getCards(), message.request.recipient);
+      const targetMindId = findLocalMindId(this.localRegistry.getCards(), message.recipient);
       if (!targetMindId) continue;
       try {
-        await this.localDelivery.deliverToLocalMind(targetMindId, message.request);
+        if (this.inboundCustody) {
+          await this.inboundCustody.receive(targetMindId, message);
+        } else {
+          await this.localDelivery?.deliverToLocalMind(targetMindId, message.request);
+        }
         await this.relayClient.ackMessages([message.id]);
         deliveredCount += 1;
       } catch (error) {
@@ -156,7 +181,7 @@ export class A2ARelayModeService {
 
   private schedulePoll(delayMs = this.pollIntervalMs): void {
     this.stopPolling();
-    if (!this.localDelivery) return;
+    if (!this.localDelivery && !this.inboundCustody) return;
     this.pollTimer = setTimeout(() => {
       void this.runPollLoop();
     }, delayMs);

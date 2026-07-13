@@ -151,6 +151,19 @@ const electronAPI: ElectronAPI = {
     relayConnect: (request) => ipcRenderer.invoke(IPC.A2A.RELAY_CONNECT, request),
     relayDisconnect: () => ipcRenderer.invoke(IPC.A2A.RELAY_DISCONNECT),
     onRelayStateChanged: (callback) => createIpcListener(ipcRenderer, IPC.A2A.RELAY_STATE_CHANGED, callback),
+    listPendingApprovals: () => ipcRenderer.invoke(IPC.A2A.APPROVAL_LIST),
+    approvePendingRequest: (id, digest) => ipcRenderer.invoke(IPC.A2A.APPROVAL_APPROVE, id, digest),
+    declinePendingRequest: (id, digest) => ipcRenderer.invoke(IPC.A2A.APPROVAL_DECLINE, id, digest),
+    onApprovalStateChanged: (callback) => createIpcListener(
+      ipcRenderer,
+      IPC.A2A.APPROVAL_STATE_CHANGED,
+      callback,
+    ),
+    onApprovalReviewRequested: (callback) => createIpcListener(
+      ipcRenderer,
+      IPC.A2A.APPROVAL_REVIEW_REQUESTED,
+      callback,
+    ),
   },
   window: {
     minimize: () => ipcRenderer.send(IPC.WINDOW.MINIMIZE),

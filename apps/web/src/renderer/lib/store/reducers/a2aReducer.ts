@@ -86,12 +86,112 @@ function taskArtifactUpdate(
   };
 }
 
+function setPendingApprovals(
+  state: AppState,
+  action: Extract<AppAction, { type: 'SET_PENDING_A2A_APPROVALS' }>,
+): Partial<AppState> {
+  const pendingA2AApprovals = action.payload.filter((approval) => approval.state === 'pending');
+  const pendingIds = new Set(pendingA2AApprovals.map((approval) => approval.id));
+  return {
+    pendingA2AApprovals,
+    selectedA2AApprovalId: state.selectedA2AApprovalId && pendingIds.has(state.selectedA2AApprovalId)
+      ? state.selectedA2AApprovalId
+      : null,
+    a2aApprovalAction: state.a2aApprovalAction && pendingIds.has(state.a2aApprovalAction.id)
+      ? state.a2aApprovalAction
+      : null,
+    a2aApprovalError: state.a2aApprovalError && pendingIds.has(state.a2aApprovalError.id)
+      ? state.a2aApprovalError
+      : null,
+  };
+}
+
+function applyApprovalState(
+  state: AppState,
+  action: Extract<AppAction, { type: 'APPLY_A2A_APPROVAL_STATE' }>,
+): Partial<AppState> {
+  const existing = state.pendingA2AApprovals.filter((approval) => approval.id !== action.payload.id);
+  const pendingA2AApprovals = action.payload.state === 'pending'
+    ? [...existing, action.payload]
+    : existing;
+  const remainsPending = action.payload.state === 'pending';
+  return {
+    pendingA2AApprovals,
+    selectedA2AApprovalId: state.selectedA2AApprovalId === action.payload.id && !remainsPending
+      ? null
+      : state.selectedA2AApprovalId,
+    a2aApprovalAction: state.a2aApprovalAction?.id === action.payload.id
+      ? null
+      : state.a2aApprovalAction,
+    a2aApprovalError: state.a2aApprovalError?.id === action.payload.id
+      ? null
+      : state.a2aApprovalError,
+  };
+}
+
+function selectApproval(
+  state: AppState,
+  action: Extract<AppAction, { type: 'SELECT_A2A_APPROVAL' }>,
+): Partial<AppState> {
+  const selectedA2AApprovalId = action.payload
+    && state.pendingA2AApprovals.some((approval) => approval.id === action.payload)
+    ? action.payload
+    : null;
+  return {
+    selectedA2AApprovalId,
+    a2aApprovalError: selectedA2AApprovalId === state.a2aApprovalError?.id
+      ? state.a2aApprovalError
+      : null,
+  };
+}
+
+function approvalActionStarted(
+  _state: AppState,
+  action: Extract<AppAction, { type: 'A2A_APPROVAL_ACTION_STARTED' }>,
+): Partial<AppState> {
+  return {
+    a2aApprovalAction: action.payload,
+    a2aApprovalError: null,
+  };
+}
+
+function approvalActionCompleted(
+  state: AppState,
+  action: Extract<AppAction, { type: 'A2A_APPROVAL_ACTION_COMPLETED' }>,
+): Partial<AppState> | AppState {
+  if (state.a2aApprovalAction?.id !== action.payload.id) return state;
+  return { a2aApprovalAction: null };
+}
+
+function approvalActionFailed(
+  state: AppState,
+  action: Extract<AppAction, { type: 'A2A_APPROVAL_ACTION_FAILED' }>,
+): Partial<AppState> | AppState {
+  if (state.a2aApprovalAction?.id !== action.payload.id) return state;
+  return {
+    a2aApprovalAction: null,
+    a2aApprovalError: action.payload,
+  };
+}
+
 export const a2aHandlers: {
   A2A_INCOMING: Handler<'A2A_INCOMING'>;
   TASK_STATUS_UPDATE: Handler<'TASK_STATUS_UPDATE'>;
   TASK_ARTIFACT_UPDATE: Handler<'TASK_ARTIFACT_UPDATE'>;
+  SET_PENDING_A2A_APPROVALS: Handler<'SET_PENDING_A2A_APPROVALS'>;
+  APPLY_A2A_APPROVAL_STATE: Handler<'APPLY_A2A_APPROVAL_STATE'>;
+  SELECT_A2A_APPROVAL: Handler<'SELECT_A2A_APPROVAL'>;
+  A2A_APPROVAL_ACTION_STARTED: Handler<'A2A_APPROVAL_ACTION_STARTED'>;
+  A2A_APPROVAL_ACTION_COMPLETED: Handler<'A2A_APPROVAL_ACTION_COMPLETED'>;
+  A2A_APPROVAL_ACTION_FAILED: Handler<'A2A_APPROVAL_ACTION_FAILED'>;
 } = {
   A2A_INCOMING: a2aIncoming,
   TASK_STATUS_UPDATE: taskStatusUpdate,
   TASK_ARTIFACT_UPDATE: taskArtifactUpdate,
+  SET_PENDING_A2A_APPROVALS: setPendingApprovals,
+  APPLY_A2A_APPROVAL_STATE: applyApprovalState,
+  SELECT_A2A_APPROVAL: selectApproval,
+  A2A_APPROVAL_ACTION_STARTED: approvalActionStarted,
+  A2A_APPROVAL_ACTION_COMPLETED: approvalActionCompleted,
+  A2A_APPROVAL_ACTION_FAILED: approvalActionFailed,
 };

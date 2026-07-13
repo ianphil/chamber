@@ -6,7 +6,7 @@ import { handleChatEvent, appReducer, initialState } from '.';
 import type { AppState, AppAction } from '.';
 import type { ChatMessage } from '@chamber/shared/types';
 import type { ChatroomMessage } from '@chamber/shared/chatroom-types';
-import type { Message, Task, TaskStatus, Artifact } from '@chamber/shared/a2a-types';
+import type { A2AInboundApprovalRequest, Message, Task, TaskStatus, Artifact } from '@chamber/shared/a2a-types';
 import {
   makeMessage,
   makeTextBlock,
@@ -928,6 +928,68 @@ describe('appReducer', () => {
       expect(state.messagesByMind[mindId]).toHaveLength(3);
     });
 
+  });
+
+  describe('Inbound A2A approvals', () => {
+    const makeApproval = (
+      overrides: Partial<A2AInboundApprovalRequest> = {},
+    ): A2AInboundApprovalRequest => ({
+      id: 'approval-1',
+      digest: 'digest-1',
+      kind: 'message',
+      targetMindId: mindId,
+      request: {
+        recipient: mindId,
+        message: {
+          messageId: 'message-1',
+          role: 'ROLE_USER',
+          parts: [{ text: 'Review this request.' }],
+        },
+      },
+      sender: {
+        identity: { authentication: 'entra', principalId: 'sender', tenantId: 'tenant' },
+        agent: { name: 'External agent' },
+      },
+      recipient: {
+        identity: { authentication: 'entra', principalId: 'recipient', tenantId: 'tenant' },
+        agent: { name: 'Q', identifier: mindId },
+      },
+      preview: 'Review this request.',
+      state: 'pending',
+      receivedAt: '2026-07-12T14:00:00.000Z',
+      expiresAt: '2026-07-12T14:15:00.000Z',
+      ...overrides,
+    });
+
+    it('uses the authoritative pending list and closes a missing selection', () => {
+      const state = appReducer({
+        ...initialState,
+        pendingA2AApprovals: [makeApproval()],
+        selectedA2AApprovalId: 'approval-1',
+      }, {
+        type: 'SET_PENDING_A2A_APPROVALS',
+        payload: [makeApproval({ id: 'approval-2' })],
+      });
+
+      expect(state.pendingA2AApprovals.map((approval) => approval.id)).toEqual(['approval-2']);
+      expect(state.selectedA2AApprovalId).toBeNull();
+    });
+
+    it('removes a request when an authoritative action result is no longer pending', () => {
+      const state = appReducer({
+        ...initialState,
+        pendingA2AApprovals: [makeApproval()],
+        selectedA2AApprovalId: 'approval-1',
+        a2aApprovalAction: { id: 'approval-1', decision: 'approve' },
+      }, {
+        type: 'APPLY_A2A_APPROVAL_STATE',
+        payload: makeApproval({ state: 'approved' }),
+      });
+
+      expect(state.pendingA2AApprovals).toEqual([]);
+      expect(state.selectedA2AApprovalId).toBeNull();
+      expect(state.a2aApprovalAction).toBeNull();
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -16,6 +16,7 @@ describe('A2ARelayModeService', () => {
     sendMessage: ReturnType<typeof vi.fn>;
     pollMessages: ReturnType<typeof vi.fn>;
     ackMessages: ReturnType<typeof vi.fn>;
+    reportDisposition: ReturnType<typeof vi.fn>;
   };
   let service: A2ARelayModeService;
 
@@ -31,6 +32,7 @@ describe('A2ARelayModeService', () => {
       sendMessage: vi.fn(async (request) => ({ message: request.message })),
       pollMessages: vi.fn(async () => []),
       ackMessages: vi.fn(async (messageIds) => messageIds.length),
+      reportDisposition: vi.fn(async () => undefined),
     };
     service = new A2ARelayModeService(localRegistry, activeResolver, () => relayClient as unknown as A2ARelayRegistryClientPort);
   });
@@ -159,6 +161,84 @@ describe('A2ARelayModeService', () => {
       recipient: 'Agent A',
       message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
     });
+    expect(relayClient.ackMessages).toHaveBeenCalledWith(['relay-msg-1']);
+    await service.disconnect();
+  });
+
+  it('persists external relay messages through inbound custody before acknowledging them', async () => {
+    vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
+    const localDelivery = {
+      deliverToLocalMind: vi.fn(async (_mindId, request) => ({ message: request.message })),
+    };
+    const inboundCustody = {
+      receive: vi.fn(async () => 'pending' as const),
+    };
+    relayClient.pollMessages.mockResolvedValueOnce([{
+      id: 'relay-msg-1',
+      recipient: 'Agent A',
+      request: {
+        recipient: 'Agent A',
+        message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
+      },
+      enqueuedAt: '2026-01-01T00:00:00.000Z',
+      attempts: 1,
+    }]);
+    service = new A2ARelayModeService(
+      localRegistry,
+      activeResolver,
+      () => relayClient as unknown as A2ARelayRegistryClientPort,
+      localDelivery,
+      60_000,
+      inboundCustody,
+    );
+    await service.connect({
+      baseUrl: 'http://127.0.0.1:4100',
+      authProvider: makeAuthProvider(),
+    });
+
+    await service.pollOnce();
+
+    expect(inboundCustody.receive).toHaveBeenCalledWith('mind-a', expect.objectContaining({
+      id: 'relay-msg-1',
+    }));
+    expect(localDelivery.deliverToLocalMind).not.toHaveBeenCalled();
+    expect(relayClient.ackMessages).toHaveBeenCalledWith(['relay-msg-1']);
+    await service.disconnect();
+  });
+
+  it('routes a queued message by the relay-resolved recipient', async () => {
+    vi.spyOn(localRegistry, 'getCards').mockReturnValue([makeCard('mind-a', 'Agent A')]);
+    const inboundCustody = {
+      receive: vi.fn(async () => 'pending' as const),
+    };
+    relayClient.pollMessages.mockResolvedValueOnce([{
+      id: 'relay-msg-1',
+      recipient: 'Agent A',
+      request: {
+        recipient: 'stale-sender-address',
+        message: { messageId: 'msg-1', role: 'ROLE_USER', parts: [{ text: 'hello' }] },
+      },
+      enqueuedAt: new Date().toISOString(),
+      attempts: 1,
+    }]);
+    service = new A2ARelayModeService(
+      localRegistry,
+      activeResolver,
+      () => relayClient as unknown as A2ARelayRegistryClientPort,
+      undefined,
+      1_000,
+      inboundCustody,
+    );
+    await service.connect({
+      baseUrl: 'https://relay.example',
+      authProvider: makeAuthProvider(),
+    });
+
+    await service.pollOnce();
+
+    expect(inboundCustody.receive).toHaveBeenCalledWith('mind-a', expect.objectContaining({
+      id: 'relay-msg-1',
+    }));
     expect(relayClient.ackMessages).toHaveBeenCalledWith(['relay-msg-1']);
     await service.disconnect();
   });

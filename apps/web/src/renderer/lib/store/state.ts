@@ -1,5 +1,5 @@
 import type { ChatMessage, ChatEvent, ConversationSummary, ModelInfo, LensViewManifest, MindContext, ImageBlock } from '@chamber/shared/types';
-import type { Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@chamber/shared/a2a-types';
+import type { A2AInboundApprovalRequest, Message, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@chamber/shared/a2a-types';
 import type { ChatroomMessage, ChatroomStreamEvent, OrchestrationMode, GroupChatConfig, HandoffConfig, MagenticConfig, TaskLedgerItem } from '@chamber/shared/chatroom-types';
 import { DEFAULT_APP_FEATURE_FLAGS, type AppFeatureFlags } from '@chamber/shared/feature-flags';
 
@@ -53,6 +53,10 @@ export interface AppState {
   showLanding: boolean;
   mindsChecked: boolean;
   tasksByMind: Record<string, Task[]>;
+  pendingA2AApprovals: A2AInboundApprovalRequest[];
+  selectedA2AApprovalId: string | null;
+  a2aApprovalAction: { id: string; decision: 'approve' | 'decline' } | null;
+  a2aApprovalError: { id: string; message: string } | null;
   chatroomMessages: ChatroomMessage[];
   chatroomStreamingByMind: Record<string, boolean>;
   chatroomOrchestration: OrchestrationMode;
@@ -101,6 +105,12 @@ export type AppAction =
   | { type: 'A2A_INCOMING'; payload: { targetMindId: string; message: Message; replyMessageId: string } }
   | { type: 'TASK_STATUS_UPDATE'; payload: TaskStatusUpdateEvent & { targetMindId: string } }
   | { type: 'TASK_ARTIFACT_UPDATE'; payload: TaskArtifactUpdateEvent & { targetMindId: string } }
+  | { type: 'SET_PENDING_A2A_APPROVALS'; payload: A2AInboundApprovalRequest[] }
+  | { type: 'APPLY_A2A_APPROVAL_STATE'; payload: A2AInboundApprovalRequest }
+  | { type: 'SELECT_A2A_APPROVAL'; payload: string | null }
+  | { type: 'A2A_APPROVAL_ACTION_STARTED'; payload: { id: string; decision: 'approve' | 'decline' } }
+  | { type: 'A2A_APPROVAL_ACTION_COMPLETED'; payload: { id: string } }
+  | { type: 'A2A_APPROVAL_ACTION_FAILED'; payload: { id: string; message: string } }
   | { type: 'SET_CHATROOM_HISTORY'; payload: ChatroomMessage[] }
   | { type: 'CHATROOM_USER_MESSAGE'; payload: ChatroomMessage }
   | { type: 'CHATROOM_AGENT_MESSAGE'; payload: { messageId: string; mindId: string; mindName: string; roundId: string; timestamp: number } }
@@ -136,6 +146,10 @@ export const initialState: AppState = {
   showLanding: false,
   mindsChecked: false,
   tasksByMind: {},
+  pendingA2AApprovals: [],
+  selectedA2AApprovalId: null,
+  a2aApprovalAction: null,
+  a2aApprovalError: null,
   chatroomMessages: [],
   chatroomStreamingByMind: {},
   chatroomOrchestration: 'concurrent',

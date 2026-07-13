@@ -9,6 +9,7 @@ import started from 'electron-squirrel-startup';
 import { DEFAULT_APP_FEATURE_FLAGS, IPC, type VoicePermissionState } from '@chamber/shared';
 import type { MindContext, StartupProgressEvent } from '@chamber/shared/types';
 import type { AppFeatureFlags } from '@chamber/shared/feature-flags';
+import type { SendMessageRequest } from '@chamber/shared/a2a-types';
 
 function broadcastStartupProgress(event: StartupProgressEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -51,6 +52,7 @@ import {
   ScriptRunner,
   AutomationBridge,
   IdentityLoader,
+  InboundA2AApprovalService,
   MarketplaceToolCatalog,
   MessageRouter,
   MicrosoftGraphProfileImporter,
@@ -80,6 +82,8 @@ import {
   DEFAULT_WTD_MODEL_REPO,
   DEFAULT_WTD_MODEL_REVISION,
   SQLiteLedgerStore,
+  SQLiteInboundA2AApprovalStore,
+  setInboundA2ASqliteDatabase,
   setSqliteDatabase,
   ByoLlmStore,
   buildProviderConfig,
@@ -220,6 +224,7 @@ function loadBetterSqlite3(): typeof import('better-sqlite3') {
 }
 
 setSqliteDatabase(loadBetterSqlite3());
+setInboundA2ASqliteDatabase(loadBetterSqlite3());
 
 const notifier: Notifier = {
   notify: (alert) => {
@@ -256,6 +261,7 @@ let userProfileService: UserProfileService;
 let microsoftGraphProfileImporter: MicrosoftGraphProfileImporter;
 let chatService: ChatService;
 let a2aRelayModeService: A2ARelayModeService;
+let inboundA2AApprovalService: InboundA2AApprovalService | null = null;
 let chatroomService: ChatroomService;
 let canvasService: CanvasService;
 let cronService: CronService;
@@ -460,7 +466,60 @@ async function initializeRuntime(voiceRuntimeAvailable: boolean): Promise<void> 
   });
   chatService = new ChatService(mindManager, turnQueue, undefined, byoLlmModelsProvider);
   const messageRouter = new MessageRouter(chatService, activeA2AResolver, a2aEventBus);
-  a2aRelayModeService = new A2ARelayModeService(agentCardRegistry, activeA2AResolver, undefined, messageRouter);
+  const inboundMessageDelivery = process.env.CHAMBER_E2E === '1'
+    && process.env.CHAMBER_E2E_A2A_FAKE_DELIVERY === '1'
+    ? {
+        deliverToLocalMind: async (targetMindId: string, request: SendMessageRequest) => {
+          a2aEventBus.emit('a2a:incoming', {
+            targetMindId,
+            message: request.message,
+            replyMessageId: randomUUID(),
+          });
+          return { message: request.message };
+        },
+      }
+    : messageRouter;
+  if (appFeatureFlags.switchboardRelay) {
+    inboundA2AApprovalService = new InboundA2AApprovalService({
+      store: new SQLiteInboundA2AApprovalStore(
+        path.join(appPaths.userData, 'a2a', 'inbound-approvals.sqlite'),
+      ),
+      delivery: inboundMessageDelivery,
+      relay: {
+        reportDisposition: (id, digest, disposition) =>
+          a2aRelayModeService.reportDisposition(id, digest, disposition),
+      },
+      notifier: {
+        notify: (alert) => notifier.notify({
+          ...alert,
+          kind: 'warning',
+          onClick: () => {
+            if (!mainWindow) return;
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+            alert.onClick?.();
+          },
+        }),
+      },
+    });
+    a2aRelayModeService = new A2ARelayModeService(
+      agentCardRegistry,
+      activeA2AResolver,
+      undefined,
+      inboundMessageDelivery,
+      1_000,
+      inboundA2AApprovalService,
+    );
+    inboundA2AApprovalService.startExpirySweep();
+  } else {
+    a2aRelayModeService = new A2ARelayModeService(
+      agentCardRegistry,
+      activeA2AResolver,
+      undefined,
+      inboundMessageDelivery,
+    );
+  }
   const chatroomApprovalGate = new ApprovalGate();
   chatroomApprovalGate.setApprovalHandler(async (request) => ({
     correlationId: request.correlationId,
@@ -657,7 +716,10 @@ const requestQuit = () => {
       ]);
     })
     .catch(() => { /* noop */ })
-    .finally(() => app.quit());
+    .finally(() => {
+      inboundA2AApprovalService?.close();
+      app.quit();
+    });
 };
 
 async function startMvpServer(): Promise<string> {
@@ -1026,6 +1088,8 @@ app.on('ready', async () => {
     relayModeService: a2aRelayModeService,
     configStore: configService,
     credentialStore,
+    approvalService: inboundA2AApprovalService ?? undefined,
+    relayFeatureEnabled: appFeatureFlags.switchboardRelay,
   });
   setupChatroomIPC(chatroomService);
   setupUpdaterIPC(updaterService);

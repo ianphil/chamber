@@ -3,7 +3,7 @@ import { getErrorMessage } from '@chamber/shared/getErrorMessage';
 import type { EventEmitter } from 'events';
 import { IPC } from '@chamber/shared';
 import type { AppConfig } from '@chamber/shared/types';
-import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeService, type AgentCardRegistry, type CredentialStore, type EntraA2ATokenCache, type EntraA2ATokenCacheEntry, type TaskManager } from '@chamber/services';
+import { EntraA2AAuthProvider, StaticA2ARelayAuthProvider, type A2ARelayModeService, type AgentCardRegistry, type CredentialStore, type EntraA2ATokenCache, type EntraA2ATokenCacheEntry, type InboundA2AApprovalService, type TaskManager } from '@chamber/services';
 import { isA2AIncomingPayload, isA2ARelayConnectRequest, narrowTaskState } from '@chamber/shared/a2a-types';
 import type { A2AIncomingPayload, A2ARelayConnectRequest, A2ARelayStatus, TaskArtifactUpdateEvent, TaskStatusUpdateEvent } from '@chamber/shared/a2a-types';
 
@@ -18,6 +18,8 @@ interface A2ARelayIPCOptions {
     save(config: AppConfig): void;
   };
   credentialStore?: CredentialStore;
+  approvalService?: InboundA2AApprovalService;
+  relayFeatureEnabled?: boolean;
 }
 
 export function setupA2AIPC(
@@ -37,6 +39,21 @@ export function setupA2AIPC(
       win.webContents.send(IPC.A2A.RELAY_STATE_CHANGED, status);
     }
   };
+
+  const emitApprovalState = (requests: ReturnType<InboundA2AApprovalService['listPending']>) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IPC.A2A.APPROVAL_STATE_CHANGED, requests);
+    }
+  };
+
+  if (relayOptions.relayFeatureEnabled && relayOptions.approvalService) {
+    relayOptions.approvalService.on('changed', emitApprovalState);
+    relayOptions.approvalService.on('review-requested', (id: string) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.A2A.APPROVAL_REVIEW_REQUESTED, id);
+      }
+    });
+  }
 
   ipcMain.on(IPC.E2E.IS_ENABLED, (event) => {
     event.returnValue = process.env.CHAMBER_E2E === '1';
@@ -162,14 +179,51 @@ export function setupA2AIPC(
     return nextStatus;
   });
 
+  ipcMain.handle(IPC.A2A.APPROVAL_LIST, async () => {
+    if (!relayOptions.relayFeatureEnabled || !relayOptions.approvalService) return [];
+    await relayOptions.approvalService.expirePending();
+    return relayOptions.approvalService.listPending();
+  });
+
+  ipcMain.handle(IPC.A2A.APPROVAL_APPROVE, async (_, id: unknown, digest: unknown) => {
+    const approvalService = requireApprovalService(relayOptions);
+    return approvalService.approve(
+      requireNonEmptyString(id, 'A2A approval request ID'),
+      requireNonEmptyString(digest, 'A2A approval digest'),
+    );
+  });
+
+  ipcMain.handle(IPC.A2A.APPROVAL_DECLINE, async (_, id: unknown, digest: unknown) => {
+    const approvalService = requireApprovalService(relayOptions);
+    return approvalService.decline(
+      requireNonEmptyString(id, 'A2A approval request ID'),
+      requireNonEmptyString(digest, 'A2A approval digest'),
+    );
+  });
+
   if (process.env.CHAMBER_E2E === '1') {
     ipcMain.handle(IPC.E2E.A2A_INCOMING, async (_, payload: unknown) => {
       if (!isA2AIncomingPayload(payload)) {
         throw new Error('Invalid E2E A2A incoming payload');
       }
+
       ipcEmitter.emit('a2a:incoming', payload);
     });
   }
+}
+
+function requireApprovalService(options: A2ARelayIPCOptions): InboundA2AApprovalService {
+  if (!options.relayFeatureEnabled || !options.approvalService) {
+    throw new Error('A2A relay approvals are unavailable');
+  }
+  return options.approvalService;
+}
+
+function requireNonEmptyString(value: unknown, name: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${name} is required`);
+  }
+  return value.trim();
 }
 
 async function createRelayAuthProvider(
@@ -301,6 +355,23 @@ function createEntraRelayTokenCache(
   credentialStore: CredentialStore | undefined,
   options: { relayBaseUrl: string; clientId: string; tenantId?: string; scope?: string },
 ): EntraA2ATokenCache | undefined {
+  const e2eRefreshToken = process.env.CHAMBER_E2E === '1'
+    ? process.env.CHAMBER_E2E_A2A_REFRESH_TOKEN?.trim()
+    : undefined;
+  if (e2eRefreshToken) {
+    let entry: EntraA2ATokenCacheEntry | null = { refreshToken: e2eRefreshToken };
+    return {
+      async load() {
+        return entry;
+      },
+      async save(nextEntry) {
+        entry = nextEntry;
+      },
+      async clear() {
+        entry = null;
+      },
+    };
+  }
   if (!credentialStore) return undefined;
   const account = getEntraRelayCredentialAccount(options);
   return {

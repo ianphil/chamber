@@ -7,6 +7,8 @@ import { ConversationHistoryPanel } from '../history/ConversationHistoryPanel';
 import { MacTitlebarDrag } from './MacTitlebarDrag';
 import { MindSidebar } from './MindSidebar';
 import { ViewRouter } from './ViewRouter';
+import { InboundA2AApprovalBanner } from '../a2a/InboundA2AApprovalBanner';
+import { InboundA2AReviewPanel } from '../a2a/InboundA2AReviewPanel';
 
 function usePopoutParams() {
   const params = new URLSearchParams(window.location.search);
@@ -54,7 +56,13 @@ export function AppShell() {
           <ActivityBar />
           <MindSidebar />
           <main className="flex-1 flex flex-col min-w-0 bg-card border border-border rounded-xl overflow-hidden">
-            <ViewRouter />
+            <InboundA2AApprovalBanner />
+            <div className="flex min-h-0 flex-1">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <ViewRouter />
+              </div>
+              <InboundA2AReviewPanel />
+            </div>
           </main>
           <ConversationHistoryPanel />
         </div>

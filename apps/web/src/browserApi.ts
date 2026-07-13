@@ -376,6 +376,15 @@ export function installBrowserApi(): void {
         connectedAt: null,
       }),
       onRelayStateChanged: () => noopUnsubscribe,
+      listPendingApprovals: async () => [],
+      approvePendingRequest: async () => {
+        throw new Error('A2A relay approvals are unavailable in browser mode.');
+      },
+      declinePendingRequest: async () => {
+        throw new Error('A2A relay approvals are unavailable in browser mode.');
+      },
+      onApprovalStateChanged: () => noopUnsubscribe,
+      onApprovalReviewRequested: () => noopUnsubscribe,
     },
     window: {
       minimize: () => unavailable('window minimize'),

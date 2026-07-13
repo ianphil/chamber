@@ -1,9 +1,12 @@
 import type {
   AgentCard,
   A2ARelayAckResponse,
+  A2ARelayDisposition,
+  A2ARelayEnvelope,
   A2ARelayPollRequest,
   A2ARelayPollResponse,
   A2ARelayQueuedMessage,
+  A2ARelaySession,
   SendMessageRequest,
   SendMessageResponse,
 } from './types';
@@ -104,6 +107,23 @@ export class RelayA2ARegistryClient {
     return body.acknowledged;
   }
 
+  async getSession(): Promise<A2ARelaySession> {
+    const body = await this.requestJson<unknown>('/api/a2a/session');
+    if (!isRelaySession(body)) throw new Error('A2A relay returned an invalid session identity');
+    return body;
+  }
+
+  async reportDisposition(
+    id: string,
+    digest: string,
+    disposition: A2ARelayDisposition,
+  ): Promise<void> {
+    await this.requestJson(`/api/a2a/messages/${encodeURIComponent(id)}:decide`, {
+      method: 'POST',
+      body: JSON.stringify({ digest, disposition }),
+    });
+  }
+
   private async requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await this.request(path, init);
     const body = await parseRelayJson(response);
@@ -200,7 +220,8 @@ function isQueuedMessage(value: unknown): value is A2ARelayQueuedMessage {
     typeof message.attempts === 'number' &&
     message.request &&
     typeof message.request === 'object' &&
-    typeof message.request.recipient === 'string',
+    typeof message.request.recipient === 'string' &&
+    (message.envelope === undefined || isRelayEnvelope(message.envelope)),
   );
 }
 
@@ -210,4 +231,34 @@ function isAckResponse(value: unknown): value is A2ARelayAckResponse {
     typeof value === 'object' &&
     Number.isInteger((value as A2ARelayAckResponse).acknowledged),
   );
+}
+
+function isRelaySession(value: unknown): value is A2ARelaySession {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && 'identity' in value
+    && isRelayIdentity(value.identity),
+  );
+}
+
+function isRelayEnvelope(value: unknown): value is A2ARelayEnvelope {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as A2ARelayEnvelope;
+  return envelope.version === 1
+    && (envelope.kind === 'message' || envelope.kind === 'task')
+    && typeof envelope.digest === 'string'
+    && envelope.digest.length > 0
+    && typeof envelope.expiresAt === 'string'
+    && isRelayIdentity(envelope.sender?.identity)
+    && isRelayIdentity(envelope.recipient?.identity)
+    && typeof envelope.recipient?.agent?.name === 'string';
+}
+
+function isRelayIdentity(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const identity = value as { authentication?: unknown; principalId?: unknown; tenantId?: unknown };
+  return (identity.authentication === 'entra' || identity.authentication === 'static')
+    && (identity.principalId === undefined || typeof identity.principalId === 'string')
+    && (identity.tenantId === undefined || typeof identity.tenantId === 'string');
 }

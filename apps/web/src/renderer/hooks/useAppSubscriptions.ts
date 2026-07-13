@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type Dispatch } from 'react';
+import type { A2AInboundApprovalRequest } from '@chamber/shared/a2a-types';
 import { useAppState, useAppDispatch } from '../lib/store';
+import type { AppAction } from '../lib/store';
 import { Logger } from '../lib/logger';
 
 const log = Logger.create('AppSubscriptions');
@@ -9,11 +11,12 @@ const log = Logger.create('AppSubscriptions');
  * Mount once in AppShell — never in a view component.
  */
 export function useAppSubscriptions() {
-  const { minds, activeMindId } = useAppState();
+  const { minds, activeMindId, featureFlags } = useAppState();
   const dispatch = useAppDispatch();
   const viewsLoaded = useRef(false);
   const lastChatEventSequence = useRef(0);
   const seenChatEventSequences = useRef(new Set<number>());
+  const pendingA2AApprovalsRef = useRef<A2AInboundApprovalRequest[]>([]);
 
   // Feature flags are app-owned, not user-configurable renderer state.
   useEffect(() => {
@@ -207,6 +210,73 @@ export function useAppSubscriptions() {
     });
     return () => { unsub(); };
   }, [dispatch]);
+
+  // Inbound relay approvals are app-wide and must remain current across views.
+  useEffect(() => {
+    if (!featureFlags.switchboardRelay) {
+      pendingA2AApprovalsRef.current = [];
+      dispatch({ type: 'SET_PENDING_A2A_APPROVALS', payload: [] });
+      return;
+    }
+
+    let cancelled = false;
+    let subscriptionUpdated = false;
+    let approvalStateVersion = 0;
+    const unsubscribe = window.electronAPI.a2a.onApprovalStateChanged((approvals) => {
+      if (cancelled) return;
+      subscriptionUpdated = true;
+      approvalStateVersion += 1;
+      pendingA2AApprovalsRef.current = approvals;
+      dispatch({ type: 'SET_PENDING_A2A_APPROVALS', payload: approvals });
+    });
+    const unsubscribeReviewRequested = window.electronAPI.a2a.onApprovalReviewRequested((id) => {
+      if (cancelled) return;
+      if (selectPendingApproval(pendingA2AApprovalsRef.current, id, dispatch)) return;
+
+      const versionAtRequest = approvalStateVersion;
+      void window.electronAPI.a2a.listPendingApprovals()
+        .then((approvals) => {
+          if (cancelled) return;
+          if (approvalStateVersion !== versionAtRequest) {
+            selectPendingApproval(pendingA2AApprovalsRef.current, id, dispatch);
+            return;
+          }
+          pendingA2AApprovalsRef.current = approvals;
+          dispatch({ type: 'SET_PENDING_A2A_APPROVALS', payload: approvals });
+          selectPendingApproval(approvals, id, dispatch);
+        })
+        .catch((err) => {
+          log.error('Failed to load requested A2A approval:', err);
+        });
+    });
+
+    void window.electronAPI.a2a.listPendingApprovals()
+      .then((approvals) => {
+        if (!cancelled && !subscriptionUpdated) {
+          pendingA2AApprovalsRef.current = approvals;
+          dispatch({ type: 'SET_PENDING_A2A_APPROVALS', payload: approvals });
+        }
+      })
+      .catch((err) => {
+        log.error('Failed to load pending A2A approvals:', err);
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      unsubscribeReviewRequested();
+    };
+  }, [dispatch, featureFlags.switchboardRelay]);
+}
+
+function selectPendingApproval(
+  approvals: A2AInboundApprovalRequest[],
+  id: string,
+  dispatch: Dispatch<AppAction>,
+): boolean {
+  if (!approvals.some((approval) => approval.id === id && approval.state === 'pending')) return false;
+  dispatch({ type: 'SELECT_A2A_APPROVAL', payload: id });
+  return true;
 }
 
 function isTerminalChatEvent(type: string): boolean {

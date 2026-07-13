@@ -144,6 +144,11 @@ export const IPC = {
     RELAY_CONNECT: 'a2a:relay-connect',
     RELAY_DISCONNECT: 'a2a:relay-disconnect',
     RELAY_STATE_CHANGED: 'a2a:relay-state-changed',
+    APPROVAL_LIST: 'a2a:approval-list',
+    APPROVAL_APPROVE: 'a2a:approval-approve',
+    APPROVAL_DECLINE: 'a2a:approval-decline',
+    APPROVAL_STATE_CHANGED: 'a2a:approval-state-changed',
+    APPROVAL_REVIEW_REQUESTED: 'a2a:approval-review-requested',
   },
   WINDOW: {
     MINIMIZE: 'window:minimize',
