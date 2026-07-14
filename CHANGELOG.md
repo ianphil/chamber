@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stop Copilot CLI auth popups after sign-in** — Pass Chamber's stored GitHub OAuth token into SDK-created CLI clients and disable CLI auto-login so device-flow browser prompts only occur from Chamber's explicit sign-in flow.
 - **Isolate packaged Copilot runtime validation** — Runs the bundled CLI smoke check with a temporary home so self-updated developer cache builds cannot cause false package-version mismatches.
 - **Promote WTD runtimes across Windows volumes** — Falls back to copy-and-remove when temporary staging and the Actions workspace are on different drives, so Insiders packaging can complete (#400)
+- **Resolve renderer Vite config path to absolute in forge.config.ts** — electron-forge start failed with UNRESOLVED_ENTRY because the renderer config was a relative string; changed to path.resolve(__dirname, ...) so Electron Forge resolves it correctly regardless of cwd
 
 ### Tests
 
