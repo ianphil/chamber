@@ -206,7 +206,7 @@ const config: ForgeConfig = {
       renderer: [
         {
           name: PACKAGED_RENDERER_NAME,
-          config: 'apps/web/vite.electron.config.ts',
+          config: path.resolve(__dirname, 'apps/web/vite.electron.config.ts'),
         },
       ],
     }),
