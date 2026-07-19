@@ -374,7 +374,7 @@ export function SettingsView() {
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Applied to every mind on its next chat turn. Leave empty to add nothing to the system prompt. Stored locally with your profile.
+                  Applied to new chats, tasks, and chatroom sessions. Existing conversations with messages keep their current session prompt. Leave empty to add nothing to the system prompt. Stored locally with your profile.
                 </p>
                 {customInstructionsMessage ? (
                   <p role="status" className="text-xs text-muted-foreground">{customInstructionsMessage}</p>
