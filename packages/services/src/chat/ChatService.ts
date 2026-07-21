@@ -366,7 +366,9 @@ export class ChatService {
           displayName: a.name,
         }));
         const promptWithDateTime = injectCurrentDateTimeContext(prompt, this.dateTimeContextProvider());
-        await Promise.race([session.send(sdkAttachments ? { prompt: promptWithDateTime, attachments: sdkAttachments } : { prompt: promptWithDateTime }), sendTimeout]);
+        await Promise.race([session.send(sdkAttachments
+          ? { prompt: promptWithDateTime, attachments: sdkAttachments, mode: 'enqueue' }
+          : { prompt: promptWithDateTime, mode: 'enqueue' }), sendTimeout]);
         guard(() => onSendAccepted?.());
       } finally {
         if (sendTimerId) clearTimeout(sendTimerId);
