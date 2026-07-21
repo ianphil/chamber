@@ -130,6 +130,7 @@ describe('ChatService', () => {
       expect(mockMindManager.getMind).toHaveBeenCalledWith('valid-mind');
       expect(mockSession.send).toHaveBeenCalledWith({
         prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+        mode: 'enqueue',
       });
       expect(mockMindManager.markActiveConversationHasMessages).toHaveBeenCalledWith('valid-mind', 'hello');
       expect(emit).toHaveBeenCalledWith({ type: 'done' });
@@ -148,6 +149,7 @@ describe('ChatService', () => {
       expect(mockMindManager.setMindModel).toHaveBeenCalledWith('valid-mind', 'gpt-5.4');
       expect(mockSession.send).toHaveBeenCalledWith(expect.objectContaining({
         prompt: expect.stringContaining('hello'),
+        mode: 'enqueue',
       }));
     });
 
@@ -466,8 +468,38 @@ describe('ChatService', () => {
       expect(mockMindManager.markActiveConversationHasMessages).toHaveBeenCalledWith('valid-mind', 'hello');
       expect(freshSession.send).toHaveBeenCalledWith({
         prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+        mode: 'enqueue',
       });
       expect(emit).toHaveBeenCalledWith({ type: 'done' });
+    });
+
+    it('queues a second message until the active turn becomes idle', async () => {
+      resetSessionMockToDefault();
+      const first = svc.sendMessage('valid-mind', 'first', 'msg-1', vi.fn());
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const second = svc.sendMessage('valid-mind', 'second', 'msg-2', vi.fn());
+      await Promise.resolve();
+      expect(mockSession.send).toHaveBeenCalledTimes(1);
+      expect(mockSession.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        prompt: expect.stringContaining('first'),
+        mode: 'enqueue',
+      }));
+
+      fireSdkEvent({ type: 'session.idle' });
+      await first;
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockSession.send).toHaveBeenCalledTimes(2);
+      expect(mockSession.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        prompt: expect.stringContaining('second'),
+        mode: 'enqueue',
+      }));
+
+      fireSdkEvent({ type: 'session.idle' });
+      await second;
     });
 
     it('does not loop — surfaces error when reattach also fails with stale error', async () => {
@@ -605,6 +637,7 @@ describe('ChatService', () => {
         expect(mockMindManager.recoverActiveConversationSession).toHaveBeenCalledWith('valid-mind');
         expect(freshSession.send).toHaveBeenCalledWith({
           prompt: '<current_datetime>\n2026-05-05T15:37:12.065Z\n</current_datetime>\n<timezone>\nAmerica/New_York\n</timezone>\n\nhello',
+          mode: 'enqueue',
         });
       } finally {
         vi.useRealTimers();
