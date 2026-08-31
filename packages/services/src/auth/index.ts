@@ -8,3 +8,5 @@ export {
   listStoredGitHubCredentials,
 } from './AuthService';
 export type { AuthProgress, StartLoginOptions, StoredGitHubCredential } from './AuthService';
+export { LinuxKeyringCredentialStore } from './LinuxKeyringCredentialStore';
+export type { KeyringModule } from './LinuxKeyringCredentialStore';

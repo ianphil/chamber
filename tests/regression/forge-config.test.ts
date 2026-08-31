@@ -99,6 +99,9 @@ describe('forge config', () => {
       expect(extraResource).toContain('./resources/copilot-runtime');
       expect(extraResource).toContain('./resources/sqlite-runtime');
       expect(extraResource).toContain('./node_modules/keytar');
+      if (process.platform === 'linux') {
+        expect(extraResource).toContain('./node_modules/@napi-rs');
+      }
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/managed-skills');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/lens-skill');
       expect(extraResource).not.toContain('./apps/desktop/src/main/assets/ttasks-skill');

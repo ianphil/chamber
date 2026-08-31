@@ -124,6 +124,7 @@ const baseExtraResource = [
   './resources/sqlite-runtime',
   './resources/automation-runtime',
   './node_modules/keytar',
+  ...(process.platform === 'linux' ? ['./node_modules/@napi-rs'] : []),
 ];
 
 const config: ForgeConfig = {
