@@ -4,6 +4,10 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { canAccessRepoWithChamberCredentials } from './chamberRepoAccess';
+import {
+  LinuxKeyringCredentialStore,
+  type KeyringModule,
+} from '../../../packages/services/src/auth/LinuxKeyringCredentialStore';
 
 export const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
@@ -159,8 +163,8 @@ function logsPreview(logs: string[]): string {
  * guard return true on entries the runtime never tries — causing specs to
  * run when the runtime can't actually fetch the repo.
  *
- * Loads keytar lazily so the Playwright runner process doesn't hold the
- * keytar.node native addon open. On Windows, an open keytar.node prevents
+ * Loads the platform credential module lazily so the Playwright runner does
+ * not hold keytar.node open. On Windows, an open keytar.node prevents
  * `electron-forge start` from rebuilding it for Electron's ABI (EPERM on
  * unlink), which breaks every Electron spec. See CHANGELOG #250 for the
  * original incident. The keytar dynamic import here is the only deferral
@@ -176,6 +180,14 @@ function logsPreview(logs: string[]): string {
  * into Playwright's runner process.
  */
 export async function canAccessRepo(nwo: string): Promise<boolean> {
+  if (process.platform === 'linux') {
+    const keyringModule = await import('@napi-rs/keyring');
+    return canAccessRepoWithChamberCredentials(
+      nwo,
+      new LinuxKeyringCredentialStore(keyringModule as KeyringModule),
+    );
+  }
+
   const keytarModule = await import('keytar');
   const keytar = ((keytarModule as { default?: typeof import('keytar') }).default
     ?? (keytarModule as unknown as typeof import('keytar')));

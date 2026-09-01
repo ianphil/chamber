@@ -56,15 +56,24 @@ describe('prepare-copilot-runtime', () => {
 
   it('isolates runtime validation from the developer Copilot cache', async () => {
     const { createIsolatedCopilotEnvironment } = await loadPrepareRuntime();
+    const homeDir = path.join(os.tmpdir(), 'copilot-home');
 
-    expect(createIsolatedCopilotEnvironment('C:\\temp\\copilot-home', {
-      PATH: 'C:\\tools',
-      HOME: 'C:\\Users\\developer',
-      USERPROFILE: 'C:\\Users\\developer',
+    expect(createIsolatedCopilotEnvironment(homeDir, {
+      PATH: '/tools',
+      HOME: '/home/developer',
+      USERPROFILE: '/home/developer',
+      XDG_CACHE_HOME: '/home/developer/.cache',
+      XDG_CONFIG_HOME: '/home/developer/.config',
+      XDG_DATA_HOME: '/home/developer/.local/share',
+      XDG_STATE_HOME: '/home/developer/.local/state',
     })).toMatchObject({
-      PATH: 'C:\\tools',
-      HOME: 'C:\\temp\\copilot-home',
-      USERPROFILE: 'C:\\temp\\copilot-home',
+      PATH: '/tools',
+      HOME: homeDir,
+      USERPROFILE: homeDir,
+      XDG_CACHE_HOME: path.join(homeDir, '.cache'),
+      XDG_CONFIG_HOME: path.join(homeDir, '.config'),
+      XDG_DATA_HOME: path.join(homeDir, '.local', 'share'),
+      XDG_STATE_HOME: path.join(homeDir, '.local', 'state'),
     });
   });
 

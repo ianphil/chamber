@@ -308,6 +308,10 @@ function createIsolatedCopilotEnvironment(homeDir, baseEnv = process.env) {
     ...baseEnv,
     HOME: homeDir,
     USERPROFILE: homeDir,
+    XDG_CACHE_HOME: path.join(homeDir, '.cache'),
+    XDG_CONFIG_HOME: path.join(homeDir, '.config'),
+    XDG_DATA_HOME: path.join(homeDir, '.local', 'share'),
+    XDG_STATE_HOME: path.join(homeDir, '.local', 'state'),
   };
 }
 

@@ -148,7 +148,10 @@ function main() {
 
   fs.rmSync(stagingDir, { recursive: true, force: true });
   copyRuntimeManifest(stagingDir);
-  runCommand(getNpmCommand(), ['ci', '--omit=dev'], { cwd: stagingDir, env: process.env });
+  runCommand(getNpmCommand(), ['ci', '--omit=dev'], {
+    cwd: stagingDir,
+    env: { ...process.env, SHARP_IGNORE_GLOBAL_LIBVIPS: '1' },
+  });
   validateRuntimeDir(stagingDir, targetPlatform, targetArch);
   promoteRuntime(targetPlatform, targetArch);
 

@@ -14,6 +14,7 @@
     "@chamber/services": "file:../../packages/services",
     "@chamber/wire-contracts": "file:../../packages/wire-contracts",
     "@hono/node-server": "^2.0.0",
+    "@napi-rs/keyring": "^1.3.0",
     "hono": "^4.12.27",
     "keytar": "^7.9.0",
     "ws": "^8.21.0"

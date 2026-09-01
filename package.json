@@ -14,6 +14,7 @@
     "start": "node scripts/check-sdk-versions.js && node scripts/check-voice-sdk-version.js && node scripts/prepare-wtd-runtime.js --dev && electron-forge start",
     "package": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge package",
     "make": "npm run make:builder",
+    "make:arch": "npm run package && node scripts/make-arch.js",
     "make:forge": "npm --workspace @chamber/server run build && node scripts/prepare-node-runtime.js && node scripts/prepare-voice-runtime.js && electron-forge make",
     "make:builder": "npm run package && node scripts/prepare-builder-prepackaged.js && electron-builder --win nsis --x64 --prepackaged out/Chamber-win32-x64 --config config/electron-builder.config.cjs --publish never",
     "make:builder:mac": "npm run package && node scripts/prepare-builder-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && node scripts/sign-macos-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && node scripts/notarize-macos-prepackaged.js --platform=darwin --arch=$(node -p \"process.arch\") && electron-builder --mac --$(node -p \"process.arch\") --prepackaged out/Chamber-darwin-$(node -p \"process.arch\")/Chamber.app --config config/electron-builder.config.cjs --publish never",
@@ -43,6 +44,7 @@
     "smoke:a2a-relay": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 --headed tests/e2e/electron/a2a-relay-roundtrip.spec.ts",
     "smoke:byo-llm": "npm run playwright:install && playwright test --config config/playwright.config.ts --project=electron --workers=1 tests/e2e/electron/byo-llm-settings.spec.ts",
     "smoke:packaged-runtime": "npm --workspace @chamber/server run build && node scripts/packaged-smoke.js",
+    "smoke:linux-package": "node scripts/smoke-linux-package.js",
     "smoke:voice-runtime": "node scripts/voice-runtime-smoke.js",
     "smoke:automation": "node scripts/prepare-automation-runtime.js && node scripts/run-automation-smoke.js",
     "smoke:wtd-runtime": "node scripts/wtd-runtime-smoke.js"
@@ -99,6 +101,7 @@
     "@azure/msal-node": "^5.2.0",
     "@azure/msal-node-extensions": "^5.2.0",
     "@fontsource-variable/inter": "^5.2.8",
+    "@napi-rs/keyring": "^1.3.0",
     "better-sqlite3": "12.10.0",
     "chamber-copilot": "0.5.11",
     "class-variance-authority": "^0.7.1",

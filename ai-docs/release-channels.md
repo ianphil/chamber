@@ -6,7 +6,7 @@ nothing is published on push to `master`.
 | Channel  | Audience               | Workflow                                | Distribution                                       | Platforms                |
 | -------- | ---------------------- | --------------------------------------- | -------------------------------------------------- | ------------------------ |
 | Stable   | Public                 | `.github/workflows/release.yml`         | GitHub Releases                                    | Windows + macOS arm64 (+ optional Intel) |
-| Insiders | Invite-only            | `.github/workflows/release-insiders.yml`| Azure Blob `chamberinsiders/releases` (unlisted)   | Windows only             |
+| Insiders | Invite-only            | `.github/workflows/release-insiders.yml`| Azure Blob `chamberinsiders/releases` (unlisted)   | Windows + macOS arm64; Linux x64 preview |
 
 ## Mental model
 
@@ -125,10 +125,16 @@ insider, then promote.
 
 ### What it is
 
-- Windows-only signed NSIS installer, published to a private Azure Blob.
-- Auto-update reads `insiders.yml` from the same blob.
-- macOS is intentionally excluded until the Apple Developer ID
-  notarization warmup completes. Insider testers run Windows only.
+- Signed Windows NSIS and notarized macOS arm64 packages, published to
+  an unlisted Azure Blob.
+- Linux x64 ZIP and DEB preview artifacts, built on Ubuntu and updated
+  manually. Voice and WTD runtimes are omitted because their native
+  dependencies do not support Linux yet.
+- The portable ZIP relies on unprivileged user namespaces for Chromium's
+  sandbox. Hardened systems that disable them need a native package with
+  a root-owned setuid sandbox helper; the sandbox must never be disabled.
+- Windows auto-update reads `insiders.yml`; macOS reads
+  `latest-mac.yml`. Linux preview builds do not auto-update.
 
 ### Where artifacts live
 
@@ -139,6 +145,8 @@ insider, then promote.
 - Stable install URL (overwritten on each cut):
   `https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe`
 - Auto-update feed: `https://chamberinsiders.blob.core.windows.net/releases/insiders.yml`
+- Linux artifacts are versioned Forge outputs under the same blob root:
+  `Chamber-linux-x64-<version>.zip` and `chamber_<version>_amd64.deb`.
 
 ### Authentication
 
@@ -172,10 +180,12 @@ insider, then promote.
      advances/resets the `-insiders.N` counter against existing tags.
    - Run `npm install` to refresh the lockfile in the runner workspace.
    - Sign via the existing Trusted Signing identity.
-   - Build with `CHAMBER_RELEASE_CHANNEL=insiders` and
+   - Build Windows and macOS with `CHAMBER_RELEASE_CHANNEL=insiders` and
      `CHAMBER_BUILDER_UPDATE_URL` pointing at the blob. The embedded
      `app-update.yml` ships `channel: insiders` so the installed app
      reads `insiders.yml` on update checks.
+   - Build the Linux x64 ZIP and DEB with Electron Forge. These preview
+     artifacts omit unsupported voice/WTD runtimes and updater metadata.
    - Validate the manifest with
      `node scripts/validate-builder-release.js --channel=insiders`.
    - Upload artifacts to the blob via `az storage blob upload-batch
@@ -190,8 +200,10 @@ insider, then promote.
   `Chamber-Setup-latest-insiders.exe` from the URL above and run it.
   Share this URL out-of-band — it is not linked from the website or
   README.
-- Subsequent updates: nothing. The installed app polls `insiders.yml`
-  and self-updates.
+- Linux: download the versioned ZIP or DEB from the same blob. ZIP is
+  the portable option, including for Arch; DEB targets Debian/Ubuntu.
+- Subsequent Windows and macOS updates are automatic. Linux preview
+  updates require downloading the next version manually.
 - Revert to stable: uninstall, then install the latest GitHub Release.
   Mind data lives in the user profile and is preserved across reinstall.
 

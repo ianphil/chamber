@@ -14,6 +14,7 @@ import {
   CopilotClientFactory,
   getChamberToolsBinDir,
   IdentityLoader,
+  LinuxKeyringCredentialStore,
   listStoredGitHubCredentials,
   MessageRouter,
   MindManager,
@@ -21,6 +22,7 @@ import {
   TurnQueue,
   ViewDiscovery,
   type CredentialStore,
+  type KeyringModule,
 } from '@chamber/services';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -30,21 +32,35 @@ import type { ChamberCtx } from './types';
 const port = Number(process.env.CHAMBER_SERVER_PORT ?? 0);
 const allowedOrigin = process.env.CHAMBER_ALLOWED_ORIGIN ?? 'http://127.0.0.1';
 
-// Defer loading the keytar native addon until an auth method is actually
+// Defer loading the native credential addon until an auth method is actually
 // invoked. On Windows, keytar.node is locked the moment Node loads it, which
 // breaks `electron-forge start`'s rebuild step (it can't unlink keytar.node
 // to swap it for Electron's ABI). The loopback server runs as part of
 // Playwright's webServer during desktop smoke runs and never exercises auth
 // in CHAMBER_E2E mode, so deferring the load keeps Forge's rebuild unblocked.
-async function loadKeytar(): Promise<CredentialStore> {
+let platformCredentialStore: Promise<CredentialStore> | undefined;
+
+async function loadPlatformCredentialStore(): Promise<CredentialStore> {
+  if (process.platform === 'linux') {
+    const mod = await import('@napi-rs/keyring');
+    return new LinuxKeyringCredentialStore(mod as KeyringModule);
+  }
+
   const mod = await import('keytar');
   return ((mod as { default?: CredentialStore }).default ?? (mod as unknown as CredentialStore));
 }
+
+function getPlatformCredentialStore(): Promise<CredentialStore> {
+  platformCredentialStore ??= loadPlatformCredentialStore();
+  return platformCredentialStore;
+}
+
 const credentialStore: CredentialStore = {
-  findCredentials: async (service) => (await loadKeytar()).findCredentials(service),
+  findCredentials: async (service) => (await getPlatformCredentialStore()).findCredentials(service),
   setPassword: async (service, account, password) =>
-    (await loadKeytar()).setPassword(service, account, password),
-  deletePassword: async (service, account) => (await loadKeytar()).deletePassword(service, account),
+    (await getPlatformCredentialStore()).setPassword(service, account, password),
+  deletePassword: async (service, account) =>
+    (await getPlatformCredentialStore()).deletePassword(service, account),
 };
 
 const configService = new ConfigService();

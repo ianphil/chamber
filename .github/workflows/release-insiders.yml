@@ -207,8 +207,52 @@ jobs:
           path: staged/*
           if-no-files-found: error
 
+  build-linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Apply insiders version
+        run: |
+          npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm install
+
+      - name: Install Linux packaging tools
+        run: sudo apt-get update && sudo apt-get install --yes fakeroot xvfb
+
+      - name: Build Linux ZIP and DEB packages
+        run: npm run make:forge
+
+      - name: Smoke packaged Linux app
+        run: xvfb-run --auto-servernum npm run smoke:linux-package
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p staged
+          find out/make/zip/linux/x64 -maxdepth 1 -type f -name '*.zip' -exec cp {} staged/ \;
+          find out/make/deb/x64 -maxdepth 1 -type f -name '*.deb' -exec cp {} staged/ \;
+          test "$(find staged -maxdepth 1 -type f | wc -l)" -eq 2
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: insiders-linux
+          path: staged/*
+          if-no-files-found: error
+
   publish:
-    needs: [prepare, build-windows, build-macos]
+    needs: [prepare, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

@@ -31,7 +31,7 @@ ask once. If the channel is ambiguous, ask once.
 
 | Channel  | Audience    | Workflow                                  | Distribution                     | Platforms                           |
 | -------- | ----------- | ----------------------------------------- | -------------------------------- | ----------------------------------- |
-| Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows + macOS arm64 (signed + notarized) |
+| Insiders | Invite-only | `.github/workflows/release-insiders.yml`  | Azure Blob `chamberinsiders`     | Windows + macOS arm64; Linux x64 preview |
 | Stable   | Public      | `.github/workflows/release.yml`           | GitHub Releases                  | Windows + macOS arm64 (+x64 opt-in; macOS can be disabled by repo variable) |
 
 Both are `workflow_dispatch` only — neither fires on push.
@@ -157,7 +157,7 @@ Required state:
 
 ```
 Which channel?
-  insiders  – Windows + macOS arm64 (signed + notarized), invite-only, fast cadence
+  insiders  – Windows + macOS arm64, plus Linux x64 preview; invite-only
   stable    – public, full platforms, requires macOS notary warmup
 ```
 
@@ -229,11 +229,12 @@ Surface the new tag, the Windows install URL
 (`https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe`),
 the macOS DMG
 (`https://chamberinsiders.blob.core.windows.net/releases/Chamber-<version>-arm64.dmg`),
+the versioned Linux ZIP and DEB under the same blob root,
 and the auto-update feeds
 (`https://chamberinsiders.blob.core.windows.net/releases/insiders.yml` for Windows;
 `https://chamberinsiders.blob.core.windows.net/releases/latest-mac.yml` for macOS).
-Existing testers auto-update on both platforms; new testers need the install URL
-out-of-band.
+Windows and macOS testers auto-update. Linux preview testers must download each
+version manually.
 
 ### 3b. Stable dispatch
 
@@ -581,12 +582,13 @@ see exactly what happened. Example:
 
 ```
 ✅ Dispatched insiders release
-   - Channel:      insiders (Windows + macOS arm64)
+   - Channel:      insiders (Windows + macOS arm64; Linux x64 preview)
    - Next tag:     v0.62.4-insiders.4
    - Audience:     invited testers only
    - Install URL:  https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe
    - macOS DMG:    https://chamberinsiders.blob.core.windows.net/releases/Chamber-<version>-arm64.dmg
-   - Auto-update:  existing testers receive it automatically (both platforms)
+   - Linux:        versioned ZIP + DEB under the same blob root (manual updates)
+   - Auto-update:  existing Windows and macOS testers receive it automatically
    - Run:          <gh URL>
    - Checklist:    ~/.copilot/session-state/<id>/files/release-vX.Y.Z-<channel>-checklist.md
 ```

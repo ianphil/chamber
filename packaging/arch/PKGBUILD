@@ -1,0 +1,27 @@
+pkgname=chamber
+pkgver="${CHAMBER_VERSION:?CHAMBER_VERSION is required}"
+pkgrel=1
+pkgdesc='Desktop workspace for AI agents'
+arch=('x86_64')
+url='https://github.com/ianphil/chamber'
+license=('MIT')
+depends=('alsa-lib' 'gtk3' 'libsecret' 'libxss' 'nss')
+options=('!strip')
+
+package() {
+  local package_dir="${CHAMBER_PACKAGE_DIR:?CHAMBER_PACKAGE_DIR is required}"
+  local repo_root="${CHAMBER_REPO_ROOT:?CHAMBER_REPO_ROOT is required}"
+
+  install -d "$pkgdir/opt/chamber"
+  cp -a "$package_dir/." "$pkgdir/opt/chamber/"
+  chmod 755 "$pkgdir/opt/chamber"
+  chmod 4755 "$pkgdir/opt/chamber/chrome-sandbox"
+
+  install -d "$pkgdir/usr/bin"
+  ln -s /opt/chamber/chamber "$pkgdir/usr/bin/chamber"
+
+  install -Dm644 "$repo_root/packaging/arch/chamber.desktop" \
+    "$pkgdir/usr/share/applications/chamber.desktop"
+  install -Dm644 "$repo_root/assets/app.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/chamber.svg"
+}

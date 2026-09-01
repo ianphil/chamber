@@ -72,6 +72,7 @@ describe('security boundary invariants', () => {
       path.join(repoRoot, 'apps', 'server', 'src', 'bin.ts'),
       path.join(repoRoot, 'apps', 'server', 'src', 'privileged-protocol.ts'),
       path.join(repoRoot, 'packages', 'services', 'src', 'auth', 'AuthService.ts'),
+      path.join(repoRoot, 'packages', 'services', 'src', 'auth', 'LinuxKeyringCredentialStore.ts'),
       path.join(repoRoot, 'packages', 'services', 'src', 'byo-llm', 'ByoLlmStore.ts'),
       path.join(repoRoot, 'packages', 'services', 'src', 'ports.ts'),
     ]);

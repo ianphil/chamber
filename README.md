@@ -66,13 +66,13 @@ A2A complements tools. MCP-style tools and marketplace CLIs give a mind access t
 - **Canvas** — Render sandboxed HTML dashboards and reports in the browser with live reload and an action back-channel.
 - **Cron** — Schedule TypeScript automation scripts authored by minds under `.chamber/automation/*.ts` and executed via the bundled ttasks runtime.
 - **Marketplace links** — Enroll Genesis mind registries from `chamber://install?registry=...` links.
-- **Desktop updates** — Windows installer and update metadata are produced by the release pipeline.
+- **Desktop updates** — Windows and macOS update metadata plus Linux preview artifacts are produced by the release pipeline.
 
 ## Install
 
 Download the latest Windows build from [chmbr.dev](https://chmbr.dev) or from the [latest GitHub release](https://github.com/ianphil/chamber/releases/latest).
 
-Windows x64 is the primary packaged target today. macOS and Linux support are planned through the same workspace architecture.
+Windows x64 is the primary packaged target today. macOS is available through the release pipeline, and Linux x64 ZIP/DEB builds are available as manual-update Insiders previews.
 
 ## Quick Start
 

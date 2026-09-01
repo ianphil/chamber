@@ -38,6 +38,7 @@ import {
   CanvasService,
   ChamberCopilotService,
   listStoredGitHubCredentials,
+  LinuxKeyringCredentialStore,
   ChatroomService,
   ChatService,
   ConfigService,
@@ -96,6 +97,7 @@ import {
   type AppPaths,
   type ChamberToolProvider,
   type CredentialStore,
+  type KeyringModule,
   type GenesisMindTemplateMarketplaceSource,
   type Notifier,
   type WtdRuntimeResolution,
@@ -189,6 +191,15 @@ function loadKeytar(): CredentialStore {
   }
 
   return runtimeRequire(path.join(process.resourcesPath, 'keytar', 'lib', 'keytar.js')) as CredentialStore;
+}
+
+function loadCredentialStore(): CredentialStore {
+  if (process.platform !== 'linux') return loadKeytar();
+
+  const modulePath = app.isPackaged
+    ? path.join(process.resourcesPath, '@napi-rs', `keyring-linux-${process.arch}-gnu`)
+    : '@napi-rs/keyring';
+  return new LinuxKeyringCredentialStore(runtimeRequire(modulePath) as KeyringModule);
 }
 
 function loadSharp(): typeof sharpModule {
@@ -378,7 +389,7 @@ async function initializeRuntime(voiceRuntimeAvailable: boolean): Promise<void> 
     const config = configService.load();
     configService.save({ ...config, activeLogin: login });
   };
-  credentialStore = loadKeytar();
+  credentialStore = loadCredentialStore();
   sharp = loadSharp();
   const githubRegistryClient = GitHubRegistryClient.withCredentialStore(credentialStore, userAgent);
   authService = new AuthService(
@@ -578,6 +589,7 @@ async function initializeRuntime(voiceRuntimeAvailable: boolean): Promise<void> 
   updaterService = new UpdaterService({
     currentVersion: app.getVersion(),
     isPackaged: app.isPackaged,
+    isSupportedPlatform: process.platform !== 'linux',
     allowDevUpdates: process.env.CHAMBER_UPDATER_ALLOW_DEV === '1',
     setQuitting: () => {
       isQuitting = true;

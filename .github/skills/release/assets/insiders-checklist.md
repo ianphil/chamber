@@ -29,7 +29,7 @@ placeholders haven't been substituted yet.
 
 ## Phase 2 — Channel chosen: insiders
 
-- [ ] `[channel-confirmed]` User confirmed `insiders` (Windows + macOS arm64, invite-only).
+- [ ] `[channel-confirmed]` User confirmed `insiders` (Windows + macOS arm64; Linux x64 preview; invite-only).
 
 ## Phase 3a — Compute & dispatch
 
@@ -42,9 +42,9 @@ placeholders haven't been substituted yet.
 ## Phase 3a.4 — After success
 
 - [ ] `[tag-pushed]` New tag `v{{VERSION}}` appears in `git tag -l 'v*-insiders.*' --sort=-v:refname | head -3`.
-- [ ] `[install-url-surfaced]` Install URLs surfaced to user: Windows <https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe> and macOS arm64 DMG at `Chamber-{{VERSION}}-arm64.dmg` under the same blob root.
+- [ ] `[install-url-surfaced]` Install URLs surfaced to user: Windows <https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe>, macOS arm64 DMG at `Chamber-{{VERSION}}-arm64.dmg`, and versioned Linux x64 ZIP + DEB under the same blob root.
 - [ ] `[update-feed-surfaced]` Auto-update feeds surfaced: <https://chamberinsiders.blob.core.windows.net/releases/insiders.yml> (Windows) and <https://chamberinsiders.blob.core.windows.net/releases/latest-mac.yml> (macOS).
-- [ ] `[tester-note]` Reminded user that existing testers auto-update; new testers need the install URL out-of-band.
+- [ ] `[tester-note]` Reminded user that Windows and macOS auto-update, while Linux preview builds require manual downloads.
 
 ## Phase 4 — Summary
 

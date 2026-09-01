@@ -11,6 +11,7 @@ export default defineConfig({
         'sharp',
         '@azure/msal-node-extensions',
         '@azure/msal-node-runtime',
+        '@napi-rs/keyring',
         'chamber-copilot',
         'vscode-jsonrpc',
         /^vscode-jsonrpc\//,
