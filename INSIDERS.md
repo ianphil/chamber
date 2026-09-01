@@ -2,7 +2,8 @@
 
 Chamber Insiders is the fast-cadence prerelease channel. Builds ship sooner than the public stable releases on GitHub Releases. **This page is invitation-only**: it is not linked from the README or product website. If someone forwarded you the link, that's the invitation.
 
-Insiders ships **Windows only**. macOS Insiders is intentionally not built; the public stable release on GitHub Releases is the macOS channel.
+Insiders ships signed Windows and notarized macOS arm64 builds. Linux x64
+ZIP and DEB packages are available as an early preview with manual updates.
 
 ## What you're trusting
 
@@ -21,21 +22,30 @@ If you would like to be removed from the invite list, tell whoever invited you. 
 
 ## Install
 
-1. Download the latest Windows installer:
+1. Download the artifact for your platform:
 
    ```
    https://chamberinsiders.blob.core.windows.net/releases/Chamber-Setup-latest-insiders.exe
    ```
 
-   (Or the exact tagged file shared with you.)
+   Linux artifacts use the versioned names
+   `Chamber-linux-x64-<version>.zip` and
+   `chamber_<version>_amd64.deb` under the same blob root. Use the ZIP
+   on Arch and other non-Debian distributions.
 
-2. Run the installer. SmartScreen should accept it because the file is signed with Chamber's Trusted Signing certificate.
+2. Run the installer, or extract the Linux ZIP and launch `chamber`.
+   SmartScreen should accept the Windows installer because it is signed
+   with Chamber's Trusted Signing certificate.
 
-3. Done. Future updates are automatic.
+3. Windows and macOS update automatically. Linux preview updates are
+   downloaded manually.
 
 ## Updates
 
-Once installed, Chamber Insiders checks the same Azure Blob URL on a regular cadence. When a newer `vX.Y.Z-insiders.N` is published you'll get an in-app prompt to restart and update. There is no separate action required.
+On Windows and macOS, Chamber Insiders checks the Azure Blob on a
+regular cadence. When a newer `vX.Y.Z-insiders.N` is published, you
+will get an in-app prompt to restart and update. Linux preview users
+must download each new ZIP or DEB.
 
 You will never see public stable releases on this channel. You also will never accidentally roll back from Insiders to stable: electron-updater refuses to downgrade.
 
@@ -52,7 +62,8 @@ You will remain on the version you have installed until the public stable channe
 ## Caveats
 
 - The download URL is unlisted, not access-controlled. Anyone with the URL can fetch.
-- Builds are signed but **not notarized for macOS** (because macOS isn't built for this channel at all).
+- Linux preview artifacts are unsigned, omit the unsupported voice and
+  WTD runtimes, and do not auto-update.
 - There is no SLA. Insiders builds may regress, break auto-update, or be pulled without notice.
 
 ## Reporting issues

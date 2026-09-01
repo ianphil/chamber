@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Chamber
+Comment=Desktop workspace for AI agents
+Exec=chamber %U
+Icon=chamber
+Terminal=false
+Type=Application
+Categories=Utility;
+MimeType=x-scheme-handler/chamber;

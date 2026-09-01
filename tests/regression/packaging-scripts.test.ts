@@ -35,6 +35,7 @@ describe('packaging scripts', () => {
     }
 
     expect(packageJson.scripts.make).toBe('npm run make:builder');
+    expect(packageJson.scripts['make:arch']).toBe('npm run package && node scripts/make-arch.js');
     expect(packageJson.scripts['make:builder']).toContain('npm run package');
     expect(packageJson.scripts['make:builder'].indexOf('npm run package')).toBeLessThan(
       packageJson.scripts['make:builder'].indexOf('electron-builder')
@@ -111,6 +112,12 @@ describe('packaging scripts', () => {
     expect(insidersWorkflow).toContain('insiders.yml');
     expect(insidersWorkflow).toContain('build-macos:');
     expect(insidersWorkflow).toContain('runs-on: macos-latest');
+    expect(insidersWorkflow).toContain('build-linux:');
+    expect(insidersWorkflow).toContain('npm run make:forge');
+    expect(insidersWorkflow).toContain('name: insiders-linux');
+    expect(insidersWorkflow).toContain('out/make/zip/linux/x64');
+    expect(insidersWorkflow).toContain('out/make/deb/x64');
+    expect(insidersWorkflow).toContain('needs: [prepare, build-windows, build-macos, build-linux]');
     expect(insidersWorkflow).toContain('tag: ${{ steps.bump.outputs.tag }}');
     expect(insidersWorkflow).toContain('git push origin "${{ needs.prepare.outputs.tag }}"');
     expect(insidersWorkflow).not.toContain('git push origin HEAD');
