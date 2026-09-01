@@ -117,6 +117,7 @@ describe('packaging scripts', () => {
     expect(insidersWorkflow).toContain('name: insiders-linux');
     expect(insidersWorkflow).toContain('out/make/zip/linux/x64');
     expect(insidersWorkflow).toContain('out/make/deb/x64');
+    expect(insidersWorkflow).toContain('xvfb-run --auto-servernum npm run smoke:linux-package');
     expect(insidersWorkflow).toContain('needs: [prepare, build-windows, build-macos, build-linux]');
     expect(insidersWorkflow).toContain('tag: ${{ steps.bump.outputs.tag }}');
     expect(insidersWorkflow).toContain('git push origin "${{ needs.prepare.outputs.tag }}"');

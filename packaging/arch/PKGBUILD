@@ -15,6 +15,7 @@ package() {
   install -d "$pkgdir/opt/chamber"
   cp -a "$package_dir/." "$pkgdir/opt/chamber/"
   chmod 755 "$pkgdir/opt/chamber"
+  chmod 4755 "$pkgdir/opt/chamber/chrome-sandbox"
 
   install -d "$pkgdir/usr/bin"
   ln -s /opt/chamber/chamber "$pkgdir/usr/bin/chamber"

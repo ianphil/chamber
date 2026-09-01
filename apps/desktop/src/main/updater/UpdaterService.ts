@@ -28,6 +28,7 @@ interface UpdaterLogger {
 export interface UpdaterServiceOptions {
   readonly currentVersion: string;
   readonly isPackaged: boolean;
+  readonly isSupportedPlatform?: boolean;
   readonly updater?: AppUpdater;
   readonly logger?: UpdaterLogger;
   readonly allowDevUpdates?: boolean;
@@ -50,11 +51,16 @@ export class UpdaterService {
     this.updater = options.updater ?? autoUpdater;
     this.logger = options.logger ?? console;
     this.setQuitting = options.setQuitting;
-    const enabled = options.isPackaged || options.allowDevUpdates === true;
+    const supported = options.isSupportedPlatform !== false;
+    const enabled = supported && (options.isPackaged || options.allowDevUpdates === true);
     this.state = createUpdateState(
       options.currentVersion,
       enabled,
-      enabled ? undefined : 'Updates are available only in packaged builds.',
+      enabled
+        ? undefined
+        : supported
+          ? 'Updates are available only in packaged builds.'
+          : 'Automatic updates are not available on this platform.',
     );
     this.configureUpdater();
   }

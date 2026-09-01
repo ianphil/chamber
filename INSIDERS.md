@@ -64,6 +64,9 @@ You will remain on the version you have installed until the public stable channe
 - The download URL is unlisted, not access-controlled. Anyone with the URL can fetch.
 - Linux preview artifacts are unsigned, omit the unsupported voice and
   WTD runtimes, and do not auto-update.
+- The portable Linux ZIP requires unprivileged user namespaces. Hardened
+  systems that disable them should use a native package with a root-owned
+  setuid Chromium sandbox helper instead.
 - There is no SLA. Insiders builds may regress, break auto-update, or be pulled without notice.
 
 ## Reporting issues

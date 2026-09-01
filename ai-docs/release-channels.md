@@ -130,6 +130,9 @@ insider, then promote.
 - Linux x64 ZIP and DEB preview artifacts, built on Ubuntu and updated
   manually. Voice and WTD runtimes are omitted because their native
   dependencies do not support Linux yet.
+- The portable ZIP relies on unprivileged user namespaces for Chromium's
+  sandbox. Hardened systems that disable them need a native package with
+  a root-owned setuid sandbox helper; the sandbox must never be disabled.
 - Windows auto-update reads `insiders.yml`; macOS reads
   `latest-mac.yml`. Linux preview builds do not auto-update.
 

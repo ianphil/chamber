@@ -589,6 +589,7 @@ async function initializeRuntime(voiceRuntimeAvailable: boolean): Promise<void> 
   updaterService = new UpdaterService({
     currentVersion: app.getVersion(),
     isPackaged: app.isPackaged,
+    isSupportedPlatform: process.platform !== 'linux',
     allowDevUpdates: process.env.CHAMBER_UPDATER_ALLOW_DEV === '1',
     setQuitting: () => {
       isQuitting = true;
