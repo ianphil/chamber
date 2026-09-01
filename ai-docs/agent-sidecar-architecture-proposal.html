@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Sidecar Architecture Proposal</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f141b;
+      --panel: #151c25;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --accent: #58a6ff;
+      --border: #30363d;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0 0 12px;
+    }
+
+    h1 {
+      font-size: 34px;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin-top: 36px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    ol, ul {
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    code {
+      color: #79c0ff;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .summary {
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Agent Sidecar Architecture Proposal</h1>
+    <p class="muted">Plan proposal for replacing Chamber's direct dependency on the GitHub Copilot SDK.</p>
+
+    <div class="summary">
+      <p>
+        Chamber should define its own small gRPC protocol and run agent frameworks behind sidecar processes. Each
+        mind can have an isolated runtime while Chamber keeps control of credentials, approvals, observability,
+        sanitization, and the renderer contract.
+      </p>
+      <p>
+        Framework-specific types must stop at the sidecar boundary. Replacing a framework should require a new
+        server-side adapter, not another rewrite of Chamber.
+      </p>
+    </div>
+
+    <h2>Proposed architecture</h2>
+    <pre><code>Chamber renderer
+       |
+Electron main process
+       |
+Chamber Agent Protocol (gRPC)
+       |
+       +-- PydanticAI sidecar
+       +-- Microsoft Agent Framework sidecar
+       +-- future runtime sidecar</code></pre>
+
+    <p>Inside each sidecar, a narrow adapter maps the Chamber protocol to the selected framework:</p>
+
+    <pre><code>Chamber gRPC service
+        |
+Framework adapter
+        |
+Agent framework and model providers</code></pre>
+
+    <h2>The boundary</h2>
+    <p>
+      Chamber should own the protocol. It should describe Chamber's needs rather than mirror PydanticAI, Microsoft
+      Agent Framework, LangGraph, or any other framework.
+    </p>
+    <p>A first contract could use one bidirectional stream plus health and shutdown operations:</p>
+
+    <pre><code>service AgentRuntime {
+  rpc Connect(stream ClientMessage) returns (stream AgentEvent);
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}</code></pre>
+
+    <h3>Messages from Chamber</h3>
+    <ul>
+      <li>Start or resume a session.</li>
+      <li>Send a user prompt.</li>
+      <li>Approve or deny a proposed tool call.</li>
+      <li>Return a tool result.</li>
+      <li>Cancel the current turn.</li>
+      <li>Update session-scoped provider credentials.</li>
+    </ul>
+
+    <h3>Events from the sidecar</h3>
+    <ul>
+      <li>Text and reasoning deltas.</li>
+      <li>Tool call proposals.</li>
+      <li>Agent and session status changes.</li>
+      <li>Usage and model metadata.</li>
+      <li>Checkpoints needed to resume a session.</li>
+      <li>Typed errors and completion events.</li>
+    </ul>
+
+    <h2>One runtime per mind</h2>
+    <p>
+      Each active mind can run in its own process. This isolates failures, dependencies, credentials, memory, and
+      cancellation. Different minds could use different frameworks or framework versions without loading those
+      runtimes into Electron.
+    </p>
+    <p>
+      Sidecars should start lazily. Chamber starts a process when a mind becomes active, keeps it warm while useful,
+      and shuts it down after an idle timeout. Configured but inactive minds should not consume a permanent Python,
+      .NET, or Go process.
+    </p>
+
+    <h2>Ownership</h2>
+    <h3>Chamber keeps</h3>
+    <ul>
+      <li>Mind identity, configuration, and stable session identity.</li>
+      <li>OS-keychain credential storage and account selection.</li>
+      <li>Approval decisions and execution of side-effecting tools.</li>
+      <li>Observability, parameter redaction, and audit records.</li>
+      <li>Tool-result sanitization and renderer event contracts.</li>
+      <li>Sidecar startup, health checks, restart policy, and shutdown.</li>
+    </ul>
+
+    <h3>The sidecar owns</h3>
+    <ul>
+      <li>The agent loop and framework-specific session state.</li>
+      <li>Model calls, streaming, retries, and context management.</li>
+      <li>Framework-native memory, checkpoints, and orchestration.</li>
+      <li>MCP lifecycle where the chosen framework provides it.</li>
+      <li>Mapping framework events and errors into the Chamber protocol.</li>
+    </ul>
+
+    <h2>Security rules</h2>
+    <ul>
+      <li>The Electron main process is the only Chamber component that connects to a sidecar.</li>
+      <li>The sidecar may propose a tool call, but Chamber approves and executes it.</li>
+      <li>Credentials remain in the OS keychain until Chamber supplies the selected account to an authenticated process.</li>
+      <li>Credentials are scoped to the mind and session. They never appear in command arguments or logs.</li>
+      <li>Protocol logging uses Chamber's existing redaction rules.</li>
+      <li>A sidecar cannot send events directly to the renderer.</li>
+    </ul>
+
+    <h2>Framework replacement</h2>
+    <p>
+      A framework adapter lives behind the gRPC implementation. It translates Chamber messages into framework calls
+      and translates framework events back into the stable Chamber event model.
+    </p>
+    <p>
+      Replacing a framework means implementing this adapter and passing the same protocol tests. The renderer,
+      approval UI, persistence model, and most Electron services should remain unchanged.
+    </p>
+
+    <h2>Implementation plan</h2>
+    <ol>
+      <li>
+        <h3>Define the smallest useful protocol</h3>
+        <p>
+          Model one Chamber flow: start a session, stream a response, propose a tool call, approve it, return the
+          result, cancel a turn, and resume the session. Do not add framework features that this flow does not need.
+        </p>
+      </li>
+      <li>
+        <h3>Build one disposable sidecar spike</h3>
+        <p>
+          Implement the contract with one cross-runtime candidate. Package it beside Electron and prove startup,
+          health checks, bidirectional streaming, clean shutdown, and crash detection on Windows, macOS, and Linux.
+        </p>
+      </li>
+      <li>
+        <h3>Add a Chamber runtime client</h3>
+        <p>
+          Put process management and the generated gRPC client behind one service in Electron main. Keep generated
+          protocol types out of the renderer and shared product contracts.
+        </p>
+      </li>
+      <li>
+        <h3>Migrate one mind end to end</h3>
+        <p>
+          Run a single-mind chat through the sidecar while preserving Chamber's existing UI events, approval gate,
+          credential store, cancellation, and conversation persistence.
+        </p>
+      </li>
+      <li>
+        <h3>Prove framework portability</h3>
+        <p>
+          Implement a second small adapter or test double against the same contract. This verifies that the protocol
+          describes Chamber rather than assumptions from the first framework.
+        </p>
+      </li>
+      <li>
+        <h3>Restore product parity</h3>
+        <p>
+          Migrate MCP, skills, context management, session recovery, observability, and multi-agent modes. Keep each
+          feature behind the same Chamber protocol where possible.
+        </p>
+      </li>
+      <li>
+        <h3>Remove the Copilot runtime</h3>
+        <p>
+          Delete the Copilot SDK integration, bundled CLI, runtime preparation, Copilot authentication paths, and
+          obsolete packaging rules only after the sidecar path passes the existing desktop, server, and packaged
+          runtime checks.
+        </p>
+      </li>
+    </ol>
+
+    <h2>Questions the spike must answer</h2>
+    <ul>
+      <li>Does one process per active mind fit within acceptable startup time and memory use?</li>
+      <li>Can the sidecar resume a session after Chamber or the sidecar restarts?</li>
+      <li>How should Chamber version and negotiate changes to the protocol?</li>
+      <li>Which framework can expose tool approval without fighting its execution loop?</li>
+      <li>Can the chosen runtime and gRPC dependencies be packaged reliably on all three desktop platforms?</li>
+      <li>Which provider account login flows are officially permitted for a third-party desktop application?</li>
+    </ul>
+
+    <h2>Success criteria</h2>
+    <ul>
+      <li>A mind streams responses through the gRPC sidecar inside packaged Electron.</li>
+      <li>Chamber can approve, deny, and audit every side-effecting tool call.</li>
+      <li>Cancellation and resume work across the process boundary.</li>
+      <li>Two minds can run independently, including with different providers or frameworks.</li>
+      <li>A sidecar crash is contained and reported without taking down Chamber or another mind.</li>
+      <li>No framework-specific type reaches the renderer or Chamber's persistent product model.</li>
+      <li>A second adapter can satisfy the contract without changing the renderer flow.</li>
+    </ul>
+
+    <h2>Recommendation</h2>
+    <p>
+      Start with the protocol and one representative sidecar. Keep the contract deliberately small. If that spike
+      proves streaming, approvals, cancellation, resume, and packaging, the architecture gives Chamber a practical
+      path away from the Copilot SDK without binding the product to its next framework.
+    </p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Framework Assessment</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f141b;
+      --panel: #151c25;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --accent: #58a6ff;
+      --border: #30363d;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0 0 12px;
+    }
+
+    h1 {
+      font-size: 34px;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin-top: 36px;
+      font-size: 22px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    ol, ul {
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    .frameworks {
+      list-style: none;
+      padding: 0;
+    }
+
+    .frameworks > li {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin: 14px 0;
+    }
+
+    .frameworks ul {
+      margin: 0;
+    }
+
+    .frameworks strong {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Agent Framework Assessment</h1>
+    <p>
+      I found a solid working list. I'd keep TypeScript frameworks separate from Python and .NET options because
+      embedding them in Chamber has very different packaging costs.
+    </p>
+
+    <h2>Native TypeScript candidates</h2>
+    <ol class="frameworks">
+      <li>
+        <h3><a href="https://ai-sdk.dev/docs/agents/overview">Vercel AI SDK 7</a></h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> <code>ToolLoopAgent</code>, streaming, tool execution, loop
+            control, typed runtime context, MCP, many model providers.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> Strong candidate. Small conceptual model and a natural fit
+            for Electron. Its new <code>HarnessAgent</code> can even run established harnesses such as Pi, Codex,
+            and Claude Code. Durable sessions and account login would need closer inspection.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3><a href="https://mastra.ai/docs/agents/overview">Mastra</a></h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> Agent loop, tools, model routing, memory, MCP, human approval,
+            workflows, multi-agent systems.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> Strong candidate if we want a more complete runtime. More
+            framework than Vercel AI SDK, but much less Chamber code may need rebuilding.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3>
+          <a href="https://docs.langchain.com/oss/javascript/langchain/agents">LangChain JS and LangGraph JS</a>
+        </h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> Agent loop, broad provider support including Ollama,
+            middleware, MCP, persistence, checkpoints, human approval, multi-agent graphs.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> The mature, feature-heavy option. It probably covers almost
+            everything, but dependency size and abstraction overhead deserve scrutiny.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3>
+          <a href="https://github.com/earendil-works/pi/blob/main/packages/agent/README.md">
+            Pi Agent Core and Pi AI
+          </a>
+        </h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> Stateful loop, streaming events, tool execution, approval
+            hooks, cancellation, context transforms, provider normalization and unusual OAuth support.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> Strong fit for Chamber's current event-driven design. Smaller
+            and more direct than LangChain. The high-level harness remains the uncertain part.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3><a href="https://openai.github.io/openai-agents-js/">OpenAI Agents SDK for TypeScript</a></h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> Agent loop, tools, handoffs, guardrails, sessions, MCP,
+            tracing, custom <code>ModelProvider</code> interface.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> More provider-pluggable than its name suggests. Still
+            OpenAI-shaped, so we would need to test Ollama, Anthropic, and Google behavior through custom providers
+            or its
+            <a href="https://openai.github.io/openai-agents-js/extensions/ai-sdk/">AI SDK integration</a>.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <del>
+          <h3><a href="https://github.com/google/adk-js">Google ADK for TypeScript</a></h3>
+          <ul>
+            <li>
+              <strong>What it already handles:</strong> Agent loop, tools, MCP, sessions, sequential and parallel
+              agents, routing, A2A, browser and Node builds.
+            </li>
+            <li>
+              <strong>Initial read for Chamber:</strong> Technically impressive and Electron-compatible. Google is
+              the center of gravity, so provider neutrality and non-Google auth need testing.
+            </li>
+          </ul>
+        </del>
+        <p>
+          Struck from consideration: the TypeScript package is Google-first and does not provide the multi-provider
+          account login Chamber needs.
+        </p>
+      </li>
+      <li>
+        <h3><a href="https://voltagent.dev/docs/agents/overview/">VoltAgent</a></h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> Agents, tools, provider adapters, memory, MCP, subagents,
+            workflows and observability.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> Worth investigating. TypeScript-first and broad, though its
+            smaller ecosystem makes maintenance risk more relevant.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3>
+          <a href="https://developers.llamaindex.ai/typescript/framework/modules/agents/agent_workflow/">
+            LlamaIndex.TS
+          </a>
+        </h3>
+        <ul>
+          <li>
+            <strong>What it already handles:</strong> Tool-calling loops, streaming events, workflows, structured
+            output and multi-agent handoffs.
+          </li>
+          <li>
+            <strong>Initial read for Chamber:</strong> Viable, especially if Chamber grows stronger document and
+            retrieval features. Its design leans more toward workflows and data applications than a desktop coding
+            assistant.
+          </li>
+        </ul>
+      </li>
+    </ol>
+
+    <h2>Cross-runtime candidates</h2>
+    <p>
+      These are real contenders, but Chamber would need to ship another runtime or run a sidecar process.
+    </p>
+    <ol class="frameworks">
+      <li>
+        <h3><a href="https://pydantic.dev/docs/ai/overview">PydanticAI</a></h3>
+        <ul>
+          <li><strong>Runtime:</strong> Python.</li>
+          <li>
+            <strong>Initial read:</strong> One of the strongest cleanly designed agent frameworks. Broad models,
+            MCP, durable execution, tools, approval flows and typed dependencies. The Python packaging cost is its
+            main drawback.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3>
+          <a href="https://learn.microsoft.com/en-us/agent-framework/overview/">Microsoft Agent Framework</a>
+        </h3>
+        <ul>
+          <li><strong>Runtime:</strong> Python, .NET and Go.</li>
+          <li>
+            <strong>Initial read:</strong> Very complete. Agents, sessions, middleware, MCP, human approval,
+            workflows, Ollama and several hosted providers. It is the successor to both AutoGen and Semantic
+            Kernel. No matching TypeScript runtime currently appears in the official framework docs.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3><a href="https://docs.agno.com/sdk/introduction">Agno</a></h3>
+        <ul>
+          <li><strong>Runtime:</strong> Python.</li>
+          <li>
+            <strong>Initial read:</strong> Batteries included. Agent loop, 30-plus providers, sessions, memory,
+            compression, MCP, approval pauses, teams, workflows and scheduling. A plausible replacement for much
+            of Chamber's service code.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3><a href="https://docs.langchain.com/oss/python/langgraph/overview">LangGraph Python</a></h3>
+        <ul>
+          <li><strong>Runtime:</strong> Python.</li>
+          <li>
+            <strong>Initial read:</strong> The deeper and more established version of the LangGraph runtime. Strong
+            persistence, interruption, resume and human approval support.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <h3><a href="https://openai.github.io/openai-agents-python/">OpenAI Agents SDK for Python</a></h3>
+        <ul>
+          <li><strong>Runtime:</strong> Python.</li>
+          <li>
+            <strong>Initial read:</strong> More mature than the TypeScript edition, with tools, handoffs,
+            guardrails, sessions and MCP. It retains the same OpenAI-centered concern.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <del>
+          <h3><a href="https://adk.dev/">Google ADK for Python</a></h3>
+          <ul>
+            <li><strong>Runtime:</strong> Python.</li>
+            <li>
+              <strong>Initial read:</strong> The original and more mature ADK implementation. Broad orchestration and
+              session support, but Google-oriented.
+            </li>
+          </ul>
+        </del>
+        <p>
+          Struck from consideration: Python has broader model support through LiteLLM, but it still does not provide
+          provider subscription login or Chamber's multiple-account model.
+        </p>
+      </li>
+      <li>
+        <h3><a href="https://docs.crewai.com/">CrewAI</a></h3>
+        <ul>
+          <li><strong>Runtime:</strong> Python.</li>
+          <li>
+            <strong>Initial read:</strong> Strong task, crew and workflow orchestration with MCP and human review.
+            It looks better suited to predefined teams and jobs than Chamber's interactive single-mind chat.
+          </li>
+        </ul>
+      </li>
+    </ol>
+
+    <h2>Projects I would not start with</h2>
+    <ul>
+      <li>
+        <strong>AutoGen</strong> and <strong>Semantic Kernel</strong> remain usable, but Microsoft now calls Agent
+        Framework their direct successor and publishes migration guides.
+      </li>
+      <li>
+        <strong>MCP Agent</strong> is interesting for MCP-heavy systems, but it is narrower than Chamber needs.
+      </li>
+      <li>
+        <strong>Smolagents</strong> is deliberately small and Python-only. Good library, weak match for replacing
+        all Copilot runtime behavior.
+      </li>
+      <li>
+        The many tiny TypeScript "agent loop" repositories from the search have little adoption and no convincing
+        session, approval, or maintenance story.
+      </li>
+    </ul>
+
+    <p>
+      My first-cut serious pool is <strong>Vercel AI SDK, Mastra, LangChain/LangGraph JS, Pi, OpenAI Agents JS, and
+      <del>Google ADK JS</del></strong>. PydanticAI and Microsoft Agent Framework stay on the list if shipping a sidecar
+      runtime is acceptable.
+    </p>
+  </main>
+</body>
+</html>
